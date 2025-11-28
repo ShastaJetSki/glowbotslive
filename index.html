@@ -6,93 +6,205 @@
     <title>GlowbotsLive - Voice Agent</title>
 
     <style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{height:100vh;background:#000;overflow:hidden}
-
-      #voice-button{
-        position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-        width:210px;height:210px;border-radius:50%;border:none;cursor:pointer;
-        background:linear-gradient(135deg, #ffd700, #ffed4e); /* SUNNY YELLOW */
-        box-shadow:0 15px 120px rgba(255,215,0,0.8), inset 0 -10px 30px rgba(0,0,0,0.3);
-        transition:all .35s;z-index:9999;
-      }
-      #voice-button:hover{transform:translate(-50%,-50%) scale(1.35);box-shadow:0 25px 150px rgba(255,215,0,1);}
-      #voice-button.listening{
-        background:linear-gradient(135deg, #ffff00, #ffd700);
-        box-shadow:0 0 170px #ffff00, 0 0 230px #ffff00;
-        animation:yellow 1.4s infinite;
-      }
-      @keyframes yellow{
-        0%,100%{box-shadow:0 0 170px #ffff00, 0 0 230px #ffff00}
-        70% {box-shadow:0 0 210px #ffff00, 0 0 290px #ffff00}
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body {
+        height: 100vh;
+        background: #000 url('glowbot.png') center center no-repeat;
+        background-size: contain;
+        overflow: hidden;
+        font-family: 'Segoe UI', sans-serif;
+        color: white;
       }
 
-      .status{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);
-        color:#ffd700;font:18px system-ui;text-shadow:0 0 15px #ffd700;opacity:0.9}
+      /* Glowbot Title Overlay */
+      .title-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 6vw;
+        font-weight: bold;
+        color: #ffd700;
+        text-shadow: 0 0 40px #ffd700, 0 0 80px #ff8c00;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.9;
+      }
+
+      /* Voice Button - Bottom Right */
+      #voice-button {
+        position: fixed;
+        bottom: 40px;
+        right: 40px;
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        background: linear-gradient(135deg, #ffd700, #ff8c00);
+        box-shadow: 0 10px 40px rgba(255,215,0,0.7);
+        transition: all .3s ease;
+        z-index: 9999;
+      }
+      #voice-button:hover { transform: scale(1.2); box-shadow: 0 15px 60px rgba(255,215,0,1); }
+      #voice-button.listening {
+        background: linear-gradient(135deg, #ffff00, #ff6600);
+        box-shadow: 0 0 60px #ffff00, 0 0 100px #ff6600;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%,100% { box-shadow: 0 0 60px #ffff00, 0 0 100px #ff6600; }
+        70% { box-shadow: 0 0 90px #ffff00, 0 0 140px #ff6600; }
+      }
+
+      /* Login Panel - Top Right */
+      #login-panel {
+        position: fixed;
+        top: 30px;
+        right: 30px;
+        background: rgba(0,0,0,0.7);
+        padding: 25px;
+        border-radius: 16px;
+        width: 340px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,215,0,0.3);
+        z-index: 9998;
+      }
+      #login-panel h2 {
+        color: #ffd700;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      input {
+        width: 100%;
+        padding: 12px;
+        margin: 10px 0;
+        border-radius: 8px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: white;
+      }
+      button {
+        width: 100%;
+        padding: 12px;
+        background: #ffd700;
+        color: black;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:hover { background: #ffed4e; }
+
+      .status {
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #ffd700;
+        font: 16px system-ui;
+        text-shadow: 0 0 10px #ffd700;
+      }
+
+      .hidden { display: none; }
     </style>
   </head>
   <body>
-    <button id="voice-button"></button>
-    <div class="status" id="status">Loading sunny yellow button...</div>
 
-    <!-- Official UMD bundle for Vapi Web SDK (exposes window.Vapi) -->
+    <!-- Glowbot Title -->
+    <div class="title-overlay">Glowbot</div>
+
+    <!-- Login Panel -->
+    <div id="login-panel">
+      <h2>Client Login</h2>
+      <input type="email" id="email" placeholder="Enter your email" />
+      <input type="password" id="password" placeholder="Password" />
+      <button id="login-btn">Log In</button>
+      <p id="login-message" style="margin-top:10px; color:#ff6666; text-align:center;"></p>
+    </div>
+
+    <!-- Voice Button (Bottom Right) -->
+    <button id="voice-button" class="hidden"></button>
+    <div class="status" id="status">Log in to activate voice agent</div>
+
+    <!-- Vapi Web SDK (Working Version) -->
     <script src="https://cdn.jsdelivr.net/gh/balacodeio/Vapi-Web-UMD@latest/dist/latest/vapi-web-bundle.min.js"></script>
 
     <script>
-      const button = document.getElementById('voice-button');
+      const voiceButton = document.getElementById('voice-button');
       const status = document.getElementById('status');
-
+      const loginPanel = document.getElementById('login-panel');
+      const loginMessage = document.getElementById('login-message');
       let vapi = null;
 
-      // Wait for SDK to load, then initialize
+      // === SUPABASE CONFIGURATION ===
+      // Replace these with YOUR Supabase project details
+      const SUPABASE_URL = 'https://your-project.supabase.co';
+      const SUPABASE_ANON_KEY = 'your-anon-public-key-here';
+
+      // Initialize Supabase
+      const { createClient } = supabase;
+      const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // Login Handler
+      document.getElementById('login-btn').addEventListener('click', async () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        if (!email || !password) {
+          loginMessage.textContent = "Please fill in both fields";
+          return;
+        }
+
+        const { data, error } = await _supabase.auth.signInWithPassword({
+          email, password
+        });
+
+        if (error) {
+          loginMessage.textContent = error.message;
+        } else {
+          loginMessage.textContent = `Welcome, ${data.user.email}!`;
+          loginMessage.style.color = "#00ff00";
+          loginPanel.classList.add('hidden');
+          voiceButton.classList.remove('hidden');
+          status.textContent = "Voice agent activated — click to talk!";
+          initVapi(); // Start Vapi after login
+        }
+      });
+
+      // === VAPI INITIALIZATION (Only after login) ===
       function initVapi() {
         if (window.Vapi) {
-          vapi = new window.Vapi("b66ad6e7-ec9d-421c-88b7-157068b27f6d"); // Your public key
-          status.textContent = "SUNNY YELLOW BUTTON READY — Click to talk!";
-          console.log("Sunny yellow test version loaded & ready");
-
-          // Official event handlers
+          vapi = new window.Vapi("b66ad6e7-ec9d-421c-88b7-157068b27f6d");
+          
           vapi.on("call-start", () => {
-            button.classList.add("listening");
+            voiceButton.classList.add("listening");
             status.textContent = "Listening… speak now!";
           });
-
           vapi.on("call-end", () => {
-            button.classList.remove("listening");
-            status.textContent = "Call ended — click again";
+            voiceButton.classList.remove("listening");
+            status.textContent = "Call ended — click to talk again";
           });
-
           vapi.on("error", (e) => {
             console.error("Vapi error:", e);
             status.textContent = "Error — check console";
-            button.classList.remove("listening");
           });
-        } else {
-          status.textContent = "SDK failed to load — reload page";
-          console.error("Vapi SDK not found — check network or script path");
         }
       }
 
-      // Load SDK if not already, then init
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initVapi);
-      } else {
-        initVapi();
-      }
-
-      // Click toggles start/stop (official methods with correct string param)
-      button.addEventListener("click", () => {
-        if (!vapi) {
-          status.textContent = "SDK not ready — wait or reload";
-          return;
-        }
-        if (button.classList.contains("listening")) {
+      // Voice Button Click
+      voiceButton.addEventListener("click", () => {
+        if (!vapi) return;
+        if (voiceButton.classList.contains("listening")) {
           vapi.stop();
         } else {
           status.textContent = "Connecting…";
-          vapi.start("1dadddca-84c7-44a8-b5cd-7505b6b52cff"); // Your assistant ID as direct string (fixes 400)
+          vapi.start("1dadddca-84c7-44a8-b5cd-7505b6b52cff");
         }
       });
     </script>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </body>
 </html>
