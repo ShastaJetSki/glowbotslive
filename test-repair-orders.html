@@ -2,77 +2,128 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Repair Orders Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repair Orders - Airtable Live View</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-    h1 { color: #333; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; background: #fff; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background: #eee; }
+    body { font-family: Arial, sans-serif; margin: 40px; background: #f4f6f9; line-height: 1.6; }
+    h1 { color: #2c3e50; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
+    th { background: #3498db; color: white; position: sticky; top: 0; }
+    tr:hover { background: #f8f9fa; }
+    .loading { font-size: 1.3em; color: #7f8c8d; }
+    .error { color: #e74c3c; background: #fdf2f2; padding: 15px; border-radius: 5px; }
+    img { max-width: 80px; max-height: 80px; border-radius: 4px; }
+    .array { color: #27ae60; font-weight: bold; }
+    pre { background: #ecf0f1; padding: 8px; border-radius: 4px; overflow-x: auto; }
   </style>
 </head>
 <body>
-  <h1>Repair Orders Test Page</h1>
-  <table id="ordersTable">
-    <thead>
-      <tr>
-        <th>Customer Name</th>
-        <th>Phone</th>
-        <th>Jet Ski</th>
-        <th>Status</th>
-        <th>Diagnosis / Notes</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Data will populate here -->
-    </tbody>
-  </table>
+
+  <h1>Repair Orders - Live from Airtable</h1>
+  <p class="loading">Loading all records...</p>
+  <div id="output"></div>
 
   <script>
-    const API_KEY = 'patnifri546G0mjVK.fbf7d5192704c2ec2d373d30a5c83f88621d0267f5f33092d6d415e032afe214';
+    // === PUT YOUR OWN KEY & BASE HERE ===
+    const API_KEY = 'YOUR_PAT_OR_KEY_HERE';        // ← REPLACE THIS
     const BASE_ID = 'appfVdfmxvTwLv7uV';
     const TABLE_NAME = 'repair_order';
+    // ====================================
 
-    async function fetchRepairOrders() {
-      try {
-        const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}?maxRecords=10&view=Grid%20view`;
-        const response = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${API_KEY}` }
-        });
-        const data = await response.json();
+    const headers = { 'Authorization': `Bearer ${API_KEY}` };
 
-        const tbody = document.querySelector('#ordersTable tbody');
-        tbody.innerHTML = '';
+    async function loadAllRecords() {
+      let allRecords = [];
+      let offset = null;
 
-        data.records.forEach(record => {
-          const row = document.createElement('tr');
+      do {
+        const url = new URL(`https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`);
+        url.searchParams.append('pageSize', 100);
+        if (offset) url.searchParams.append('offset', offset);
 
-          // Map fields exactly from your Airtable
-          const customerName = record.fields['Customer Name'] || '';
-          const phone = record.fields['Phone'] || '';
-          const make = record.fields['Make'] || '';
-          const model = record.fields['Model'] || '';
-          const status = record.fields['Status'] || '';
-          const diagnosis = record.fields['Diagnosis'] || record.fields['Notes'] || '';
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error(`Airtable error: ${res.status} ${res.statusText}`);
 
-          row.innerHTML = `
-            <td>${customerName}</td>
-            <td>${phone}</td>
-            <td>${make} ${model}</td>
-            <td>${status}</td>
-            <td>${diagnosis}</td>
-          `;
-          tbody.appendChild(row);
-        });
+        const data = await res.json();
+        allRecords = allRecords.concat(data.records);
+        offset = data.offset;
+      } while (offset);
 
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        const tbody = document.querySelector('#ordersTable tbody');
-        tbody.innerHTML = '<tr><td colspan="5">Error fetching data from Airtable</td></tr>';
-      }
+      return allRecords;
     }
 
-    fetchRepairOrders();
+    function formatValue(value) {
+      if (value === null || value === undefined) return '<em>—</em>';
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) return '<em>—</em>';
+
+        // Attachments
+        if (value[0]?.url && value[0]?.thumbnails) {
+          return value.map(att =>
+            `<a href="${att.url}" target="_blank">
+               <img src="${att.thumbnails.small?.url || att.url}" alt="img">
+             </a>`
+          ).join(' ');
+        }
+        // Regular arrays (lookups, multi-select, linked records)
+        return `<span class="array">${value.join(', ')}</span>`;
+      }
+
+      if (typeof value === 'object') {
+        return `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+      }
+
+      return String(value);
+    }
+
+    loadAllRecords()
+      .then(records => {
+        document.querySelector('.loading').remove();
+
+        if (records.length === 0) {
+          document.getElementById('output').innerHTML = '<p>No records found.</p>';
+          return;
+        }
+
+        // Get all unique field names
+        const fieldNames = [...new Set(records.flatMap(r => Object.keys(r.fields)))]
+          .sort();
+
+        let html = '<table><thead><tr>';
+        fieldNames.forEach(field => html += `<th>${field}</th>`);
+        html += '</tr></thead><tbody>';
+
+        records.forEach(rec => {
+          html += '<tr>';
+          fieldNames.forEach(field => {
+            const val = rec.fields[field];
+            html += `<td>${formatValue(val)}</td>`;
+          });
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        document.getElementById('output').innerHTML = html;
+      })
+      .catch(err => {
+        document.querySelector('.loading').classList.add('error');
+        document.querySelector('.loading').textContent = 'Failed to load data';
+        document.getElementById('output').innerHTML = 
+          `<div class="error"><strong>Error:</strong> ${err.message}<br><br>
+           Check: <br>
+           • Your Personal Access Token is correct and has <strong>read data</strong> scope<br>
+           • The base ID and table name are correct<br>
+           • No ad-blocker or CORS issue (open in normal browser)</div>`;
+        console.error(err);
+      });
   </script>
+
+  <hr>
+  <p><small>
+    <strong>Security note:</strong> Never commit this file with your real API key in it. 
+    For production, use a backend proxy (Node.js, Netlify function, etc.) so the key stays secret.
+  </small></p>
 </body>
 </html>
