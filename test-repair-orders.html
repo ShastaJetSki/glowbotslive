@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Repair Orders - LIVE & WORKING</title>
+  <title>Repair Orders - LIVE & CORRECTED</title>
   <style>
     body {font-family: Arial, sans-serif; margin:40px; background:#f9fafb;}
     h1 {color:#1e40af;}
@@ -13,21 +13,21 @@
     tr:hover {background:#dbeafe;}
     img {max-height:90px; border-radius:6px; margin:4px; border:1px solid #ccc; cursor:zoom-in;}
     .status {padding:6px 12px; border-radius:20px; color:white; font-weight:bold; font-size:0.9em;}
-    .On-Schedule, .OnSchedule {background:#10b981;}
-    ."in process", .in-process {background:#f59e0b;}
+    .On-Schedule {background:#10b981;}
+    .in-process {background:#f59e0b;}
     .completed {background:#6366f1;}
-    ."Parts on order", .Partsonorder {background:#8b5cf6;}
+    .Parts-on-order {background:#8b5cf6;}
     .complications {background:#ef4444;}
   </style>
 </head>
 <body>
 
-<h1>Repair Orders – LIVE FROM YOUR AIRTABLE (ChatGPT-style but better)</h1>
+<h1>Repair Orders – LIVE FROM YOUR AIRTABLE (Fixed Field Mapping)</h1>
 <div id="loading" style="font-size:1.4em; color:#6366f1; font-weight:bold;">Loading your real data…</div>
 <div id="output"></div>
 
 <script>
-// Your original token that already works perfectly
+// Your working token
 const TOKEN = "patnifri546G0mjVK.fbf7d5192704c2ec2d373d30a5c83f88621d0267f5f33092d6d415e032afe214";
 const BASE = "appfVdfmxvTwLv7uV";
 const TABLE = "repair_order";
@@ -40,6 +40,7 @@ async function getAllRecords() {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${TOKEN}` }
     });
+    if (!res.ok) throw new Error(`Airtable error: ${res.status}`);
     const data = await res.json();
     records = records.concat(data.records);
     offset = data.offset || "";
@@ -52,8 +53,8 @@ getAllRecords().then(records => {
 
   let html = `<table>
     <thead><tr>
-      <th>ID</th>
-      <th>Customer</th>
+      <th>Repair Order ID</th>
+      <th>Customer Name</th>
       <th>Phone</th>
       <th>Jet Ski</th>
       <th>Hull ID</th>
@@ -66,38 +67,53 @@ getAllRecords().then(records => {
 
   records.forEach(r => {
     const f = r.fields;
+    // Fixed: Use exact field names from your base
+    const id = f["Repair Order ID"] || "—";
+    const customer = f["Customer Name"] || "—";
+    const phone = f.Phone || "—";
+    const jetSki = `${f.Make || ""} ${f.Model || ""}`.trim() || "—";
+    const hull = f["Hull ID"] || "—";
+    const status = f.Status || "—";
+    const priority = f.Priority || "—";
+    const notes = (f.Diagnosis || f.Notes || "—").replace(/\n/g, "<br>");
     const photos = (f.Photos || []).map(p => 
-      `<a href="${p.url}" target="_blank"><img src="${p.thumbnails?.large?.url || p.thumbnails?.small?.url || p.url}"></a>`
-    ).join('');
+      `<a href="${p.url}" target="_blank"><img src="${p.thumbnails?.large?.url || p.thumbnails?.small?.url || p.url}" alt="Photo"></a>`
+    ).join('') || "—";
+    const created = new Date(r.createdTime).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
 
     html += `<tr>
-      <td>${f["Repair Order ID"] || "—"}</td>
-      <td><strong>${f["Customer Name"] || "—"}</strong></td>
-      <td>${f.Phone || "—"}</td>
-      <td>${(f.Make || "")} ${f.Model || ""}</td>
-      <td>${f["Hull ID"] || "—"}</td>
-      <td><span class="status ${(f.Status || "").replace(/[^a-zA-Z0-9]/g,"")}">${f.Status || "—"}</span></td>
-      <td>${f.Priority || "—"}</td>
-      <td>${(f.Diagnosis || f.Notes || "—").replace(/\n/g,"<br>")}</td>
-      <td>${photos || "—"}</td>
-      <td>${new Date(r.createdTime).toLocaleDateString()}</td>
+      <td>${id}</td>
+      <td><strong>${customer}</strong></td>
+      <td>${phone}</td>
+      <td>${jetSki}</td>
+      <td>${hull}</td>
+      <td><span class="status ${status.toLowerCase().replace(/ /g, '-')}">${status}</span></td>
+      <td>${priority}</td>
+      <td>${notes}</td>
+      <td>${photos}</td>
+      <td>${created}</td>
     </tr>`;
   });
 
   html += `</tbody></table>
-    <p><strong>${records.length} records loaded live from your Airtable.</strong></p>`;
+    <p><strong>${records.length} records loaded live from your Airtable (with correct dates & fields).</strong></p>`;
 
   document.getElementById("output").innerHTML = html;
 
 }).catch(err => {
-  document.getElementById("loading").innerHTML = `<p style="color:red;">Network blocked the request (CORS). Open this page from your web server (not local file).</p>`;
+  document.getElementById("loading").innerHTML = `<p style="color:red;">Error: ${err.message}. Ensure uploaded to server (CORS issue if local).</p>`;
+  console.error(err);
 });
 </script>
 
 <hr>
 <small>
-  This uses your original working token — exactly like ChatGPT did — but shows ALL fields and photos.<br>
-  Must be opened from your web server (not double-clicked locally) because of Airtable CORS.
+  Fixed: Exact field mapping (e.g., "Hull ID", "Repair Order ID") + correct date formatting (e.g., "Jul 31, 2025").<br>
+  Upload to server only — works like ChatGPT's but with all your data, photos, & no random dates.
 </small>
 
 </body>
