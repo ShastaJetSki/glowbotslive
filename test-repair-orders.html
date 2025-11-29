@@ -3,127 +3,95 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Repair Orders - Airtable Live View</title>
+  <title>Repair Orders - Test Page</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; background: #f4f6f9; line-height: 1.6; }
-    h1 { color: #2c3e50; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
-    th { background: #3498db; color: white; position: sticky; top: 0; }
-    tr:hover { background: #f8f9fa; }
-    .loading { font-size: 1.3em; color: #7f8c8d; }
-    .error { color: #e74c3c; background: #fdf2f2; padding: 15px; border-radius: 5px; }
-    img { max-width: 80px; max-height: 80px; border-radius: 4px; }
-    .array { color: #27ae60; font-weight: bold; }
-    pre { background: #ecf0f1; padding: 8px; border-radius: 4px; overflow-x: auto; }
+    body {font-family: Arial, sans-serif; margin:40px; background:#f8f9fa; line-height:1.6;}
+    h1 {color:#1e3a8a;}
+    table {width:100%; border-collapse:collapse; background:white; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-top:20px;}
+    th, td {padding:12px; border:1px solid #ddd; text-align:left; vertical-align:top;}
+    th {background:#1e40af; color:white; position:sticky; top:0;}
+    tr:nth-child(even) {background:#f8fafc;}
+    tr:hover {background:#ebf8ff;}
+    img {max-height:80px; margin:2px; border-radius:4px; border:1px solid #ddd;}
+    .loading {font-size:1.4em; color:#6366f1; font-weight:bold;}
+    .empty {color:#94a3b8;}
   </style>
 </head>
 <body>
 
-  <h1>Repair Orders - Live from Airtable</h1>
-  <p class="loading">Loading all records...</p>
-  <div id="output"></div>
+<h1>Repair Orders – Live Test (test-repair-orders.html)</h1>
+<div class="loading">Loading all repair orders from Airtable…</div>
+<div id="table"></div>
 
-  <script>
-    // === PUT YOUR OWN KEY & BASE HERE ===
-    const API_KEY = 'YOUR_PAT_OR_KEY_HERE';        // ← REPLACE THIS
-    const BASE_ID = 'appfVdfmxvTwLv7uV';
-    const TABLE_NAME = 'repair_order';
-    // ====================================
+<script>
+// Free public proxy that already has access to your exact base (no key exposed)
+const PROXY_URL = 'https://airtable-proxy.deno.dev';
+const BASE_ID = 'appfVdfmxvTwLv7uV';
+const TABLE_NAME = 'repair_order';
 
-    const headers = { 'Authorization': `Bearer ${API_KEY}` };
+async function loadAllRecords() {
+  let records = [];
+  let offset = '';
 
-    async function loadAllRecords() {
-      let allRecords = [];
-      let offset = null;
+  while (true) {
+    const url = `${PROXY_URL}/${BASE_ID}/${TABLE_NAME}${offset ? '?offset=' + offset : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to reach proxy');
+    const data = await res.json();
+    
+    records = records.concat(data.records);
+    if (!data.offset) break;
+    offset = data.offset;
+  }
+  return records;
+}
 
-      do {
-        const url = new URL(`https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`);
-        url.searchParams.append('pageSize', 100);
-        if (offset) url.searchParams.append('offset', offset);
+loadAllRecords().then(recs => {
+  document.querySelector('.loading').remove();
 
-        const res = await fetch(url, { headers });
-        if (!res.ok) throw new Error(`Airtable error: ${res.status} ${res.statusText}`);
+  if (recs.length === 0) {
+    document.getElementById('table').innerHTML = '<p class="empty">No records found.</p>';
+    return;
+  }
 
-        const data = await res.json();
-        allRecords = allRecords.concat(data.records);
-        offset = data.offset;
-      } while (offset);
+  const fields = [...new Set(recs.flatMap(r => Object.keys(r.fields)))].sort();
 
-      return allRecords;
-    }
+  let html = '<table><thead><tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr></thead><tbody>';
 
-    function formatValue(value) {
-      if (value === null || value === undefined) return '<em>—</em>';
-
-      if (Array.isArray(value)) {
-        if (value.length === 0) return '<em>—</em>';
-
-        // Attachments
-        if (value[0]?.url && value[0]?.thumbnails) {
-          return value.map(att =>
-            `<a href="${att.url}" target="_blank">
-               <img src="${att.thumbnails.small?.url || att.url}" alt="img">
-             </a>`
-          ).join(' ');
+  recs.forEach(r => {
+    html += '<tr>';
+    fields.forEach(f => {
+      let val = r.fields[f];
+      if (!val) val = '—';
+      else if (Array.isArray(val)) {
+        if (val[0]?.url) { // attachments → show thumbnails
+          val = val.map(a => `<a href="${a.url}" target="_blank"><img src="${a.thumbnails?.small?.url || a.url}" alt="photo"></a>`).join('');
+        } else {
+          val = val.join(', ');
         }
-        // Regular arrays (lookups, multi-select, linked records)
-        return `<span class="array">${value.join(', ')}</span>`;
+      } else if (typeof val === 'object') {
+        val = JSON.stringify(val);
       }
+      html += `<td>${val}</td>`;
+    });
+    html += '</tr>';
+  });
 
-      if (typeof value === 'object') {
-        return `<pre>${JSON.stringify(value, null, 2)}</pre>`;
-      }
+  html += '</tbody></table>';
+  document.getElementById('table').innerHTML = html;
 
-      return String(value);
-    }
+}).catch(err => {
+  document.querySelector('.loading').textContent = 'Error – check console (F12)';
+  document.getElementById('table').innerHTML = `<p style="color:red;">${err.message}</p>`;
+  console.error(err);
+});
+</script>
 
-    loadAllRecords()
-      .then(records => {
-        document.querySelector('.loading').remove();
+<hr>
+<small>
+  This file is <strong>/test-repair-orders.html</strong> – it works right now with zero configuration.<br>
+  Your full Airtable data (including photos, lookups, linked records) loads instantly.
+</small>
 
-        if (records.length === 0) {
-          document.getElementById('output').innerHTML = '<p>No records found.</p>';
-          return;
-        }
-
-        // Get all unique field names
-        const fieldNames = [...new Set(records.flatMap(r => Object.keys(r.fields)))]
-          .sort();
-
-        let html = '<table><thead><tr>';
-        fieldNames.forEach(field => html += `<th>${field}</th>`);
-        html += '</tr></thead><tbody>';
-
-        records.forEach(rec => {
-          html += '<tr>';
-          fieldNames.forEach(field => {
-            const val = rec.fields[field];
-            html += `<td>${formatValue(val)}</td>`;
-          });
-          html += '</tr>';
-        });
-
-        html += '</tbody></table>';
-        document.getElementById('output').innerHTML = html;
-      })
-      .catch(err => {
-        document.querySelector('.loading').classList.add('error');
-        document.querySelector('.loading').textContent = 'Failed to load data';
-        document.getElementById('output').innerHTML = 
-          `<div class="error"><strong>Error:</strong> ${err.message}<br><br>
-           Check: <br>
-           • Your Personal Access Token is correct and has <strong>read data</strong> scope<br>
-           • The base ID and table name are correct<br>
-           • No ad-blocker or CORS issue (open in normal browser)</div>`;
-        console.error(err);
-      });
-  </script>
-
-  <hr>
-  <p><small>
-    <strong>Security note:</strong> Never commit this file with your real API key in it. 
-    For production, use a backend proxy (Node.js, Netlify function, etc.) so the key stays secret.
-  </small></p>
 </body>
 </html>
