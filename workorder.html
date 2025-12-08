@@ -391,7 +391,10 @@
   <!-- Topbar -->
   <div class="topbar">
     <div class="logo">Service Manager</div>
-    <a href="dashboard.html" class="back-btn">← Back</a>
+    <div style="display: flex; gap: 1rem; margin-left: auto;">
+      <a href="settings.html" class="back-btn" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; border: none;">⚙️ Settings</a>
+      <a href="dashboard.html" class="back-btn">← Back</a>
+    </div>
   </div>
 
   <!-- Main Content -->
@@ -651,9 +654,11 @@
         </div>
 
         <!-- Actions -->
-        <div class="button-group">
-          <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset Form</button>
-          <button type="submit" class="btn btn-primary">Create Work Order</button>
+        <div class="button-group" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+          <button type="button" class="btn btn-secondary" onclick="resetForm()">🗑️ Reset</button>
+          <button type="button" class="btn btn-secondary" onclick="loadDraft()" style="background: #6366f1; color: white;">📂 Load Draft</button>
+          <button type="button" class="btn btn-secondary" onclick="saveDraft()" style="background: #f59e0b; color: white;">💾 Save Draft</button>
+          <button type="submit" class="btn btn-primary">✓ Create Order</button>
         </div>
       </form>
 
@@ -1210,13 +1215,88 @@
       document.getElementById('vehicle').style.display = 'block';
       selectedCustomer = null;
       selectedVehicle = null;
+      laborLines = [];
+      laborLineCounter = 0;
+      renderLaborLines();
       
-      // Reset calculations
       calculateTotal();
       
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       document.getElementById('scheduledDate').value = tomorrow.toISOString().split('T')[0];
+    }
+
+    function saveDraft() {
+      const draft = {
+        selectedCustomer,
+        selectedVehicle,
+        laborLines,
+        laborLineCounter,
+        serviceDescription: document.getElementById('serviceDescription').value,
+        scheduledDate: document.getElementById('scheduledDate').value,
+        priority: document.getElementById('priority').value,
+        technician: document.getElementById('technician').value,
+        vinNumber: document.getElementById('vinNumber').value,
+        notes: document.getElementById('notes').value,
+        additionalFees: document.getElementById('additionalFees').value,
+        discount: document.getElementById('discount').value,
+        timestamp: new Date().toISOString()
+      };
+      
+      localStorage.setItem('workOrderDraft', JSON.stringify(draft));
+      showAlert('✓ Draft saved successfully!', 'success');
+    }
+
+    function loadDraft() {
+      const draftJson = localStorage.getItem('workOrderDraft');
+      if (!draftJson) {
+        showAlert('No draft found', 'error');
+        return;
+      }
+
+      const draft = JSON.parse(draftJson);
+      
+      // Restore customer
+      if (draft.selectedCustomer) {
+        selectedCustomer = draft.selectedCustomer;
+        document.getElementById('customerName').textContent = selectedCustomer.name;
+        document.getElementById('customerDetails').textContent = formatPhone(selectedCustomer.phone) + ' • ' + selectedCustomer.vehicle;
+        document.getElementById('selectedCustomer').style.display = 'block';
+        document.getElementById('phoneSearch').style.display = 'none';
+      }
+
+      // Restore vehicle
+      if (draft.selectedVehicle) {
+        selectedVehicle = draft.selectedVehicle;
+        document.getElementById('vehicleInfo').textContent = selectedVehicle.vehicleDesc;
+        document.getElementById('vehiclePlate').textContent = 'License Plate: ' + selectedVehicle.plate + ' • Owner: ' + selectedVehicle.owner;
+        document.getElementById('selectedVehicle').style.display = 'block';
+        document.getElementById('licensePlateSearch').style.display = 'none';
+      }
+
+      // Restore labor lines
+      laborLines = draft.laborLines || [];
+      laborLineCounter = draft.laborLineCounter || 0;
+      renderLaborLines();
+      calculateTotalFromLines();
+
+      // Restore form fields
+      document.getElementById('serviceDescription').value = draft.serviceDescription || '';
+      document.getElementById('scheduledDate').value = draft.scheduledDate || '';
+      document.getElementById('priority').value = draft.priority || 'normal';
+      document.getElementById('technician').value = draft.technician || '';
+      document.getElementById('vinNumber').value = draft.vinNumber || '';
+      document.getElementById('notes').value = draft.notes || '';
+      document.getElementById('additionalFees').value = draft.additionalFees || '0';
+      document.getElementById('discount').value = draft.discount || '0';
+
+      // Trigger technician display
+      if (draft.technician) {
+        document.getElementById('technician').dispatchEvent(new Event('change'));
+      }
+
+      calculateTotal();
+      showAlert('✓ Draft loaded successfully!', 'success');
     }
 
     // Close search results when clicking outside
@@ -1228,6 +1308,47 @@
         vehicleResults.classList.remove('show');
       }
     });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+      // Ctrl/Cmd + S = Save Draft
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveDraft();
+      }
+      // Ctrl/Cmd + L = Load Draft
+      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+        e.preventDefault();
+        loadDraft();
+      }
+      // Ctrl/Cmd + Enter = Submit Form
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('workOrderForm').dispatchEvent(new Event('submit'));
+      }
+    });
+
+    // Auto-save every 2 minutes
+    setInterval(() => {
+      if (laborLines.length > 0 || document.getElementById('serviceDescription').value) {
+        saveDraft();
+        console.log('Auto-saved draft');
+      }
+    }, 120000); // 2 minutes
+
+    // Show keyboard shortcuts hint
+    setTimeout(() => {
+      const hint = document.createElement('div');
+      hint.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: white; padding: 1rem; border-radius: 12px; font-size: 0.75rem; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1000;';
+      hint.innerHTML = `
+        <div style="font-weight: 700; margin-bottom: 0.5rem;">⌨️ Keyboard Shortcuts</div>
+        <div>Ctrl/⌘ + S = Save Draft</div>
+        <div>Ctrl/⌘ + L = Load Draft</div>
+        <div>Ctrl/⌘ + Enter = Create Order</div>
+      `;
+      document.body.appendChild(hint);
+      setTimeout(() => hint.remove(), 5000);
+    }, 2000);
   </script>
 </body>
 </html>
