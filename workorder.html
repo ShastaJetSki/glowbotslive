@@ -300,6 +300,60 @@
       color: white;
     }
 
+    .add-btn {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: var(--white);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .labor-line {
+      background: #f9fafb;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .labor-line-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .labor-line-number {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .remove-line-btn {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      background: #fee2e2;
+      border: 2px solid #ef4444;
+      border-radius: 8px;
+      color: #991b1b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .remove-line-btn:hover {
+      background: #ef4444;
+      color: white;
+    }
+
     /* Alert */
     .alert {
       padding: 1.25rem;
@@ -354,7 +408,7 @@
         <div class="form-section">
           <h3 class="section-title">Customer & Vehicle</h3>
           <div class="form-grid two-col">
-            <div class="form-group">
+            <div class="form-group" id="field_phone">
               <label>Customer Phone Number</label>
               <input 
                 type="tel" 
@@ -365,7 +419,7 @@
               <div id="customerResults" class="customer-results"></div>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="field_licensePlate">
               <label>License Plate Number</label>
               <input 
                 type="text" 
@@ -378,7 +432,7 @@
           </div>
 
           <div class="form-grid two-col" style="margin-top: 1.5rem;">
-            <div class="form-group">
+            <div class="form-group" id="field_technician">
               <label>Assigned Technician</label>
               <select id="technician" required>
                 <option value="">Select technician...</option>
@@ -390,16 +444,29 @@
               </select>
             </div>
 
-            <div class="form-group">
-              <label>Estimated Hours</label>
+            <div class="form-group" id="field_estimatedHours">
+              <label>Estimated Hours (Total from labor lines)</label>
               <input 
                 type="number" 
                 id="estimatedHours" 
                 step="0.25" 
-                placeholder="e.g., 2.5"
+                placeholder="0.0"
                 min="0"
+                readonly
+                style="background: #f9fafb;"
               >
             </div>
+          </div>
+
+          <div class="form-group" id="field_vin" style="margin-top: 1.5rem;">
+            <label>VIN Number</label>
+            <input 
+              type="text" 
+              id="vinNumber" 
+              placeholder="Enter 17-character VIN..."
+              maxlength="17"
+              style="text-transform: uppercase;"
+            >
           </div>
 
           <!-- Selected Customer Display -->
@@ -479,11 +546,11 @@
           </div>
 
           <div class="form-grid two-col" style="margin-top: 1.5rem;">
-            <div class="form-group">
+            <div class="form-group" id="field_scheduledDate">
               <label>Scheduled Date</label>
               <input type="date" id="scheduledDate" required>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="field_priority">
               <label>Priority</label>
               <select id="priority" required>
                 <option value="low">Low</option>
@@ -494,7 +561,7 @@
             </div>
           </div>
 
-          <div class="form-group" style="margin-top: 1.5rem;">
+          <div class="form-group" id="field_notes" style="margin-top: 1.5rem;">
             <label>Internal Notes (Optional)</label>
             <textarea id="notes" placeholder="Add any internal notes or special instructions..." style="min-height: 80px;"></textarea>
           </div>
@@ -508,13 +575,22 @@
           </div>
         </div>
 
+        <!-- Labor Lines -->
+        <div class="form-section">
+          <h3 class="section-title">Labor Lines</h3>
+          <div id="laborLines">
+            <!-- Labor lines will be added here -->
+          </div>
+          <button type="button" class="add-btn" onclick="addLaborLine()" style="margin-top: 1rem; font-size: 0.875rem; padding: 0.75rem 1.5rem;">+ Add Labor Line</button>
+        </div>
+
         <!-- Pricing -->
         <div class="form-section">
           <h3 class="section-title">Pricing & Payment</h3>
           <div class="form-grid two-col">
             <div class="form-group">
-              <label>Labor Cost</label>
-              <input type="number" id="laborTotal" step="0.01" placeholder="0.00" value="0" oninput="calculateTotal()">
+              <label>Labor Cost (Auto-calculated from hours)</label>
+              <input type="number" id="laborTotal" step="0.01" placeholder="0.00" value="0" readonly style="background: #f9fafb;">
             </div>
             <div class="form-group">
               <label>Parts Cost</label>
@@ -614,7 +690,39 @@
 
     let selectedCustomer = null;
     let selectedVehicle = null;
-    const TAX_RATE = 0.085; // 8.5% tax
+    let TAX_RATE = 0.085; // Will be loaded from settings
+    let LABOR_RATE = 95.00; // Will be loaded from settings
+
+    // Load settings
+    function loadSettings() {
+      // Load tax rate
+      const savedTaxRate = localStorage.getItem('taxRate');
+      if (savedTaxRate) {
+        TAX_RATE = parseFloat(savedTaxRate) / 100; // Convert percentage to decimal
+      }
+
+      // Load labor rate
+      const savedLaborRate = localStorage.getItem('laborRate');
+      if (savedLaborRate) {
+        LABOR_RATE = parseFloat(savedLaborRate);
+      }
+
+      // Load field visibility
+      const fieldVisibility = JSON.parse(localStorage.getItem('fieldVisibility') || '{}');
+      const fields = ['phone', 'licensePlate', 'technician', 'estimatedHours', 'vin', 'scheduledDate', 'priority', 'notes'];
+      
+      fields.forEach(field => {
+        const fieldElement = document.getElementById('field_' + field);
+        if (fieldElement) {
+          if (fieldVisibility[field] === false) {
+            fieldElement.style.display = 'none';
+          }
+        }
+      });
+    }
+
+    // Load settings on page load
+    loadSettings();
 
     // Load common jobs from settings
     function loadCommonJobs() {
@@ -650,6 +758,140 @@
 
     // Initialize common jobs on page load
     loadCommonJobs();
+
+    // Labor lines management
+    let laborLines = [];
+    let laborLineCounter = 0;
+
+    function addLaborLine() {
+      laborLineCounter++;
+      laborLines.push({
+        id: laborLineCounter,
+        description: '',
+        technician: '',
+        hours: 0,
+        partsCost: 0
+      });
+      renderLaborLines();
+    }
+
+    function removeLaborLine(id) {
+      laborLines = laborLines.filter(line => line.id !== id);
+      renderLaborLines();
+      calculateTotalFromLines();
+    }
+
+    function updateLaborLine(id, field, value) {
+      const line = laborLines.find(l => l.id === id);
+      if (line) {
+        line[field] = value;
+        calculateTotalFromLines();
+      }
+    }
+
+    function renderLaborLines() {
+      const container = document.getElementById('laborLines');
+      if (laborLines.length === 0) {
+        container.innerHTML = '<div style="padding: 1rem; text-align: center; color: #666; font-size: 0.875rem;">No labor lines added. Click "+ Add Labor Line" to add work items.</div>';
+        return;
+      }
+
+      container.innerHTML = laborLines.map(line => `
+        <div class="labor-line">
+          <div class="labor-line-header">
+            <span class="labor-line-number">Line #${line.id}</span>
+            <button type="button" class="remove-line-btn" onclick="removeLaborLine(${line.id})">Remove</button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Job Description</label>
+              <input 
+                type="text" 
+                value="${line.description}" 
+                onchange="updateLaborLine(${line.id}, 'description', this.value)"
+                placeholder="e.g., Oil Change & Filter"
+              >
+            </div>
+          </div>
+          <div class="form-grid two-col" style="margin-top: 1rem;">
+            <div class="form-group">
+              <label>Technician</label>
+              <select onchange="updateLaborLine(${line.id}, 'technician', this.value)">
+                <option value="">Select technician...</option>
+                <option value="John Smith" ${line.technician === 'John Smith' ? 'selected' : ''}>John Smith - Senior</option>
+                <option value="Maria Garcia" ${line.technician === 'Maria Garcia' ? 'selected' : ''}>Maria Garcia - Master</option>
+                <option value="David Chen" ${line.technician === 'David Chen' ? 'selected' : ''}>David Chen</option>
+                <option value="Sarah Johnson" ${line.technician === 'Sarah Johnson' ? 'selected' : ''}>Sarah Johnson - Senior</option>
+                <option value="Mike Wilson" ${line.technician === 'Mike Wilson' ? 'selected' : ''}>Mike Wilson - Apprentice</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Labor Hours</label>
+              <input 
+                type="number" 
+                step="0.25"
+                value="${line.hours}" 
+                onchange="updateLaborLine(${line.id}, 'hours', parseFloat(this.value) || 0)"
+                placeholder="0.0"
+              >
+            </div>
+          </div>
+          <div class="form-grid" style="margin-top: 1rem;">
+            <div class="form-group">
+              <label>Parts Cost ($)</label>
+              <input 
+                type="number" 
+                step="0.01"
+                value="${line.partsCost}" 
+                onchange="updateLaborLine(${line.id}, 'partsCost', parseFloat(this.value) || 0)"
+                placeholder="0.00"
+              >
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function calculateTotalFromLines() {
+      let totalLaborHours = 0;
+      let totalPartsCost = 0;
+
+      laborLines.forEach(line => {
+        totalLaborHours += parseFloat(line.hours) || 0;
+        totalPartsCost += parseFloat(line.partsCost) || 0;
+      });
+
+      // Calculate labor cost from hours
+      const laborCost = totalLaborHours * LABOR_RATE;
+      
+      // Update fields
+      document.getElementById('laborTotal').value = laborCost.toFixed(2);
+      document.getElementById('partsTotal').value = totalPartsCost.toFixed(2);
+      
+      // Update estimated hours display
+      document.getElementById('estimatedHours').value = totalLaborHours.toFixed(2);
+      updateTechHours();
+      
+      calculateTotal();
+    }
+
+    // Modified insertService to add as labor line
+    function insertService(text) {
+      const job = JSON.parse(localStorage.getItem('commonJobs') || '[]').find(j => j.fullText === text);
+      
+      if (job) {
+        laborLineCounter++;
+        laborLines.push({
+          id: laborLineCounter,
+          description: job.fullText,
+          technician: '',
+          hours: parseFloat(job.laborHours) || 0,
+          partsCost: parseFloat(job.partsCost) || 0
+        });
+        renderLaborLines();
+        calculateTotalFromLines();
+      }
+    }
 
     // Calculate total with tax
     function calculateTotal() {
@@ -694,15 +936,10 @@
       }
     });
 
-    // Estimated hours update
-    document.getElementById('estimatedHours').addEventListener('input', function() {
-      updateTechHours();
-    });
-
     function updateTechHours() {
       const hours = parseFloat(document.getElementById('estimatedHours').value) || 0;
       if (hours > 0) {
-        document.getElementById('techHours').textContent = hours + (hours === 1 ? ' hr' : ' hrs');
+        document.getElementById('techHours').textContent = hours.toFixed(2) + (hours === 1 ? ' hr' : ' hrs');
       } else {
         document.getElementById('techHours').textContent = '-- hrs';
       }
@@ -874,12 +1111,10 @@
       let customerName, phone, vehicle;
       
       if (selectedCustomer) {
-        // Existing customer
         customerName = selectedCustomer.name;
         phone = selectedCustomer.phone;
         vehicle = selectedCustomer.vehicle;
       } else {
-        // New customer
         const firstName = document.getElementById('firstName').value;
         const lastName = document.getElementById('lastName').value;
         
@@ -892,7 +1127,6 @@
         phone = document.getElementById('newPhone').value.replace(/\D/g, '');
       }
 
-      // Get vehicle info
       if (selectedVehicle) {
         vehicle = selectedVehicle.vehicleDesc;
       } else {
@@ -913,7 +1147,11 @@
         return;
       }
 
-      // Get calculated total from summary
+      if (laborLines.length === 0) {
+        showAlert('Please add at least one labor line', 'error');
+        return;
+      }
+
       const totalText = document.getElementById('summaryTotal').textContent;
       const totalAmount = parseFloat(totalText.replace('$', '').replace(',', ''));
 
@@ -935,16 +1173,17 @@
         customer: customerName,
         phone: formatPhone(phone),
         vehicle: vehicle,
-        service: serviceDescription.split('\n')[0].substring(0, 50), // First line, max 50 chars
+        service: laborLines.map(l => l.description).join(', '),
         scheduled_date: scheduledDate,
         status: 'scheduled',
         total_amount: totalAmount,
-        technician: technician.split(' - ')[0], // Just the name
-        estimated_hours: estimatedHours
+        technician: technician.split(' - ')[0],
+        estimated_hours: estimatedHours,
+        labor_lines: laborLines
       });
       sessionStorage.setItem('mockOrders', JSON.stringify(mockOrders));
 
-      showAlert(`✓ Work order ${orderNumber} created! Assigned to ${technician.split(' - ')[0]}${estimatedHours > 0 ? ' (' + estimatedHours + ' hrs)' : ''}`, 'success');
+      showAlert(`✓ Work order ${orderNumber} created! Assigned to ${technician.split(' - ')[0]}${estimatedHours > 0 ? ' (' + estimatedHours.toFixed(2) + ' hrs)' : ''}`, 'success');
       
       setTimeout(() => {
         window.location.href = 'dashboard.html';
