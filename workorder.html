@@ -402,7 +402,7 @@
   <!-- Main Content -->
   <div class="main-content">
     <div class="page-header">
-      <h1 class="page-title">New Work Order</h1>
+      <h1 class="page-title" id="pageTitle">New Work Order</h1>
       <p class="page-subtitle">Create a new service appointment for your customer</p>
     </div>
 
@@ -801,6 +801,107 @@
     loadSettings();
     loadTechnicians();
 
+    // Check if editing existing order
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderNumber = urlParams.get('order');
+    if (orderNumber) {
+      loadExistingOrder(orderNumber);
+    }
+
+    // Load existing order for editing
+    async function loadExistingOrder(orderNumber) {
+      try {
+        const { data, error } = await supabase
+          .from('repair_orders')
+          .select(`
+            *,
+            contact:contacts(*),
+            vehicle:vehicles(*),
+            assigned_user:users(*)
+          `)
+          .eq('order_number', orderNumber)
+          .single();
+
+        if (error || !data) {
+          alert('Order not found');
+          return;
+        }
+
+        // Store loaded data globally
+        window.selectedCustomer = data.contact;
+        window.selectedVehicle = data.vehicle;
+        window.editingOrderId = data.id;
+        window.editingOrderNumber = data.order_number;
+
+        // Display customer info
+        if (data.contact) {
+          document.getElementById('customerName').textContent = 
+            `${data.contact.first_name} ${data.contact.last_name}`;
+          document.getElementById('customerDetails').textContent = 
+            `${data.contact.phone} • ${data.contact.email || 'No email'}`;
+          document.getElementById('selectedCustomer').style.display = 'block';
+        }
+
+        // Display vehicle info
+        if (data.vehicle) {
+          displaySelectedVehicle(data.vehicle);
+        }
+
+        // Pre-fill service details
+        document.getElementById('serviceDescription').value = data.service_description || '';
+        document.getElementById('scheduledDate').value = data.scheduled_date || '';
+        
+        // Pre-fill technician
+        if (data.assigned_to) {
+          setTimeout(() => {
+            document.getElementById('technician').value = data.assigned_to;
+          }, 500); // Wait for technicians to load
+        }
+
+        // Pre-fill pricing
+        document.getElementById('laborTotal').value = data.labor_total || 0;
+        document.getElementById('partsTotal').value = data.parts_total || 0;
+        
+        // Add labor line if labor total exists
+        if (data.labor_total && data.labor_total > 0) {
+          const laborRate = parseFloat(localStorage.getItem('laborRate') || '95');
+          const hours = data.labor_hours || (data.labor_total / laborRate);
+          
+          laborLines.push({
+            id: Date.now(),
+            description: data.service_description || 'Labor',
+            hours: hours,
+            rate: laborRate,
+            total: parseFloat(data.labor_total)
+          });
+          
+          renderLaborLines();
+          updateSummary();
+        }
+        
+        // Calculate tax rate from existing data
+        if (data.labor_total && data.tax_amount) {
+          const subtotal = parseFloat(data.labor_total) + parseFloat(data.parts_total || 0);
+          const calculatedRate = (parseFloat(data.tax_amount) / subtotal * 100).toFixed(2);
+          document.getElementById('taxRate').value = calculatedRate;
+        }
+
+        // Change form title
+        document.getElementById('pageTitle').textContent = `Edit Work Order - ${orderNumber}`;
+        
+        // Change submit button text
+        const submitBtn = document.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = '✓ Update Order';
+
+        // Show service section
+        document.getElementById('serviceSection')?.classList?.remove('hidden');
+
+      } catch (error) {
+        console.error('Error loading order:', error);
+        alert('Error loading order: ' + error.message);
+      }
+    }
+
     // Load technicians from Supabase
     async function loadTechnicians() {
       try {
@@ -1108,16 +1209,27 @@
     const customerResults = document.getElementById('customerResults');
     let searchTimeout;
 
-    phoneSearch.addEventListener('input', async function() {
-      const searchValue = this.value.replace(/\D/g, ''); // Remove non-digits
+    // Auto-format phone number as user types
+    phoneSearch.addEventListener('input', function(e) {
+      let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+      
+      // Format as XXX-XXX-XXXX
+      if (value.length > 6) {
+        value = value.slice(0, 3) + '-' + value.slice(3, 6) + '-' + value.slice(6, 10);
+      } else if (value.length > 3) {
+        value = value.slice(0, 3) + '-' + value.slice(3, 6);
+      }
+      
+      e.target.value = value;
+      const cleanPhone = value.replace(/\D/g, '');
       
       // Clear previous timeout
       clearTimeout(searchTimeout);
       
-      if (searchValue.length >= 3) {
+      if (cleanPhone.length >= 3) {
         // Debounce search
         searchTimeout = setTimeout(async () => {
-          await searchCustomerInDatabase(searchValue);
+          await searchCustomerInDatabase(cleanPhone);
         }, 500);
       } else {
         customerResults.classList.remove('show');
@@ -1418,11 +1530,11 @@
 
       // Calculate totals from labor lines
       const laborTotal = laborLines.reduce((sum, line) => sum + line.total, 0);
-      const partsTotal = 0; // TODO: Add parts calculation if needed
+      const partsTotal = parseFloat(document.getElementById('partsTotal')?.value) || 0;
       const subtotal = laborTotal + partsTotal;
       
       // Get tax rate from settings or use default
-      const taxRate = parseFloat(localStorage.getItem('taxRate') || '8.5');
+      const taxRate = parseFloat(document.getElementById('taxRate')?.value || localStorage.getItem('taxRate') || '8.5');
       const taxAmount = subtotal * (taxRate / 100);
       const totalAmount = subtotal + taxAmount;
 
@@ -1431,14 +1543,10 @@
         return;
       }
 
-      showAlert('Creating work order...', 'success');
+      const isEditing = window.editingOrderId;
+      showAlert(isEditing ? 'Updating work order...' : 'Creating work order...', 'success');
 
-      // Generate order number
-      const orderNumber = 'RO-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-
-      // Create order in Supabase
       const orderData = {
-        order_number: orderNumber,
         contact_id: window.selectedCustomer.id,
         vehicle_id: window.selectedVehicle.id,
         assigned_to: technician || null,
@@ -1453,19 +1561,40 @@
       };
 
       try {
-        const result = await window.ServiceLogicDB.createWorkOrder(orderData);
-        
-        if (result) {
-          showAlert(`Work order ${orderNumber} created successfully!`, 'success');
+        let result;
+
+        if (isEditing) {
+          // Update existing order
+          result = await supabase
+            .from('repair_orders')
+            .update(orderData)
+            .eq('id', window.editingOrderId)
+            .select()
+            .single();
+
+          if (result.error) throw result.error;
+
+          showAlert(`Work order ${window.editingOrderNumber} updated successfully!`, 'success');
+        } else {
+          // Create new order
+          const orderNumber = 'RO-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+          orderData.order_number = orderNumber;
+
+          result = await window.ServiceLogicDB.createWorkOrder(orderData);
           
-          // Redirect to dashboard after 1 second
-          setTimeout(() => {
-            window.location.href = '/dashboard.html';
-          }, 1000);
+          if (result) {
+            showAlert(`Work order ${orderNumber} created successfully!`, 'success');
+          }
         }
+        
+        // Redirect to dashboard after 1 second
+        setTimeout(() => {
+          window.location.href = '/dashboard.html';
+        }, 1000);
+
       } catch (error) {
-        console.error('Error creating work order:', error);
-        showAlert('Error creating work order: ' + error.message, 'error');
+        console.error('Error saving work order:', error);
+        showAlert('Error saving work order: ' + error.message, 'error');
       }
     }
         service: laborLines.map(l => l.description).join(', '),
