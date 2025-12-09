@@ -34,7 +34,6 @@
       min-height: 100vh;
     }
 
-    /* Header */
     .header {
       background: linear-gradient(135deg, var(--primary), var(--primary-dark));
       color: white;
@@ -78,14 +77,12 @@
       color: var(--primary);
     }
 
-    /* Main Content */
     .container {
       max-width: 1600px;
       margin: 0 auto;
       padding: 2rem;
     }
 
-    /* Stats Grid */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -151,7 +148,6 @@
     .stat-change.positive { color: var(--green); }
     .stat-change.negative { color: var(--red); }
 
-    /* Accounts Table */
     .section {
       background: white;
       border-radius: 16px;
@@ -295,7 +291,6 @@
       color: var(--primary);
     }
 
-    /* Loading */
     .loading {
       text-align: center;
       padding: 3rem;
@@ -330,7 +325,6 @@
   </style>
 </head>
 <body>
-  <!-- Header -->
   <div class="header">
     <div class="header-content">
       <div>
@@ -341,9 +335,7 @@
     </div>
   </div>
 
-  <!-- Main Content -->
   <div class="container">
-    <!-- Overview Stats -->
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-header">
@@ -426,7 +418,6 @@
       </div>
     </div>
 
-    <!-- Accounts Table -->
     <div class="section">
       <div class="section-header">
         <h2 class="section-title">Business Accounts</h2>
@@ -448,12 +439,9 @@
   </div>
 
   <script>
-    // Use the global supabase client from supabase-config.js
-    // This already has the authenticated session
-    console.log('Using global Supabase client from supabase-config.js');
-    console.log('Global supabase:', typeof window.supabase);
-    console.log('ServiceLogicDB:', typeof window.ServiceLogicDB);
-
+    console.log('✅ Master Dashboard Loading...');
+    console.log('✅ Supabase client from config:', typeof supabase !== 'undefined' ? 'Available' : 'NOT FOUND');
+    
     // Check if user is admin
     if (!sessionStorage.getItem('isAuthenticated') || sessionStorage.getItem('userRole') !== 'super_admin') {
       alert('Access denied. This page is for system administrators only.');
@@ -462,46 +450,16 @@
 
     let allAccounts = [];
     let currentFilter = 'all';
+    const VAPI_COST_PER_MINUTE = 0.15;
 
-    // VAPI cost per minute (adjust based on your actual rate)
-    const VAPI_COST_PER_MINUTE = 0.15; // $0.15 per minute
-
-    // Load all data
     async function loadMasterDashboard() {
       console.log('=== Loading Master Dashboard ===');
       console.log('User Role:', sessionStorage.getItem('userRole'));
       console.log('Auth User ID:', sessionStorage.getItem('authUserId'));
-      console.log('Supabase Token:', sessionStorage.getItem('supabaseToken') ? 'Present' : 'Missing');
-      console.log('Supabase client:', supabase);
       
       try {
-        // First, test if Supabase is working at all
-        console.log('Testing Supabase connection...');
-        const { data: testData, error: testError } = await supabase
-          .from('business_accounts')
-          .select('count')
-          .limit(1);
+        console.log('Fetching business accounts from Supabase...');
         
-        console.log('Connection test result:', { testData, testError });
-
-        // Check if we have an auth session
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        console.log('Current session:', sessionData?.session ? 'Active' : 'None', sessionError);
-
-        if (!sessionData?.session) {
-          console.warn('No active Supabase session - trying to restore from token');
-          const token = sessionStorage.getItem('supabaseToken');
-          if (token) {
-            const { data: { session }, error } = await supabase.auth.setSession({
-              access_token: token,
-              refresh_token: token
-            });
-            console.log('Session restore result:', session ? 'Success' : 'Failed', error);
-          }
-        }
-
-        // Load all business accounts
-        console.log('Fetching business accounts...');
         const { data: accounts, error: accountsError } = await supabase
           .from('business_accounts')
           .select('*')
@@ -509,11 +467,7 @@
 
         console.log('Query result:', { 
           accountsCount: accounts?.length, 
-          error: accountsError,
-          errorCode: accountsError?.code,
-          errorMessage: accountsError?.message,
-          errorDetails: accountsError?.details,
-          errorHint: accountsError?.hint
+          error: accountsError
         });
 
         if (accountsError) {
@@ -522,20 +476,13 @@
         }
 
         if (!accounts || accounts.length === 0) {
-          console.warn('No accounts returned - might be RLS issue');
+          console.warn('No accounts returned');
           document.getElementById('accountsContainer').innerHTML = 
             `<div class="loading">
-              <div style="color: #f59e0b; text-align: left; max-width: 600px; margin: 0 auto;">
+              <div style="color: #f59e0b;">
                 <strong>⚠️ No accounts found</strong><br><br>
                 This might be an RLS permissions issue.<br><br>
-                <strong>Debug info:</strong><br>
-                • Role: ${sessionStorage.getItem('userRole')}<br>
-                • Auth ID: ${sessionStorage.getItem('authUserId')}<br>
-                • Session: ${sessionData?.session ? 'Active' : 'None'}<br><br>
-                <strong>Next steps:</strong><br>
-                1. Run fix_master_dashboard_rls.sql<br>
-                2. Logout and login again<br>
-                3. Check browser console for details
+                Run fix_master_dashboard_rls.sql and logout/login again.
               </div>
             </div>`;
           return;
@@ -544,79 +491,36 @@
         console.log(`✅ Successfully loaded ${accounts.length} accounts`);
         allAccounts = accounts || [];
 
-        // Calculate stats
         calculateStats(accounts);
         renderAccountsTable(accounts);
 
       } catch (error) {
         console.error('❌ Error loading dashboard:', error);
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          code: error.code,
-          hint: error.hint,
-          details: error.details,
-          stack: error.stack
-        });
-        
-        let errorMessage = error.message || 'Unknown error';
-        let suggestions = '';
-
-        if (errorMessage.includes('Failed to fetch')) {
-          suggestions = `
-            <strong>Network/CORS Issue Detected:</strong><br>
-            1. Check if Supabase URL is accessible<br>
-            2. Verify API key is correct<br>
-            3. Check browser network tab (F12 → Network)<br>
-            4. Try opening in incognito mode<br>
-            5. Check if ad blocker is interfering
-          `;
-        } else if (errorMessage.includes('permission') || errorMessage.includes('RLS')) {
-          suggestions = `
-            <strong>Permission Issue Detected:</strong><br>
-            1. Run fix_master_dashboard_rls.sql<br>
-            2. Verify role = 'super_admin'<br>
-            3. Check auth_user_id is set<br>
-            4. Logout and login again
-          `;
-        } else {
-          suggestions = `
-            <strong>Unexpected Error:</strong><br>
-            Check browser console (F12) for full details
-          `;
-        }
         
         document.getElementById('accountsContainer').innerHTML = 
           `<div class="loading">
-            <div style="color: #ef4444; text-align: left; max-width: 600px; margin: 0 auto; font-size: 0.9rem;">
+            <div style="color: #ef4444;">
               <strong>❌ Error loading data</strong><br><br>
-              <code style="background: #fee; padding: 0.5rem; display: block; border-radius: 4px; color: #991b1b;">
-                ${errorMessage}
-              </code><br>
-              ${suggestions}
+              ${error.message}<br><br>
+              Check browser console for details.
             </div>
           </div>`;
       }
     }
 
-    // Calculate overview statistics
     function calculateStats(accounts) {
       const totalAccounts = accounts.length;
       const today = new Date().toISOString().split('T')[0];
-      const thisMonth = new Date().toISOString().slice(0, 7);
 
-      // Count active accounts today
       const activeToday = accounts.filter(acc => {
         const lastActive = acc.last_active_at?.split('T')[0];
         return lastActive === today;
       }).length;
 
-      // Calculate revenue
       const monthlyRevenue = accounts.reduce((sum, acc) => {
         return sum + (acc.monthly_fee || 0);
       }, 0);
 
-      // Calculate VAPI usage
       const totalMinutes = accounts.reduce((sum, acc) => {
         return sum + (acc.vapi_minutes_used || 0);
       }, 0);
@@ -630,28 +534,21 @@
       const avgMinutes = totalAccounts > 0 ? totalMinutes / totalAccounts : 0;
       const avgCost = avgMinutes * VAPI_COST_PER_MINUTE;
 
-      // Update UI
       document.getElementById('totalAccounts').textContent = totalAccounts;
-      document.getElementById('accountsChange').textContent = `+${Math.floor(totalAccounts * 0.1)}`; // Mock growth
-      
+      document.getElementById('accountsChange').textContent = `+${Math.floor(totalAccounts * 0.1)}`;
       document.getElementById('monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString()}`;
-      document.getElementById('revenueChange').textContent = '+12%'; // Mock growth
-      
+      document.getElementById('revenueChange').textContent = '+12%';
       document.getElementById('activeToday').textContent = activeToday;
       document.getElementById('activePercent').textContent = 
         `${totalAccounts > 0 ? Math.round((activeToday / totalAccounts) * 100) : 0}%`;
-      
       document.getElementById('totalMinutes').textContent = totalMinutes.toLocaleString();
       document.getElementById('minutesCost').textContent = `$${totalCost.toFixed(2)}`;
-      
       document.getElementById('monthMinutes').textContent = monthMinutes.toLocaleString();
       document.getElementById('monthCost').textContent = `$${monthCost.toFixed(2)}`;
-      
       document.getElementById('avgMinutes').textContent = Math.round(avgMinutes);
       document.getElementById('avgCost').textContent = `$${avgCost.toFixed(2)}`;
     }
 
-    // Render accounts table
     function renderAccountsTable(accounts) {
       const filtered = currentFilter === 'all' 
         ? accounts 
@@ -732,7 +629,6 @@
       document.getElementById('accountsContainer').innerHTML = html;
     }
 
-    // Filter accounts
     function filterAccounts(filter) {
       currentFilter = filter;
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
@@ -740,7 +636,6 @@
       renderAccountsTable(allAccounts);
     }
 
-    // View account details
     function viewAccount(accountId) {
       const account = allAccounts.find(acc => acc.id === accountId);
       if (account) {
@@ -748,16 +643,12 @@
       }
     }
 
-    // Logout
     function logout() {
       sessionStorage.clear();
       window.location.href = 'login.html';
     }
 
-    // Load dashboard on page load
     loadMasterDashboard();
-
-    // Auto-refresh every 30 seconds
     setInterval(loadMasterDashboard, 30000);
   </script>
 </body>
