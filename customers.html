@@ -473,10 +473,69 @@
         <button class="btn btn-primary" style="flex: 1;" onclick="editCurrentCustomer()">
           Edit Customer
         </button>
-        <button class="btn btn-secondary" onclick="addVehicleForCustomer()">
+        <button class="btn btn-secondary" onclick="openAddVehicleModal()">
           + Add Vehicle
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Add Vehicle Modal -->
+  <div id="vehicleModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Vehicle</h2>
+        <button class="close-btn" onclick="closeVehicleModal()">×</button>
+      </div>
+
+      <form id="vehicleForm" onsubmit="saveVehicle(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Year *</label>
+            <input type="number" id="vehicleYear" min="1900" max="2030" required>
+          </div>
+          <div class="form-group">
+            <label>Make *</label>
+            <input type="text" id="vehicleMake" placeholder="e.g., Toyota" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Model *</label>
+            <input type="text" id="vehicleModel" placeholder="e.g., Camry" required>
+          </div>
+          <div class="form-group">
+            <label>Color</label>
+            <input type="text" id="vehicleColor" placeholder="e.g., Silver">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>VIN</label>
+            <input type="text" id="vehicleVin" maxlength="17" placeholder="17-character VIN">
+          </div>
+          <div class="form-group">
+            <label>License Plate</label>
+            <input type="text" id="vehiclePlate" placeholder="e.g., ABC123">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Mileage</label>
+          <input type="number" id="vehicleMileage" placeholder="Current odometer reading">
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="submit" class="btn btn-primary" style="flex: 1;">
+            <span id="saveVehicleText">Add Vehicle</span>
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="closeVehicleModal()">
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -712,11 +771,79 @@
       document.getElementById('viewCustomerModal').classList.remove('show');
     }
 
-    // Add vehicle for customer
-    function addVehicleForCustomer() {
-      if (currentCustomer) {
-        window.location.href = '/workorder.html?customer=' + currentCustomer.id;
+    function closeVehicleModal() {
+      document.getElementById('vehicleModal').classList.remove('show');
+      document.getElementById('vehicleForm').reset();
+    }
+
+    // Open add vehicle modal
+    function openAddVehicleModal() {
+      if (!currentCustomer) {
+        alert('Please select a customer first');
+        return;
       }
+      closeViewModal();
+      document.getElementById('vehicleModal').classList.add('show');
+    }
+
+    // Save vehicle
+    async function saveVehicle(event) {
+      event.preventDefault();
+
+      if (!currentCustomer) {
+        alert('No customer selected');
+        return;
+      }
+
+      const saveBtn = event.target.querySelector('button[type="submit"]');
+      const saveText = document.getElementById('saveVehicleText');
+      saveBtn.disabled = true;
+      saveText.textContent = 'Saving...';
+
+      const businessId = sessionStorage.getItem('businessId');
+
+      // Get automobile category ID
+      const { data: category } = await supabase
+        .from('vehicle_categories')
+        .select('id')
+        .eq('name', 'automobile')
+        .single();
+
+      const vehicleData = {
+        account_id: businessId,
+        contact_id: currentCustomer.id,
+        category_id: category.id,
+        year: parseInt(document.getElementById('vehicleYear').value),
+        make: document.getElementById('vehicleMake').value.trim(),
+        model: document.getElementById('vehicleModel').value.trim(),
+        vin: document.getElementById('vehicleVin').value.trim() || null,
+        registration_number: document.getElementById('vehiclePlate').value.trim() || null,
+        color: document.getElementById('vehicleColor').value.trim() || null,
+        odometer_miles: document.getElementById('vehicleMileage').value ? parseInt(document.getElementById('vehicleMileage').value) : null
+      };
+
+      const { data, error } = await supabase
+        .from('vehicles')
+        .insert([vehicleData])
+        .select()
+        .single();
+
+      if (error) {
+        alert('Error adding vehicle: ' + error.message);
+        saveBtn.disabled = false;
+        saveText.textContent = 'Add Vehicle';
+        return;
+      }
+
+      closeVehicleModal();
+      loadCustomers();
+      alert('Vehicle added successfully!');
+    }
+
+    // Add vehicle for customer (legacy - removed)
+    function addVehicleForCustomer() {
+      // This function is no longer used
+      openAddVehicleModal();
     }
 
     // Format phone number
