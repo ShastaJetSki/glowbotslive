@@ -35,22 +35,14 @@ async function loginUser(email, password) {
     // Get user details from users table using auth_user_id
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select(`
-        *,
-        account:accounts(
-          id,
-          business_name,
-          tax_rate,
-          subscription_tier
-        )
-      `)
+      .select('*')
       .eq('auth_user_id', authData.user.id)
       .single();
 
     if (userError) throw userError;
 
     // Format full name
-    const fullName = `${userData.first_name} ${userData.last_name}`;
+    const fullName = `${userData.first_name || 'User'} ${userData.last_name || ''}`.trim();
 
     // Store session data
     sessionStorage.setItem('userEmail', userData.email);
@@ -58,11 +50,28 @@ async function loginUser(email, password) {
     sessionStorage.setItem('userRole', userData.role);
     sessionStorage.setItem('userId', userData.id);
     sessionStorage.setItem('authUserId', authData.user.id);
-    sessionStorage.setItem('businessId', userData.account_id);
-    sessionStorage.setItem('businessName', userData.account.business_name);
     sessionStorage.setItem('isAuthenticated', 'true');
     sessionStorage.setItem('loginTime', new Date().toISOString());
     sessionStorage.setItem('supabaseToken', authData.session.access_token);
+
+    // Only set business info if user has an account (not super_admin)
+    if (userData.account_id && userData.role !== 'super_admin') {
+      // Get account details separately
+      const { data: accountData } = await supabase
+        .from('accounts')
+        .select('id, business_name, tax_rate, subscription_tier')
+        .eq('id', userData.account_id)
+        .single();
+
+      if (accountData) {
+        sessionStorage.setItem('businessId', accountData.id);
+        sessionStorage.setItem('businessName', accountData.business_name);
+      }
+    } else if (userData.role === 'super_admin') {
+      // Super admin doesn't have a specific business
+      sessionStorage.setItem('businessId', 'all');
+      sessionStorage.setItem('businessName', 'System Administrator');
+    }
 
     return { success: true, user: userData };
   } catch (error) {
