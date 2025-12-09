@@ -834,25 +834,33 @@
         const techCards = await Promise.all(techs.map(async (tech) => {
           const { data: orders } = await supabase
             .from('repair_orders')
-            .select('status, scheduled_date, labor_hours, total_amount')
+            .select('status, scheduled_date, labor_hours, labor_total, total_amount')
             .eq('assigned_to', tech.id);
 
           const today = new Date().toISOString().split('T')[0];
-          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          const todayJobs = orders?.filter(o => o.scheduled_date === today).length || 0;
+          // Today's metrics
+          const todayOrders = orders?.filter(o => o.scheduled_date === today) || [];
+          const todayScheduledHours = todayOrders.reduce((sum, o) => sum + (parseFloat(o.labor_hours) || 0), 0);
+          const todayProjectedLabor = todayOrders.reduce((sum, o) => sum + (parseFloat(o.labor_total) || 0), 0);
+          
+          // Active work
           const inProgress = orders?.filter(o => o.status === 'in_progress').length || 0;
-          const weekHours = orders?.filter(o => o.scheduled_date >= weekAgo)
-            .reduce((sum, o) => sum + (parseFloat(o.labor_hours) || 0), 0) || 0;
+          
+          // Efficiency metric - completed vs scheduled
+          const scheduled = orders?.filter(o => o.status === 'scheduled').length || 0;
+          const completed = orders?.filter(o => o.status === 'completed').length || 0;
           const totalOrders = orders?.length || 0;
+          const completionRate = totalOrders > 0 ? Math.round((completed / totalOrders) * 100) : 0;
 
           return {
             id: tech.id,
             name: `${tech.first_name} ${tech.last_name}`,
-            todayJobs,
+            todayScheduledHours,
+            todayProjectedLabor,
             inProgress,
-            weekHours,
-            totalOrders
+            scheduled,
+            completionRate
           };
         }));
 
@@ -884,32 +892,32 @@
         const initials = tech.name.split(' ').map(n => n[0]).join('');
 
         return `
-          <div class="stat-card" onclick="viewTechJobs('${tech.id}')" style="cursor: pointer;">
+          <div class="stat-card" onclick="filterByTech('${tech.id}', '${tech.name}')" style="cursor: pointer; transition: all 0.2s;">
             <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
               <div style="width: 48px; height: 48px; border-radius: 50%; background: ${color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.25rem;">
                 ${initials}
               </div>
-              <div>
+              <div style="flex: 1;">
                 <div style="font-weight: 700; font-size: 1rem; color: var(--charcoal);">${tech.name}</div>
                 <div style="font-size: 0.75rem; color: #999;">Technician</div>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f0f0f0;">
               <div>
-                <div style="font-size: 0.75rem; color: #999;">Today</div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.todayJobs}</div>
+                <div style="font-size: 0.75rem; color: #999;">Today's Hours</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.todayScheduledHours.toFixed(1)}</div>
               </div>
               <div>
-                <div style="font-size: 0.75rem; color: #999;">Active</div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.inProgress}</div>
+                <div style="font-size: 0.75rem; color: #999;">Projected Labor</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #10b981;">$${tech.todayProjectedLabor.toFixed(0)}</div>
               </div>
               <div>
-                <div style="font-size: 0.75rem; color: #999;">Week Hours</div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.weekHours.toFixed(1)}</div>
+                <div style="font-size: 0.75rem; color: #999;">In Progress</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: #f59e0b;">${tech.inProgress}</div>
               </div>
               <div>
-                <div style="font-size: 0.75rem; color: #999;">Total Jobs</div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.totalOrders}</div>
+                <div style="font-size: 0.75rem; color: #999;">Completion Rate</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: ${tech.completionRate >= 70 ? '#10b981' : '#ef4444'};">${tech.completionRate}%</div>
               </div>
             </div>
           </div>
@@ -919,14 +927,26 @@
       document.getElementById('techCards').innerHTML = html;
     }
 
-    // View tech's jobs (filter by technician)
-    function viewTechJobs(techId) {
-      // Filter orders table to show only this tech's jobs
+    // Filter orders by technician
+    function filterByTech(techId, techName) {
+      currentFilter = 'all'; // Reset status filter
       const filteredOrders = allOrders.filter(o => o.techId === techId);
-      displayOrders(filteredOrders);
+      
+      // Update section title to show filter
+      const sectionTitle = document.querySelector('.section-title');
+      sectionTitle.innerHTML = `${techName}'s Work Orders <button onclick="clearTechFilter()" style="margin-left: 1rem; padding: 0.5rem 1rem; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; font-size: 0.875rem; font-weight: 600;">Clear Filter</button>`;
+      
+      renderOrders(filteredOrders);
       
       // Scroll to orders table
-      document.querySelector('.orders-section').scrollIntoView({ behavior: 'smooth' });
+      document.querySelector('.orders-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Clear tech filter
+    function clearTechFilter() {
+      currentFilter = 'all';
+      document.querySelector('.section-title').textContent = 'Recent Work Orders';
+      renderOrders(allOrders);
     }
   </script>
 </body>
