@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers - Service Logic Pro</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #667eea;
+      --primary-dark: #5568d3;
+      --secondary: #764ba2;
+      --success: #10b981;
+      --danger: #ef4444;
+      --white: #ffffff;
+      --light-bg: #f8f9fa;
+      --border: #e5e7eb;
+      --text: #1f2937;
+      --text-light: #6b7280;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--light-bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .header {
+      background: white;
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.875rem;
+      color: var(--text);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: white;
+      color: var(--text);
+      border: 2px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 2rem;
+    }
+
+    .search-bar {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .customers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .customer-card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .customer-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transform: translateY(-2px);
+    }
+
+    .customer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 1rem;
+    }
+
+    .customer-name {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+
+    .customer-info {
+      font-size: 0.875rem;
+      color: var(--text-light);
+      margin-bottom: 0.5rem;
+    }
+
+    .customer-info strong {
+      color: var(--text);
+    }
+
+    .vehicle-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: #eff6ff;
+      color: #1e40af;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+
+    .customer-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-small {
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 2rem;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-header h2 {
+      font-size: 1.5rem;
+      color: var(--text);
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-light);
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      background: white;
+      border-radius: 12px;
+    }
+
+    .empty-state-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      color: var(--text-light);
+      margin-bottom: 1.5rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-light);
+    }
+
+    .vehicle-list {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .vehicle-item {
+      padding: 0.75rem;
+      background: #f9fafb;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+    }
+
+    .vehicle-item strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-content">
+      <h1>Customers</h1>
+      <div class="header-actions">
+        <a href="/dashboard.html" class="btn btn-secondary">← Back to Dashboard</a>
+        <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="search-bar">
+      <input 
+        type="text" 
+        class="search-input" 
+        id="searchInput" 
+        placeholder="Search customers by name, phone, or email..."
+      >
+    </div>
+
+    <div id="customersContainer">
+      <div class="loading">Loading customers...</div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Customer Modal -->
+  <div id="customerModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Add New Customer</h2>
+        <button class="close-btn" onclick="closeCustomerModal()">×</button>
+      </div>
+
+      <form id="customerForm" onsubmit="saveCustomer(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" id="firstName" required>
+          </div>
+          <div class="form-group">
+            <label>Last Name *</label>
+            <input type="text" id="lastName" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone *</label>
+            <input type="tel" id="phone" required>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="email">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Address</label>
+          <input type="text" id="address" placeholder="Street address">
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>City</label>
+            <input type="text" id="city">
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" id="state" maxlength="2" placeholder="CA">
+          </div>
+          <div class="form-group">
+            <label>ZIP</label>
+            <input type="text" id="zip" maxlength="10">
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="submit" class="btn btn-primary" style="flex: 1;">
+            <span id="saveText">Save Customer</span>
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="closeCustomerModal()">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- View Customer Details Modal -->
+  <div id="viewCustomerModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="viewCustomerName"></h2>
+        <button class="close-btn" onclick="closeViewModal()">×</button>
+      </div>
+
+      <div id="customerDetails"></div>
+
+      <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+        <button class="btn btn-primary" style="flex: 1;" onclick="editCurrentCustomer()">
+          Edit Customer
+        </button>
+        <button class="btn btn-secondary" onclick="addVehicleForCustomer()">
+          + Add Vehicle
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check authentication
+    if (!sessionStorage.getItem('isAuthenticated')) {
+      window.location.href = '/login.html';
+    }
+
+    let allCustomers = [];
+    let currentCustomer = null;
+    let editingCustomerId = null;
+
+    // Load customers on page load
+    loadCustomers();
+
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+      const searchTerm = e.target.value.toLowerCase();
+      const filtered = allCustomers.filter(c => 
+        c.first_name.toLowerCase().includes(searchTerm) ||
+        c.last_name.toLowerCase().includes(searchTerm) ||
+        c.phone.includes(searchTerm) ||
+        (c.email && c.email.toLowerCase().includes(searchTerm))
+      );
+      displayCustomers(filtered);
+    });
+
+    // Load all customers
+    async function loadCustomers() {
+      const businessId = sessionStorage.getItem('businessId');
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .select(`
+          *,
+          vehicles (*)
+        `)
+        .eq('account_id', businessId)
+        .order('first_name', { ascending: true });
+
+      if (error) {
+        console.error('Error loading customers:', error);
+        document.getElementById('customersContainer').innerHTML = 
+          '<div class="empty-state"><p>Error loading customers</p></div>';
+        return;
+      }
+
+      allCustomers = data;
+      displayCustomers(data);
+    }
+
+    // Display customers
+    function displayCustomers(customers) {
+      const container = document.getElementById('customersContainer');
+
+      if (customers.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">👥</div>
+            <h3>No customers found</h3>
+            <p>Add your first customer to get started</p>
+            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
+          </div>
+        `;
+        return;
+      }
+
+      const html = customers.map(customer => `
+        <div class="customer-card" onclick="viewCustomer('${customer.id}')">
+          <div class="customer-header">
+            <div>
+              <div class="customer-name">${customer.first_name} ${customer.last_name}</div>
+              <div class="customer-info"><strong>Phone:</strong> ${formatPhone(customer.phone)}</div>
+              ${customer.email ? `<div class="customer-info"><strong>Email:</strong> ${customer.email}</div>` : ''}
+            </div>
+          </div>
+          ${customer.address_line1 ? `<div class="customer-info">📍 ${customer.address_line1}, ${customer.city || ''} ${customer.state || ''}</div>` : ''}
+          <div class="vehicle-count">
+            🚗 ${customer.vehicles?.length || 0} Vehicle${customer.vehicles?.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+      `).join('');
+
+      container.innerHTML = `<div class="customers-grid">${html}</div>`;
+    }
+
+    // View customer details
+    async function viewCustomer(customerId) {
+      const customer = allCustomers.find(c => c.id === customerId);
+      if (!customer) return;
+
+      currentCustomer = customer;
+
+      document.getElementById('viewCustomerName').textContent = 
+        `${customer.first_name} ${customer.last_name}`;
+
+      let detailsHTML = `
+        <div class="customer-info" style="font-size: 1rem; margin-bottom: 0.5rem;">
+          <strong>Phone:</strong> ${formatPhone(customer.phone)}
+        </div>
+        ${customer.email ? `
+          <div class="customer-info" style="font-size: 1rem; margin-bottom: 0.5rem;">
+            <strong>Email:</strong> ${customer.email}
+          </div>
+        ` : ''}
+        ${customer.address_line1 ? `
+          <div class="customer-info" style="font-size: 1rem; margin-bottom: 0.5rem;">
+            <strong>Address:</strong><br>
+            ${customer.address_line1}<br>
+            ${customer.city ? customer.city + ', ' : ''}${customer.state || ''} ${customer.zip || ''}
+          </div>
+        ` : ''}
+      `;
+
+      if (customer.vehicles && customer.vehicles.length > 0) {
+        detailsHTML += '<div class="vehicle-list"><strong>Vehicles:</strong>';
+        customer.vehicles.forEach(v => {
+          detailsHTML += `
+            <div class="vehicle-item">
+              <strong>${v.year} ${v.make} ${v.model}</strong><br>
+              ${v.registration_number ? `Plate: ${v.registration_number} • ` : ''}
+              ${v.vin ? `VIN: ${v.vin}` : ''}
+            </div>
+          `;
+        });
+        detailsHTML += '</div>';
+      }
+
+      document.getElementById('customerDetails').innerHTML = detailsHTML;
+      document.getElementById('viewCustomerModal').classList.add('show');
+    }
+
+    // Open add customer modal
+    function openAddCustomerModal() {
+      editingCustomerId = null;
+      document.getElementById('modalTitle').textContent = 'Add New Customer';
+      document.getElementById('customerForm').reset();
+      document.getElementById('customerModal').classList.add('show');
+    }
+
+    // Edit current customer
+    function editCurrentCustomer() {
+      if (!currentCustomer) return;
+
+      editingCustomerId = currentCustomer.id;
+      document.getElementById('modalTitle').textContent = 'Edit Customer';
+      
+      document.getElementById('firstName').value = currentCustomer.first_name;
+      document.getElementById('lastName').value = currentCustomer.last_name;
+      document.getElementById('phone').value = formatPhone(currentCustomer.phone);
+      document.getElementById('email').value = currentCustomer.email || '';
+      document.getElementById('address').value = currentCustomer.address_line1 || '';
+      document.getElementById('city').value = currentCustomer.city || '';
+      document.getElementById('state').value = currentCustomer.state || '';
+      document.getElementById('zip').value = currentCustomer.zip || '';
+
+      closeViewModal();
+      document.getElementById('customerModal').classList.add('show');
+    }
+
+    // Save customer (add or edit)
+    async function saveCustomer(event) {
+      event.preventDefault();
+
+      const saveBtn = event.target.querySelector('button[type="submit"]');
+      const saveText = document.getElementById('saveText');
+      saveBtn.disabled = true;
+      saveText.textContent = 'Saving...';
+
+      const businessId = sessionStorage.getItem('businessId');
+      const customerData = {
+        account_id: businessId,
+        first_name: document.getElementById('firstName').value.trim(),
+        last_name: document.getElementById('lastName').value.trim(),
+        phone: document.getElementById('phone').value.replace(/\D/g, ''),
+        email: document.getElementById('email').value.trim() || null,
+        address_line1: document.getElementById('address').value.trim() || null,
+        city: document.getElementById('city').value.trim() || null,
+        state: document.getElementById('state').value.trim() || null,
+        zip: document.getElementById('zip').value.trim() || null
+      };
+
+      let result;
+      if (editingCustomerId) {
+        // Update existing
+        result = await supabase
+          .from('contacts')
+          .update(customerData)
+          .eq('id', editingCustomerId)
+          .select()
+          .single();
+      } else {
+        // Insert new
+        result = await supabase
+          .from('contacts')
+          .insert([customerData])
+          .select()
+          .single();
+      }
+
+      if (result.error) {
+        alert('Error saving customer: ' + result.error.message);
+        saveBtn.disabled = false;
+        saveText.textContent = 'Save Customer';
+        return;
+      }
+
+      closeCustomerModal();
+      loadCustomers();
+      alert(editingCustomerId ? 'Customer updated!' : 'Customer added!');
+    }
+
+    // Close modals
+    function closeCustomerModal() {
+      document.getElementById('customerModal').classList.remove('show');
+    }
+
+    function closeViewModal() {
+      document.getElementById('viewCustomerModal').classList.remove('show');
+    }
+
+    // Add vehicle for customer
+    function addVehicleForCustomer() {
+      if (currentCustomer) {
+        window.location.href = '/workorder.html?customer=' + currentCustomer.id;
+      }
+    }
+
+    // Format phone number
+    function formatPhone(phone) {
+      const cleaned = phone.replace(/\D/g, '');
+      if (cleaned.length === 10) {
+        return `(${cleaned.substring(0, 3)}) ${cleaned.substring(3, 6)}-${cleaned.substring(6)}`;
+      }
+      return phone;
+    }
+
+    // Auto-format phone input
+    document.getElementById('phone').addEventListener('input', function(e) {
+      let value = e.target.value.replace(/\D/g, '');
+      if (value.length > 6) {
+        value = '(' + value.slice(0, 3) + ') ' + value.slice(3, 6) + '-' + value.slice(6, 10);
+      } else if (value.length > 3) {
+        value = '(' + value.slice(0, 3) + ') ' + value.slice(3, 6);
+      }
+      e.target.value = value;
+    });
+  </script>
+</body>
+</html>
