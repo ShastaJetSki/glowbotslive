@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - Service Logic Pro</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
   <style>
     * {
       margin: 0;
@@ -591,8 +593,8 @@
     </div>
 
     <script>
-      // Hide settings for techs
-      if (sessionStorage.getItem('userRole') === 'tech') {
+      // Hide settings for employee techs
+      if (sessionStorage.getItem('userRole') === 'employee') {
         document.getElementById('settingsBtn').style.display = 'none';
       }
     </script>
@@ -628,82 +630,36 @@
       window.location.href = 'login.html';
     }
 
-    const userRole = sessionStorage.getItem('userRole') || 'owner';
+    const userRole = sessionStorage.getItem('userRole') || 'business_owner';
     const userName = sessionStorage.getItem('userName') || 'User';
-    const techId = sessionStorage.getItem('techId');
+    const userId = sessionStorage.getItem('userId');
     
     // Update business name based on role
-    if (userRole === 'tech') {
+    const businessName = sessionStorage.getItem('businessName') || 'Service Logic Pro';
+    if (userRole === 'employee') {
       document.querySelector('.user-name').textContent = userName + ' (Technician)';
     } else if (userRole === 'admin') {
-      document.querySelector('.user-name').textContent = 'Service Logic Pro - Admin';
+      document.querySelector('.user-name').textContent = businessName + ' - Admin';
     } else {
-      document.querySelector('.user-name').textContent = 'Service Logic Pro';
+      document.querySelector('.user-name').textContent = businessName;
     }
 
     const userEmail = sessionStorage.getItem('userEmail') || 'demo@premiumauto.com';
     document.getElementById('userEmail').textContent = userEmail;
 
-    const mockOrders = [
-      {
-        id: 1,
-        order_number: 'RO-2025-001',
-        customer: 'Michael Brown',
-        phone: '408-555-2001',
-        vehicle: '2021 Honda Accord',
-        service: 'Oil Change',
-        scheduled_date: '2025-12-10',
-        status: 'scheduled',
-        total_amount: 89.99,
-        technician: 'John Smith',
-        techId: 'TECH001',
-        estimated_hours: 1.0
-      },
-      {
-        id: 2,
-        order_number: 'RO-2025-002',
-        customer: 'Amanda Davis',
-        phone: '408-555-2002',
-        vehicle: '2023 Tesla Model 3',
-        service: 'Brake Service',
-        scheduled_date: '2025-12-11',
-        status: 'confirmed',
-        total_amount: 399.99,
-        technician: 'Maria Garcia',
-        techId: 'TECH002',
-        estimated_hours: 2.5
-      },
-      {
-        id: 3,
-        order_number: 'RO-2025-003',
-        customer: 'Robert Martinez',
-        phone: '510-555-1001',
-        vehicle: '2019 Sea Ray Sundancer',
-        service: 'Engine Service',
-        scheduled_date: '2025-12-12',
-        status: 'in_progress',
-        total_amount: 450.00,
-        technician: 'David Chen',
-        techId: 'TECH003',
-        estimated_hours: 4.0
-      }
-    ];
-
-    const userOrders = JSON.parse(sessionStorage.getItem('mockOrders') || '[]');
-    let allOrders = [...mockOrders, ...userOrders];
-    
-    // Filter orders by role
-    if (userRole === 'tech' && techId) {
-      allOrders = allOrders.filter(order => order.technician === userName.split(' (')[0] || order.techId === techId);
-    }
-
+    let allOrders = [];
     let currentFilter = 'all';
 
-    function loadOrders() {
-      setTimeout(() => {
+    // Load orders from Supabase
+    async function loadOrders() {
+      try {
+        allOrders = await window.ServiceLogicDB.fetchOrders();
         renderOrders(allOrders);
         updateStats(allOrders);
-      }, 500);
+      } catch (error) {
+        console.error('Error loading orders:', error);
+        document.getElementById('ordersContainer').innerHTML = '<div style="text-align: center; padding: 3rem; color: #ef4444;">Error loading orders. Please refresh.</div>';
+      }
     }
 
     function renderOrders(orders) {
