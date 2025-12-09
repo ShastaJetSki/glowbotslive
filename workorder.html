@@ -671,9 +671,18 @@
       window.location.href = 'login.html';
     }
 
+    // Check if viewing existing order
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderNumber = urlParams.get('order');
+
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('scheduledDate').value = tomorrow.toISOString().split('T')[0];
+
+    // Load existing order after page setup
+    if (orderNumber) {
+      setTimeout(() => loadExistingOrder(orderNumber), 100);
+    }
 
     // Customer database
     const customers = [
@@ -1297,6 +1306,45 @@
 
       calculateTotal();
       showAlert('✓ Draft loaded successfully!', 'success');
+    }
+
+    function loadExistingOrder(orderNumber) {
+      const allOrders = JSON.parse(sessionStorage.getItem('mockOrders') || '[]');
+      const order = allOrders.find(o => o.order_number === orderNumber);
+      
+      if (!order) return;
+
+      document.querySelector('.page-title').textContent = 'View Work Order';
+      document.querySelector('.page-subtitle').textContent = 'Order #' + orderNumber;
+
+      if (order.customer) {
+        selectedCustomer = {
+          name: order.customer,
+          phone: order.phone.replace(/\D/g, ''),
+          vehicle: order.vehicle
+        };
+        document.getElementById('customerName').textContent = order.customer;
+        document.getElementById('customerDetails').textContent = order.phone + ' • ' + order.vehicle;
+        document.getElementById('selectedCustomer').style.display = 'block';
+        document.getElementById('phoneSearch').style.display = 'none';
+      }
+
+      if (order.labor_lines) {
+        laborLines = order.labor_lines;
+        laborLineCounter = laborLines.length;
+        renderLaborLines();
+        calculateTotalFromLines();
+      }
+
+      document.getElementById('serviceDescription').value = order.service || '';
+      document.getElementById('scheduledDate').value = order.scheduled_date || '';
+      document.getElementById('technician').value = order.technician || '';
+
+      if (order.technician) {
+        document.getElementById('technician').dispatchEvent(new Event('change'));
+      }
+
+      document.querySelector('.btn-submit').textContent = '✓ Update Order';
     }
 
     // Close search results when clicking outside
