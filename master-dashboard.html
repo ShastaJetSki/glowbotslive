@@ -466,15 +466,33 @@
 
     // Load all data
     async function loadMasterDashboard() {
+      console.log('=== Loading Master Dashboard ===');
+      console.log('User Role:', sessionStorage.getItem('userRole'));
+      console.log('Auth User ID:', sessionStorage.getItem('authUserId'));
+      
       try {
         // Load all business accounts
+        console.log('Fetching business accounts...');
         const { data: accounts, error: accountsError } = await supabase
           .from('business_accounts')
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (accountsError) throw accountsError;
+        console.log('Query result:', { accounts, accountsError });
 
+        if (accountsError) {
+          console.error('Supabase error:', accountsError);
+          throw accountsError;
+        }
+
+        if (!accounts || accounts.length === 0) {
+          console.warn('No accounts returned - might be RLS issue');
+          document.getElementById('accountsContainer').innerHTML = 
+            '<div class="loading"><div style="color: #f59e0b;">No accounts found. This might be an RLS permissions issue. Check console for details.</div></div>';
+          return;
+        }
+
+        console.log(`Successfully loaded ${accounts.length} accounts`);
         allAccounts = accounts || [];
 
         // Calculate stats
@@ -483,8 +501,25 @@
 
       } catch (error) {
         console.error('Error loading dashboard:', error);
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          hint: error.hint,
+          details: error.details
+        });
+        
         document.getElementById('accountsContainer').innerHTML = 
-          '<div class="loading"><div style="color: #ef4444;">Error loading data. Please refresh.</div></div>';
+          `<div class="loading">
+            <div style="color: #ef4444; text-align: left; max-width: 600px; margin: 0 auto;">
+              <strong>Error loading data:</strong><br>
+              ${error.message}<br><br>
+              <strong>Possible fixes:</strong><br>
+              1. Check browser console (F12) for detailed error<br>
+              2. Verify your user has role = 'super_admin'<br>
+              3. Run fix_master_dashboard_rls.sql to fix permissions<br>
+              4. Logout and login again
+            </div>
+          </div>`;
       }
     }
 
