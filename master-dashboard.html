@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Dashboard - GlowbotsLive</title>
   
-  <!-- Supabase JS -->
+  <!-- Supabase JS - Load FIRST -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <style>
@@ -153,6 +153,18 @@
       padding: 50px;
     }
 
+    .debug-info {
+      background: rgba(255,255,255,0.1);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
     .error {
       background: #fee;
       color: #c00;
@@ -204,6 +216,8 @@
   <div class="container">
     <h1>🎯 Master Dashboard</h1>
 
+    <div id="debugInfo" class="debug-info" style="display:none;"></div>
+
     <div class="stats-grid" id="statsContainer">
       <div class="stat-card">
         <div class="stat-label">Total Businesses</div>
@@ -228,22 +242,54 @@
     </div>
   </div>
 
-  <!-- Load Supabase Config -->
-  <script src="supabase-config.js"></script>
-
   <script>
+    // Initialize Supabase INLINE (not from external file)
+    const SUPABASE_URL = 'https://vvkjydmzmevcfkxivrxi.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2p5ZG16bWV2Y2ZreGl2cnhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMzNjAzOTQsImV4cCI6MjA0ODkzNjM5NH0.xO0cEQVq7FPJKWcNXlwqHPGPwvBYQF3vGwHXtdyFoSI';
+
+    let supabase;
+    let debugLog = [];
+
+    function addDebug(message) {
+      debugLog.push(`[${new Date().toISOString()}] ${message}`);
+      const debugDiv = document.getElementById('debugInfo');
+      debugDiv.textContent = debugLog.join('\n');
+      debugDiv.style.display = 'block';
+      console.log(message);
+    }
+
     // Check authentication on page load
     window.addEventListener('DOMContentLoaded', async () => {
-      console.log('=== Master Dashboard Loading ===');
+      addDebug('=== Master Dashboard Loading ===');
       
+      // Check if Supabase library loaded
+      if (typeof window.supabase === 'undefined') {
+        addDebug('❌ ERROR: Supabase library not loaded!');
+        document.getElementById('accountsContainer').innerHTML = 
+          '<div class="error">Supabase library failed to load. Check your internet connection.</div>';
+        return;
+      }
+      addDebug('✅ Supabase library loaded');
+
+      // Initialize Supabase client
+      try {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        addDebug(`✅ Supabase client created for: ${SUPABASE_URL}`);
+      } catch (err) {
+        addDebug(`❌ ERROR creating Supabase client: ${err.message}`);
+        document.getElementById('accountsContainer').innerHTML = 
+          `<div class="error">Failed to initialize Supabase: ${err.message}</div>`;
+        return;
+      }
+
       // Check if user is logged in
       const userRole = localStorage.getItem('userRole');
       const authUserId = localStorage.getItem('authUserId');
       const supabaseToken = localStorage.getItem('supabaseToken');
       
-      console.log('User Role:', userRole);
-      console.log('Auth User ID:', authUserId);
-      console.log('Supabase Token:', supabaseToken ? 'Present' : 'Missing');
+      addDebug(`User Role: ${userRole}`);
+      addDebug(`Auth User ID: ${authUserId}`);
+      addDebug(`Supabase Token: ${supabaseToken ? 'Present' : 'Missing'}`);
 
       if (userRole !== 'super_admin') {
         alert('Access Denied: Super Admin privileges required');
@@ -262,62 +308,68 @@
     });
 
     async function loadMasterDashboard() {
-      console.log('=== Loading Master Dashboard ===');
-      console.log('Supabase client:', supabase);
+      addDebug('=== Starting Dashboard Load ===');
 
       try {
-        // Test connection
-        console.log('Testing Supabase connection...');
-        const { count: testCount, error: testError } = await supabase
-          .from('business_accounts')
-          .select('count', { count: 'exact', head: true });
-        
-        console.log('Connection test result:', { testCount, testError });
+        // Test basic connectivity to Supabase
+        addDebug('Testing Supabase connectivity...');
+        try {
+          const response = await fetch(SUPABASE_URL);
+          addDebug(`✅ Supabase URL is reachable (status: ${response.status})`);
+        } catch (fetchErr) {
+          addDebug(`❌ Cannot reach Supabase URL: ${fetchErr.message}`);
+          throw new Error(`Network error: Cannot reach ${SUPABASE_URL}. Check your internet connection.`);
+        }
 
-        // Get current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log('Current session:', session ? 'Active' : 'None', sessionError);
-
-        // If no session, try to restore from token
-        if (!session) {
-          console.log('No active Supabase session - trying to restore from token');
-          const token = localStorage.getItem('supabaseToken');
-          if (token) {
+        // Try to restore session from token
+        addDebug('Attempting to restore session...');
+        const token = localStorage.getItem('supabaseToken');
+        if (token) {
+          try {
             const { data, error } = await supabase.auth.setSession({
               access_token: token,
               refresh_token: token
             });
-            console.log('Session restore result:', data ? 'Success' : 'Failed', error);
+            if (error) {
+              addDebug(`⚠️ Session restore warning: ${error.message}`);
+            } else {
+              addDebug('✅ Session restored successfully');
+            }
+          } catch (sessionErr) {
+            addDebug(`⚠️ Session restore failed: ${sessionErr.message}`);
           }
         }
 
-        // Fetch all business accounts
-        console.log('Fetching business accounts...');
+        // Fetch business accounts
+        addDebug('Fetching business accounts from database...');
         const { data: accounts, error, count } = await supabase
           .from('business_accounts')
           .select('*', { count: 'exact' })
           .order('created_at', { ascending: false });
 
-        console.log('Query result:', { accountsCount: count, error, errorCode: error?.code, errorMessage: error?.message, errorDetails: error?.details });
-
         if (error) {
-          console.error('Supabase error:', error);
+          addDebug(`❌ Database query error: ${error.message}`);
+          addDebug(`Error code: ${error.code}`);
+          addDebug(`Error hint: ${error.hint}`);
+          addDebug(`Error details: ${error.details}`);
           throw error;
         }
 
+        addDebug(`✅ Successfully fetched ${accounts?.length || 0} accounts`);
+
         if (!accounts || accounts.length === 0) {
-          console.warn('No business accounts found');
+          addDebug('⚠️ No business accounts found in database');
           document.getElementById('accountsContainer').innerHTML = 
             '<div class="loading">No business accounts found. Create your first account!</div>';
           return;
         }
 
-        console.log(`Found ${accounts.length} business accounts`);
-
         // Calculate statistics
         const activeAccounts = accounts.filter(a => a.status === 'active').length;
         const pendingAccounts = accounts.filter(a => a.status === 'pending').length;
         const totalRevenue = accounts.reduce((sum, a) => sum + (parseFloat(a.monthly_fee) || 0), 0);
+
+        addDebug(`Stats: ${accounts.length} total, ${activeAccounts} active, ${pendingAccounts} pending`);
 
         // Update stats
         document.getElementById('totalBusinesses').textContent = accounts.length;
@@ -327,55 +379,39 @@
 
         // Display accounts
         displayAccounts(accounts);
+        addDebug('✅ Dashboard loaded successfully!');
+
+        // Hide debug info after successful load
+        setTimeout(() => {
+          document.getElementById('debugInfo').style.display = 'none';
+        }, 3000);
 
       } catch (err) {
-        console.error('❌ Error loading dashboard:', err);
-        console.error('Error details:', {
-          name: err.name,
-          message: err.message,
-          code: err.code,
-          hint: err.hint,
-          details: err.details,
-          stack: err.stack
-        });
+        addDebug(`❌ FATAL ERROR: ${err.message}`);
+        console.error('Full error object:', err);
         
-        let errorMessage = err.message || 'Unknown error occurred';
-        let suggestions = '';
-        
-        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
-          suggestions = `
-            <strong>Connection Issue Detected:</strong><br>
-            1. Check if Supabase URL is accessible<br>
-            2. Verify API key is correct<br>
-            3. Check browser network tab (F12 → Network)<br>
-            4. Try opening in incognito mode<br>
-            5. Check if ad blocker is interfering
-          `;
-        } else if (errorMessage.includes('permission') || errorMessage.includes('RLS')) {
-          suggestions = `
-            <strong>Permission Issue Detected:</strong><br>
-            1. Check Row Level Security policies<br>
-            2. Verify role = 'super_admin'<br>
-            3. Check auth_user_id is set<br>
-            4. Logout and login again
-          `;
-        } else {
-          suggestions = `
-            <strong>Unexpected Error:</strong><br>
-            Check browser console (F12) for full details
-          `;
-        }
-        
-        document.getElementById('accountsContainer').innerHTML = 
-          `<div class="loading">
-            <div style="color: #fee; text-align: left; max-width: 600px; margin: 0 auto; font-size: 0.9rem;">
-              <strong>❌ Error loading data</strong><br><br>
-              <code style="background: #fee; padding: 0.5rem; display: block; border-radius: 4px; color: #c00;">
-                ${errorMessage}
-              </code><br>
-              ${suggestions}
+        let errorHTML = `
+          <div style="background: white; padding: 30px; border-radius: 15px; max-width: 600px; margin: 0 auto; text-align: left;">
+            <h2 style="color: #ef4444; margin-bottom: 20px;">❌ Error Loading Dashboard</h2>
+            <div style="background: #fee; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+              <strong>Error:</strong> ${err.message}
             </div>
-          </div>`;
+            <h3 style="margin: 20px 0 10px 0;">Troubleshooting Steps:</h3>
+            <ol style="line-height: 2;">
+              <li>Open browser console (F12) and check for errors</li>
+              <li>Verify you're connected to the internet</li>
+              <li>Try disabling ad blockers or VPN</li>
+              <li>Try opening in incognito/private mode</li>
+              <li>Clear browser cache and reload</li>
+              <li>Check if ${SUPABASE_URL} is accessible</li>
+            </ol>
+            <button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem;">
+              Retry
+            </button>
+          </div>
+        `;
+        
+        document.getElementById('accountsContainer').innerHTML = errorHTML;
       }
     }
 
