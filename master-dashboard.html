@@ -1,394 +1,653 @@
--- ============================================
--- MASTER DASHBOARD - COMPLETE SETUP
--- Run this entire script in Supabase SQL Editor
--- ============================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Dashboard - WorkLogicPro Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
--- ============================================
--- STEP 1: Create business_accounts table
--- ============================================
-CREATE TABLE IF NOT EXISTS business_accounts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  business_name VARCHAR(255) NOT NULL,
-  contact_email VARCHAR(255),
-  contact_phone VARCHAR(50),
-  
-  -- Subscription info
-  status VARCHAR(50) DEFAULT 'active', -- active, trial, inactive, suspended
-  monthly_fee DECIMAL(10,2) DEFAULT 0.00,
-  trial_ends_at TIMESTAMP WITH TIME ZONE,
-  subscription_started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  -- VAPI usage tracking
-  vapi_minutes_used INTEGER DEFAULT 0, -- Total all-time minutes
-  vapi_minutes_current_month INTEGER DEFAULT 0, -- This month's minutes
-  vapi_last_reset_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  -- Activity tracking
-  last_active_at TIMESTAMP WITH TIME ZONE,
-  user_count INTEGER DEFAULT 0,
-  
-  -- Metadata
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    :root {
+      --primary: #667eea;
+      --primary-dark: #764ba2;
+      --charcoal: #36454f;
+      --white: #ffffff;
+      --bg: #f5f7fa;
+      --shadow: rgba(0, 0, 0, 0.08);
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+    }
 
--- ============================================
--- STEP 2: Create vapi_usage_logs table
--- ============================================
-CREATE TABLE IF NOT EXISTS vapi_usage_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  business_account_id UUID REFERENCES business_accounts(id) ON DELETE CASCADE,
-  account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
-  
-  -- Call details
-  call_duration_seconds INTEGER NOT NULL,
-  call_duration_minutes DECIMAL(10,2) NOT NULL,
-  call_cost DECIMAL(10,4) NOT NULL,
-  call_sid VARCHAR(255),
-  
-  -- Metadata
-  call_started_at TIMESTAMP WITH TIME ZONE,
-  call_ended_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--charcoal);
+      min-height: 100vh;
+    }
 
--- ============================================
--- STEP 3: Add indexes
--- ============================================
-CREATE INDEX IF NOT EXISTS idx_business_accounts_status ON business_accounts(status);
-CREATE INDEX IF NOT EXISTS idx_business_accounts_last_active ON business_accounts(last_active_at);
-CREATE INDEX IF NOT EXISTS idx_vapi_logs_business ON vapi_usage_logs(business_account_id);
-CREATE INDEX IF NOT EXISTS idx_vapi_logs_date ON vapi_usage_logs(created_at);
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
 
--- ============================================
--- STEP 4: Add RLS policies
--- ============================================
-ALTER TABLE business_accounts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vapi_usage_logs ENABLE ROW LEVEL SECURITY;
+    .header-content {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
 
--- Drop existing policies if they exist
-DROP POLICY IF EXISTS "Super admins can view all accounts" ON business_accounts;
-DROP POLICY IF EXISTS "Super admins can view all logs" ON vapi_usage_logs;
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
 
--- Super admin can see all accounts
-CREATE POLICY "Super admins can view all accounts"
-  ON business_accounts
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid()
-      AND users.role = 'super_admin'
-    )
-  );
+    .header-subtitle {
+      font-size: 0.875rem;
+      opacity: 0.9;
+      margin-top: 0.25rem;
+    }
 
--- Super admin can see all logs
-CREATE POLICY "Super admins can view all logs"
-  ON vapi_usage_logs
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid()
-      AND users.role = 'super_admin'
-    )
-  );
+    .logout-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid white;
+      color: white;
+      padding: 0.625rem 1.5rem;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
 
--- ============================================
--- STEP 5: Create helper functions
--- ============================================
+    .logout-btn:hover {
+      background: white;
+      color: var(--primary);
+    }
 
--- Function to reset monthly VAPI minutes
-CREATE OR REPLACE FUNCTION reset_monthly_vapi_minutes()
-RETURNS void AS $$
-BEGIN
-  UPDATE business_accounts
-  SET 
-    vapi_minutes_current_month = 0,
-    vapi_last_reset_at = NOW()
-  WHERE 
-    DATE_TRUNC('month', vapi_last_reset_at) < DATE_TRUNC('month', NOW());
-END;
-$$ LANGUAGE plpgsql;
+    /* Main Content */
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
 
--- Function to log VAPI usage
-CREATE OR REPLACE FUNCTION log_vapi_usage(
-  p_business_account_id UUID,
-  p_account_id UUID,
-  p_duration_seconds INTEGER,
-  p_cost DECIMAL
-)
-RETURNS void AS $$
-DECLARE
-  v_minutes DECIMAL(10,2);
-BEGIN
-  v_minutes := CEIL(p_duration_seconds / 60.0);
-  
-  -- Insert log entry
-  INSERT INTO vapi_usage_logs (
-    business_account_id,
-    account_id,
-    call_duration_seconds,
-    call_duration_minutes,
-    call_cost,
-    call_started_at,
-    call_ended_at
-  ) VALUES (
-    p_business_account_id,
-    p_account_id,
-    p_duration_seconds,
-    v_minutes,
-    p_cost,
-    NOW() - (p_duration_seconds || ' seconds')::INTERVAL,
-    NOW()
-  );
-  
-  -- Update business account totals
-  UPDATE business_accounts
-  SET 
-    vapi_minutes_used = vapi_minutes_used + v_minutes,
-    vapi_minutes_current_month = vapi_minutes_current_month + v_minutes,
-    last_active_at = NOW(),
-    updated_at = NOW()
-  WHERE id = p_business_account_id;
-END;
-$$ LANGUAGE plpgsql;
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
 
--- ============================================
--- STEP 6: Link accounts table to business_accounts
--- ============================================
-DO $$ 
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'accounts' 
-    AND column_name = 'business_account_id'
-  ) THEN
-    ALTER TABLE accounts 
-    ADD COLUMN business_account_id UUID REFERENCES business_accounts(id);
-    
-    CREATE INDEX idx_accounts_business_account ON accounts(business_account_id);
-  END IF;
-END $$;
+    .stat-card {
+      background: white;
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px var(--shadow);
+      border: 1px solid #f0f0f0;
+      transition: transform 0.2s;
+    }
 
--- ============================================
--- STEP 7: INSERT MOCK DATA
--- ============================================
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px var(--shadow);
+    }
 
--- Insert 15 mock business accounts with realistic data
-INSERT INTO business_accounts (
-  business_name,
-  contact_email,
-  contact_phone,
-  status,
-  monthly_fee,
-  vapi_minutes_used,
-  vapi_minutes_current_month,
-  user_count,
-  last_active_at,
-  subscription_started_at,
-  trial_ends_at
-) VALUES
-  -- Active accounts with high usage
-  ('Premium Auto Care', 'owner@premiumauto.com', '408-555-0101', 'active', 99.00, 4580, 680, 5, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '6 months', NULL),
-  ('Quick Fix Auto', 'admin@quickfix.com', '415-555-0102', 'active', 99.00, 3820, 520, 3, NOW() - INTERVAL '5 hours', NOW() - INTERVAL '8 months', NULL),
-  ('Best Auto Service', 'info@bestauto.com', '650-555-0103', 'active', 149.00, 6780, 980, 8, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 year', NULL),
-  ('Elite Motors', 'contact@elitemotors.com', '510-555-0104', 'active', 149.00, 5920, 820, 7, NOW() - INTERVAL '3 hours', NOW() - INTERVAL '10 months', NULL),
-  ('Speedy Auto Repair', 'manager@speedyauto.com', '925-555-0105', 'active', 99.00, 2450, 450, 4, NOW() - INTERVAL '4 hours', NOW() - INTERVAL '4 months', NULL),
-  
-  -- Active accounts with medium usage
-  ('City Auto Center', 'owner@cityauto.com', '408-555-0106', 'active', 99.00, 1890, 290, 3, NOW() - INTERVAL '8 hours', NOW() - INTERVAL '5 months', NULL),
-  ('Master Mechanics', 'info@mastermech.com', '415-555-0107', 'active', 149.00, 3240, 540, 6, NOW() - INTERVAL '12 hours', NOW() - INTERVAL '7 months', NULL),
-  ('Pro Auto Solutions', 'admin@proauto.com', '650-555-0108', 'active', 99.00, 2680, 380, 4, NOW() - INTERVAL '6 hours', NOW() - INTERVAL '3 months', NULL),
-  
-  -- Trial accounts
-  ('New Age Auto', 'trial@newageauto.com', '510-555-0109', 'trial', 0.00, 125, 125, 2, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '10 days', NOW() + INTERVAL '20 days'),
-  ('Fast Lane Repair', 'trial@fastlane.com', '925-555-0110', 'trial', 0.00, 89, 89, 1, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '5 days', NOW() + INTERVAL '25 days'),
-  ('Auto Express', 'trial@autoexpress.com', '408-555-0111', 'trial', 0.00, 156, 156, 2, NOW() - INTERVAL '3 hours', NOW() - INTERVAL '15 days', NOW() + INTERVAL '15 days'),
-  
-  -- Inactive accounts
-  ('Classic Car Repair', 'manager@classiccar.com', '415-555-0112', 'inactive', 99.00, 890, 0, 4, NOW() - INTERVAL '45 days', NOW() - INTERVAL '1 year', NULL),
-  ('Budget Auto Fix', 'contact@budgetauto.com', '650-555-0113', 'inactive', 99.00, 450, 0, 2, NOW() - INTERVAL '60 days', NOW() - INTERVAL '8 months', NULL),
-  
-  -- Recently suspended
-  ('Tech Auto Services', 'admin@techauto.com', '510-555-0114', 'suspended', 149.00, 2340, 0, 5, NOW() - INTERVAL '15 days', NOW() - INTERVAL '6 months', NULL),
-  
-  -- New active account
-  ('Modern Motors', 'owner@modernmotors.com', '925-555-0115', 'active', 99.00, 340, 340, 3, NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '1 month', NULL);
+    .stat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
 
--- Insert realistic VAPI usage logs for the past month
--- This creates varied usage patterns across different accounts
-DO $$
-DECLARE
-  business_rec RECORD;
-  day_offset INTEGER;
-  calls_per_day INTEGER;
-  call_duration INTEGER;
-  i INTEGER;
-BEGIN
-  FOR business_rec IN 
-    SELECT id, vapi_minutes_current_month 
-    FROM business_accounts 
-    WHERE status IN ('active', 'trial')
-  LOOP
-    -- Generate calls for the past 30 days
-    FOR day_offset IN 0..29 LOOP
-      -- Random number of calls per day (0-5 calls)
-      calls_per_day := floor(random() * 6)::INTEGER;
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      color: #666;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--charcoal);
+      line-height: 1;
+      margin: 0.5rem 0;
+    }
+
+    .stat-change {
+      font-size: 0.875rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .stat-change.positive { color: var(--green); }
+    .stat-change.negative { color: var(--red); }
+
+    /* Accounts Table */
+    .section {
+      background: white;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 2px 8px var(--shadow);
+      margin-bottom: 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--charcoal);
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .filter-btn {
+      padding: 0.5rem 1rem;
+      border: 2px solid #e0e0e0;
+      background: white;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn:hover,
+    .filter-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 1rem;
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #f0f0f0;
+      transition: background 0.2s;
+    }
+
+    tbody tr:hover {
+      background: #f9fafb;
+    }
+
+    tbody td {
+      padding: 1.25rem 1rem;
+    }
+
+    .business-name {
+      font-weight: 600;
+      color: var(--charcoal);
+      font-size: 1rem;
+    }
+
+    .business-email {
+      font-size: 0.875rem;
+      color: #999;
+      margin-top: 0.25rem;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.375rem 0.875rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-inactive {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-trial {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .usage-bar {
+      width: 100%;
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .usage-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      transition: width 0.3s;
+    }
+
+    .action-btn {
+      padding: 0.5rem 1rem;
+      border: 2px solid #e0e0e0;
+      background: white;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #999;
+    }
+
+    .spinner {
+      border: 3px solid #f0f0f0;
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-content">
+      <div>
+        <h1>🎯 Master Dashboard</h1>
+        <div class="header-subtitle">WorkLogicPro Administration Panel</div>
+      </div>
+      <button class="logout-btn" onclick="logout()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="container">
+    <!-- Overview Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">Total Accounts</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+            🏢
+          </div>
+        </div>
+        <div class="stat-value" id="totalAccounts">--</div>
+        <div class="stat-change positive">
+          <span>↑</span>
+          <span id="accountsChange">+0</span> this month
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">Monthly Revenue</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
+            💰
+          </div>
+        </div>
+        <div class="stat-value" id="monthlyRevenue">$--</div>
+        <div class="stat-change positive">
+          <span>↑</span>
+          <span id="revenueChange">+0%</span> vs last month
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">Active Users Today</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white;">
+            👥
+          </div>
+        </div>
+        <div class="stat-value" id="activeToday">--</div>
+        <div class="stat-change">
+          <span id="activePercent">--%</span> of total
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">VAPI Minutes (Total)</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white;">
+            📞
+          </div>
+        </div>
+        <div class="stat-value" id="totalMinutes">--</div>
+        <div class="stat-change">
+          <span id="minutesCost">$--</span> total cost
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">This Month Minutes</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white;">
+            📊
+          </div>
+        </div>
+        <div class="stat-value" id="monthMinutes">--</div>
+        <div class="stat-change">
+          <span id="monthCost">$--</span> cost
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <div class="stat-label">Avg Per Account</div>
+          <div class="stat-icon" style="background: linear-gradient(135deg, #06b6d4, #0891b2); color: white;">
+            📈
+          </div>
+        </div>
+        <div class="stat-value" id="avgMinutes">--</div>
+        <div class="stat-change">
+          <span id="avgCost">$--</span> avg cost
+        </div>
+      </div>
+    </div>
+
+    <!-- Accounts Table -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Business Accounts</h2>
+        <div class="filter-group">
+          <button class="filter-btn active" onclick="filterAccounts('all')">All</button>
+          <button class="filter-btn" onclick="filterAccounts('active')">Active</button>
+          <button class="filter-btn" onclick="filterAccounts('trial')">Trial</button>
+          <button class="filter-btn" onclick="filterAccounts('inactive')">Inactive</button>
+        </div>
+      </div>
+
+      <div id="accountsContainer">
+        <div class="loading">
+          <div class="spinner"></div>
+          <div>Loading accounts...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Supabase
+    const supabaseUrl = 'https://obeqecaizbmpsdalvyoe.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iZXFlY2FpemJtcHNkYWx2eW9lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM1NDU4MDgsImV4cCI6MjA0OTEyMTgwOH0.kZM7aIPs_l-9nGVXKTM0bJnQQFT-QN51rPUvhIu7-m4';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+    // Check if user is admin
+    if (!sessionStorage.getItem('isAuthenticated') || sessionStorage.getItem('userRole') !== 'super_admin') {
+      alert('Access denied. This page is for system administrators only.');
+      window.location.href = 'login.html';
+    }
+
+    let allAccounts = [];
+    let currentFilter = 'all';
+
+    // VAPI cost per minute (adjust based on your actual rate)
+    const VAPI_COST_PER_MINUTE = 0.15; // $0.15 per minute
+
+    // Load all data
+    async function loadMasterDashboard() {
+      try {
+        // Load all business accounts
+        const { data: accounts, error: accountsError } = await supabase
+          .from('business_accounts')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (accountsError) throw accountsError;
+
+        allAccounts = accounts || [];
+
+        // Calculate stats
+        calculateStats(accounts);
+        renderAccountsTable(accounts);
+
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+        document.getElementById('accountsContainer').innerHTML = 
+          '<div class="loading"><div style="color: #ef4444;">Error loading data. Please refresh.</div></div>';
+      }
+    }
+
+    // Calculate overview statistics
+    function calculateStats(accounts) {
+      const totalAccounts = accounts.length;
+      const today = new Date().toISOString().split('T')[0];
+      const thisMonth = new Date().toISOString().slice(0, 7);
+
+      // Count active accounts today
+      const activeToday = accounts.filter(acc => {
+        const lastActive = acc.last_active_at?.split('T')[0];
+        return lastActive === today;
+      }).length;
+
+      // Calculate revenue
+      const monthlyRevenue = accounts.reduce((sum, acc) => {
+        return sum + (acc.monthly_fee || 0);
+      }, 0);
+
+      // Calculate VAPI usage
+      const totalMinutes = accounts.reduce((sum, acc) => {
+        return sum + (acc.vapi_minutes_used || 0);
+      }, 0);
+
+      const monthMinutes = accounts.reduce((sum, acc) => {
+        return sum + (acc.vapi_minutes_current_month || 0);
+      }, 0);
+
+      const totalCost = totalMinutes * VAPI_COST_PER_MINUTE;
+      const monthCost = monthMinutes * VAPI_COST_PER_MINUTE;
+      const avgMinutes = totalAccounts > 0 ? totalMinutes / totalAccounts : 0;
+      const avgCost = avgMinutes * VAPI_COST_PER_MINUTE;
+
+      // Update UI
+      document.getElementById('totalAccounts').textContent = totalAccounts;
+      document.getElementById('accountsChange').textContent = `+${Math.floor(totalAccounts * 0.1)}`; // Mock growth
       
-      FOR i IN 1..calls_per_day LOOP
-        -- Random call duration between 60 and 600 seconds (1-10 minutes)
-        call_duration := 60 + floor(random() * 540)::INTEGER;
-        
-        INSERT INTO vapi_usage_logs (
-          business_account_id,
-          account_id,
-          call_duration_seconds,
-          call_duration_minutes,
-          call_cost,
-          call_started_at,
-          call_ended_at,
-          created_at
-        ) VALUES (
-          business_rec.id,
-          NULL, -- We don't have specific account_ids yet
-          call_duration,
-          CEIL(call_duration / 60.0),
-          CEIL(call_duration / 60.0) * 0.15, -- $0.15 per minute
-          NOW() - (day_offset || ' days')::INTERVAL - (call_duration || ' seconds')::INTERVAL,
-          NOW() - (day_offset || ' days')::INTERVAL,
-          NOW() - (day_offset || ' days')::INTERVAL
-        );
-      END LOOP;
-    END LOOP;
-  END LOOP;
-END $$;
+      document.getElementById('monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString()}`;
+      document.getElementById('revenueChange').textContent = '+12%'; // Mock growth
+      
+      document.getElementById('activeToday').textContent = activeToday;
+      document.getElementById('activePercent').textContent = 
+        `${totalAccounts > 0 ? Math.round((activeToday / totalAccounts) * 100) : 0}%`;
+      
+      document.getElementById('totalMinutes').textContent = totalMinutes.toLocaleString();
+      document.getElementById('minutesCost').textContent = `$${totalCost.toFixed(2)}`;
+      
+      document.getElementById('monthMinutes').textContent = monthMinutes.toLocaleString();
+      document.getElementById('monthCost').textContent = `$${monthCost.toFixed(2)}`;
+      
+      document.getElementById('avgMinutes').textContent = Math.round(avgMinutes);
+      document.getElementById('avgCost').textContent = `$${avgCost.toFixed(2)}`;
+    }
 
--- ============================================
--- STEP 8: CREATE SUPER ADMIN USER
--- ============================================
+    // Render accounts table
+    function renderAccountsTable(accounts) {
+      const filtered = currentFilter === 'all' 
+        ? accounts 
+        : accounts.filter(acc => acc.status === currentFilter);
 
--- First, check if super_admin role constraint exists, if not add it
-DO $$ 
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conname = 'check_valid_role'
-  ) THEN
-    ALTER TABLE users 
-    DROP CONSTRAINT IF EXISTS users_role_check;
-    
-    ALTER TABLE users 
-    ADD CONSTRAINT check_valid_role 
-    CHECK (role IN ('business_owner', 'admin', 'employee', 'super_admin'));
-  END IF;
-END $$;
+      if (filtered.length === 0) {
+        document.getElementById('accountsContainer').innerHTML = 
+          '<div class="loading"><div>No accounts found.</div></div>';
+        return;
+      }
 
--- Create super admin account
--- Password: Admin123!
--- (This uses Supabase's default password hashing)
-INSERT INTO auth.users (
-  instance_id,
-  id,
-  aud,
-  role,
-  email,
-  encrypted_password,
-  email_confirmed_at,
-  created_at,
-  updated_at,
-  raw_app_meta_data,
-  raw_user_meta_data,
-  is_super_admin,
-  confirmation_token,
-  email_change,
-  email_change_token_new,
-  recovery_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(),
-  'authenticated',
-  'authenticated',
-  'admin@worklogicpro.com',
-  crypt('Admin123!', gen_salt('bf')), -- Password: Admin123!
-  NOW(),
-  NOW(),
-  NOW(),
-  '{"provider":"email","providers":["email"]}',
-  '{"full_name":"System Administrator"}',
-  false,
-  '',
-  '',
-  '',
-  ''
-) ON CONFLICT (email) DO NOTHING;
+      const html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Business</th>
+              <th>Status</th>
+              <th>Monthly Fee</th>
+              <th>VAPI Minutes (Total)</th>
+              <th>This Month</th>
+              <th>Cost</th>
+              <th>Last Active</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(account => {
+              const totalMinutes = account.vapi_minutes_used || 0;
+              const monthMinutes = account.vapi_minutes_current_month || 0;
+              const totalCost = totalMinutes * VAPI_COST_PER_MINUTE;
+              const monthCost = monthMinutes * VAPI_COST_PER_MINUTE;
+              const lastActive = account.last_active_at 
+                ? new Date(account.last_active_at).toLocaleDateString()
+                : 'Never';
+              
+              const statusClass = account.status === 'active' ? 'status-active' 
+                : account.status === 'trial' ? 'status-trial' 
+                : 'status-inactive';
 
--- Insert into users table (your app's user table)
-INSERT INTO users (
-  id,
-  email,
-  first_name,
-  last_name,
-  role,
-  created_at,
-  updated_at
-)
-SELECT 
-  id,
-  'admin@worklogicpro.com',
-  'System',
-  'Administrator',
-  'super_admin',
-  NOW(),
-  NOW()
-FROM auth.users 
-WHERE email = 'admin@worklogicpro.com'
-ON CONFLICT (email) DO UPDATE 
-SET role = 'super_admin';
+              return `
+                <tr>
+                  <td>
+                    <div class="business-name">${account.business_name}</div>
+                    <div class="business-email">${account.contact_email || 'No email'}</div>
+                  </td>
+                  <td>
+                    <span class="status-badge ${statusClass}">${account.status || 'active'}</span>
+                  </td>
+                  <td style="font-weight: 600; color: var(--green);">
+                    $${account.monthly_fee || 0}/mo
+                  </td>
+                  <td>
+                    <div style="font-weight: 600;">${totalMinutes.toLocaleString()} min</div>
+                    <div class="usage-bar">
+                      <div class="usage-fill" style="width: ${Math.min(100, (totalMinutes / 10000) * 100)}%"></div>
+                    </div>
+                  </td>
+                  <td style="font-weight: 600; color: var(--blue);">
+                    ${monthMinutes.toLocaleString()} min
+                  </td>
+                  <td>
+                    <div style="font-weight: 600;">$${totalCost.toFixed(2)}</div>
+                    <div style="font-size: 0.75rem; color: #999;">$${monthCost.toFixed(2)} this month</div>
+                  </td>
+                  <td style="color: #666;">
+                    ${lastActive}
+                  </td>
+                  <td>
+                    <button class="action-btn" onclick="viewAccount('${account.id}')">View</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
 
--- ============================================
--- STEP 9: VERIFICATION QUERIES
--- ============================================
+      document.getElementById('accountsContainer').innerHTML = html;
+    }
 
--- View all business accounts
-SELECT 
-  business_name,
-  status,
-  monthly_fee,
-  vapi_minutes_used,
-  vapi_minutes_current_month,
-  user_count,
-  last_active_at
-FROM business_accounts
-ORDER BY vapi_minutes_current_month DESC;
+    // Filter accounts
+    function filterAccounts(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      renderAccountsTable(allAccounts);
+    }
 
--- View total stats
-SELECT 
-  COUNT(*) as total_accounts,
-  SUM(monthly_fee) as total_monthly_revenue,
-  SUM(vapi_minutes_used) as total_minutes,
-  SUM(vapi_minutes_current_month) as month_minutes,
-  SUM(vapi_minutes_used * 0.15) as total_cost,
-  SUM(vapi_minutes_current_month * 0.15) as month_cost
-FROM business_accounts
-WHERE status = 'active';
+    // View account details
+    function viewAccount(accountId) {
+      const account = allAccounts.find(acc => acc.id === accountId);
+      if (account) {
+        alert(`Account Details:\n\nBusiness: ${account.business_name}\nStatus: ${account.status}\nMonthly Fee: $${account.monthly_fee}\nTotal Minutes: ${account.vapi_minutes_used || 0}\nThis Month: ${account.vapi_minutes_current_month || 0}\nTotal Cost: $${((account.vapi_minutes_used || 0) * VAPI_COST_PER_MINUTE).toFixed(2)}`);
+      }
+    }
 
--- View VAPI usage logs count
-SELECT COUNT(*) as total_vapi_calls FROM vapi_usage_logs;
+    // Logout
+    function logout() {
+      sessionStorage.clear();
+      window.location.href = 'login.html';
+    }
 
--- Verify super admin user
-SELECT email, first_name, last_name, role 
-FROM users 
-WHERE role = 'super_admin';
+    // Load dashboard on page load
+    loadMasterDashboard();
 
--- ============================================
--- SETUP COMPLETE!
--- ============================================
--- 
--- CREDENTIALS:
--- Email: admin@worklogicpro.com
--- Password: Admin123!
---
--- Access the master dashboard at:
--- master-dashboard.html
--- ============================================
+    // Auto-refresh every 30 seconds
+    setInterval(loadMasterDashboard, 30000);
+  </script>
+</body>
+</html>
