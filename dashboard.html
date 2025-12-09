@@ -598,6 +598,14 @@
       }
     </script>
 
+    <!-- Technician Performance -->
+    <div style="margin-bottom: 2.5rem;">
+      <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--charcoal);">Technician Performance</h2>
+      <div class="stats-grid" id="techCards">
+        <div style="text-align: center; padding: 2rem; color: #999;">Loading technicians...</div>
+      </div>
+    </div>
+
     <!-- Orders -->
     <div class="orders-section">
       <div class="section-header" style="flex-wrap: wrap; gap: 1rem;">
@@ -788,7 +796,127 @@
       window.location.href = `/workorder.html?order=${orderNumber}&edit=true`;
     }
 
+    // Check if user is employee - redirect to tech dashboard
+    const userRole = sessionStorage.getItem('userRole');
+    if (userRole === 'employee') {
+      window.location.href = '/tech-dashboard.html';
+    }
+
     loadOrders();
+    loadTechCards();
+
+    // Load technician performance cards
+    async function loadTechCards() {
+      try {
+        const businessId = sessionStorage.getItem('businessId');
+        
+        // Get all technicians
+        const { data: techs, error: techError } = await supabase
+          .from('users')
+          .select('id, first_name, last_name')
+          .eq('account_id', businessId)
+          .eq('role', 'employee');
+
+        if (techError) throw techError;
+
+        // Get orders for each tech
+        const techCards = await Promise.all(techs.map(async (tech) => {
+          const { data: orders } = await supabase
+            .from('repair_orders')
+            .select('status, scheduled_date, labor_hours, total_amount')
+            .eq('assigned_to', tech.id);
+
+          const today = new Date().toISOString().split('T')[0];
+          const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+          const todayJobs = orders?.filter(o => o.scheduled_date === today).length || 0;
+          const inProgress = orders?.filter(o => o.status === 'in_progress').length || 0;
+          const weekHours = orders?.filter(o => o.scheduled_date >= weekAgo)
+            .reduce((sum, o) => sum + (parseFloat(o.labor_hours) || 0), 0) || 0;
+          const totalOrders = orders?.length || 0;
+
+          return {
+            id: tech.id,
+            name: `${tech.first_name} ${tech.last_name}`,
+            todayJobs,
+            inProgress,
+            weekHours,
+            totalOrders
+          };
+        }));
+
+        displayTechCards(techCards);
+      } catch (error) {
+        console.error('Error loading tech cards:', error);
+        document.getElementById('techCards').innerHTML = '<div style="text-align: center; padding: 2rem; color: #999;">Error loading technicians</div>';
+      }
+    }
+
+    // Display tech cards
+    function displayTechCards(techs) {
+      if (techs.length === 0) {
+        document.getElementById('techCards').innerHTML = '<div style="text-align: center; padding: 2rem; color: #999;">No technicians found</div>';
+        return;
+      }
+
+      const colors = [
+        'linear-gradient(135deg, #667eea, #764ba2)',
+        'linear-gradient(135deg, #f59e0b, #d97706)',
+        'linear-gradient(135deg, #10b981, #059669)',
+        'linear-gradient(135deg, #3b82f6, #2563eb)',
+        'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+        'linear-gradient(135deg, #ef4444, #dc2626)'
+      ];
+
+      const html = techs.map((tech, index) => {
+        const color = colors[index % colors.length];
+        const initials = tech.name.split(' ').map(n => n[0]).join('');
+
+        return `
+          <div class="stat-card" onclick="viewTechJobs('${tech.id}')" style="cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+              <div style="width: 48px; height: 48px; border-radius: 50%; background: ${color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.25rem;">
+                ${initials}
+              </div>
+              <div>
+                <div style="font-weight: 700; font-size: 1rem; color: var(--charcoal);">${tech.name}</div>
+                <div style="font-size: 0.75rem; color: #999;">Technician</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem;">
+              <div>
+                <div style="font-size: 0.75rem; color: #999;">Today</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.todayJobs}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: #999;">Active</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.inProgress}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: #999;">Week Hours</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.weekHours.toFixed(1)}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: #999;">Total Jobs</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--charcoal);">${tech.totalOrders}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('techCards').innerHTML = html;
+    }
+
+    // View tech's jobs (filter by technician)
+    function viewTechJobs(techId) {
+      // Filter orders table to show only this tech's jobs
+      const filteredOrders = allOrders.filter(o => o.techId === techId);
+      displayOrders(filteredOrders);
+      
+      // Scroll to orders table
+      document.querySelector('.orders-section').scrollIntoView({ behavior: 'smooth' });
+    }
   </script>
 </body>
 </html>
