@@ -159,13 +159,13 @@
       left: 0;
       right: 0;
       height: 70px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      background: var(--white);
+      border-bottom: 1px solid #e0e0e0;
       display: flex;
       align-items: center;
       padding: 0 2rem;
       z-index: 100;
-      box-shadow: 0 2px 8px var(--shadow);
+      box-shadow: 0 2px 10px var(--shadow);
     }
 
     .logo {
@@ -179,24 +179,39 @@
 
     .topbar-nav {
       display: flex;
-      gap: 0.5rem;
+      gap: 2rem;
       margin-left: 3rem;
     }
 
     .nav-item {
       font-size: 0.875rem;
       font-weight: 600;
-      color: var(--text-secondary);
+      color: var(--charcoal);
       text-decoration: none;
-      padding: 0.5rem 1rem;
+      padding: 0.5rem 0;
       transition: all 0.2s;
-      border-radius: 6px;
+      position: relative;
     }
 
-    .nav-item:hover,
+    .nav-item::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      transform: scaleX(0);
+      transition: transform 0.2s;
+    }
+
+    .nav-item:hover::after,
+    .nav-item.active::after {
+      transform: scaleX(1);
+    }
+
     .nav-item.active {
       color: var(--primary);
-      background: rgba(102, 126, 234, 0.08);
     }
 
     .topbar-right {
@@ -211,33 +226,32 @@
     }
 
     .user-name {
-      font-weight: 700;
+      font-weight: 600;
       font-size: 0.875rem;
-      color: var(--text);
+      color: var(--charcoal);
     }
 
     .user-email {
       font-size: 0.75rem;
-      color: var(--text-secondary);
+      color: #999;
     }
 
     .logout-btn {
+      font-family: 'Inter', sans-serif;
       font-size: 0.875rem;
       font-weight: 600;
-      padding: 0.5rem 1.25rem;
-      background: white;
-      border: 2px solid var(--primary);
-      border-radius: 8px;
-      color: var(--primary);
+      padding: 0.625rem 1.25rem;
+      background: var(--white);
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      color: var(--charcoal);
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .logout-btn:hover {
-      background: var(--primary);
-      color: white;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px var(--shadow);
+      border-color: var(--primary);
+      color: var(--primary);
     }
 
     /* Main Content */
@@ -828,7 +842,7 @@
       </a>
     </div>
 
-    <script>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
       // Hide settings for employee techs
       if (sessionStorage.getItem('userRole') === 'employee') {
         document.getElementById('settingsBtn').style.display = 'none';
@@ -913,23 +927,44 @@
     // Load orders from Supabase
     async function loadOrders() {
       console.log('=== Loading Orders ===');
-      console.log('ServiceLogicDB available?', typeof window.ServiceLogicDB !== 'undefined');
-      console.log('Session data:', {
-        businessId: sessionStorage.getItem('businessId'),
-        userId: sessionStorage.getItem('userId'),
-        userRole: sessionStorage.getItem('userRole')
-      });
-
+      const businessId = sessionStorage.getItem('businessId');
+      
       try {
-        allOrders = await window.ServiceLogicDB.fetchOrders();
-        console.log('Orders fetched:', allOrders?.length, 'orders');
-        console.log('First order:', allOrders?.[0]);
+        const { data, error } = await supabase
+          .from('repair_orders')
+          .select(`
+            *,
+            contact:contact_id (first_name, last_name, phone, email),
+            vehicle:vehicle_id (year, make, model),
+            assigned:assigned_to (first_name, last_name)
+          `)
+          .eq('account_id', businessId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Transform data
+        allOrders = data.map(order => ({
+          id: order.id,
+          order_number: order.order_number,
+          customer: `${order.contact?.first_name || ''} ${order.contact?.last_name || ''}`.trim() || 'Unknown',
+          phone: order.contact?.phone || '',
+          vehicle: order.vehicle ? `${order.vehicle.year} ${order.vehicle.make} ${order.vehicle.model}` : 'Unknown',
+          service: order.service_description || 'No description',
+          scheduled_date: order.scheduled_date,
+          status: order.status,
+          total_amount: parseFloat(order.total_amount) || 0,
+          techId: order.assigned_to,
+          techName: order.assigned ? `${order.assigned.first_name} ${order.assigned.last_name}` : 'Unassigned'
+        }));
+
+        console.log('Orders loaded:', allOrders.length);
         
         renderOrders(allOrders);
         updateStats(allOrders);
+        loadTechCards();
       } catch (error) {
         console.error('Error loading orders:', error);
-        alert('Error: ' + error.message);
         document.getElementById('ordersContainer').innerHTML = '<div style="text-align: center; padding: 3rem; color: #ef4444;">Error loading orders. Please refresh.</div>';
       }
     }
@@ -1267,15 +1302,4 @@
     // Scroll to top function
     function scrollToTop() {
       window.scrollTo({ 
-        top: 0, 
-        behavior: 'smooth' 
-      });
-      
-      // Hide back button after scrolling
-      setTimeout(() => {
-        document.getElementById('backToTopBtn').classList.remove('show');
-      }, 500);
-    }
-  </script>
-</body>
-</html>
+        top: 0,
