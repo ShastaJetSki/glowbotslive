@@ -87,53 +87,6 @@
       color: #36454f;
     }
     
-    .tech-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2rem;
-    }
-    
-    .tech-card {
-      background: white;
-      padding: 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-      cursor: pointer;
-      transition: transform 0.2s;
-    }
-    
-    .tech-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
-    }
-    
-    .tech-name {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 1rem;
-      color: #36454f;
-    }
-    
-    .tech-stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1rem;
-      text-align: center;
-    }
-    
-    .tech-stat-value {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #667eea;
-    }
-    
-    .tech-stat-label {
-      font-size: 0.75rem;
-      color: #999;
-      margin-top: 0.25rem;
-    }
-    
     .orders-table {
       background: white;
       border-radius: 12px;
@@ -183,48 +136,26 @@
   </div>
 
   <div class="container">
-    <!-- Revenue & Usage Stats -->
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Monthly Revenue</div>
-        <div class="stat-value" id="monthlyRevenue">$0</div>
-        <div class="stat-subtext">Current month</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Projected Revenue</div>
-        <div class="stat-value" id="projectedRevenue">$0</div>
-        <div class="stat-subtext">End of month</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">VAPI Minutes</div>
-        <div class="stat-value" id="vapiMinutes">0</div>
-        <div class="stat-subtext" id="vapiCost">$0 cost</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Active Jobs</div>
-        <div class="stat-value" id="activeJobs">0</div>
-        <div class="stat-subtext">In progress</div>
-      </div>
       <div class="stat-card">
         <div class="stat-label">Total Orders</div>
         <div class="stat-value" id="totalOrders">0</div>
-        <div class="stat-subtext">All time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value" id="inProgress">0</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Completed</div>
-        <div class="stat-value" id="completedOrders">0</div>
-        <div class="stat-subtext">This month</div>
+        <div class="stat-value" id="completed">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Revenue</div>
+        <div class="stat-value" id="totalRevenue">$0</div>
       </div>
     </div>
 
-    <!-- Technicians -->
-    <h2 class="section-title">Technicians</h2>
-    <div id="techGrid" class="tech-grid">
-      <div class="loading">Loading technicians...</div>
-    </div>
-
-    <!-- Work Orders -->
-    <h2 class="section-title">Recent Work Orders</h2>
+    <h2 class="section-title">Recent Repair Orders</h2>
     <div id="ordersContainer">
       <div class="loading">Loading orders...</div>
     </div>
@@ -237,12 +168,11 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2p5ZG16bWV2Y2ZreGl2cnhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNDYxNTksImV4cCI6MjA4MDcyMjE1OX0.Np7X3nwwCK1k5p2UPByO7SONeZ_k4Gt5gK96vcfJHl0';
     
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const VAPI_COST_PER_MINUTE = 0.15;
 
-    let businessId, allOrders = [];
+    let accountId, allOrders = [];
 
     window.addEventListener('DOMContentLoaded', async () => {
-      businessId = localStorage.getItem('businessId');
+      const businessId = localStorage.getItem('businessId');
       
       if (!businessId) {
         alert('No business assigned');
@@ -250,110 +180,57 @@
         return;
       }
 
+      // Get account_id from business_accounts
+      const { data: business } = await supabaseClient
+        .from('business_accounts')
+        .select('id, business_name')
+        .eq('id', businessId)
+        .single();
+      
+      if (business) {
+        accountId = business.id;
+        document.getElementById('businessName').textContent = business.business_name;
+      }
+
+      // Check if accounts table links to business_accounts
+      const { data: account } = await supabaseClient
+        .from('accounts')
+        .select('id')
+        .eq('id', businessId)
+        .single();
+      
+      if (account) {
+        accountId = account.id;
+      }
+
       await loadDashboard();
     });
 
     async function loadDashboard() {
       try {
-        // Load business info
-        const { data: business } = await supabaseClient
-          .from('business_accounts')
-          .select('business_name, monthly_fee')
-          .eq('id', businessId)
-          .single();
-        
-        if (business) {
-          document.getElementById('businessName').textContent = business.business_name;
-        }
-
-        // Load orders
         const { data: orders } = await supabaseClient
           .from('repair_orders')
           .select('*')
-          .eq('business_id', businessId)
+          .eq('account_id', accountId)
           .order('created_at', { ascending: false });
 
         allOrders = orders || [];
 
-        // Load VAPI usage
-        const { data: vapiLogs } = await supabaseClient
-          .from('vapi_usage_logs')
-          .select('minutes_used')
-          .eq('business_id', businessId);
+        const totalRevenue = allOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+        const inProgress = allOrders.filter(o => o.status === 'in_progress').length;
+        const completed = allOrders.filter(o => o.status === 'completed').length;
 
-        const totalMinutes = vapiLogs?.reduce((sum, log) => sum + (log.minutes_used || 0), 0) || 0;
-        const vapiCost = totalMinutes * VAPI_COST_PER_MINUTE;
-
-        // Calculate stats
-        const activeJobs = allOrders.filter(o => o.status === 'in_progress').length;
-        const completedThisMonth = allOrders.filter(o => {
-          const orderDate = new Date(o.created_at);
-          const now = new Date();
-          return o.status === 'completed' && 
-                 orderDate.getMonth() === now.getMonth() &&
-                 orderDate.getFullYear() === now.getFullYear();
-        }).length;
-
-        // Update UI
-        document.getElementById('monthlyRevenue').textContent = business?.monthly_fee ? `$${parseFloat(business.monthly_fee).toFixed(2)}` : '$0';
-        document.getElementById('projectedRevenue').textContent = business?.monthly_fee ? `$${(parseFloat(business.monthly_fee) * 1.2).toFixed(2)}` : '$0';
-        document.getElementById('vapiMinutes').textContent = totalMinutes;
-        document.getElementById('vapiCost').textContent = `$${vapiCost.toFixed(2)} cost`;
-        document.getElementById('activeJobs').textContent = activeJobs;
         document.getElementById('totalOrders').textContent = allOrders.length;
-        document.getElementById('completedOrders').textContent = completedThisMonth;
+        document.getElementById('inProgress').textContent = inProgress;
+        document.getElementById('completed').textContent = completed;
+        document.getElementById('totalRevenue').textContent = `$${totalRevenue.toFixed(2)}`;
 
-        loadTechnicians();
         displayOrders(allOrders);
 
       } catch (err) {
         console.error('Error:', err);
-      }
-    }
-
-    async function loadTechnicians() {
-      try {
-        const { data: techs } = await supabaseClient
-          .from('users')
-          .select('*')
-          .eq('business_id', businessId)
-          .eq('role', 'employee');
-
-        if (!techs || techs.length === 0) {
-          document.getElementById('techGrid').innerHTML = '<div class="loading">No technicians assigned</div>';
-          return;
-        }
-
-        const techCards = techs.map(tech => {
-          const techOrders = allOrders.filter(o => o.assigned_tech_id === tech.auth_user_id);
-          const activeJobs = techOrders.filter(o => o.status === 'in_progress').length;
-          const completedJobs = techOrders.filter(o => o.status === 'completed').length;
-
-          return `
-            <div class="tech-card">
-              <div class="tech-name">${tech.first_name || ''} ${tech.last_name || ''}</div>
-              <div class="tech-stats">
-                <div>
-                  <div class="tech-stat-value">${activeJobs}</div>
-                  <div class="tech-stat-label">Active</div>
-                </div>
-                <div>
-                  <div class="tech-stat-value">${completedJobs}</div>
-                  <div class="tech-stat-label">Completed</div>
-                </div>
-                <div>
-                  <div class="tech-stat-value">${techOrders.length}</div>
-                  <div class="tech-stat-label">Total</div>
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        document.getElementById('techGrid').innerHTML = techCards;
-
-      } catch (err) {
-        console.error('Error loading techs:', err);
+        document.getElementById('ordersContainer').innerHTML = 
+          `<div class="loading" style="color: #ef4444;">Error: ${err.message}</div>`;
       }
     }
 
@@ -371,21 +248,19 @@
             <thead>
               <tr>
                 <th>Order #</th>
-                <th>Customer</th>
-                <th>Vehicle</th>
+                <th>Service Description</th>
                 <th>Status</th>
-                <th>Tech</th>
+                <th>Total</th>
                 <th>Date</th>
               </tr>
             </thead>
             <tbody>
-              ${orders.slice(0, 20).map(order => `
+              ${orders.map(order => `
                 <tr>
                   <td>${order.order_number || 'N/A'}</td>
-                  <td>${order.customer_name || 'N/A'}</td>
-                  <td>${order.vehicle_year || ''} ${order.vehicle_make || ''} ${order.vehicle_model || ''}</td>
+                  <td>${order.service_description || 'N/A'}</td>
                   <td>${order.status || 'N/A'}</td>
-                  <td>${order.assigned_tech_id ? 'Assigned' : 'Unassigned'}</td>
+                  <td>$${parseFloat(order.total_amount || 0).toFixed(2)}</td>
                   <td>${new Date(order.created_at).toLocaleDateString()}</td>
                 </tr>
               `).join('')}
