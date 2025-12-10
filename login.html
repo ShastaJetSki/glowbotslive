@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - WorkLogicPro</title>
   
-  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -186,7 +184,7 @@
     }
 
     .powered-by-logo img {
-      height: 22px;
+      height: 28px;
       width: auto;
       vertical-align: middle;
     }
@@ -307,15 +305,12 @@
   </div>
 
   <script>
-    // Initialize Supabase
     const SUPABASE_URL = 'https://vvkjydmzmevcfkxivrxi.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2p5ZG16bWV2Y2ZreGl2cnhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNDYxNTksImV4cCI6MjA4MDcyMjE1OX0.Np7X3nwwCK1k5p2UPByO7SONeZ_k4Gt5gK96vcfJHl0';
     
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    console.log('Supabase initialized:', SUPABASE_URL);
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Handle form submission
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       
@@ -326,89 +321,54 @@
       const errorMsg = document.getElementById('errorMessage');
       const successMsg = document.getElementById('successMessage');
 
-      // Clear previous messages
       errorMsg.style.display = 'none';
       successMsg.style.display = 'none';
 
-      // Show loading state
       loginBtn.disabled = true;
       loginBtn.textContent = 'Logging in...';
       loadingMsg.style.display = 'block';
 
       try {
-        console.log('Attempting login for:', email);
-
-        // Authenticate with Supabase
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
           email: email,
           password: password
         });
 
-        if (authError) {
-          throw new Error(authError.message);
-        }
+        if (authError) throw new Error(authError.message);
 
-        console.log('Authentication successful:', authData);
-
-        // Get user profile to determine role
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile, error: profileError } = await supabaseClient
           .from('users')
           .select('role, business_id, auth_user_id')
           .eq('email', email)
           .single();
 
-        if (profileError) {
-          throw new Error('User profile not found');
-        }
+        if (profileError) throw new Error('User profile not found');
 
-        console.log('User profile:', profile);
-
-        // Store user info in localStorage
         localStorage.setItem('userEmail', email);
         localStorage.setItem('userRole', profile.role);
         localStorage.setItem('businessId', profile.business_id || '');
         localStorage.setItem('authUserId', profile.auth_user_id);
         localStorage.setItem('supabaseToken', authData.session.access_token);
 
-        // Show success message
-        successMsg.textContent = `Welcome back! Redirecting to ${profile.role === 'super_admin' ? 'master' : 'business'} dashboard...`;
+        successMsg.textContent = `Welcome back! Redirecting...`;
         successMsg.style.display = 'block';
 
-        // Redirect based on role
         setTimeout(() => {
           if (profile.role === 'super_admin') {
-            console.log('Redirecting to: dashboard-master.html');
             window.location.href = 'dashboard-master.html';
           } else {
-            console.log('Redirecting to: dashboard.html');
             window.location.href = 'dashboard.html';
           }
         }, 1000);
 
       } catch (error) {
         console.error('Login error:', error);
-        errorMsg.textContent = error.message || 'Login failed. Please check your credentials.';
+        errorMsg.textContent = error.message || 'Login failed';
         errorMsg.style.display = 'block';
         
-        // Reset button
         loginBtn.disabled = false;
         loginBtn.textContent = 'Login';
         loadingMsg.style.display = 'none';
-      }
-    });
-
-    // Check if already logged in
-    window.addEventListener('DOMContentLoaded', async () => {
-      const userRole = localStorage.getItem('userRole');
-      const authUserId = localStorage.getItem('authUserId');
-      
-      if (userRole && authUserId) {
-        console.log('User already logged in, redirecting...');
-        if (userRole === 'super_admin') {
-          window.location.href = 'dashboard-master.html';
-        } else {
-          window.location.href = 'dashboard.html';
-        }
       }
     });
   </script>
