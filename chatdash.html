@@ -33,7 +33,6 @@
   </table>
 
   <script type="module">
-    // Import your existing supabase client
     import { supabase } from './supabase-config.js';
 
     const tableBody = document.getElementById('workorders-body');
@@ -42,8 +41,31 @@
 
     async function fetchWorkOrders() {
       try {
-        const { data, error } = await supabase
-          .from('workorder')  // correct table name
+        // 1️⃣ Get current logged-in user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        if (!user) {
+          status.textContent = 'You must be logged in to view work orders.';
+          return;
+        }
+
+        // 2️⃣ Get user's customer_id
+        const { data: userData, error: userDataError } = await supabase
+          .from('users')
+          .select('id, email, customer_id')
+          .eq('id', user.id)
+          .single();
+        if (userDataError) throw userDataError;
+
+        const customerId = userData.customer_id;
+        if (!customerId) {
+          status.textContent = 'No customer account found for your user.';
+          return;
+        }
+
+        // 3️⃣ Fetch work orders for that customer
+        const { data: workorders, error: workError } = await supabase
+          .from('workorder')
           .select(`
             id,
             description,
@@ -52,16 +74,17 @@
             customer:customers(name),
             assigned_user:users(email)
           `)
+          .eq('customer_id', customerId)
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (workError) throw workError;
 
-        if (!data || data.length === 0) {
-          status.textContent = 'No work orders found.';
+        if (!workorders || workorders.length === 0) {
+          status.textContent = 'No work orders found for your account.';
           return;
         }
 
-        tableBody.innerHTML = data.map(wo => `
+        tableBody.innerHTML = workorders.map(wo => `
           <tr>
             <td>${wo.id}</td>
             <td>${wo.description}</td>
@@ -74,6 +97,7 @@
 
         status.style.display = 'none';
         table.style.display = 'table';
+
       } catch (err) {
         console.error(err);
         status.textContent = 'Error loading work orders.';
@@ -81,7 +105,6 @@
       }
     }
 
-    // Fetch on page load
     fetchWorkOrders();
   </script>
 </body>
