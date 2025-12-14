@@ -1,93 +1,54 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>WorkLogic Pro</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- MOVE THIS TO SERVER IN PROD -->
-  <meta name="supabase-anon-key" content="YOUR_PUBLIC_ANON_KEY" />
+  <!-- anon public key -->
+  <meta name="supabase-anon-key"
+    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
   <style>
     body {
       margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto;
+      font-family:system-ui;
       background:#0b0f14;
       color:#e8eef6;
+      padding:20px;
     }
-    header {
-      padding:14px;
-      border-bottom:1px solid #223044;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
+    .card {
+      max-width:600px;
+      margin:auto;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:16px;
+      padding:20px;
     }
     button {
-      padding:8px 12px;
+      padding:10px 14px;
       border-radius:10px;
-      background:#1a2535;
       border:1px solid #2a3b55;
+      background:#1a2535;
       color:#fff;
       cursor:pointer;
     }
-    main {
-      padding:14px;
-      display:grid;
-      gap:12px;
-    }
-    .card {
-      border:1px solid #223044;
-      border-radius:14px;
+    .tenant {
       padding:12px;
-      background:#0f1621;
-    }
-    .muted { color:#9fb0c3; font-size:12px }
-    .wo {
       border:1px solid #223044;
       border-radius:12px;
-      padding:10px;
-      display:grid;
-      gap:6px;
+      margin-top:10px;
+      cursor:pointer;
     }
-    .row { display:flex; gap:10px; flex-wrap:wrap }
-    .pill {
-      font-size:12px;
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid #2a3b55;
-    }
+    .muted { color:#9fb0c3; }
   </style>
 </head>
 
 <body>
 
-<header>
-  <div>
-    <strong>WorkLogic Pro</strong><br/>
-    <span class="muted">Dashboard</span>
-  </div>
-  <div>
-    <button id="refresh">Refresh</button>
-    <button id="logout">Logout</button>
-  </div>
-</header>
-
-<main>
-
-  <!-- OWNER KPIs -->
-  <div class="card">
-    <strong>Overview</strong>
-    <div class="row" id="kpis"></div>
-  </div>
-
-  <!-- WORK ORDERS -->
-  <div class="card">
-    <strong>Work Orders</strong>
-    <div class="muted" id="count"></div>
-    <div id="workOrders"></div>
-  </div>
-
-</main>
+<div id="app" class="card">
+  <div class="muted">Loading…</div>
+</div>
 
 <script>
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
@@ -95,105 +56,91 @@ const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const FUNCTIONS = `${API_BASE}/functions/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-const state = {
-  token: localStorage.getItem("sb_access_token"),
-  employees: [],
-  customers: [],
-  vehicles: [],
-  workOrders: []
-};
+const token = localStorage.getItem("sb_access_token");
+if (!token) {
+  window.location.href = "login.html";
+}
 
 async function api(path) {
   const res = await fetch(FUNCTIONS + path, {
     headers: {
-      Authorization: `Bearer ${state.token}`,
+      Authorization: `Bearer ${token}`,
       apikey: ANON_KEY
     }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw data;
+  return data;
 }
 
-function employeeName(id) {
-  const e = state.employees.find(x => x.id === id);
-  return e ? `${e.first_name} ${e.last_name}` : "Unassigned";
-}
+async function init() {
+  const root = document.getElementById("app");
 
-function vehicleLabel(id) {
-  const v = state.vehicles.find(x => x.id === id);
-  if (!v) return "Unknown vehicle";
-  return `${v.year} ${v.make} ${v.model}`;
-}
+  try {
+    // 🔑 this MUST exist in your backend
+    // returns { tenant } or { tenant: null }
+    const me = await api("/me");
 
-function customerNameFromVehicle(vehicleId) {
-  const v = state.vehicles.find(x => x.id === vehicleId);
-  const c = state.customers.find(x => x.id === v?.customer_id);
-  return c ? `${c.first_name} ${c.last_name}` : "Unknown customer";
-}
+    if (!me.tenant) {
+      showTenantPicker();
+      return;
+    }
 
-function money(n) {
-  return `$${Number(n||0).toFixed(2)}`;
-}
-
-async function loadAll() {
-  [
-    state.employees,
-    state.customers,
-    state.vehicles,
-    state.workOrders
-  ] = await Promise.all([
-    api("/employees").then(r => r.employees),
-    api("/customers").then(r => r.customers),
-    api("/vehicles").then(r => r.vehicles),
-    api("/work_orders").then(r => r.work_orders)
-  ]);
-
-  render();
-}
-
-function render() {
-  // KPIs
-  const total = state.workOrders.reduce((s,w)=>s+(w.grand_total||0),0);
-  document.getElementById("kpis").innerHTML = `
-    <span class="pill">Jobs: ${state.workOrders.length}</span>
-    <span class="pill">Revenue: ${money(total)}</span>
-  `;
-
-  // List
-  const list = document.getElementById("workOrders");
-  document.getElementById("count").textContent =
-    `${state.workOrders.length} work orders`;
-
-  list.innerHTML = "";
-  for (const wo of state.workOrders) {
-    const el = document.createElement("div");
-    el.className = "wo";
-    el.innerHTML = `
-      <strong>${customerNameFromVehicle(wo.vehicle_id)}</strong>
-      <span class="muted">${vehicleLabel(wo.vehicle_id)}</span>
-      <div class="row">
-        <span class="pill">${wo.status}</span>
-        <span class="pill">${employeeName(wo.assigned_employee_id)}</span>
-      </div>
-      <div class="muted">
-        Labor ${money(wo.labor_total)} · Parts ${money(wo.parts_total)}
-      </div>
+    // ✅ tenant exists → app loads
+    root.innerHTML = `
+      <h2>${me.tenant.name}</h2>
+      <div class="muted">Tenant loaded successfully</div>
+      <br/>
+      <button onclick="logout()">Logout</button>
     `;
-    list.appendChild(el);
+
+  } catch (e) {
+    root.innerHTML = `
+      <h3>Error</h3>
+      <pre>${JSON.stringify(e, null, 2)}</pre>
+    `;
   }
 }
 
-document.getElementById("refresh").onclick = loadAll;
-document.getElementById("logout").onclick = () => {
-  localStorage.removeItem("sb_access_token");
-  location.reload();
-};
+async function showTenantPicker() {
+  const root = document.getElementById("app");
 
-if (!state.token) {
-  alert("Login first (JWT missing)");
-} else {
-  loadAll();
+  // fallback if /me not implemented
+  const tenants = await api("/tenants");
+
+  root.innerHTML = `
+    <h2>Select a Business</h2>
+    <div class="muted">You are logged in but not assigned</div>
+    <div id="list"></div>
+    <br/>
+    <button onclick="logout()">Logout</button>
+  `;
+
+  const list = document.getElementById("list");
+
+  tenants.tenants.forEach(t => {
+    const el = document.createElement("div");
+    el.className = "tenant";
+    el.textContent = t.name;
+    el.onclick = () => assignTenant(t.tenant_id);
+    list.appendChild(el);
+  });
 }
+
+async function assignTenant(tenant_id) {
+  await api("/assign_tenant", {
+    method: "POST",
+    body: JSON.stringify({ tenant_id })
+  });
+  location.reload();
+}
+
+function logout() {
+  localStorage.removeItem("sb_access_token");
+  location.href = "login.html";
+}
+
+init();
 </script>
 
 </body>
