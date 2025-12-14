@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ChatDash – Work Orders</title>
+  <title>Work Orders</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Supabase anon public key -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
@@ -13,24 +12,17 @@
     body {
       margin: 0;
       padding: 24px;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto;
+      font-family: system-ui;
       background: #0b0f14;
       color: #e8eef6;
     }
-
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
-
-    h1 {
-      margin: 0;
-      font-size: 22px;
-    }
-
-    button {
+    button, select {
       padding: 8px 14px;
       border-radius: 10px;
       border: 1px solid #2a3b55;
@@ -38,14 +30,11 @@
       color: #fff;
       cursor: pointer;
     }
-
     .kpis {
       display: flex;
       gap: 12px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
+      margin-bottom: 16px;
     }
-
     .kpi {
       background: #0f1621;
       border: 1px solid #223044;
@@ -53,51 +42,31 @@
       padding: 12px 16px;
       min-width: 160px;
     }
-
     .kpi .label {
       font-size: 12px;
       color: #9fb0c3;
     }
-
     .kpi .value {
       font-size: 20px;
       font-weight: 600;
-      margin-top: 4px;
     }
-
+    .filters {
+      margin-bottom: 16px;
+    }
     .list {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-
     .card {
       background: #0f1621;
       border: 1px solid #223044;
       border-radius: 14px;
       padding: 14px;
     }
-
-    .card strong {
-      font-size: 16px;
-    }
-
     .muted {
       color: #9fb0c3;
       font-size: 13px;
-    }
-
-    .row {
-      margin-top: 6px;
-      font-size: 14px;
-    }
-
-    .error {
-      background: #2a1414;
-      border: 1px solid #553333;
-      color: #ffb3b3;
-      padding: 14px;
-      border-radius: 12px;
     }
   </style>
 </head>
@@ -109,115 +78,110 @@
   <button onclick="logout()">Logout</button>
 </header>
 
-<div id="kpis" class="kpis"></div>
+<div class="kpis" id="kpis"></div>
+
+<div class="filters">
+  <label class="muted">Filter by status:</label><br/>
+  <select id="statusFilter">
+    <option value="all">All</option>
+    <option value="scheduled">Scheduled</option>
+    <option value="in_progress">In Progress</option>
+    <option value="completed">Completed</option>
+  </select>
+</div>
+
 <div id="content">Loading…</div>
 
 <script>
-  // -------------------------
-  // CONFIG (UNCHANGED)
-  // -------------------------
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-  const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+  const FUNCTIONS = `${API_BASE}/functions/v1`;
 
-  const ANON_KEY = document
-    .querySelector('meta[name="supabase-anon-key"]')
-    .content;
+  const ANON_KEY =
+    document.querySelector('meta[name="supabase-anon-key"]').content;
 
   const token = localStorage.getItem("sb_access_token");
+  if (!token) location.href = "login.html";
 
-  if (!token) {
-    window.location.href = "login.html";
+  let ALL_ORDERS = [];
+
+  async function load() {
+    const res = await fetch(`${FUNCTIONS}/work_orders`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: ANON_KEY
+      }
+    });
+
+    const data = await res.json();
+    ALL_ORDERS = data.work_orders || [];
+    render();
   }
 
-  // -------------------------
-  // FETCH WORK ORDERS (UNCHANGED)
-  // -------------------------
-  async function loadWorkOrders() {
+  function render() {
+    const status = document.getElementById("statusFilter").value;
+    const orders = status === "all"
+      ? ALL_ORDERS
+      : ALL_ORDERS.filter(o => o.status === status);
+
+    // KPIs
+    const total = orders.reduce(
+      (s, w) => s + (w.grand_total || 0), 0
+    );
+
+    document.getElementById("kpis").innerHTML = `
+      <div class="kpi">
+        <div class="label">Work Orders</div>
+        <div class="value">${orders.length}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Total Revenue</div>
+        <div class="value">$${total}</div>
+      </div>
+    `;
+
+    const list = document.createElement("div");
+    list.className = "list";
+
+    orders.forEach(wo => {
+      const customer = wo.customers
+        ? `${wo.customers.first_name} ${wo.customers.last_name}`
+        : "No customer";
+
+      const vehicle = wo.vehicles
+        ? `${wo.vehicles.year} ${wo.vehicles.make} ${wo.vehicles.model}`
+        : "No vehicle";
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <strong>${wo.summary}</strong>
+        <div class="muted">${customer} · ${vehicle}</div>
+        <div class="muted">Status: ${wo.status}</div>
+        <div>
+          Labor: $${wo.labor_total} ·
+          Parts: $${wo.parts_total} ·
+          <strong>Total: $${wo.grand_total}</strong>
+        </div>
+      `;
+      list.appendChild(card);
+    });
+
     const content = document.getElementById("content");
-    const kpis = document.getElementById("kpis");
-
-    try {
-      const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: ANON_KEY
-        }
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw data;
-      }
-
-      const orders = data.work_orders || [];
-
-      // -------------------------
-      // KPIs
-      // -------------------------
-      const totalRevenue = orders.reduce(
-        (sum, w) => sum + (w.grand_total || 0),
-        0
-      );
-
-      kpis.innerHTML = `
-        <div class="kpi">
-          <div class="label">Work Orders</div>
-          <div class="value">${orders.length}</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Total Revenue</div>
-          <div class="value">$${totalRevenue}</div>
-        </div>
-      `;
-
-      // -------------------------
-      // LIST
-      // -------------------------
-      if (!orders.length) {
-        content.innerHTML = `<div class="muted">No work orders found.</div>`;
-        return;
-      }
-
-      const list = document.createElement("div");
-      list.className = "list";
-
-      orders.forEach(wo => {
-        const card = document.createElement("div");
-        card.className = "card";
-
-        card.innerHTML = `
-          <strong>${wo.summary || "Untitled"}</strong>
-          <div class="row muted">Status: ${wo.status}</div>
-          <div class="row">
-            Labor: $${wo.labor_total} ·
-            Parts: $${wo.parts_total} ·
-            <strong>Total: $${wo.grand_total}</strong>
-          </div>
-        `;
-
-        list.appendChild(card);
-      });
-
-      content.innerHTML = "";
-      content.appendChild(list);
-
-    } catch (err) {
-      content.innerHTML = `
-        <div class="error">
-          ${JSON.stringify(err)}
-        </div>
-      `;
-    }
+    content.innerHTML = "";
+    content.appendChild(list);
   }
+
+  document
+    .getElementById("statusFilter")
+    .addEventListener("change", render);
 
   function logout() {
     localStorage.removeItem("sb_access_token");
-    window.location.href = "login.html";
+    location.href = "login.html";
   }
 
-  loadWorkOrders();
+  load();
 </script>
 
 </body>
