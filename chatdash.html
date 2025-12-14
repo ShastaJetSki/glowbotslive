@@ -1,111 +1,653 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Work Orders Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-    h1 { color: #ff69b4; } /* pink header */
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #20b2aa; color: white; } /* teal header */
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    .loading { font-style: italic; color: gray; }
-    .error { color: red; }
-  </style>
-</head>
-<body>
-  <h1>Work Orders Dashboard</h1>
-  <div id="status" class="loading">Loading work orders...</div>
-  <table id="workorders-table" style="display:none;">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Description</th>
-        <th>Status</th>
-        <th>Created At</th>
-        <th>Customer</th>
-        <th>Assigned User</th>
-      </tr>
-    </thead>
-    <tbody id="workorders-body"></tbody>
-  </table>
+import { useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { motion } from "framer-motion";
 
-  <script type="module">
-    import { supabase } from './supabase-config.js';
+// ✅ Put these in env vars in a real app.
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 
-    const tableBody = document.getElementById('workorders-body');
-    const table = document.getElementById('workorders-table');
-    const status = document.getElementById('status');
+// ---------------------------
+// Auth helpers (test-grade)
+// ---------------------------
+function getToken() {
+  return typeof window === "undefined" ? null : localStorage.getItem("sb_access_token");
+}
+function setToken(t) {
+  localStorage.setItem("sb_access_token", t);
+}
+function clearToken() {
+  localStorage.removeItem("sb_access_token");
+}
 
-    async function fetchWorkOrders() {
-      try {
-        // 1️⃣ Get current logged-in user
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        if (!user) {
-          status.textContent = 'You must be logged in to view work orders.';
-          return;
-        }
+async function loginWithPassword({ email, password, anonKey }) {
+  const res = await fetch(`${API_BASE}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
 
-        // 2️⃣ Get user's customer_id
-        const { data: userData, error: userDataError } = await supabase
-          .from('users')
-          .select('id, email, customer_id')
-          .eq('id', user.id)
-          .single();
-        if (userDataError) throw userDataError;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error_description || data?.message || "Login failed");
+  if (!data?.access_token) throw new Error("No access_token returned");
+  return data.access_token;
+}
 
-        const customerId = userData.customer_id;
-        if (!customerId) {
-          status.textContent = 'No customer account found for your user.';
-          return;
-        }
+async function apiFetch(path, { token, anonKey, method = "GET", body } = {}) {
+  const res = await fetch(`${FUNCTIONS_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: anonKey,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || data?.message || `${method} ${path} failed`);
+  return data;
+}
 
-        // 3️⃣ Fetch work orders for that customer
-        const { data: workorders, error: workError } = await supabase
-          .from('workorder')
-          .select(`
-            id,
-            description,
-            status,
-            created_at,
-            customer:customers(name),
-            assigned_user:users(email)
-          `)
-          .eq('customer_id', customerId)
-          .order('created_at', { ascending: false });
+// ---------------------------
+// UI helpers
+// ---------------------------
+const KPI = ({ label, value, sub }) => (
+  <Card className="rounded-2xl shadow-sm">
+    <CardContent className="p-4">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-2xl font-bold leading-tight mt-1">{value}</p>
+      {sub ? <p className="text-xs text-muted-foreground mt-1">{sub}</p> : null}
+    </CardContent>
+  </Card>
+);
 
-        if (workError) throw workError;
+function money(n) {
+  const x = Number(n ?? 0);
+  return x.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
 
-        if (!workorders || workorders.length === 0) {
-          status.textContent = 'No work orders found for your account.';
-          return;
-        }
+function hoursFromLaborTotal(laborTotal, laborRate) {
+  const rate = Number(laborRate || 0);
+  if (!rate) return null;
+  return Number(laborTotal || 0) / rate;
+}
 
-        tableBody.innerHTML = workorders.map(wo => `
-          <tr>
-            <td>${wo.id}</td>
-            <td>${wo.description}</td>
-            <td>${wo.status}</td>
-            <td>${new Date(wo.created_at).toLocaleString()}</td>
-            <td>${wo.customer?.name || 'N/A'}</td>
-            <td>${wo.assigned_user?.email || 'N/A'}</td>
-          </tr>
-        `).join('');
+// ---------------------------
+// Main
+// ---------------------------
+export default function DashboardApp() {
+  const [anonKey, setAnonKey] = useState("");
 
-        status.style.display = 'none';
-        table.style.display = 'table';
+  // routing
+  const [route, setRoute] = useState("loading"); // loading | login | dashboard
 
-      } catch (err) {
-        console.error(err);
-        status.textContent = 'Error loading work orders.';
-        status.classList.add('error');
-      }
+  // login form
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // dashboard state
+  const [token, setTokenState] = useState(null);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loadingWOs, setLoadingWOs] = useState(false);
+  const [error, setError] = useState(null);
+
+  // split views
+  const [activeView, setActiveView] = useState("owner"); // owner | manager
+
+  // owner KPIs config
+  const [laborRate, setLaborRate] = useState(140); // placeholder: move to Settings table later
+
+  // tech filter + drawer
+  const [selectedTech, setSelectedTech] = useState(null);
+  const [techDrawerOpen, setTechDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const t = getToken();
+    if (t) {
+      setTokenState(t);
+      setRoute("dashboard");
+      return;
     }
+    setRoute("login");
+  }, []);
 
-    fetchWorkOrders();
-  </script>
-</body>
-</html>
+  async function refreshWorkOrders(nextToken = token) {
+    if (!nextToken || !anonKey) return;
+    setLoadingWOs(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`/work_orders`, { token: nextToken, anonKey });
+      setWorkOrders(data.work_orders ?? []);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setLoadingWOs(false);
+    }
+  }
+
+  useEffect(() => {
+    if (route === "dashboard") refreshWorkOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, token, anonKey]);
+
+  const visibleWorkOrders = useMemo(() => {
+    if (!selectedTech) return workOrders;
+    return workOrders.filter((w) => (w.assigned_to || w.assigned_employee_id) === selectedTech);
+  }, [workOrders, selectedTech]);
+
+  const techs = useMemo(() => {
+    const ids = new Set();
+    for (const w of workOrders) {
+      if (w.assigned_to) ids.add(w.assigned_to);
+      if (w.assigned_employee_id) ids.add(w.assigned_employee_id);
+    }
+    return Array.from(ids);
+  }, [workOrders]);
+
+  // Owner KPI calculations
+  const kpis = useMemo(() => {
+    // NOTE: Your schema has labor_total ($). There is no labor_hours column.
+    // We convert to hours using laborRate for “hours/value” KPI cards.
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const inRange = (d, start, end) => {
+      if (!d) return false;
+      const dt = new Date(d);
+      return dt >= start && dt <= end;
+    };
+
+    const scheduledToday = workOrders.filter(
+      (w) => w.status === "scheduled" && inRange(w.scheduled_start, startOfDay, endOfDay)
+    );
+
+    const scheduledFuture = workOrders.filter(
+      (w) => w.status === "scheduled" && w.scheduled_start && new Date(w.scheduled_start) > endOfDay
+    );
+
+    // Waiting buckets (status names may evolve; keep these conservative)
+    const waiting = workOrders.filter((w) =>
+      ["waiting_parts", "waiting_services", "waiting_service", "on_hold"].includes(w.status)
+    );
+
+    const laborToday$ = scheduledToday.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+    const laborFuture$ = scheduledFuture.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+    const laborWaiting$ = waiting.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+
+    const hrsToday = hoursFromLaborTotal(laborToday$, laborRate);
+    const hrsFuture = hoursFromLaborTotal(laborFuture$, laborRate);
+    const hrsWaiting = hoursFromLaborTotal(laborWaiting$, laborRate);
+
+    return {
+      scheduledTodayCount: scheduledToday.length,
+      scheduledTodayValue: laborToday$,
+      scheduledTodayHours: hrsToday,
+
+      scheduledFutureCount: scheduledFuture.length,
+      scheduledFutureValue: laborFuture$,
+      scheduledFutureHours: hrsFuture,
+
+      waitingCount: waiting.length,
+      waitingValue: laborWaiting$,
+      waitingHours: hrsWaiting,
+    };
+  }, [workOrders, laborRate]);
+
+  // Tech drawer stats
+  const techStats = useMemo(() => {
+    if (!selectedTech) return null;
+    const rows = workOrders.filter((w) => (w.assigned_to || w.assigned_employee_id) === selectedTech);
+    const byStatus = rows.reduce((acc, w) => {
+      acc[w.status] = (acc[w.status] || 0) + 1;
+      return acc;
+    }, {});
+    const labor$ = rows.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+    const parts$ = rows.reduce((s, w) => s + Number(w.parts_total || 0), 0);
+    const grand$ = rows.reduce((s, w) => s + Number(w.grand_total || 0), 0);
+    return {
+      count: rows.length,
+      byStatus,
+      labor$,
+      parts$,
+      grand$,
+      estHours: hoursFromLaborTotal(labor$, laborRate),
+    };
+  }, [selectedTech, workOrders, laborRate]);
+
+  async function handleLogin() {
+    setError(null);
+    try {
+      if (!anonKey) throw new Error("Anon key is required");
+      const t = await loginWithPassword({ email, password, anonKey });
+      setToken(t);
+      setTokenState(t);
+      setRoute("dashboard");
+      await refreshWorkOrders(t);
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  }
+
+  function handleLogout() {
+    clearToken();
+    setTokenState(null);
+    setRoute("login");
+  }
+
+  // Manager actions
+  async function updateWorkOrder(work_order_id, patch) {
+    setError(null);
+    try {
+      await apiFetch(`/work_orders/${work_order_id}`, {
+        token,
+        anonKey,
+        method: "PATCH",
+        body: patch,
+      });
+      await refreshWorkOrders(token);
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  }
+
+  if (route === "loading") {
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+  }
+
+  // ---------------------------
+  // LOGIN
+  // ---------------------------
+  if (route === "login") {
+    return (
+      <div className="min-h-[100dvh] p-4 grid place-items-center bg-background">
+        <div className="w-full max-w-md grid gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">WorkLogic Pro</h1>
+            <p className="text-sm text-muted-foreground">Sign in to view work orders and performance.</p>
+          </div>
+
+          <Card className="rounded-2xl shadow-sm">
+            <CardContent className="p-4 grid gap-3">
+              <div className="grid gap-1">
+                <Label>Anon public key</Label>
+                <Input value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="paste anon key" />
+              </div>
+              <div className="grid gap-1">
+                <Label>Email</Label>
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@shop.com" />
+              </div>
+              <div className="grid gap-1">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </div>
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              <Button className="rounded-2xl" onClick={handleLogin}>
+                Sign in
+              </Button>
+            </CardContent>
+          </Card>
+
+          <p className="text-xs text-muted-foreground">
+            Note: This is a test dashboard. In production, store anon key in env vars and never ask for it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------
+  // DASHBOARD
+  // ---------------------------
+  return (
+    <div className="min-h-[100dvh] p-4 pb-24 bg-background">
+      <div className="max-w-5xl mx-auto grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold">Dashboard</h1>
+            <p className="text-xs text-muted-foreground">Mobile-first • Dealership clean</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" className="rounded-2xl" onClick={() => refreshWorkOrders()}>
+              Refresh
+            </Button>
+            <Button variant="outline" className="rounded-2xl" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
+        </div>
+
+        {error ? (
+          <Card className="rounded-2xl border-red-200">
+            <CardContent className="p-4 text-sm text-red-700">{error}</CardContent>
+          </Card>
+        ) : null}
+
+        <Tabs value={activeView} onValueChange={setActiveView}>
+          <TabsList className="w-full rounded-2xl grid grid-cols-2">
+            <TabsTrigger value="owner">Owner</TabsTrigger>
+            <TabsTrigger value="manager">Manager</TabsTrigger>
+          </TabsList>
+
+          {/* OWNER VIEW */}
+          <TabsContent value="owner" className="mt-4 grid gap-4">
+            <Card className="rounded-2xl shadow-sm">
+              <CardContent className="p-4 grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">Labor rate (settings)</p>
+                    <p className="text-xs text-muted-foreground">Used to estimate labor hours from labor_total.</p>
+                  </div>
+                  <div className="w-28">
+                    <Input
+                      type="number"
+                      value={laborRate}
+                      onChange={(e) => setLaborRate(Number(e.target.value || 0))}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              <KPI
+                label="Scheduled labor today"
+                value={
+                  kpis.scheduledTodayHours != null
+                    ? `${kpis.scheduledTodayHours.toFixed(1)} hrs`
+                    : `${kpis.scheduledTodayCount} jobs`
+                }
+                sub={`${money(kpis.scheduledTodayValue)} value`}
+              />
+              <KPI
+                label="Scheduled labor future"
+                value={
+                  kpis.scheduledFutureHours != null
+                    ? `${kpis.scheduledFutureHours.toFixed(1)} hrs`
+                    : `${kpis.scheduledFutureCount} jobs`
+                }
+                sub={`${money(kpis.scheduledFutureValue)} value`}
+              />
+              <KPI
+                label="Waiting (parts/services)"
+                value={
+                  kpis.waitingHours != null ? `${kpis.waitingHours.toFixed(1)} hrs` : `${kpis.waitingCount} jobs`
+                }
+                sub={`${money(kpis.waitingValue)} value`}
+              />
+            </div>
+
+            <Card className="rounded-2xl shadow-sm">
+              <CardContent className="p-4 grid gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold">Tech quick reference</p>
+                  <p className="text-xs text-muted-foreground">Tap a tech card to filter jobs</p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <Button
+                    variant={!selectedTech ? "default" : "outline"}
+                    className="rounded-2xl justify-start"
+                    onClick={() => setSelectedTech(null)}
+                  >
+                    All techs
+                  </Button>
+                  {techs.map((t) => (
+                    <Button
+                      key={t}
+                      variant={selectedTech === t ? "default" : "outline"}
+                      className="rounded-2xl justify-start"
+                      onClick={() => {
+                        setSelectedTech(t);
+                        setTechDrawerOpen(true);
+                      }}
+                    >
+                      Tech {String(t).slice(0, 6)}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* MANAGER VIEW */}
+          <TabsContent value="manager" className="mt-4 grid gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KPI label="Work orders" value={workOrders.length} />
+              <KPI label="Scheduled" value={workOrders.filter((w) => w.status === "scheduled").length} />
+              <KPI label="In progress" value={workOrders.filter((w) => w.status === "in_progress").length} />
+              <KPI label="Completed" value={workOrders.filter((w) => w.status === "completed").length} />
+            </div>
+
+            <Card className="rounded-2xl shadow-sm">
+              <CardContent className="p-4 grid gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold">Filter by tech</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-2xl"
+                    onClick={() => setSelectedTech(null)}
+                  >
+                    Clear
+                  </Button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {techs.map((t) => (
+                    <Button
+                      key={t}
+                      variant={selectedTech === t ? "default" : "outline"}
+                      className="rounded-2xl"
+                      onClick={() => {
+                        setSelectedTech(t);
+                        setTechDrawerOpen(true);
+                      }}
+                    >
+                      Tech {String(t).slice(0, 6)}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Work Orders List */}
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold">Work orders</p>
+            <p className="text-xs text-muted-foreground">
+              {loadingWOs ? "Loading…" : `${visibleWorkOrders.length} shown`}
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            {visibleWorkOrders.map((wo) => (
+              <motion.div
+                key={wo.work_order_id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <Card className="rounded-2xl shadow-sm">
+                  <CardContent className="p-4 grid gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold leading-tight">{wo.summary}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {wo.status} • Priority: {wo.priority || "—"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="font-semibold">{money(wo.grand_total)}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      <div>Labor: {money(wo.labor_total)}</div>
+                      <div>Parts: {money(wo.parts_total)}</div>
+                    </div>
+
+                    {/* Manager actions */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select
+                        value={wo.status || ""}
+                        onValueChange={(v) => updateWorkOrder(wo.work_order_id, { status: v })}
+                      >
+                        <SelectTrigger className="rounded-2xl">
+                          <SelectValue placeholder="Change status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">open</SelectItem>
+                          <SelectItem value="scheduled">scheduled</SelectItem>
+                          <SelectItem value="in_progress">in_progress</SelectItem>
+                          <SelectItem value="waiting_parts">waiting_parts</SelectItem>
+                          <SelectItem value="waiting_services">waiting_services</SelectItem>
+                          <SelectItem value="completed">completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={wo.assigned_to || wo.assigned_employee_id || ""}
+                        onValueChange={(v) => updateWorkOrder(wo.work_order_id, { assigned_employee_id: v })}
+                      >
+                        <SelectTrigger className="rounded-2xl">
+                          <SelectValue placeholder="Assign tech" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {techs.length ? (
+                            techs.map((t) => (
+                              <SelectItem key={t} value={t}>
+                                Tech {String(t).slice(0, 6)}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="">No techs yet</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() => {
+                          const tech = wo.assigned_to || wo.assigned_employee_id;
+                          if (!tech) return;
+                          setSelectedTech(tech);
+                          setTechDrawerOpen(true);
+                        }}
+                        disabled={!(wo.assigned_to || wo.assigned_employee_id)}
+                      >
+                        Tech details
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tech performance drawer */}
+        <Sheet open={techDrawerOpen} onOpenChange={setTechDrawerOpen}>
+          <SheetContent side="bottom" className="rounded-t-2xl">
+            <SheetHeader>
+              <SheetTitle>Tech performance</SheetTitle>
+            </SheetHeader>
+
+            {!selectedTech ? (
+              <div className="p-4 text-sm text-muted-foreground">Select a tech to view stats.</div>
+            ) : (
+              <div className="p-4 grid gap-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">Tech {String(selectedTech).slice(0, 8)}</p>
+                    <p className="text-xs text-muted-foreground">Tap a status below to filter jobs.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="rounded-2xl"
+                    onClick={() => setSelectedTech(null)}
+                  >
+                    Clear tech
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <KPI label="Jobs" value={techStats?.count ?? 0} />
+                  <KPI
+                    label="Est. labor hours"
+                    value={techStats?.estHours != null ? `${techStats.estHours.toFixed(1)} hrs` : "—"}
+                    sub={laborRate ? `Rate: ${money(laborRate)}/hr` : "Set rate above"}
+                  />
+                  <KPI label="Labor $" value={money(techStats?.labor$ ?? 0)} />
+                  <KPI label="Gross $" value={money(techStats?.grand$ ?? 0)} />
+                </div>
+
+                <Card className="rounded-2xl shadow-sm">
+                  <CardContent className="p-4">
+                    <p className="font-semibold">By status</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {techStats && Object.keys(techStats.byStatus).length ? (
+                        Object.entries(techStats.byStatus).map(([st, c]) => (
+                          <Button
+                            key={st}
+                            variant="outline"
+                            className="rounded-2xl"
+                            onClick={() => {
+                              // filter list to this tech already; just scroll user to list
+                              // (simple UX for now)
+                              const el = document.getElementById("wo-list");
+                              el?.scrollIntoView({ behavior: "smooth" });
+                            }}
+                          >
+                            {st}: {c}
+                          </Button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No status data.</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* sticky footer (mobile) */}
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background/90 backdrop-blur">
+        <div className="max-w-5xl mx-auto p-3 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">{selectedTech ? `Filtered to tech ${String(selectedTech).slice(0, 6)}` : "All techs"}</p>
+          <Button
+            className="rounded-2xl"
+            onClick={() => {
+              if (selectedTech) setTechDrawerOpen(true);
+            }}
+            disabled={!selectedTech}
+          >
+            Tech drawer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
