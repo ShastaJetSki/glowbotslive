@@ -50,6 +50,9 @@
       font-size: 20px;
       font-weight: 600;
     }
+    .filters {
+      margin-bottom: 16px;
+    }
     .list {
       display: flex;
       flex-direction: column;
@@ -63,12 +66,15 @@
     }
     .muted {
       color: #9fb0c3;
-      font-size: 12px;
+      font-size: 13px;
     }
-    .id {
-      font-size: 11px;
-      color: #7c8ca3;
-      margin-top: 4px;
+    .empty {
+      padding: 40px;
+      text-align: center;
+      color: #9fb0c3;
+      border: 1px dashed #223044;
+      border-radius: 14px;
+      background: #0f1621;
     }
   </style>
 </head>
@@ -81,6 +87,17 @@
 </header>
 
 <div class="kpis" id="kpis"></div>
+
+<div class="filters">
+  <label class="muted">Filter by status:</label><br/>
+  <select id="statusFilter">
+    <option value="all">All</option>
+    <option value="scheduled">Scheduled</option>
+    <option value="in_progress">In Progress</option>
+    <option value="completed">Completed</option>
+  </select>
+</div>
+
 <div id="content">Loading…</div>
 
 <script>
@@ -94,6 +111,8 @@
   const token = localStorage.getItem("sb_access_token");
   if (!token) location.href = "login.html";
 
+  let ALL_ORDERS = [];
+
   async function load() {
     const res = await fetch(`${FUNCTIONS}/work_orders`, {
       headers: {
@@ -103,7 +122,16 @@
     });
 
     const data = await res.json();
-    const orders = data.work_orders || [];
+    ALL_ORDERS = data.work_orders || [];
+    render();
+  }
+
+  function render() {
+    const status = document.getElementById("statusFilter").value;
+
+    const orders = status === "all"
+      ? ALL_ORDERS
+      : ALL_ORDERS.filter(o => o.status === status);
 
     // KPIs
     const total = orders.reduce(
@@ -121,15 +149,24 @@
       </div>
     `;
 
+    const content = document.getElementById("content");
+    content.innerHTML = "";
+
+    if (!orders.length) {
+      content.innerHTML = `
+        <div class="empty">
+          No work orders with status <strong>${status}</strong>.
+        </div>
+      `;
+      return;
+    }
+
     const list = document.createElement("div");
     list.className = "list";
 
     orders.forEach(wo => {
       const card = document.createElement("div");
       card.className = "card";
-
-      const created = new Date(wo.created_at).toLocaleString();
-
       card.innerHTML = `
         <strong>${wo.summary}</strong>
         <div class="muted">Status: ${wo.status}</div>
@@ -138,19 +175,16 @@
           Parts: $${wo.parts_total} ·
           <strong>Total: $${wo.grand_total}</strong>
         </div>
-        <div class="id">
-          ID: ${wo.work_order_id}<br/>
-          Created: ${created}
-        </div>
       `;
-
       list.appendChild(card);
     });
 
-    const content = document.getElementById("content");
-    content.innerHTML = "";
     content.appendChild(list);
   }
+
+  document
+    .getElementById("statusFilter")
+    .addEventListener("change", render);
 
   function logout() {
     localStorage.removeItem("sb_access_token");
