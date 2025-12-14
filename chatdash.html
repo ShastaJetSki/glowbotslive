@@ -1,653 +1,823 @@
-import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { motion } from "framer-motion";
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WorkLogic Pro — Test Dashboard</title>
+    <style>
+      :root{
+        --bg:#0b0f14;
+        --panel:#0f1621;
+        --panel2:#111b29;
+        --text:#e8eef6;
+        --muted:#9fb0c3;
+        --border:#223044;
+        --accent:#66b2ff;
+        --danger:#ff6b6b;
+        --ok:#7CFFB2;
+        --shadow: 0 10px 30px rgba(0,0,0,.35);
+        --radius: 18px;
+      }
+      *{ box-sizing:border-box; }
+      body{
+        margin:0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: radial-gradient(1200px 600px at 30% 0%, rgba(102,178,255,.15), transparent 60%),
+                    radial-gradient(900px 500px at 90% 20%, rgba(124,255,178,.10), transparent 55%),
+                    var(--bg);
+        color:var(--text);
+      }
+      a{ color: var(--accent); }
+      .container{
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 16px;
+        padding-bottom: 92px;
+      }
+      .topbar{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        position: sticky;
+        top:0;
+        z-index:10;
+        padding: 10px 0 12px 0;
+        backdrop-filter: blur(10px);
+        background: linear-gradient(to bottom, rgba(11,15,20,.78), rgba(11,15,20,.25));
+      }
+      .brand{
+        display:flex;
+        flex-direction:column;
+        gap:2px;
+      }
+      .brand h1{ font-size:18px; margin:0; letter-spacing:.2px; }
+      .brand p{ margin:0; font-size:12px; color:var(--muted); }
+      .actions{ display:flex; gap:10px; align-items:center; }
+      button{
+        appearance:none;
+        border:1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+        color:var(--text);
+        padding: 10px 12px;
+        border-radius: 14px;
+        cursor:pointer;
+        box-shadow: none;
+      }
+      button:hover{ border-color: rgba(102,178,255,.45); }
+      button.primary{
+        border-color: rgba(102,178,255,.55);
+        background: linear-gradient(180deg, rgba(102,178,255,.22), rgba(102,178,255,.10));
+      }
+      button.danger{
+        border-color: rgba(255,107,107,.55);
+        background: linear-gradient(180deg, rgba(255,107,107,.20), rgba(255,107,107,.08));
+      }
+      button:disabled{ opacity:.5; cursor:not-allowed; }
+      .card{
+        border:1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .card .content{ padding: 14px; }
+      .grid{
+        display:grid;
+        gap:12px;
+      }
+      .grid.kpi{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      @media (min-width: 760px){
+        .grid.kpi{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
+      .kpi{
+        border:1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+        border-radius: 18px;
+        padding: 12px;
+      }
+      .kpi .label{ font-size:12px; color: var(--muted); }
+      .kpi .value{ font-size:22px; margin-top:6px; }
+      .kpi .sub{ margin-top:6px; font-size:12px; color: var(--muted); }
+      .row{ display:flex; gap:12px; flex-wrap:wrap; }
+      .field{ display:flex; flex-direction:column; gap:6px; width:100%; }
+      label{ font-size:12px; color: var(--muted); }
+      input, select{
+        width:100%;
+        padding: 11px 12px;
+        border-radius: 14px;
+        border:1px solid var(--border);
+        background: rgba(17,27,41,.65);
+        color:var(--text);
+        outline:none;
+      }
+      input:focus, select:focus{ border-color: rgba(102,178,255,.55); }
+      .tabs{
+        display:flex;
+        gap:8px;
+        padding: 6px;
+        border-radius: 16px;
+        border:1px solid var(--border);
+        background: rgba(17,27,41,.5);
+        width: fit-content;
+      }
+      .tab{
+        padding: 10px 12px;
+        border-radius: 14px;
+        border:1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+      }
+      .tab.active{
+        color: var(--text);
+        border-color: rgba(102,178,255,.35);
+        background: rgba(102,178,255,.12);
+      }
+      .muted{ color: var(--muted); }
+      .error{
+        border:1px solid rgba(255,107,107,.5);
+        background: rgba(255,107,107,.12);
+        color: #ffd2d2;
+        padding: 10px 12px;
+        border-radius: 14px;
+        margin: 12px 0;
+      }
+      .chips{ display:flex; flex-wrap:wrap; gap:8px; }
+      .chip{
+        padding: 9px 10px;
+        border-radius: 999px;
+        border:1px solid var(--border);
+        background: rgba(17,27,41,.5);
+        cursor:pointer;
+        color: var(--text);
+        font-size: 13px;
+      }
+      .chip.active{
+        border-color: rgba(102,178,255,.55);
+        background: rgba(102,178,255,.14);
+      }
+      .listHeader{
+        display:flex;
+        align-items:flex-end;
+        justify-content:space-between;
+        gap:10px;
+      }
+      .wo{
+        border:1px solid var(--border);
+        border-radius: 18px;
+        background: rgba(17,27,41,.45);
+        padding: 12px;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+      }
+      .wo .title{ font-weight:600; }
+      .wo .meta{ font-size:12px; color: var(--muted); display:flex; gap:10px; flex-wrap:wrap; }
+      .wo .money{ font-size:18px; }
+      .wo .line{ font-size:12px; color: var(--muted); display:flex; gap:12px; flex-wrap:wrap; }
+      .wo .woActions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+      .pill{
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        font-size:12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border:1px solid var(--border);
+        background: rgba(255,255,255,.04);
+        color: var(--text);
+      }
+      .divider{ height:1px; background: rgba(34,48,68,.9); margin: 10px 0; border-radius: 999px; }
 
-// ✅ Put these in env vars in a real app.
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+      /* Drawer */
+      .drawerOverlay{
+        position:fixed;
+        inset:0;
+        background: rgba(0,0,0,.55);
+        display:none;
+        z-index:50;
+      }
+      .drawerOverlay.open{ display:block; }
+      .drawer{
+        position:fixed;
+        left:0; right:0; bottom:0;
+        background: linear-gradient(180deg, rgba(15,22,33,.98), rgba(15,22,33,.92));
+        border-top:1px solid var(--border);
+        border-radius: 20px 20px 0 0;
+        box-shadow: var(--shadow);
+        transform: translateY(110%);
+        transition: transform .18s ease-out;
+        z-index:60;
+        max-height: 82vh;
+        overflow:auto;
+      }
+      .drawer.open{ transform: translateY(0); }
+      .drawerHeader{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding: 12px 14px;
+        border-bottom:1px solid rgba(34,48,68,.6);
+      }
+      .drawerHeader h3{ margin:0; font-size: 15px; }
+      .drawerBody{ padding: 14px; }
+      .statusButtons{ display:flex; flex-wrap:wrap; gap:8px; }
+      .footerSticky{
+        position:fixed;
+        left:0; right:0; bottom:0;
+        background: linear-gradient(180deg, rgba(11,15,20,.15), rgba(11,15,20,.85));
+        border-top:1px solid rgba(34,48,68,.7);
+        padding: 10px 14px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        z-index:40;
+        backdrop-filter: blur(10px);
+      }
+      .footerSticky .hint{ font-size:12px; color: var(--muted); }
+    </style>
+  </head>
 
-// ---------------------------
-// Auth helpers (test-grade)
-// ---------------------------
-function getToken() {
-  return typeof window === "undefined" ? null : localStorage.getItem("sb_access_token");
-}
-function setToken(t) {
-  localStorage.setItem("sb_access_token", t);
-}
-function clearToken() {
-  localStorage.removeItem("sb_access_token");
-}
-
-async function loginWithPassword({ email, password, anonKey }) {
-  const res = await fetch(`${API_BASE}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: {
-      apikey: anonKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error_description || data?.message || "Login failed");
-  if (!data?.access_token) throw new Error("No access_token returned");
-  return data.access_token;
-}
-
-async function apiFetch(path, { token, anonKey, method = "GET", body } = {}) {
-  const res = await fetch(`${FUNCTIONS_BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: anonKey,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || data?.message || `${method} ${path} failed`);
-  return data;
-}
-
-// ---------------------------
-// UI helpers
-// ---------------------------
-const KPI = ({ label, value, sub }) => (
-  <Card className="rounded-2xl shadow-sm">
-    <CardContent className="p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="text-2xl font-bold leading-tight mt-1">{value}</p>
-      {sub ? <p className="text-xs text-muted-foreground mt-1">{sub}</p> : null}
-    </CardContent>
-  </Card>
-);
-
-function money(n) {
-  const x = Number(n ?? 0);
-  return x.toLocaleString(undefined, { style: "currency", currency: "USD" });
-}
-
-function hoursFromLaborTotal(laborTotal, laborRate) {
-  const rate = Number(laborRate || 0);
-  if (!rate) return null;
-  return Number(laborTotal || 0) / rate;
-}
-
-// ---------------------------
-// Main
-// ---------------------------
-export default function DashboardApp() {
-  const [anonKey, setAnonKey] = useState("");
-
-  // routing
-  const [route, setRoute] = useState("loading"); // loading | login | dashboard
-
-  // login form
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // dashboard state
-  const [token, setTokenState] = useState(null);
-  const [workOrders, setWorkOrders] = useState([]);
-  const [loadingWOs, setLoadingWOs] = useState(false);
-  const [error, setError] = useState(null);
-
-  // split views
-  const [activeView, setActiveView] = useState("owner"); // owner | manager
-
-  // owner KPIs config
-  const [laborRate, setLaborRate] = useState(140); // placeholder: move to Settings table later
-
-  // tech filter + drawer
-  const [selectedTech, setSelectedTech] = useState(null);
-  const [techDrawerOpen, setTechDrawerOpen] = useState(false);
-
-  useEffect(() => {
-    const t = getToken();
-    if (t) {
-      setTokenState(t);
-      setRoute("dashboard");
-      return;
-    }
-    setRoute("login");
-  }, []);
-
-  async function refreshWorkOrders(nextToken = token) {
-    if (!nextToken || !anonKey) return;
-    setLoadingWOs(true);
-    setError(null);
-    try {
-      const data = await apiFetch(`/work_orders`, { token: nextToken, anonKey });
-      setWorkOrders(data.work_orders ?? []);
-    } catch (e) {
-      setError(e?.message || String(e));
-    } finally {
-      setLoadingWOs(false);
-    }
-  }
-
-  useEffect(() => {
-    if (route === "dashboard") refreshWorkOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, token, anonKey]);
-
-  const visibleWorkOrders = useMemo(() => {
-    if (!selectedTech) return workOrders;
-    return workOrders.filter((w) => (w.assigned_to || w.assigned_employee_id) === selectedTech);
-  }, [workOrders, selectedTech]);
-
-  const techs = useMemo(() => {
-    const ids = new Set();
-    for (const w of workOrders) {
-      if (w.assigned_to) ids.add(w.assigned_to);
-      if (w.assigned_employee_id) ids.add(w.assigned_employee_id);
-    }
-    return Array.from(ids);
-  }, [workOrders]);
-
-  // Owner KPI calculations
-  const kpis = useMemo(() => {
-    // NOTE: Your schema has labor_total ($). There is no labor_hours column.
-    // We convert to hours using laborRate for “hours/value” KPI cards.
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const inRange = (d, start, end) => {
-      if (!d) return false;
-      const dt = new Date(d);
-      return dt >= start && dt <= end;
-    };
-
-    const scheduledToday = workOrders.filter(
-      (w) => w.status === "scheduled" && inRange(w.scheduled_start, startOfDay, endOfDay)
-    );
-
-    const scheduledFuture = workOrders.filter(
-      (w) => w.status === "scheduled" && w.scheduled_start && new Date(w.scheduled_start) > endOfDay
-    );
-
-    // Waiting buckets (status names may evolve; keep these conservative)
-    const waiting = workOrders.filter((w) =>
-      ["waiting_parts", "waiting_services", "waiting_service", "on_hold"].includes(w.status)
-    );
-
-    const laborToday$ = scheduledToday.reduce((s, w) => s + Number(w.labor_total || 0), 0);
-    const laborFuture$ = scheduledFuture.reduce((s, w) => s + Number(w.labor_total || 0), 0);
-    const laborWaiting$ = waiting.reduce((s, w) => s + Number(w.labor_total || 0), 0);
-
-    const hrsToday = hoursFromLaborTotal(laborToday$, laborRate);
-    const hrsFuture = hoursFromLaborTotal(laborFuture$, laborRate);
-    const hrsWaiting = hoursFromLaborTotal(laborWaiting$, laborRate);
-
-    return {
-      scheduledTodayCount: scheduledToday.length,
-      scheduledTodayValue: laborToday$,
-      scheduledTodayHours: hrsToday,
-
-      scheduledFutureCount: scheduledFuture.length,
-      scheduledFutureValue: laborFuture$,
-      scheduledFutureHours: hrsFuture,
-
-      waitingCount: waiting.length,
-      waitingValue: laborWaiting$,
-      waitingHours: hrsWaiting,
-    };
-  }, [workOrders, laborRate]);
-
-  // Tech drawer stats
-  const techStats = useMemo(() => {
-    if (!selectedTech) return null;
-    const rows = workOrders.filter((w) => (w.assigned_to || w.assigned_employee_id) === selectedTech);
-    const byStatus = rows.reduce((acc, w) => {
-      acc[w.status] = (acc[w.status] || 0) + 1;
-      return acc;
-    }, {});
-    const labor$ = rows.reduce((s, w) => s + Number(w.labor_total || 0), 0);
-    const parts$ = rows.reduce((s, w) => s + Number(w.parts_total || 0), 0);
-    const grand$ = rows.reduce((s, w) => s + Number(w.grand_total || 0), 0);
-    return {
-      count: rows.length,
-      byStatus,
-      labor$,
-      parts$,
-      grand$,
-      estHours: hoursFromLaborTotal(labor$, laborRate),
-    };
-  }, [selectedTech, workOrders, laborRate]);
-
-  async function handleLogin() {
-    setError(null);
-    try {
-      if (!anonKey) throw new Error("Anon key is required");
-      const t = await loginWithPassword({ email, password, anonKey });
-      setToken(t);
-      setTokenState(t);
-      setRoute("dashboard");
-      await refreshWorkOrders(t);
-    } catch (e) {
-      setError(e?.message || String(e));
-    }
-  }
-
-  function handleLogout() {
-    clearToken();
-    setTokenState(null);
-    setRoute("login");
-  }
-
-  // Manager actions
-  async function updateWorkOrder(work_order_id, patch) {
-    setError(null);
-    try {
-      await apiFetch(`/work_orders/${work_order_id}`, {
-        token,
-        anonKey,
-        method: "PATCH",
-        body: patch,
-      });
-      await refreshWorkOrders(token);
-    } catch (e) {
-      setError(e?.message || String(e));
-    }
-  }
-
-  if (route === "loading") {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  // ---------------------------
-  // LOGIN
-  // ---------------------------
-  if (route === "login") {
-    return (
-      <div className="min-h-[100dvh] p-4 grid place-items-center bg-background">
-        <div className="w-full max-w-md grid gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">WorkLogic Pro</h1>
-            <p className="text-sm text-muted-foreground">Sign in to view work orders and performance.</p>
-          </div>
-
-          <Card className="rounded-2xl shadow-sm">
-            <CardContent className="p-4 grid gap-3">
-              <div className="grid gap-1">
-                <Label>Anon public key</Label>
-                <Input value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="paste anon key" />
-              </div>
-              <div className="grid gap-1">
-                <Label>Email</Label>
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@shop.com" />
-              </div>
-              <div className="grid gap-1">
-                <Label>Password</Label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-              {error ? <p className="text-sm text-red-600">{error}</p> : null}
-              <Button className="rounded-2xl" onClick={handleLogin}>
-                Sign in
-              </Button>
-            </CardContent>
-          </Card>
-
-          <p className="text-xs text-muted-foreground">
-            Note: This is a test dashboard. In production, store anon key in env vars and never ask for it.
-          </p>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand">
+          <h1>WorkLogic Pro</h1>
+          <p id="subtitle">Test dashboard</p>
+        </div>
+        <div class="actions" id="topActions" style="display:none;">
+          <button id="btnRefresh" class="primary">Refresh</button>
+          <button id="btnLogout" class="danger">Logout</button>
         </div>
       </div>
-    );
-  }
 
-  // ---------------------------
-  // DASHBOARD
-  // ---------------------------
-  return (
-    <div className="min-h-[100dvh] p-4 pb-24 bg-background">
-      <div className="max-w-5xl mx-auto grid gap-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold">Dashboard</h1>
-            <p className="text-xs text-muted-foreground">Mobile-first • Dealership clean</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="rounded-2xl" onClick={() => refreshWorkOrders()}>
-              Refresh
-            </Button>
-            <Button variant="outline" className="rounded-2xl" onClick={handleLogout}>
-              Logout
-            </Button>
-          </div>
-        </div>
+      <div id="errorBox" class="error" style="display:none;"></div>
 
-        {error ? (
-          <Card className="rounded-2xl border-red-200">
-            <CardContent className="p-4 text-sm text-red-700">{error}</CardContent>
-          </Card>
-        ) : null}
+      <!-- LOGIN -->
+      <div id="loginView" class="card" style="display:none;">
+        <div class="content">
+          <h2 style="margin:0 0 6px 0;">Sign in</h2>
+          <p class="muted" style="margin:0 0 14px 0;">Sign in to view work orders and performance.</p>
 
-        <Tabs value={activeView} onValueChange={setActiveView}>
-          <TabsList className="w-full rounded-2xl grid grid-cols-2">
-            <TabsTrigger value="owner">Owner</TabsTrigger>
-            <TabsTrigger value="manager">Manager</TabsTrigger>
-          </TabsList>
-
-          {/* OWNER VIEW */}
-          <TabsContent value="owner" className="mt-4 grid gap-4">
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-4 grid gap-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">Labor rate (settings)</p>
-                    <p className="text-xs text-muted-foreground">Used to estimate labor hours from labor_total.</p>
-                  </div>
-                  <div className="w-28">
-                    <Input
-                      type="number"
-                      value={laborRate}
-                      onChange={(e) => setLaborRate(Number(e.target.value || 0))}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <KPI
-                label="Scheduled labor today"
-                value={
-                  kpis.scheduledTodayHours != null
-                    ? `${kpis.scheduledTodayHours.toFixed(1)} hrs`
-                    : `${kpis.scheduledTodayCount} jobs`
-                }
-                sub={`${money(kpis.scheduledTodayValue)} value`}
-              />
-              <KPI
-                label="Scheduled labor future"
-                value={
-                  kpis.scheduledFutureHours != null
-                    ? `${kpis.scheduledFutureHours.toFixed(1)} hrs`
-                    : `${kpis.scheduledFutureCount} jobs`
-                }
-                sub={`${money(kpis.scheduledFutureValue)} value`}
-              />
-              <KPI
-                label="Waiting (parts/services)"
-                value={
-                  kpis.waitingHours != null ? `${kpis.waitingHours.toFixed(1)} hrs` : `${kpis.waitingCount} jobs`
-                }
-                sub={`${money(kpis.waitingValue)} value`}
-              />
-            </div>
-
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-4 grid gap-2">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold">Tech quick reference</p>
-                  <p className="text-xs text-muted-foreground">Tap a tech card to filter jobs</p>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <Button
-                    variant={!selectedTech ? "default" : "outline"}
-                    className="rounded-2xl justify-start"
-                    onClick={() => setSelectedTech(null)}
-                  >
-                    All techs
-                  </Button>
-                  {techs.map((t) => (
-                    <Button
-                      key={t}
-                      variant={selectedTech === t ? "default" : "outline"}
-                      className="rounded-2xl justify-start"
-                      onClick={() => {
-                        setSelectedTech(t);
-                        setTechDrawerOpen(true);
-                      }}
-                    >
-                      Tech {String(t).slice(0, 6)}
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* MANAGER VIEW */}
-          <TabsContent value="manager" className="mt-4 grid gap-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KPI label="Work orders" value={workOrders.length} />
-              <KPI label="Scheduled" value={workOrders.filter((w) => w.status === "scheduled").length} />
-              <KPI label="In progress" value={workOrders.filter((w) => w.status === "in_progress").length} />
-              <KPI label="Completed" value={workOrders.filter((w) => w.status === "completed").length} />
-            </div>
-
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-4 grid gap-2">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold">Filter by tech</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => setSelectedTech(null)}
-                  >
-                    Clear
-                  </Button>
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {techs.map((t) => (
-                    <Button
-                      key={t}
-                      variant={selectedTech === t ? "default" : "outline"}
-                      className="rounded-2xl"
-                      onClick={() => {
-                        setSelectedTech(t);
-                        setTechDrawerOpen(true);
-                      }}
-                    >
-                      Tech {String(t).slice(0, 6)}
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Work Orders List */}
-        <div className="grid gap-3">
-          <div className="flex items-center justify-between">
-            <p className="font-semibold">Work orders</p>
-            <p className="text-xs text-muted-foreground">
-              {loadingWOs ? "Loading…" : `${visibleWorkOrders.length} shown`}
-            </p>
-          </div>
-
-          <div className="grid gap-3">
-            {visibleWorkOrders.map((wo) => (
-              <motion.div
-                key={wo.work_order_id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <Card className="rounded-2xl shadow-sm">
-                  <CardContent className="p-4 grid gap-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold leading-tight">{wo.summary}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {wo.status} • Priority: {wo.priority || "—"}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Total</p>
-                        <p className="font-semibold">{money(wo.grand_total)}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <div>Labor: {money(wo.labor_total)}</div>
-                      <div>Parts: {money(wo.parts_total)}</div>
-                    </div>
-
-                    {/* Manager actions */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select
-                        value={wo.status || ""}
-                        onValueChange={(v) => updateWorkOrder(wo.work_order_id, { status: v })}
-                      >
-                        <SelectTrigger className="rounded-2xl">
-                          <SelectValue placeholder="Change status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="open">open</SelectItem>
-                          <SelectItem value="scheduled">scheduled</SelectItem>
-                          <SelectItem value="in_progress">in_progress</SelectItem>
-                          <SelectItem value="waiting_parts">waiting_parts</SelectItem>
-                          <SelectItem value="waiting_services">waiting_services</SelectItem>
-                          <SelectItem value="completed">completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      <Select
-                        value={wo.assigned_to || wo.assigned_employee_id || ""}
-                        onValueChange={(v) => updateWorkOrder(wo.work_order_id, { assigned_employee_id: v })}
-                      >
-                        <SelectTrigger className="rounded-2xl">
-                          <SelectValue placeholder="Assign tech" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {techs.length ? (
-                            techs.map((t) => (
-                              <SelectItem key={t} value={t}>
-                                Tech {String(t).slice(0, 6)}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="">No techs yet</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button
-                        variant="outline"
-                        className="rounded-2xl"
-                        onClick={() => {
-                          const tech = wo.assigned_to || wo.assigned_employee_id;
-                          if (!tech) return;
-                          setSelectedTech(tech);
-                          setTechDrawerOpen(true);
-                        }}
-                        disabled={!(wo.assigned_to || wo.assigned_employee_id)}
-                      >
-                        Tech details
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Tech performance drawer */}
-        <Sheet open={techDrawerOpen} onOpenChange={setTechDrawerOpen}>
-          <SheetContent side="bottom" className="rounded-t-2xl">
-            <SheetHeader>
-              <SheetTitle>Tech performance</SheetTitle>
-            </SheetHeader>
-
-            {!selectedTech ? (
-              <div className="p-4 text-sm text-muted-foreground">Select a tech to view stats.</div>
-            ) : (
-              <div className="p-4 grid gap-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">Tech {String(selectedTech).slice(0, 8)}</p>
-                    <p className="text-xs text-muted-foreground">Tap a status below to filter jobs.</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => setSelectedTech(null)}
-                  >
-                    Clear tech
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <KPI label="Jobs" value={techStats?.count ?? 0} />
-                  <KPI
-                    label="Est. labor hours"
-                    value={techStats?.estHours != null ? `${techStats.estHours.toFixed(1)} hrs` : "—"}
-                    sub={laborRate ? `Rate: ${money(laborRate)}/hr` : "Set rate above"}
-                  />
-                  <KPI label="Labor $" value={money(techStats?.labor$ ?? 0)} />
-                  <KPI label="Gross $" value={money(techStats?.grand$ ?? 0)} />
-                </div>
-
-                <Card className="rounded-2xl shadow-sm">
-                  <CardContent className="p-4">
-                    <p className="font-semibold">By status</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {techStats && Object.keys(techStats.byStatus).length ? (
-                        Object.entries(techStats.byStatus).map(([st, c]) => (
-                          <Button
-                            key={st}
-                            variant="outline"
-                            className="rounded-2xl"
-                            onClick={() => {
-                              // filter list to this tech already; just scroll user to list
-                              // (simple UX for now)
-                              const el = document.getElementById("wo-list");
-                              el?.scrollIntoView({ behavior: "smooth" });
-                            }}
-                          >
-                            {st}: {c}
-                          </Button>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No status data.</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+          <div class="grid" style="grid-template-columns: 1fr; gap:12px;">
+            <div class="field">
+              <label for="anonKey">Anon public key</label>
+              <input id="anonKey" placeholder="paste anon key" autocomplete="off" />
+              <div class="muted" style="font-size:12px;">
+                Note: this is a test dashboard. In production, store anon key in env vars and never ask for it.
               </div>
-            )}
-          </SheetContent>
-        </Sheet>
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" placeholder="you@shop.com" autocomplete="username" />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+            </div>
+            <button id="btnLogin" class="primary">Sign in</button>
+          </div>
+        </div>
       </div>
 
-      {/* sticky footer (mobile) */}
-      <div className="fixed bottom-0 left-0 right-0 border-t bg-background/90 backdrop-blur">
-        <div className="max-w-5xl mx-auto p-3 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{selectedTech ? `Filtered to tech ${String(selectedTech).slice(0, 6)}` : "All techs"}</p>
-          <Button
-            className="rounded-2xl"
-            onClick={() => {
-              if (selectedTech) setTechDrawerOpen(true);
-            }}
-            disabled={!selectedTech}
-          >
-            Tech drawer
-          </Button>
+      <!-- DASHBOARD -->
+      <div id="dashView" style="display:none;">
+        <div class="row" style="align-items:center; justify-content:space-between; margin: 8px 0 12px 0;">
+          <div>
+            <h2 style="margin:0;">Dashboard</h2>
+            <div class="muted" style="font-size:12px;">Mobile-first • Dealership clean</div>
+          </div>
+
+          <div class="tabs" role="tablist" aria-label="views">
+            <button class="tab active" id="tabOwner" role="tab" aria-selected="true">Owner</button>
+            <button class="tab" id="tabManager" role="tab" aria-selected="false">Manager</button>
+          </div>
+        </div>
+
+        <!-- Owner section -->
+        <div id="ownerSection" class="grid" style="grid-template-columns: 1fr; gap:12px;">
+          <div class="card">
+            <div class="content">
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:600;">Labor rate (settings)</div>
+                  <div class="muted" style="font-size:12px;">Used to estimate labor hours from labor_total.</div>
+                </div>
+                <div style="min-width: 180px;">
+                  <input id="laborRate" type="number" inputmode="decimal" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid kpi" id="ownerKpis"></div>
+
+          <div class="card">
+            <div class="content">
+              <div style="font-weight:600; margin-bottom:8px;">Tech quick reference</div>
+              <div class="muted" style="font-size:12px; margin-bottom:10px;">Tap a tech card to filter jobs</div>
+              <div class="chips" id="techChipsOwner"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manager section -->
+        <div id="managerSection" class="grid" style="grid-template-columns: 1fr; gap:12px; display:none;">
+          <div class="grid kpi" id="managerKpis"></div>
+
+          <div class="card">
+            <div class="content">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:600;">Filter by tech</div>
+                  <div class="muted" style="font-size:12px;">Tap a tech to filter and view details.</div>
+                </div>
+                <button id="btnClearTech">Clear</button>
+              </div>
+              <div class="divider"></div>
+              <div class="chips" id="techChipsManager"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Work Orders -->
+        <div class="card" id="wo-list">
+          <div class="content">
+            <div class="listHeader">
+              <div>
+                <div style="font-weight:600;">Work orders</div>
+                <div class="muted" id="woCount" style="font-size:12px;">—</div>
+              </div>
+              <div class="pill" id="loadingPill" style="display:none;">Loading…</div>
+            </div>
+            <div class="divider"></div>
+            <div id="woList" class="grid" style="grid-template-columns: 1fr; gap:10px;"></div>
+          </div>
         </div>
       </div>
     </div>
-  );
-}
+
+    <!-- Drawer -->
+    <div id="drawerOverlay" class="drawerOverlay"></div>
+    <div id="drawer" class="drawer" aria-hidden="true">
+      <div class="drawerHeader">
+        <h3 id="drawerTitle">Tech performance</h3>
+        <button id="btnCloseDrawer">Close</button>
+      </div>
+      <div class="drawerBody">
+        <div id="drawerContent" class="muted">Select a tech to view stats.</div>
+      </div>
+    </div>
+
+    <!-- Sticky footer -->
+    <div class="footerSticky" id="footer" style="display:none;">
+      <div class="hint" id="footerHint">All techs</div>
+      <button id="btnOpenDrawer" class="primary" disabled>Tech drawer</button>
+    </div>
+
+    <script>
+      // ✅ Put these in env vars in a real app.
+      const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+      const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+      const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+
+      // ---------------------------
+      // Auth helpers (test-grade)
+      // ---------------------------
+      function getToken() {
+        return localStorage.getItem("sb_access_token");
+      }
+      function setToken(t) {
+        localStorage.setItem("sb_access_token", t);
+      }
+      function clearToken() {
+        localStorage.removeItem("sb_access_token");
+      }
+
+      async function loginWithPassword({ email, password, anonKey }) {
+        const res = await fetch(`${API_BASE}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error_description || data?.message || "Login failed");
+        if (!data?.access_token) throw new Error("No access_token returned");
+        return data.access_token;
+      }
+
+      async function apiFetch(path, { token, anonKey, method = "GET", body } = {}) {
+        const res = await fetch(`${FUNCTIONS_BASE}${path}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: anonKey,
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || data?.message || `${method} ${path} failed`);
+        return data;
+      }
+
+      // ---------------------------
+      // State
+      // ---------------------------
+      const state = {
+        route: "loading", // loading | login | dashboard
+        view: "owner", // owner | manager
+        anonKey: "",
+        email: "",
+        password: "",
+        token: null,
+        workOrders: [],
+        selectedTech: null,
+        laborRate: 140,
+        loadingWOs: false,
+        error: null,
+      };
+
+      // ---------------------------
+      // UI refs
+      // ---------------------------
+      const $ = (id) => document.getElementById(id);
+
+      const loginView = $("loginView");
+      const dashView = $("dashView");
+      const topActions = $("topActions");
+      const errorBox = $("errorBox");
+      const subtitle = $("subtitle");
+
+      const anonKeyInput = $("anonKey");
+      const emailInput = $("email");
+      const passwordInput = $("password");
+      const btnLogin = $("btnLogin");
+
+      const btnRefresh = $("btnRefresh");
+      const btnLogout = $("btnLogout");
+
+      const tabOwner = $("tabOwner");
+      const tabManager = $("tabManager");
+      const ownerSection = $("ownerSection");
+      const managerSection = $("managerSection");
+
+      const laborRateInput = $("laborRate");
+      const ownerKpis = $("ownerKpis");
+      const managerKpis = $("managerKpis");
+
+      const techChipsOwner = $("techChipsOwner");
+      const techChipsManager = $("techChipsManager");
+      const btnClearTech = $("btnClearTech");
+
+      const woList = $("woList");
+      const woCount = $("woCount");
+      const loadingPill = $("loadingPill");
+
+      const drawerOverlay = $("drawerOverlay");
+      const drawer = $("drawer");
+      const drawerTitle = $("drawerTitle");
+      const drawerContent = $("drawerContent");
+      const btnCloseDrawer = $("btnCloseDrawer");
+
+      const footer = $("footer");
+      const footerHint = $("footerHint");
+      const btnOpenDrawer = $("btnOpenDrawer");
+
+      // ---------------------------
+      // Utilities
+      // ---------------------------
+      function setError(msg) {
+        state.error = msg || null;
+        if (state.error) {
+          errorBox.style.display = "block";
+          errorBox.textContent = state.error;
+        } else {
+          errorBox.style.display = "none";
+          errorBox.textContent = "";
+        }
+      }
+
+      function money(n) {
+        const x = Number(n ?? 0);
+        return x.toLocaleString(undefined, { style: "currency", currency: "USD" });
+      }
+
+      function hoursFromLaborTotal(laborTotal, laborRate) {
+        const rate = Number(laborRate || 0);
+        if (!rate) return null;
+        return Number(laborTotal || 0) / rate;
+      }
+
+      function fmtHours(h) {
+        if (h == null || Number.isNaN(h)) return "—";
+        return `${h.toFixed(1)} hrs`;
+      }
+
+      function sameDayRange() {
+        const today = new Date();
+        const start = new Date(today);
+        start.setHours(0,0,0,0);
+        const end = new Date(today);
+        end.setHours(23,59,59,999);
+        return { start, end };
+      }
+
+      function inRange(d, start, end) {
+        if (!d) return false;
+        const dt = new Date(d);
+        return dt >= start && dt <= end;
+      }
+
+      function getTechId(wo) {
+        return wo.assigned_to || wo.assigned_employee_id || null;
+      }
+
+      function techLabel(t) {
+        const s = String(t);
+        return `Tech ${s.slice(0,6)}`;
+      }
+
+      function setRoute(route) {
+        state.route = route;
+        render();
+      }
+
+      function setView(view) {
+        state.view = view;
+        render();
+      }
+
+      function setSelectedTech(t) {
+        state.selectedTech = t;
+        render();
+      }
+
+      // ---------------------------
+      // Drawer
+      // ---------------------------
+      function openDrawer() {
+        drawerOverlay.classList.add("open");
+        drawer.classList.add("open");
+        drawer.setAttribute("aria-hidden", "false");
+      }
+      function closeDrawer() {
+        drawerOverlay.classList.remove("open");
+        drawer.classList.remove("open");
+        drawer.setAttribute("aria-hidden", "true");
+      }
+
+      drawerOverlay.addEventListener("click", closeDrawer);
+      btnCloseDrawer.addEventListener("click", closeDrawer);
+
+      btnOpenDrawer.addEventListener("click", () => {
+        if (!state.selectedTech) return;
+        openDrawer();
+      });
+
+      // ---------------------------
+      // Data loading
+      // ---------------------------
+      async function refreshWorkOrders() {
+        if (!state.token || !state.anonKey) return;
+        state.loadingWOs = true;
+        setError(null);
+        renderLoading();
+        try {
+          const data = await apiFetch(`/work_orders`, { token: state.token, anonKey: state.anonKey });
+          state.workOrders = data.work_orders ?? [];
+        } catch (e) {
+          setError(e?.message || String(e));
+        } finally {
+          state.loadingWOs = false;
+          render();
+        }
+      }
+
+      async function updateWorkOrder(work_order_id, patch) {
+        setError(null);
+        try {
+          await apiFetch(`/work_orders/${work_order_id}`, {
+            token: state.token,
+            anonKey: state.anonKey,
+            method: "PATCH",
+            body: patch,
+          });
+          await refreshWorkOrders();
+        } catch (e) {
+          setError(e?.message || String(e));
+        }
+      }
+
+      // ---------------------------
+      // Computed
+      // ---------------------------
+      function getTechs() {
+        const ids = new Set();
+        for (const w of state.workOrders) {
+          if (w.assigned_to) ids.add(w.assigned_to);
+          if (w.assigned_employee_id) ids.add(w.assigned_employee_id);
+        }
+        return Array.from(ids);
+      }
+
+      function getVisibleWorkOrders() {
+        if (!state.selectedTech) return state.workOrders;
+        return state.workOrders.filter((w) => getTechId(w) === state.selectedTech);
+      }
+
+      function calcOwnerKpis() {
+        const { start, end } = sameDayRange();
+
+        const scheduledToday = state.workOrders.filter(
+          (w) => w.status === "scheduled" && inRange(w.scheduled_start, start, end)
+        );
+        const scheduledFuture = state.workOrders.filter(
+          (w) => w.status === "scheduled" && w.scheduled_start && new Date(w.scheduled_start) > end
+        );
+        const waiting = state.workOrders.filter((w) =>
+          ["waiting_parts", "waiting_services", "waiting_service", "on_hold"].includes(w.status)
+        );
+
+        const laborToday$ = scheduledToday.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+        const laborFuture$ = scheduledFuture.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+        const laborWaiting$ = waiting.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+
+        return {
+          scheduledTodayCount: scheduledToday.length,
+          scheduledTodayValue: laborToday$,
+          scheduledTodayHours: hoursFromLaborTotal(laborToday$, state.laborRate),
+          scheduledFutureCount: scheduledFuture.length,
+          scheduledFutureValue: laborFuture$,
+          scheduledFutureHours: hoursFromLaborTotal(laborFuture$, state.laborRate),
+          waitingCount: waiting.length,
+          waitingValue: laborWaiting$,
+          waitingHours: hoursFromLaborTotal(laborWaiting$, state.laborRate),
+        };
+      }
+
+      function calcTechStats() {
+        if (!state.selectedTech) return null;
+        const rows = state.workOrders.filter((w) => getTechId(w) === state.selectedTech);
+        const byStatus = rows.reduce((acc, w) => {
+          const st = w.status || "unknown";
+          acc[st] = (acc[st] || 0) + 1;
+          return acc;
+        }, {});
+        const labor$ = rows.reduce((s, w) => s + Number(w.labor_total || 0), 0);
+        const parts$ = rows.reduce((s, w) => s + Number(w.parts_total || 0), 0);
+        const grand$ = rows.reduce((s, w) => s + Number(w.grand_total || 0), 0);
+
+        return {
+          count: rows.length,
+          byStatus,
+          labor$,
+          parts$,
+          grand$,
+          estHours: hoursFromLaborTotal(labor$, state.laborRate),
+        };
+      }
+
+      // ---------------------------
+      // Rendering
+      // ---------------------------
+      function renderLoading() {
+        loadingPill.style.display = state.loadingWOs ? "inline-flex" : "none";
+        woCount.textContent = state.loadingWOs ? "Loading…" : "—";
+      }
+
+      function renderKpiCards(container, cards) {
+        container.innerHTML = "";
+        for (const c of cards) {
+          const el = document.createElement("div");
+          el.className = "kpi";
+          el.innerHTML = `
+            <div class="label">${c.label}</div>
+            <div class="value">${c.value}</div>
+            ${c.sub ? `<div class="sub">${c.sub}</div>` : ``}
+          `;
+          container.appendChild(el);
+        }
+      }
+
+      function renderTechChips(container, techs) {
+        container.innerHTML = "";
+
+        // "All techs"
+        const all = document.createElement("button");
+        all.className = "chip" + (!state.selectedTech ? " active" : "");
+        all.textContent = "All techs";
+        all.addEventListener("click", () => {
+          setSelectedTech(null);
+        });
+        container.appendChild(all);
+
+        for (const t of techs) {
+          const b = document.createElement("button");
+          b.className = "chip" + (state.selectedTech === t ? " active" : "");
+          b.textContent = techLabel(t);
+          b.addEventListener("click", () => {
+            setSelectedTech(t);
+            openDrawer();
+          });
+          container.appendChild(b);
+        }
+      }
+
+      function renderWorkOrdersList(rows) {
+        woList.innerHTML = "";
+        if (!rows.length) {
+          const empty = document.createElement("div");
+          empty.className = "muted";
+          empty.textContent = "No work orders.";
+          woList.appendChild(empty);
+          return;
+        }
+
+        for (const wo of rows) {
+          const wrap = document.createElement("div");
+          wrap.className = "wo";
+
+          const summary = wo.summary || wo.title || `Work order ${wo.id || ""}`.trim();
+          const status = wo.status || "—";
+          const priority = wo.priority || "—";
+          const tech = getTechId(wo);
+
+          wrap.innerHTML = `
+            <div class="title">${escapeHtml(summary)}</div>
+            <div class="meta">
+              <span class="pill">${escapeHtml(status)}</span>
+              <span class="muted">Priority: ${escapeHtml(String(priority))}</span>
+            </div>
+            <div class="money">Total <strong>${money(wo.grand_total)}</strong></div>
+            <div class="line">
+              <span>Labor: ${money(wo.labor_total)}</span>
+              <span>Parts: ${money(wo.parts_total)}</span>
+            </div>
+            <div class="woActions">
+              <button class="primary" data-tech-btn ${tech ? "" : "disabled"}>Tech details</button>
+              ${state.view === "manager" ? `
+                <button data-set-status="scheduled">Mark scheduled</button>
+                <button data-set-status="in_progress">Mark in_progress</button>
+                <button data-set-status="completed">Mark completed</button>
+              ` : ``}
+            </div>
+          `;
+
+          // Tech details
+          wrap.querySelector("[data-tech-btn]")?.addEventListener("click", () => {
+            if (!tech) return;
+            setSelectedTech(tech);
+            openDrawer();
+          });
+
+          // Manager actions
+          if (state.view === "manager") {
+            wrap.querySelectorAll("[data-set-status]").forEach((btn) => {
+              btn.addEventListener("click", async () => {
+                const next = btn.getAttribute("data-set-status");
+                const id = wo.work_order_id || wo.id;
+                if (!id) return setError("Work order id missing on this row.");
+                await updateWorkOrder(id, { status: next });
+              });
+            });
+          }
+
+          woList.appendChild(wrap);
+        }
+      }
+
+      function renderDrawer() {
+        const tech = state.selectedTech;
+        if (!tech) {
+          drawerTitle.textContent = "Tech performance";
+          drawerContent.innerHTML = `<div class="muted">Select a tech to view stats.</div>`;
+          btnOpenDrawer.disabled = true;
+          return;
+        }
+
+        btnOpenDrawer.disabled = false;
+
+        const stats = calcTechStats();
+        drawerTitle.textContent = `Tech performance — ${techLabel(tech)}`;
+
+        const byStatusEntries = stats && Object.keys(stats.byStatus).length
+          ? Object.entries(stats.byStatus).sort((a,b) => b[1]-a[1])
+          : [];
+
+        drawerContent.innerHTML = `
+          <div class="card" style="box-shadow:none; background:rgba(17,27,41,.35); border-color:rgba(34,48,68,.75);">
+            <div class="content">
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <span class="pill">Jobs: <strong>${stats.count}</strong></span>
+                <span class="pill">Labor: <strong>${money(stats.labor$)}</strong></span>
+                <span class="pill">Parts: <strong>${money(stats.parts$)}</strong></span>
+                <span class="pill">Total: <strong>${money(stats.grand$)}</strong></span>
+                <span class="pill">Est: <strong>${fmtHours(stats.estHours)}</strong></span>
+              </div>
+              <div class="divider"></div>
+              <div class="muted" style="font-size:12px; margin-bottom:8px;">Tap a stat
