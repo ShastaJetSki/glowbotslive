@@ -2,145 +2,119 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>WorkLogic Pro</title>
+  <title>WorkLogic Pro – ChatDash</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- anon public key -->
+  <!-- ✅ Supabase anon public key -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
   <style>
     body {
-      margin:0;
-      font-family:system-ui;
-      background:#0b0f14;
-      color:#e8eef6;
-      padding:20px;
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto;
+      background: #0b0f14;
+      color: #e8eef6;
     }
-    .card {
-      max-width:600px;
-      margin:auto;
-      background:#0f1621;
-      border:1px solid #223044;
-      border-radius:16px;
-      padding:20px;
+    h1 { margin-top: 0; }
+    pre {
+      background: #0f1621;
+      border: 1px solid #223044;
+      border-radius: 12px;
+      padding: 16px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .error {
+      background: #2a1414;
+      border: 1px solid #553333;
+      color: #ffb3b3;
     }
     button {
-      padding:10px 14px;
-      border-radius:10px;
-      border:1px solid #2a3b55;
-      background:#1a2535;
-      color:#fff;
-      cursor:pointer;
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #2a3b55;
+      background: #1a2535;
+      color: #fff;
+      cursor: pointer;
     }
-    .tenant {
-      padding:12px;
-      border:1px solid #223044;
-      border-radius:12px;
-      margin-top:10px;
-      cursor:pointer;
-    }
-    .muted { color:#9fb0c3; }
   </style>
 </head>
 
 <body>
 
-<div id="app" class="card">
-  <div class="muted">Loading…</div>
-</div>
+<h1>ChatDash – Work Orders Test</h1>
+<div id="status">Loading…</div>
+<pre id="output"></pre>
+
+<button onclick="logout()">Logout</button>
 
 <script>
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-const FUNCTIONS = `${API_BASE}/functions/v1`;
-const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+  // -------------------------
+  // CONFIG
+  // -------------------------
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+  const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 
-const token = localStorage.getItem("sb_access_token");
-if (!token) {
-  window.location.href = "login.html";
-}
+  const ANON_KEY = document
+    .querySelector('meta[name="supabase-anon-key"]')
+    .content;
 
-async function api(path) {
-  const res = await fetch(FUNCTIONS + path, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: ANON_KEY
-    }
-  });
-  const data = await res.json().catch(()=>({}));
-  if (!res.ok) throw data;
-  return data;
-}
+  const token = localStorage.getItem("sb_access_token");
 
-async function init() {
-  const root = document.getElementById("app");
-
-  try {
-    // 🔑 this MUST exist in your backend
-    // returns { tenant } or { tenant: null }
-    const me = await api("/me");
-
-    if (!me.tenant) {
-      showTenantPicker();
-      return;
-    }
-
-    // ✅ tenant exists → app loads
-    root.innerHTML = `
-      <h2>${me.tenant.name}</h2>
-      <div class="muted">Tenant loaded successfully</div>
-      <br/>
-      <button onclick="logout()">Logout</button>
-    `;
-
-  } catch (e) {
-    root.innerHTML = `
-      <h3>Error</h3>
-      <pre>${JSON.stringify(e, null, 2)}</pre>
-    `;
+  // -------------------------
+  // AUTH GUARD
+  // -------------------------
+  if (!token) {
+    window.location.href = "login.html";
   }
-}
 
-async function showTenantPicker() {
-  const root = document.getElementById("app");
+  // -------------------------
+  // API CALL
+  // -------------------------
+  async function loadWorkOrders() {
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
 
-  // fallback if /me not implemented
-  const tenants = await api("/tenants");
+    try {
+      const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
+        }
+      });
 
-  root.innerHTML = `
-    <h2>Select a Business</h2>
-    <div class="muted">You are logged in but not assigned</div>
-    <div id="list"></div>
-    <br/>
-    <button onclick="logout()">Logout</button>
-  `;
+      const rawText = await res.text();
+      console.log("RAW RESPONSE:", rawText);
 
-  const list = document.getElementById("list");
+      if (!res.ok) {
+        statusEl.textContent = `Error (${res.status})`;
+        outputEl.className = "error";
+        outputEl.textContent = rawText || "No response body";
+        return;
+      }
 
-  tenants.tenants.forEach(t => {
-    const el = document.createElement("div");
-    el.className = "tenant";
-    el.textContent = t.name;
-    el.onclick = () => assignTenant(t.tenant_id);
-    list.appendChild(el);
-  });
-}
+      statusEl.textContent = "Success";
+      outputEl.textContent = rawText;
 
-async function assignTenant(tenant_id) {
-  await api("/assign_tenant", {
-    method: "POST",
-    body: JSON.stringify({ tenant_id })
-  });
-  location.reload();
-}
+    } catch (err) {
+      statusEl.textContent = "Network / JS Error";
+      outputEl.className = "error";
+      outputEl.textContent = String(err);
+    }
+  }
 
-function logout() {
-  localStorage.removeItem("sb_access_token");
-  location.href = "login.html";
-}
+  function logout() {
+    localStorage.removeItem("sb_access_token");
+    window.location.href = "login.html";
+  }
 
-init();
+  loadWorkOrders();
 </script>
 
 </body>
