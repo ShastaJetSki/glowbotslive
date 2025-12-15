@@ -107,20 +107,17 @@
     document.querySelector('meta[name="supabase-anon-key"]').content;
 
   const token = localStorage.getItem("sb_access_token");
-  if (!token) {
-    location.href = "login.html";
-  }
+  if (!token) location.href = "login.html";
 
   function money(n) {
-    const x = Number(n || 0);
-    return `$${x}`;
+    return `$${Number(n || 0)}`;
   }
 
-  async function loadWorkOrders() {
+  async function load() {
     const content = document.getElementById("content");
 
     try {
-      const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
+      const res = await fetch(`${FUNCTIONS_BASE}/work_orders_view`, {
         headers: {
           Authorization: `Bearer ${token}`,
           apikey: ANON_KEY
@@ -128,14 +125,12 @@
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
+        throw new Error(await res.text());
       }
 
       const json = await res.json();
       const orders = json.work_orders || [];
 
-      // KPIs
       const total = orders.reduce(
         (sum, w) => sum + Number(w.grand_total || 0), 0
       );
@@ -158,24 +153,30 @@
         return;
       }
 
-      orders.forEach((wo, index) => {
-        const shortId = String(wo.work_order_id || "").slice(0, 8);
-        const created = wo.created_at
-          ? new Date(wo.created_at).toLocaleString()
-          : "—";
-
-        // UI-only name to prove uniqueness
-        const displayName = `${wo.summary || "Work Order"} #${index + 1}`;
+      orders.forEach((wo, i) => {
+        const shortId = wo.work_order_id.slice(0, 8);
+        const created = new Date(wo.created_at).toLocaleString();
 
         content.innerHTML += `
           <div class="card">
-            <div class="job-name">${displayName}</div>
-            <div class="muted">Status: ${wo.status || "—"}</div>
+            <div class="job-name">
+              ${wo.summary || "Work Order"} #${i + 1}
+            </div>
+
+            <div class="muted">
+              Customer: ${wo.customer_name}
+            </div>
+
+            <div class="muted">
+              Status: ${wo.status}
+            </div>
+
             <div>
               Labor: ${money(wo.labor_total)} ·
               Parts: ${money(wo.parts_total)} ·
               <strong>Total: ${money(wo.grand_total)}</strong>
             </div>
+
             <div class="meta">
               WO ${shortId} · Created ${created}
             </div>
@@ -185,7 +186,8 @@
 
     } catch (err) {
       console.error(err);
-      content.innerHTML = `<div class="error">FETCH ERROR:\n${err.message}</div>`;
+      content.innerHTML =
+        `<div class="error">FETCH ERROR:\n${err.message}</div>`;
     }
   }
 
@@ -194,7 +196,7 @@
     location.href = "login.html";
   }
 
-  loadWorkOrders();
+  load();
 </script>
 
 </body>
