@@ -28,6 +28,7 @@ button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; backgro
 
 h2 { margin:18px 0 10px; font-size:18px; }
 .wo { margin-bottom:10px; }
+.error { color:#ffb3b3; white-space:pre-wrap; }
 </style>
 </head>
 
@@ -85,7 +86,7 @@ async function fetchJson(url, token){
   return res.json();
 }
 
-// simple fallback until scheduling is finalized
+// fallback until schedule hours are wired
 function jobHours(w){ return w.estimated_hours || 1; }
 
 function jobRevenue(w){
@@ -168,7 +169,7 @@ function renderWorkOrders(){
 
     const customerName = customer
       ? `${customer.first_name} ${customer.last_name || ""}`.trim()
-      : "Unknown Customer";
+      : "Customer";
 
     const customerPhone = customer?.phone || "";
     const techName = tech ? tech.first_name : "Unassigned";
@@ -200,27 +201,39 @@ function setFilter(s){
 window.toggleTech = toggleTech;
 window.setFilter = setFilter;
 
-/* ================= LOAD ================= */
+/* ================= LOAD (SAFE) ================= */
 
 async function load(){
   const token = localStorage.getItem("sb_access_token");
   if(!token){ logout(); return; }
 
-  employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
-  customers = await fetchJson(`${FUNCTIONS_BASE}/customers`, token);
-  orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
+  try {
+    // REQUIRED
+    employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+    orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-  employeesById = {};
-  employees.forEach(e => employeesById[e.employee_id] = e);
+    employeesById = {};
+    employees.forEach(e => employeesById[e.employee_id] = e);
+    technicians = employees.filter(e => e.role === "technician");
 
-  customersById = {};
-  customers.forEach(c => customersById[c.customer_id] = c);
+    // OPTIONAL — must never break page
+    try {
+      customers = await fetchJson(`${FUNCTIONS_BASE}/customers`, token);
+      customersById = {};
+      customers.forEach(c => customersById[c.customer_id] = c);
+    } catch {
+      customers = [];
+      customersById = {};
+    }
 
-  technicians = employees.filter(e => e.role === "technician");
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
 
-  renderKPIs();
-  renderTechCards();
-  renderWorkOrders();
+  } catch (err) {
+    document.getElementById("workOrders").innerHTML =
+      `<div class="error">LOAD ERROR:\n${err.message}</div>`;
+  }
 }
 
 load();
