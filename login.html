@@ -12,153 +12,133 @@
   <style>
     * { box-sizing: border-box; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0b0f14;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto;
-      color: #e8eef6;
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #0b0f14; font-family: system-ui, -apple-system, Segoe UI, Roboto; color: #e8eef6;
     }
     .card {
-      width: 420px;
-      max-width: 92vw;
-      padding: 28px;
-      border-radius: 18px;
-      background: #0f1621;
-      border: 1px solid #223044;
+      width: 420px; max-width: 92vw; padding: 28px; border-radius: 18px;
+      background: #0f1621; border: 1px solid #223044;
     }
     h1 { margin: 0 0 6px 0; font-size: 22px; }
     .muted { color: #9fb0c3; font-size: 14px; margin-bottom: 18px; }
-    label {
-      display: block;
-      margin-top: 14px;
-      margin-bottom: 6px;
-      font-size: 13px;
-      color: #9fb0c3;
-    }
+    label { display:block; margin-top:14px; margin-bottom:6px; font-size:13px; color:#9fb0c3; }
     input {
-      width: 100%;
-      padding: 12px 14px;
-      font-size: 15px;
-      border-radius: 12px;
-      border: 1px solid #223044;
-      background: #0b0f14;
-      color: #ffffff;
+      width:100%; padding:12px 14px; font-size:15px; border-radius:12px;
+      border:1px solid #223044; background:#0b0f14; color:#fff;
     }
-    input:focus { outline: none; border-color: #3b82f6; }
+    input:focus { outline:none; border-color:#3b82f6; }
     button {
-      width: 100%;
-      margin-top: 22px;
-      padding: 12px;
-      font-size: 16px;
-      border-radius: 14px;
-      border: 1px solid #2a3b55;
-      background: #1a2535;
-      color: #ffffff;
-      cursor: pointer;
+      width:100%; margin-top:22px; padding:12px; font-size:16px; border-radius:14px;
+      border:1px solid #2a3b55; background:#1a2535; color:#fff; cursor:pointer;
     }
+    button:disabled { opacity:.6; cursor:not-allowed; }
     .error {
-      margin-top: 16px;
-      padding: 12px;
-      border-radius: 12px;
-      background: #2a1414;
-      border: 1px solid #553333;
-      color: #ffb3b3;
-      font-size: 14px;
-      display: none;
-      white-space: pre-wrap;
+      margin-top:16px; padding:12px; border-radius:12px; background:#2a1414;
+      border:1px solid #553333; color:#ffb3b3; font-size:14px; display:none; white-space:pre-wrap;
     }
   </style>
 </head>
 
 <body>
+  <div class="card">
+    <h1>WorkLogic Pro</h1>
+    <div class="muted">Sign in to continue</div>
 
-<div class="card">
-  <h1>WorkLogic Pro</h1>
-  <div class="muted">Sign in to continue</div>
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="username" />
 
-  <label>Email</label>
-  <input id="email" type="email" autocomplete="username" />
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password" />
 
-  <label>Password</label>
-  <input id="password" type="password" autocomplete="current-password" />
+    <button id="login">Sign In</button>
 
-  <button id="login">Sign In</button>
-
-  <div id="error" class="error"></div>
-</div>
+    <div id="error" class="error"></div>
+  </div>
 
 <script>
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-  const ANON_KEY = document
-    .querySelector('meta[name="supabase-anon-key"]')
-    .content;
+  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
   const emailInput = document.getElementById("email");
   const passwordInput = document.getElementById("password");
   const loginBtn = document.getElementById("login");
   const errorBox = document.getElementById("error");
 
-  // ✅ IMPORTANT: login page should NOT auto-redirect.
-  // If a token exists but is expired, user MUST be able to login again.
-  // We do NOT clear the token here (dashboard pages handle invalid token cleanup).
-
-  async function login() {
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.style.display = "block";
+  }
+  function clearError(){
+    errorBox.textContent = "";
     errorBox.style.display = "none";
+  }
+
+  async function validateToken(token){
+    const res = await fetch(`${API_BASE}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+    });
+    return res.ok;
+  }
+
+  async function safeAutoRedirect(){
+    const token = localStorage.getItem("sb_access_token");
+    if (!token) return;
+
+    // ✅ only redirect if token is VALID
+    const ok = await validateToken(token);
+    if (ok) {
+      location.replace("dashboard-business.html");
+    } else {
+      // ✅ token expired or invalid: clear it and stay on login
+      localStorage.removeItem("sb_access_token");
+    }
+  }
+
+  async function login(){
+    clearError();
     loginBtn.disabled = true;
 
     try {
-      const res = await fetch(
-        `${API_BASE}/auth/v1/token?grant_type=password`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: ANON_KEY
-          },
-          body: JSON.stringify({
-            email: emailInput.value.trim(),
-            password: passwordInput.value
-          })
-        }
-      );
+      const res = await fetch(`${API_BASE}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+        body: JSON.stringify({
+          email: emailInput.value.trim(),
+          password: passwordInput.value
+        })
+      });
 
-      const data = await res.json();
+      const data = await res.json().catch(()=> ({}));
 
       if (!res.ok) {
-        throw new Error(
-          data.error_description ||
-          data.error ||
-          "Login failed"
-        );
+        throw new Error(data.error_description || data.error || "Login failed");
       }
 
       if (!data.access_token) {
         throw new Error("No access token returned");
       }
 
-      // ✅ overwrite JWT every login
+      // ✅ store JWT
       localStorage.setItem("sb_access_token", data.access_token);
 
-      // ✅ send to business dashboard (role routing can be added later)
-      window.location.href = "dashboard-business.html";
+      // ✅ go to business dashboard
+      location.replace("dashboard-business.html");
 
     } catch (err) {
-      errorBox.textContent = err.message || String(err);
-      errorBox.style.display = "block";
+      showError(err.message || String(err));
     } finally {
       loginBtn.disabled = false;
     }
   }
 
-  loginBtn.onclick = login;
-  passwordInput.addEventListener("keydown", e => {
+  loginBtn.addEventListener("click", login);
+  passwordInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") login();
   });
-</script>
 
+  // ✅ critical fix: no redirect loop on expired tokens
+  safeAutoRedirect();
+</script>
 </body>
 </html>
