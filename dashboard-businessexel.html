@@ -24,7 +24,9 @@
       padding:14px 16px;
     }
 
-    .kpi { min-width:260px; flex: 1 1 260px; }
+    .kpi { min-width:260px; flex: 1 1 260px; cursor:pointer; }
+    .kpi.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+
     .tech { min-width:240px; flex: 1 1 240px; cursor:pointer; }
     .tech.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
 
@@ -35,6 +37,14 @@
     h2 { margin: 18px 0 10px; font-size:18px; }
     .wo { margin-bottom:10px; }
     .wo strong { font-weight:650; }
+
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin: 6px 0 14px; }
+    .pill { padding:6px 10px; border-radius:10px; font-size:13px; }
+    .pill.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+
+    .woTop { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .woLeft { min-width:260px; }
+    .woRight { text-align:right; min-width:170px; }
   </style>
 </head>
 
@@ -51,6 +61,14 @@
 <!-- Tech cards row -->
 <h2 style="margin-top:10px;">Technicians</h2>
 <div class="row" id="techCards"></div>
+
+<!-- Range + clear -->
+<div class="toolbar">
+  <button class="pill" id="rng_day" onclick="setRange('day')">Today</button>
+  <button class="pill" id="rng_week" onclick="setRange('week')">This Week</button>
+  <button class="pill" id="rng_all" onclick="setRange('all')">All</button>
+  <button class="pill" onclick="clearFilters()">Clear Filters</button>
+</div>
 
 <!-- Work Orders list -->
 <h2>Work Orders</h2>
@@ -71,11 +89,19 @@
   let employeesById = {};
   let technicians = [];
   let orders = [];
+
   let activeTechId = null;
+
+  // NEW: KPI filter + date range
+  let activeKpi = null;     // 'today' | 'waiting' | 'complications' | null
+  let activeRange = "day";  // 'day' | 'week' | 'all'
 
   // Date helpers
   const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
   const endOfToday = new Date(); endOfToday.setHours(23,59,59,999);
+
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday start (fine for now)
 
   function money(n){ return `$${Number(n || 0).toFixed(2)}`; }
 
@@ -96,6 +122,47 @@
     return hrs * rate;
   }
 
+  function inRange(w){
+    if (activeRange === "all") return true;
+
+    // IMPORTANT: do NOT break old behavior:
+    // scheduled with no scheduled_start still counts for "today operationally"
+    const s = w.scheduled_start ? new Date(w.scheduled_start) : null;
+
+    if (activeRange === "day") {
+      if (!s && w.status === "scheduled") return true;
+      return !!(s && s >= startOfToday && s <= endOfToday);
+    }
+
+    if (activeRange === "week") {
+      if (!s && w.status === "scheduled") return true;
+      return !!(s && s >= startOfWeek);
+    }
+
+    return true;
+  }
+
+  function kpiMatch(w){
+    if (!activeKpi) return true;
+
+    if (activeKpi === "today") {
+      // "today bucket" same as your KPI logic
+      const s = w.scheduled_start ? new Date(w.scheduled_start) : null;
+      const isToday = s && s >= startOfToday && s <= endOfToday;
+      return isToday || (!s && w.status === "scheduled") || w.status === "in_progress";
+    }
+
+    if (activeKpi === "waiting") {
+      return ["waiting","waiting_parts"].includes(w.status);
+    }
+
+    if (activeKpi === "complications") {
+      return ["blocked","issue","complications"].includes(w.status);
+    }
+
+    return true;
+  }
+
   async function fetchJson(url, token){
     const res = await fetch(url, {
       headers: {
@@ -103,7 +170,10 @@
         apikey: ANON_KEY
       }
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      if (res.status === 401) throw new Error("401");
+      throw new Error(await res.text());
+    }
     return res.json();
   }
 
@@ -111,7 +181,7 @@
     const token = localStorage.getItem("sb_access_token");
     if (!token) return null;
 
-    // simple validation to avoid redirect loops on expired JWT
+    // keep your existing behavior (works), but handle 401 cleanly
     const res = await fetch(`${API_BASE}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
     });
@@ -125,13 +195,18 @@
     location.replace("login.html");
   }
 
+  function setActivePill(){
+    document.getElementById("rng_day").classList.toggle("active", activeRange==="day");
+    document.getElementById("rng_week").classList.toggle("active", activeRange==="week");
+    document.getElementById("rng_all").classList.toggle("active", activeRange==="all");
+  }
+
   function renderKPIs(){
     // KPI buckets
     let todayH=0, todayRev=0;
     let futureH=0, futureRev=0;
     let waitingH=0, waitingRev=0;
     let complicationsH=0, complicationsRev=0;
-    let completedTodayH=0, completedTodayRev=0;
 
     orders.forEach(w=>{
       const hrs = jobHours(w);
@@ -143,7 +218,7 @@
 
       // Scheduled Work (today + future)
       if (["scheduled","new","in_progress"].includes(w.status)) {
-        if (isToday || (!s && w.status === "scheduled")) { // no time yet -> count as "today bucket" operationally
+        if (isToday || (!s && w.status === "scheduled")) {
           todayH += hrs; todayRev += rev;
         }
         if (isFuture) {
@@ -156,53 +231,39 @@
         waitingH += hrs; waitingRev += rev;
       }
 
-      // Complications (if you later formalize statuses, just adjust this list)
+      // Complications
       if (["blocked","issue","complications"].includes(w.status)) {
         complicationsH += hrs; complicationsRev += rev;
-      }
-
-      // Completed today
-      if (w.status === "completed") {
-        const u = new Date(w.updated_at || w.created_at);
-        if (u >= startOfToday && u <= endOfToday) {
-          completedTodayH += hrs; completedTodayRev += rev;
-        }
       }
     });
 
     document.getElementById("kpis").innerHTML = `
-      <div class="card kpi">
-        <div class="label">Scheduled Work</div>
+      <div class="card kpi ${activeKpi==='today'?'active':''}" onclick="toggleKpi('today')">
+        <div class="label">Scheduled Work (click)</div>
         <div class="value">
-          Today: ${todayH.toFixed(1)} hrs / ${money(todayRev)}<br>
-          <span class="muted">Future: ${futureH.toFixed(1)} hrs / ${money(futureRev)}</span>
+          Today ${todayH.toFixed(1)}h / ${money(todayRev)}<br>
+          <span class="muted">Future ${futureH.toFixed(1)}h / ${money(futureRev)}</span>
         </div>
       </div>
 
-      <div class="card kpi">
-        <div class="label">Waiting on Parts / Service</div>
-        <div class="value">${waitingH.toFixed(1)} hrs / ${money(waitingRev)}</div>
+      <div class="card kpi ${activeKpi==='waiting'?'active':''}" onclick="toggleKpi('waiting')">
+        <div class="label">Waiting on Parts / Service (click)</div>
+        <div class="value">${waitingH.toFixed(1)}h / ${money(waitingRev)}</div>
         <div class="muted">Includes waiting + waiting_parts</div>
       </div>
 
-      <div class="card kpi">
-        <div class="label">Complications</div>
-        <div class="value">${complicationsH.toFixed(1)} hrs / ${money(complicationsRev)}</div>
+      <div class="card kpi ${activeKpi==='complications'?'active':''}" onclick="toggleKpi('complications')">
+        <div class="label">Complications (click)</div>
+        <div class="value">${complicationsH.toFixed(1)}h / ${money(complicationsRev)}</div>
         <div class="muted">blocked / issue / complications</div>
-      </div>
-
-      <div class="card kpi">
-        <div class="label">Completed Today</div>
-        <div class="value">${completedTodayH.toFixed(1)} hrs / ${money(completedTodayRev)}</div>
       </div>
     `;
   }
 
   function renderTechCards(){
-    // Build stats per tech (today/week/month can be expanded later)
     const byTech = {};
     technicians.forEach(t=>{
-      byTech[t.employee_id] = { hrsToday:0, revToday:0, jobCount:0 };
+      byTech[t.employee_id] = { hrs:0, rev:0, jobCount:0 };
     });
 
     orders.forEach(w=>{
@@ -210,33 +271,26 @@
       if (!techId) return;
       if (!byTech[techId]) return;
 
-      // "today" bucket: scheduled today OR no-time scheduled OR in_progress today
-      const s = w.scheduled_start ? new Date(w.scheduled_start) : null;
-      const isToday = s && s >= startOfToday && s <= endOfToday;
-      const countAsToday = isToday || (!s && w.status === "scheduled");
+      // APPLY RANGE + KPI to tech stats too (does not break old logic)
+      if (!inRange(w)) return;
+      if (!kpiMatch(w)) return;
 
-      if (countAsToday) {
-        const hrs = jobHours(w);
-        const rev = orderRevenue(w);
-        byTech[techId].hrsToday += hrs;
-        byTech[techId].revToday += rev;
-        byTech[techId].jobCount += 1;
-      }
+      const hrs = jobHours(w);
+      const rev = orderRevenue(w);
+      byTech[techId].hrs += hrs;
+      byTech[techId].rev += rev;
+      byTech[techId].jobCount += 1;
     });
 
     document.getElementById("techCards").innerHTML =
       technicians.map(t=>{
-        const stat = byTech[t.employee_id] || { hrsToday:0, revToday:0, jobCount:0 };
+        const stat = byTech[t.employee_id] || { hrs:0, rev:0, jobCount:0 };
         const active = activeTechId === t.employee_id ? "active" : "";
         return `
           <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
             <div class="label">${t.name}</div>
-            <div class="value">
-              Today: ${stat.hrsToday.toFixed(1)} hrs / ${money(stat.revToday)}
-            </div>
-            <div class="muted">
-              Rate: ${money(t.hourly_labor_rate)}/hr · Jobs: ${stat.jobCount}
-            </div>
+            <div class="value">${stat.hrs.toFixed(1)}h / ${money(stat.rev)}</div>
+            <div class="muted">Rate ${money(t.hourly_labor_rate)}/hr · Jobs ${stat.jobCount}</div>
           </div>
         `;
       }).join("");
@@ -247,17 +301,48 @@
     renderTechCards();
     renderWorkOrders();
   }
-
-  // Expose for inline onclick
   window.selectTech = selectTech;
+
+  function toggleKpi(k){
+    activeKpi = (activeKpi === k) ? null : k;
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  }
+  window.toggleKpi = toggleKpi;
+
+  function setRange(r){
+    activeRange = r;
+    setActivePill();
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  }
+  window.setRange = setRange;
+
+  function clearFilters(){
+    activeKpi = null;
+    activeTechId = null;
+    activeRange = "day";
+    setActivePill();
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  }
+  window.clearFilters = clearFilters;
 
   function renderWorkOrders(){
     const list = document.getElementById("workOrders");
 
-    const filtered = orders.filter(w => !activeTechId || w.assigned_to === activeTechId);
+    const filtered = orders.filter(w => {
+      if (activeTechId && w.assigned_to !== activeTechId) return false;
+      if (!kpiMatch(w)) return false;
+      if (!inRange(w)) return false;
+      return true;
+    });
 
     if (!filtered.length) {
-      list.innerHTML = `<div class="muted">No work orders for this filter.</div>`;
+      list.innerHTML = `<div class="muted">No work orders for this view.</div>`;
       return;
     }
 
@@ -266,10 +351,22 @@
         ? (employeesById[w.assigned_to]?.name || "Unknown Tech")
         : "Unassigned";
 
+      const customerLine = (w.customer_name || w.customer_phone)
+        ? `${w.customer_name || "Customer"}${w.customer_phone ? " · " + w.customer_phone : ""}`
+        : null;
+
       return `
         <div class="card wo">
-          <div><strong>${w.summary || "Work Order"}</strong> · ${w.status}</div>
-          <div class="muted">Assigned: ${assignedName}</div>
+          <div class="woTop">
+            <div class="woLeft">
+              <div><strong>${customerLine || (w.summary || "Work Order")}</strong> · ${w.status}</div>
+              <div class="muted">${w.summary || ""} ${w.summary ? "·" : ""} ${jobHours(w).toFixed(1)}h · ${money(orderRevenue(w))}</div>
+            </div>
+            <div class="woRight">
+              <div class="muted">Assigned</div>
+              <div><strong>${assignedName}</strong></div>
+            </div>
+          </div>
         </div>
       `;
     }).join("");
@@ -278,31 +375,37 @@
   async function load(){
     const token = await validateAuth();
     if (!token) {
-      // if token is expired, do NOT auto-forward; force real login
       localStorage.removeItem("sb_access_token");
       location.replace("login.html");
       return;
     }
 
     try {
-      // 1) Employees
+      // Employees (SSOT function)
       employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
 
-      // Normalize: your employees function returns {employee_id, name, role, hourly_labor_rate}
       employeesById = {};
       employees.forEach(e => employeesById[e.employee_id] = e);
 
       technicians = employees.filter(e => e.role === "technician");
 
-      // 2) Work Orders (SSOT endpoint)
+      // Work Orders (SSOT function)
       orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-      // Render
+      // default range pills
+      setActivePill();
+
+      // render
       renderKPIs();
       renderTechCards();
       renderWorkOrders();
 
     } catch (err) {
+      if (String(err.message) === "401") {
+        localStorage.removeItem("sb_access_token");
+        location.replace("login.html");
+        return;
+      }
       document.getElementById("workOrders").innerHTML =
         `<div class="error">FETCH ERROR:\n${err.message}</div>`;
     }
