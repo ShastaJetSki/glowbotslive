@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Work Orders</title>
+  <title>Business Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Supabase anon key -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
@@ -17,131 +16,92 @@
       background: #0b0f14;
       color: #e8eef6;
     }
-
     header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
     }
-
     button {
-      padding: 8px 14px;
-      border-radius: 10px;
-      border: 1px solid #2a3b55;
-      background: #1a2535;
-      color: #fff;
-      cursor: pointer;
-      margin-top: 10px;
+      padding:8px 14px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:#1a2535;
+      color:#fff;
+      cursor:pointer;
     }
-
     .kpis {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 20px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:24px;
     }
-
     .kpi {
-      background: #0f1621;
-      border: 1px solid #223044;
-      border-radius: 12px;
-      padding: 14px 16px;
-      min-width: 180px;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:12px;
+      padding:14px 16px;
+      min-width:200px;
     }
-
     .kpi .label {
-      font-size: 12px;
-      color: #9fb0c3;
+      font-size:12px;
+      color:#9fb0c3;
     }
-
     .kpi .value {
-      font-size: 22px;
-      font-weight: 600;
-      margin-top: 4px;
+      font-size:22px;
+      font-weight:600;
+      margin-top:4px;
     }
-
+    .section {
+      margin-top:24px;
+    }
     .card {
-      background: #0f1621;
-      border: 1px solid #223044;
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 12px;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:12px;
+      padding:14px;
+      margin-bottom:10px;
     }
-
-    .job-name {
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .muted {
-      color: #9fb0c3;
-      font-size: 13px;
-    }
-
-    .meta {
-      font-size: 11px;
-      color: #7c8ca3;
-      margin-top: 6px;
-    }
-
-    .error {
-      color: #ffb3b3;
-      white-space: pre-wrap;
-    }
+    .muted { color:#9fb0c3; font-size:13px; }
+    .error { color:#ffb3b3; white-space:pre-wrap; }
   </style>
 </head>
 
 <body>
 
 <header>
-  <h1>Work Orders</h1>
+  <h1>Business Dashboard</h1>
   <button onclick="logout()">Logout</button>
 </header>
 
 <div class="kpis" id="kpis"></div>
-<div id="content">Loading…</div>
+
+<div class="section">
+  <h3>⚠️ Action Required</h3>
+  <div id="actionRequired"></div>
+</div>
+
+<div class="section">
+  <h3>Today</h3>
+  <div id="todayStats"></div>
+</div>
+
+<div class="section">
+  <h3>Recent Activity</h3>
+  <div id="recentActivity"></div>
+</div>
 
 <script>
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const FUNCTIONS_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1`;
-
-  const ANON_KEY =
-    document.querySelector('meta[name="supabase-anon-key"]').content;
-
+  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
   const token = localStorage.getItem("sb_access_token");
+
   if (!token) location.href = "login.html";
 
-  function money(n) {
-    return `$${Number(n || 0).toFixed(2)}`;
-  }
-
-  async function startWork(workOrderId) {
-    try {
-      const res = await fetch(
-        `${FUNCTIONS_BASE}/work_orders_start/${workOrderId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            apikey: ANON_KEY
-          }
-        }
-      );
-
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-
-      load();
-    } catch (err) {
-      alert("Start Work failed:\n" + err.message);
-    }
-  }
+  const money = n => `$${Number(n || 0).toFixed(2)}`;
 
   async function load() {
-    const content = document.getElementById("content");
-
     try {
       const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
         headers: {
@@ -150,121 +110,75 @@
         }
       });
 
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-
+      if (!res.ok) throw new Error(await res.text());
       const orders = await res.json();
-
-      /* =======================
-         KPI CALCULATIONS
-      ======================= */
 
       const now = new Date();
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(now.getDate() - 7);
 
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
       const openJobs = orders.filter(w =>
-        ["new", "scheduled", "waiting"].includes(w.status)
+        ["new","scheduled","waiting"].includes(w.status)
       ).length;
 
-      const inProgress = orders.filter(w =>
-        w.status === "in_progress"
-      ).length;
+      const inProgress = orders.filter(w => w.status === "in_progress").length;
+      const waitingParts = orders.filter(w => w.status === "waiting_parts").length;
 
-      const waitingParts = orders.filter(w =>
-        w.status === "waiting_parts"
-      ).length;
-
-      const completedLast7 = orders.filter(w =>
+      const completed7 = orders.filter(w =>
         w.status === "completed" &&
         new Date(w.updated_at || w.created_at) >= sevenDaysAgo
-      ).length;
+      );
 
-      const revenueLast7 = orders
-        .filter(w =>
-          w.status === "completed" &&
-          new Date(w.updated_at || w.created_at) >= sevenDaysAgo
-        )
-        .reduce((sum, w) => sum + Number(w.grand_total || 0), 0);
+      const revenue7 = completed7.reduce((s,w)=>s+Number(w.grand_total||0),0);
 
       document.getElementById("kpis").innerHTML = `
-        <div class="kpi">
-          <div class="label">Open Jobs</div>
-          <div class="value">${openJobs}</div>
-        </div>
-
-        <div class="kpi">
-          <div class="label">In Progress</div>
-          <div class="value">${inProgress}</div>
-        </div>
-
-        <div class="kpi">
-          <div class="label">Waiting on Parts</div>
-          <div class="value">${waitingParts}</div>
-        </div>
-
-        <div class="kpi">
-          <div class="label">Completed (7 Days)</div>
-          <div class="value">${completedLast7}</div>
-        </div>
-
-        <div class="kpi">
-          <div class="label">Revenue (7 Days)</div>
-          <div class="value">${money(revenueLast7)}</div>
-        </div>
+        <div class="kpi"><div class="label">Open Jobs</div><div class="value">${openJobs}</div></div>
+        <div class="kpi"><div class="label">In Progress</div><div class="value">${inProgress}</div></div>
+        <div class="kpi"><div class="label">Waiting on Parts</div><div class="value">${waitingParts}</div></div>
+        <div class="kpi"><div class="label">Completed (7d)</div><div class="value">${completed7.length}</div></div>
+        <div class="kpi"><div class="label">Revenue (7d)</div><div class="value">${money(revenue7)}</div></div>
       `;
 
-      content.innerHTML = "";
+      const action = orders.filter(w =>
+        ["waiting_parts","ready"].includes(w.status)
+      );
 
-      if (!orders.length) {
-        content.innerHTML = "<div class='muted'>No work orders.</div>";
-        return;
-      }
+      document.getElementById("actionRequired").innerHTML =
+        action.length
+          ? action.map(w => `<div class="card">${w.summary} · ${w.status}</div>`).join("")
+          : `<div class="muted">No blocking jobs</div>`;
 
-      orders.forEach((wo, i) => {
-        const shortId = wo.work_order_id.slice(0, 8);
-        const created = new Date(wo.created_at).toLocaleString();
+      const startedToday = orders.filter(w =>
+        w.status === "in_progress" &&
+        new Date(w.updated_at) >= today
+      ).length;
 
-        content.innerHTML += `
-          <div class="card">
-            <div class="job-name">
-              ${wo.summary || "Work Order"} #${i + 1}
+      const completedToday = orders.filter(w =>
+        w.status === "completed" &&
+        new Date(w.updated_at) >= today
+      ).length;
+
+      document.getElementById("todayStats").innerHTML = `
+        <div class="card">Started Today: <strong>${startedToday}</strong></div>
+        <div class="card">Completed Today: <strong>${completedToday}</strong></div>
+      `;
+
+      document.getElementById("recentActivity").innerHTML =
+        orders
+          .sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at))
+          .slice(0,5)
+          .map(w => `
+            <div class="card">
+              ${w.summary} · ${w.status}
+              <div class="muted">${new Date(w.updated_at).toLocaleString()}</div>
             </div>
-
-            <div class="muted">
-              Customer: ${wo.customer_name || "—"}
-            </div>
-
-            <div class="muted">
-              Status: ${wo.status}
-            </div>
-
-            <div>
-              Labor: ${money(wo.labor_total)} ·
-              Parts: ${money(wo.parts_total)} ·
-              <strong>Total: ${money(wo.grand_total)}</strong>
-            </div>
-
-            ${
-              wo.status === "scheduled"
-                ? `<button onclick="startWork('${wo.work_order_id}')">
-                     Start Work
-                   </button>`
-                : ``
-            }
-
-            <div class="meta">
-              WO ${shortId} · Created ${created}
-            </div>
-          </div>
-        `;
-      });
+          `).join("");
 
     } catch (err) {
-      console.error(err);
-      content.innerHTML =
-        `<div class="error">FETCH ERROR:\n${err.message}</div>`;
+      document.body.innerHTML = `<div class="error">${err.message}</div>`;
     }
   }
 
