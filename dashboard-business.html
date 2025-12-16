@@ -5,7 +5,6 @@
   <title>Business Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Supabase anon key -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
@@ -42,7 +41,7 @@
       border:1px solid #223044;
       border-radius:12px;
       padding:16px;
-      min-width:220px;
+      min-width:260px;
     }
     .kpi .label {
       font-size:12px;
@@ -50,12 +49,12 @@
       margin-bottom:6px;
     }
     .kpi .value {
-      font-size:20px;
+      font-size:18px;
       font-weight:600;
+      line-height:1.4;
     }
-    .section {
-      margin-top:28px;
-    }
+    .muted { color:#9fb0c3; font-size:12px; }
+    .section { margin-top:28px; }
     .card {
       background:#0f1621;
       border:1px solid #223044;
@@ -63,7 +62,6 @@
       padding:14px;
       margin-bottom:10px;
     }
-    .muted { color:#9fb0c3; font-size:13px; }
     .error { color:#ffb3b3; white-space:pre-wrap; }
   </style>
 </head>
@@ -75,10 +73,8 @@
   <button onclick="logout()">Logout</button>
 </header>
 
-<!-- TOP KPI CARDS -->
 <div class="kpis" id="kpis"></div>
 
-<!-- OTHER SECTIONS CAN STAY BELOW -->
 <div class="section">
   <h3>Recent Activity</h3>
   <div id="recentActivity"></div>
@@ -89,30 +85,34 @@
   const FUNCTIONS_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1`;
   const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
   const token = localStorage.getItem("sb_access_token");
-
   if (!token) location.href = "login.html";
 
-  // 🔧 Shop labor rate (from settings-business.html)
+  // 🔧 Labor rate (fallback safe)
   const LABOR_RATE = Number(localStorage.getItem("shop_labor_rate") || 50);
 
   const startOfToday = new Date();
   startOfToday.setHours(0,0,0,0);
 
+  const endOfToday = new Date();
+  endOfToday.setHours(23,59,59,999);
+
+  const ACTIVE_STATUSES = [
+    "new",
+    "open",
+    "scheduled",
+    "in_progress",
+    "waiting",
+    "waiting_parts"
+  ];
+
   function hoursBetween(start, end) {
-    if (!start || !end) return 0;
+    if (!start) return 0;
+    if (!end) return 1; // ✅ fallback if no end time
     return (new Date(end) - new Date(start)) / 36e5;
   }
 
-  function kpiCard(label, hours) {
-    const revenue = hours * LABOR_RATE;
-    return `
-      <div class="kpi">
-        <div class="label">${label}</div>
-        <div class="value">
-          ${hours.toFixed(1)} hrs / $${revenue.toFixed(0)}
-        </div>
-      </div>
-    `;
+  function money(hrs) {
+    return `$${(hrs * LABOR_RATE).toFixed(0)}`;
   }
 
   async function load() {
@@ -127,45 +127,78 @@
       if (!res.ok) throw new Error(await res.text());
       const orders = await res.json();
 
-      let openHrs = 0;
+      let todayHrs = 0;
+      let futureHrs = 0;
       let waitingHrs = 0;
       let blockedHrs = 0;
-      let completedHrs = 0;
+      let completedTodayHrs = 0;
 
       orders.forEach(w => {
-        if (!w.scheduled_start || !w.scheduled_end) return;
+        if (!w.scheduled_start) return;
 
         const start = new Date(w.scheduled_start);
-        if (start < startOfToday) return;
-
         const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
 
-        if (["new","scheduled","in_progress"].includes(w.status)) {
-          openHrs += hrs;
-        } else if (["waiting","waiting_parts"].includes(w.status)) {
+        const isToday = start >= startOfToday && start <= endOfToday;
+        const isFuture = start > endOfToday;
+
+        // 🔹 All scheduled work
+        if (ACTIVE_STATUSES.includes(w.status)) {
+          if (isToday) todayHrs += hrs;
+          if (isFuture) futureHrs += hrs;
+        }
+
+        // 🔹 Waiting today
+        if (["waiting","waiting_parts"].includes(w.status) && isToday) {
           waitingHrs += hrs;
-        } else if (["blocked","issue","needs_approval"].includes(w.status)) {
+        }
+
+        // 🔹 Complications today
+        if (["blocked","issue","needs_approval"].includes(w.status) && isToday) {
           blockedHrs += hrs;
-        } else if (w.status === "completed") {
-          completedHrs += hrs;
+        }
+
+        // 🔹 Completed today
+        if (w.status === "completed" && isToday) {
+          completedTodayHrs += hrs;
         }
       });
 
       document.getElementById("kpis").innerHTML = `
-        ${kpiCard("Open Jobs (Today)", openHrs)}
-        ${kpiCard("Waiting on Parts / Service", waitingHrs)}
-        ${kpiCard("Complications", blockedHrs)}
-        ${kpiCard("Completed Today", completedHrs)}
+        <div class="kpi">
+          <div class="label">Scheduled Work</div>
+          <div class="value">
+            Today: ${todayHrs.toFixed(1)} hrs / ${money(todayHrs)}<br>
+            <span class="muted">
+              Future: ${futureHrs.toFixed(1)} hrs / ${money(futureHrs)}
+            </span>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="label">Waiting on Parts / Service</div>
+          <div class="value">${waitingHrs.toFixed(1)} hrs / ${money(waitingHrs)}</div>
+        </div>
+
+        <div class="kpi">
+          <div class="label">Complications</div>
+          <div class="value">${blockedHrs.toFixed(1)} hrs / ${money(blockedHrs)}</div>
+        </div>
+
+        <div class="kpi">
+          <div class="label">Completed Today</div>
+          <div class="value">${completedTodayHrs.toFixed(1)} hrs / ${money(completedTodayHrs)}</div>
+        </div>
       `;
 
-      // Recent activity (simple)
       document.getElementById("recentActivity").innerHTML =
         orders
+          .filter(w => w.updated_at)
           .sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at))
           .slice(0,5)
           .map(w => `
             <div class="card">
-              ${w.summary} · ${w.status}
+              ${w.summary || "Work Order"} · ${w.status}
               <div class="muted">${new Date(w.updated_at).toLocaleString()}</div>
             </div>
           `).join("");
