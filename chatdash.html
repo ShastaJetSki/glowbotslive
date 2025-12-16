@@ -32,6 +32,7 @@
       background: #1a2535;
       color: #fff;
       cursor: pointer;
+      margin-top: 10px;
     }
 
     .kpis {
@@ -113,11 +114,35 @@
     return `$${Number(n || 0)}`;
   }
 
+  async function startWork(workOrderId) {
+    try {
+      const res = await fetch(
+        `${FUNCTIONS_BASE}/work_orders_start/${workOrderId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: ANON_KEY
+          }
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      load();
+    } catch (err) {
+      alert("Start Work failed:\n" + err.message);
+    }
+  }
+
   async function load() {
     const content = document.getElementById("content");
 
     try {
-      const res = await fetch(`${FUNCTIONS_BASE}/work_orders_view`, {
+      // ✅ FIXED ENDPOINT (SSOT)
+      const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
         headers: {
           Authorization: `Bearer ${token}`,
           apikey: ANON_KEY
@@ -128,8 +153,7 @@
         throw new Error(await res.text());
       }
 
-      const json = await res.json();
-      const orders = json.work_orders || [];
+      const orders = await res.json();
 
       const total = orders.reduce(
         (sum, w) => sum + Number(w.grand_total || 0), 0
@@ -164,7 +188,7 @@
             </div>
 
             <div class="muted">
-              Customer: ${wo.customer_name}
+              Customer: ${wo.customer_name || "—"}
             </div>
 
             <div class="muted">
@@ -176,6 +200,14 @@
               Parts: ${money(wo.parts_total)} ·
               <strong>Total: ${money(wo.grand_total)}</strong>
             </div>
+
+            ${
+              wo.status === "scheduled"
+                ? `<button onclick="startWork('${wo.work_order_id}')">
+                     Start Work
+                   </button>`
+                : ``
+            }
 
             <div class="meta">
               WO ${shortId} · Created ${created}
