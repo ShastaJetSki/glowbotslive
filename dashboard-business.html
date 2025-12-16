@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
 <meta name="supabase-anon-key"
-content="YOUR_ANON_KEY_HERE" />
+content="REPLACE_WITH_REAL_ANON_KEY" />
 
 <style>
   body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
@@ -42,6 +42,8 @@ content="YOUR_ANON_KEY_HERE" />
 
   .toolbar{ display:flex; gap:8px; margin-bottom:10px; }
   .toolbar button{ font-size:13px; padding:6px 10px; }
+
+  .error{ color:#ffb3b3; white-space:pre-wrap; }
 </style>
 </head>
 
@@ -59,7 +61,7 @@ content="YOUR_ANON_KEY_HERE" />
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
 
-<!-- FILTER BAR -->
+<!-- RANGE CONTROLS -->
 <div class="toolbar">
   <button onclick="setRange('day')">Today</button>
   <button onclick="setRange('week')">This Week</button>
@@ -71,6 +73,8 @@ content="YOUR_ANON_KEY_HERE" />
 <div id="workOrders">Loading…</div>
 
 <script>
+/* ================= CONFIG ================= */
+
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
 const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
@@ -78,44 +82,27 @@ const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').conten
 
 const DEFAULT_JOB_HOURS = 1.0;
 
-// state
-let employees=[], employeesById={}, technicians=[];
-let orders=[];
-let activeTechId=null;
-let activeKpiFilter=null; // today | waiting | complications
-let activeRange="day"; // day | week | all
+/* ================= STATE ================= */
+
+let employees = [];
+let employeesById = {};
+let technicians = [];
+let orders = [];
+
+let activeTechId = null;
+let activeKpiFilter = null;   // today | waiting | complications
+let activeRange = "day";      // day | week | all
 
 const now = new Date();
-const startOfToday = new Date(now.setHours(0,0,0,0));
+const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
 const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate()-startOfWeek.getDay());
+
+/* ================= HELPERS ================= */
 
 function money(n){ return `$${Number(n||0).toFixed(2)}`; }
 
-function jobHours(w){
-  if (w.scheduled_start && w.scheduled_end) {
-    return (new Date(w.scheduled_end)-new Date(w.scheduled_start))/36e5;
-  }
-  if (w.status==="scheduled") return DEFAULT_JOB_HOURS;
-  return 0;
-}
-
-function rateFor(w){
-  return w.assigned_to ? (employeesById[w.assigned_to]?.hourly_labor_rate||0) : 0;
-}
-
-function revenueFor(w){ return jobHours(w)*rateFor(w); }
-
-async function fetchJson(url,token){
-  const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`,apikey:ANON_KEY}});
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-async function auth(){
-  const t=localStorage.getItem("sb_access_token");
-  if(!t) return null;
-  const r=await fetch(`${API_BASE}/auth/v1/user`,{headers:{Authorization:`Bearer ${t}`,apikey:ANON_KEY}});
-  return r.ok ? t : null;
+function getToken(){
+  return localStorage.getItem("sb_access_token");
 }
 
 function logout(){
@@ -123,14 +110,47 @@ function logout(){
   location.replace("login.html");
 }
 
-/* ================= KPIs ================= */
+function jobHours(w){
+  if (w.scheduled_start && w.scheduled_end) {
+    return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
+  }
+  if (w.status === "scheduled") return DEFAULT_JOB_HOURS;
+  return 0;
+}
+
+function rateFor(w){
+  return w.assigned_to ? (employeesById[w.assigned_to]?.hourly_labor_rate || 0) : 0;
+}
+
+function revenueFor(w){
+  return jobHours(w) * rateFor(w);
+}
+
+async function fetchJson(url, token){
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: ANON_KEY
+    }
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) throw new Error("401");
+    throw new Error(text);
+  }
+
+  return res.json();
+}
+
+/* ================= KPI ================= */
 
 function renderKPIs(){
   let todayH=0,todayR=0,futureH=0,futureR=0,waitH=0,waitR=0,compH=0,compR=0;
 
   orders.forEach(w=>{
     const h=jobHours(w), r=revenueFor(w);
-    const s=w.scheduled_start?new Date(w.scheduled_start):null;
+    const s=w.scheduled_start ? new Date(w.scheduled_start) : null;
     const isToday=s && s>=startOfToday && s<new Date(startOfToday.getTime()+86400000);
     const isFuture=s && s>new Date(startOfToday.getTime()+86400000);
 
@@ -142,7 +162,7 @@ function renderKPIs(){
     if(["blocked","issue","complications"].includes(w.status)){ compH+=h; compR+=r; }
   });
 
-  document.getElementById("kpis").innerHTML=`
+  document.getElementById("kpis").innerHTML = `
     <div class="card kpi clickable ${activeKpiFilter==='today'?'active':''}"
          onclick="setKpi('today')">
       <div class="label">Scheduled Work</div>
@@ -166,29 +186,32 @@ function renderKPIs(){
   `;
 }
 
-function setKpi(k){ activeKpiFilter=(activeKpiFilter===k?null:k); renderKPIs(); renderWorkOrders(); }
-window.setKpi=setKpi;
+function setKpi(k){
+  activeKpiFilter = (activeKpiFilter === k ? null : k);
+  renderKPIs();
+  renderWorkOrders();
+}
+window.setKpi = setKpi;
 
 /* ================= TECH ================= */
 
 function renderTechCards(){
-  const stats={};
+  const stats = {};
   technicians.forEach(t=>stats[t.employee_id]={h:0,r:0,c:0});
 
   orders.forEach(w=>{
-    const t=w.assigned_to;
-    if(!stats[t]) return;
-    const s=w.scheduled_start?new Date(w.scheduled_start):null;
+    if(!stats[w.assigned_to]) return;
+    const s=w.scheduled_start ? new Date(w.scheduled_start) : null;
     if(activeRange==="day" && !(s && s>=startOfToday)) return;
     if(activeRange==="week" && !(s && s>=startOfWeek)) return;
-    stats[t].h+=jobHours(w);
-    stats[t].r+=revenueFor(w);
-    stats[t].c++;
+    stats[w.assigned_to].h += jobHours(w);
+    stats[w.assigned_to].r += revenueFor(w);
+    stats[w.assigned_to].c++;
   });
 
-  document.getElementById("techCards").innerHTML=
+  document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
-      const st=stats[t.employee_id];
+      const st = stats[t.employee_id];
       return `
         <div class="card tech clickable ${activeTechId===t.employee_id?'active':''}"
              onclick="selectTech('${t.employee_id}')">
@@ -201,41 +224,50 @@ function renderTechCards(){
 }
 
 function selectTech(id){
-  activeTechId = (activeTechId===id?null:id);
-  renderTechCards(); renderWorkOrders();
+  activeTechId = (activeTechId === id ? null : id);
+  renderTechCards();
+  renderWorkOrders();
 }
-window.selectTech=selectTech;
+window.selectTech = selectTech;
 
 /* ================= RANGE ================= */
 
-function setRange(r){ activeRange=r; renderTechCards(); renderWorkOrders(); }
-window.setRange=setRange;
+function setRange(r){
+  activeRange = r;
+  renderTechCards();
+  renderWorkOrders();
+}
+window.setRange = setRange;
 
 function clearFilters(){
-  activeTechId=null; activeKpiFilter=null; activeRange="day";
-  renderKPIs(); renderTechCards(); renderWorkOrders();
+  activeTechId = null;
+  activeKpiFilter = null;
+  activeRange = "day";
+  renderKPIs();
+  renderTechCards();
+  renderWorkOrders();
 }
-window.clearFilters=clearFilters;
+window.clearFilters = clearFilters;
 
 /* ================= WORK ORDERS ================= */
 
 function renderWorkOrders(){
-  const list=document.getElementById("workOrders");
+  const list = document.getElementById("workOrders");
 
-  const filtered=orders.filter(w=>{
-    if(activeTechId && w.assigned_to!==activeTechId) return false;
+  const filtered = orders.filter(w=>{
+    if(activeTechId && w.assigned_to !== activeTechId) return false;
 
     if(activeKpiFilter){
       if(activeKpiFilter==="waiting") return ["waiting","waiting_parts"].includes(w.status);
       if(activeKpiFilter==="complications") return ["blocked","issue","complications"].includes(w.status);
       if(activeKpiFilter==="today"){
-        const s=w.scheduled_start?new Date(w.scheduled_start):null;
+        const s=w.scheduled_start ? new Date(w.scheduled_start) : null;
         return s && s>=startOfToday;
       }
     }
 
     if(activeRange!=="all"){
-      const s=w.scheduled_start?new Date(w.scheduled_start):null;
+      const s=w.scheduled_start ? new Date(w.scheduled_start) : null;
       if(!s) return false;
       if(activeRange==="day" && s<startOfToday) return false;
       if(activeRange==="week" && s<startOfWeek) return false;
@@ -245,17 +277,17 @@ function renderWorkOrders(){
   });
 
   if(!filtered.length){
-    list.innerHTML=`<div class="muted">No work orders for this view.</div>`;
+    list.innerHTML = `<div class="muted">No work orders for this view.</div>`;
     return;
   }
 
-  list.innerHTML=filtered.map(w=>{
-    const tech=employeesById[w.assigned_to]?.name||"Unassigned";
+  list.innerHTML = filtered.map(w=>{
+    const tech = employeesById[w.assigned_to]?.name || "Unassigned";
     return `
       <div class="card wo">
-        <div class="job-title">${w.customer_name||"Unknown Customer"}</div>
-        <div class="muted">${w.customer_phone||""}</div>
-        <div class="muted">${w.summary||"Service"} · ${jobHours(w).toFixed(1)}h · ${money(revenueFor(w))}</div>
+        <div class="job-title">${w.customer_name || "Unknown Customer"}</div>
+        <div class="muted">${w.customer_phone || ""}</div>
+        <div class="muted">${w.summary || "Service"} · ${jobHours(w).toFixed(1)}h · ${money(revenueFor(w))}</div>
         <div class="meta">Status ${w.status}</div>
         <div class="meta">Assigned ${tech}</div>
       </div>
@@ -266,16 +298,27 @@ function renderWorkOrders(){
 /* ================= LOAD ================= */
 
 async function load(){
-  const token=await auth();
-  if(!token){ logout(); return; }
+  const token = getToken();
+  if (!token) { logout(); return; }
 
-  employees=await fetchJson(`${FUNCTIONS_BASE}/employees`,token);
-  employees.forEach(e=>employeesById[e.employee_id]=e);
-  technicians=employees.filter(e=>e.role==="technician");
+  try {
+    employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+    employees.forEach(e => employeesById[e.employee_id] = e);
+    technicians = employees.filter(e => e.role === "technician");
 
-  orders=await fetchJson(`${FUNCTIONS_BASE}/work_orders`,token);
+    orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-  renderKPIs(); renderTechCards(); renderWorkOrders();
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  } catch (err) {
+    if (String(err.message).includes("401")) {
+      logout();
+      return;
+    }
+    document.getElementById("workOrders").innerHTML =
+      `<div class="error">FETCH ERROR:\n${err.message}</div>`;
+  }
 }
 
 load();
