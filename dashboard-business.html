@@ -53,15 +53,10 @@ button {
   padding:18px;
 }
 
-/* KPI */
-.kpi { min-width:220px; flex:1 1 220px; }
-.kpi .label { font-size:12px; color:#9fb0c3; }
-.kpi .value { font-size:22px; font-weight:700; }
-
-/* TECH CARD — MANAGER VIEW */
+/* TECH CARD — MANAGER CAPACITY VIEW */
 .tech {
-  min-width:320px;
-  flex:1 1 320px;
+  min-width:340px;
+  flex:1 1 340px;
   display:flex;
   justify-content:space-between;
   align-items:center;
@@ -73,7 +68,7 @@ button {
   gap:8px;
 }
 
-.hours {
+.metric {
   font-size:20px;
   font-weight:700;
 }
@@ -117,16 +112,6 @@ button {
   font-size:12px;
 }
 
-.filters { display:flex; gap:8px; margin:10px 0 16px; }
-.pill {
-  padding:6px 10px;
-  border-radius:10px;
-  border:1px solid #223044;
-  background:#0f1621;
-  font-size:12px;
-  cursor:pointer;
-}
-
 .muted { font-size:12px; color:#9fb0c3; }
 .wo { margin-bottom:10px; }
 .error { color:#ffb3b3; white-space:pre-wrap; }
@@ -141,9 +126,6 @@ button {
   <h1 id="tenantTitle">Business Dashboard</h1>
   <button onclick="logout()">Logout</button>
 </header>
-
-<!-- KPI ROW -->
-<div class="row" id="kpis"></div>
 
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
@@ -161,11 +143,18 @@ const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
+/* ================================
+   CONFIG (SSOT-friendly)
+================================ */
+const DEFAULT_LABOR_RATE = 125; // $/hour (temporary; will come from business-settings.html)
 const DAILY_CAPACITY = 8;
 const WEEKLY_CAPACITY = 40;
 
-let employees=[], employeesById={}, technicians=[], orders=[];
+let employees=[], technicians=[], orders=[];
 
+/* ================================
+   AUTH (DO NOT TOUCH)
+================================ */
 function logout(){
   localStorage.removeItem("sb_access_token");
   location.replace("login.html");
@@ -186,16 +175,26 @@ async function fetchJson(url,token){
   return r.json();
 }
 
-function hoursBetween(a,b){
-  if(!a||!b) return 1;
-  return (new Date(b)-new Date(a))/36e5;
+/* ================================
+   HELPERS
+================================ */
+function hoursBetween(start,end){
+  if(!start || !end) return 1; // default 1 hour if unscheduled (testing safe)
+  return (new Date(end) - new Date(start)) / 36e5;
+}
+
+function formatHrsRev(hours){
+  const rev = hours * DEFAULT_LABOR_RATE;
+  return `${hours.toFixed(1)}h / $${rev.toFixed(0)}`;
 }
 
 function createWorkOrder(){
   location.href="work-order-new.html";
 }
 
-/* TECH CARDS — CAPACITY VIEW */
+/* ================================
+   TECH CARDS — MANAGER VIEW
+================================ */
 function renderTechCards(){
   const todayStart=new Date(); todayStart.setHours(0,0,0,0);
   const todayEnd=new Date(); todayEnd.setHours(23,59,59,999);
@@ -205,35 +204,46 @@ function renderTechCards(){
 
   document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
-      const name=t.name||`${t.first_name||""} ${t.last_name||""}`.trim();
-      const initials=name.split(" ").map(x=>x[0]).join("").slice(0,2);
+      const name =
+        t.name ||
+        `${t.first_name||""} ${t.last_name||""}`.trim() ||
+        "Technician";
 
-      const techOrders=orders.filter(w=>w.assigned_employee_id===t.employee_id);
+      const initials = name
+        .split(" ")
+        .map(x=>x[0])
+        .join("")
+        .slice(0,2)
+        .toUpperCase();
 
-      let todayHours=0;
-      let weekHours=0;
+      const techOrders = orders.filter(
+        w => w.assigned_employee_id === t.employee_id
+      );
+
+      let todayHours = 0;
+      let weekHours = 0;
 
       techOrders.forEach(w=>{
-        const h=hoursBetween(w.scheduled_start,w.scheduled_end);
-        const d=w.scheduled_start?new Date(w.scheduled_start):null;
+        const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
+        const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
 
-        if(d && d>=todayStart && d<=todayEnd) todayHours+=h;
-        if(d && d>=weekStart) weekHours+=h;
+        if(d && d >= todayStart && d <= todayEnd) todayHours += hrs;
+        if(d && d >= weekStart) weekHours += hrs;
       });
 
-      const loadPct=weekHours/WEEKLY_CAPACITY;
+      const loadPct = weekHours / WEEKLY_CAPACITY;
       let loadClass="light", loadLabel="LIGHT";
-      if(loadPct>=0.5) loadClass="normal", loadLabel="NORMAL";
-      if(loadPct>=0.8) loadClass="heavy", loadLabel="HEAVY";
-      if(loadPct>1) loadClass="over", loadLabel="OVERBOOKED";
+      if(loadPct >= 0.5) { loadClass="normal"; loadLabel="NORMAL"; }
+      if(loadPct >= 0.8) { loadClass="heavy"; loadLabel="HEAVY"; }
+      if(loadPct > 1)   { loadClass="over";   loadLabel="OVERBOOKED"; }
 
       return `
         <div class="card tech">
           <div class="techLeft">
-            <div class="hours">${todayHours.toFixed(1)}h</div>
+            <div class="metric">${formatHrsRev(todayHours)}</div>
             <div class="sub">Booked Today</div>
 
-            <div class="hours">${weekHours.toFixed(1)}h</div>
+            <div class="metric">${formatHrsRev(weekHours)}</div>
             <div class="sub">Booked This Week</div>
 
             <div class="load ${loadClass}">● ${loadLabel}</div>
@@ -248,6 +258,9 @@ function renderTechCards(){
     }).join("");
 }
 
+/* ================================
+   WORK ORDERS (UNCHANGED)
+================================ */
 function renderWorkOrders(){
   const list=document.getElementById("workOrders");
   if(!orders.length){
@@ -262,24 +275,27 @@ function renderWorkOrders(){
   `).join("");
 }
 
+/* ================================
+   LOAD
+================================ */
 async function load(){
   const token=await validateAuth();
   if(!token){ logout(); return; }
 
   try{
-    employees=await fetchJson(`${FUNCTIONS_BASE}/employees`,token);
-    employees.forEach(e=>employeesById[e.employee_id]=e);
-    technicians=employees.filter(e=>e.role==="technician");
+    employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+    technicians = employees.filter(e=>e.role==="technician");
 
-    orders=await fetchJson(`${FUNCTIONS_BASE}/work_orders`,token);
+    orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-    if(orders[0]?.tenant_name)
-      document.getElementById("tenantTitle").textContent=orders[0].tenant_name;
+    if(orders[0]?.tenant_name){
+      document.getElementById("tenantTitle").textContent = orders[0].tenant_name;
+    }
 
     renderTechCards();
     renderWorkOrders();
   }catch(err){
-    document.getElementById("workOrders").innerHTML=
+    document.getElementById("workOrders").innerHTML =
       `<div class="error">${err.message}</div>`;
   }
 }
