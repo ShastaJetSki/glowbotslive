@@ -17,20 +17,6 @@ body {
   color:#e8eef6;
 }
 
-/* HEADER */
-header {
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-end;
-  margin-bottom:18px;
-}
-
-h1 {
-  margin:0;
-  font-size:38px;
-}
-
-/* PINNED APP NAME */
 .appName {
   position:fixed;
   top:10px;
@@ -39,13 +25,15 @@ h1 {
   color:#9fb0c3;
 }
 
-/* LOGOUT */
-.headerActions {
+header {
   display:flex;
-  flex-direction:column;
+  justify-content:space-between;
   align-items:flex-end;
-  gap:6px;
+  margin-bottom:20px;
 }
+
+h1 { margin:0; font-size:38px; }
+h2 { margin:20px 0 10px; font-size:18px; display:flex; gap:12px; align-items:center; }
 
 button {
   padding:8px 14px;
@@ -56,12 +44,7 @@ button {
   cursor:pointer;
 }
 
-.row {
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  margin-bottom:16px;
-}
+.row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
 
 .card {
   background:#0f1621;
@@ -70,7 +53,12 @@ button {
   padding:14px 16px;
 }
 
-/* TECH CARD */
+/* KPI */
+.kpi { min-width:220px; flex:1 1 220px; }
+.kpi .label { font-size:12px; color:#9fb0c3; }
+.kpi .value { font-size:22px; font-weight:700; }
+
+/* TECH */
 .tech {
   min-width:260px;
   flex:1 1 260px;
@@ -83,64 +71,19 @@ button {
   border-color:#3b82f6;
   box-shadow:0 0 0 1px rgba(59,130,246,.35) inset;
 }
-
-.techLeft .value {
-  font-size:18px;
-  font-weight:650;
-}
-.techLeft .muted {
-  font-size:12px;
-  color:#9fb0c3;
-}
-
-.techRight {
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:6px;
-}
-
+.techLeft .value { font-size:18px; font-weight:650; }
+.techLeft .muted { font-size:12px; color:#9fb0c3; }
+.techRight { display:flex; flex-direction:column; align-items:center; gap:6px; }
 .avatar {
-  width:52px;
-  height:52px;
-  border-radius:50%;
-  background:#0b0f14;
-  border:1px solid #223044;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  width:52px; height:52px; border-radius:50%;
+  background:#0b0f14; border:1px solid #223044;
+  display:flex; align-items:center; justify-content:center;
   font-weight:700;
 }
-
-.techName {
-  font-size:12px;
-  text-align:center;
-}
-
-h2 {
-  margin:18px 0 10px;
-  font-size:18px;
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
-/* NEW WORK ORDER BUTTON */
-.newWO {
-  font-size:13px;
-  padding:6px 10px;
-  border-radius:8px;
-  border:1px solid #2a3b55;
-  background:#162235;
-}
+.techName { font-size:12px; }
 
 /* FILTERS */
-.filters {
-  display:flex;
-  gap:8px;
-  margin:8px 0 14px;
-  flex-wrap:wrap;
-}
+.filters { display:flex; gap:8px; margin:10px 0 16px; }
 .pill {
   padding:6px 10px;
   border-radius:10px;
@@ -149,19 +92,11 @@ h2 {
   font-size:12px;
   cursor:pointer;
 }
-.pill.active {
-  border-color:#3b82f6;
-}
+.pill.active { border-color:#3b82f6; }
 
-.muted {
-  font-size:12px;
-  color:#9fb0c3;
-}
-
-.error {
-  color:#ffb3b3;
-  white-space:pre-wrap;
-}
+.muted { font-size:12px; color:#9fb0c3; }
+.wo { margin-bottom:10px; }
+.error { color:#ffb3b3; white-space:pre-wrap; }
 </style>
 </head>
 
@@ -171,11 +106,11 @@ h2 {
 
 <header>
   <h1 id="tenantTitle">Business Dashboard</h1>
-
-  <div class="headerActions">
-    <button onclick="logout()">Logout</button>
-  </div>
+  <button onclick="logout()">Logout</button>
 </header>
+
+<!-- KPI ROW -->
+<div class="row" id="kpis"></div>
 
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
@@ -189,7 +124,7 @@ h2 {
 
 <h2>
   Work Orders
-  <button class="newWO" onclick="createWorkOrder()">+ New Work Order</button>
+  <button onclick="createWorkOrder()">+ New Work Order</button>
 </h2>
 
 <div id="workOrders">Loading…</div>
@@ -208,60 +143,67 @@ const STATUS_BUCKETS = {
 };
 
 let employees=[], employeesById={}, technicians=[], orders=[];
-let activeTechId=null, activeRange="today", activeKpiFilter=null;
+let activeTechId=null, activeRange="today";
 
-function statusIn(bucket,status){ return (STATUS_BUCKETS[bucket]||[]).includes(status); }
+function statusIn(bucket,s){ return STATUS_BUCKETS[bucket].includes(s); }
 
 function logout(){
   localStorage.removeItem("sb_access_token");
   location.replace("login.html");
 }
 
-/* AUTH — DO NOT CHANGE */
 async function validateAuth(){
   const token=localStorage.getItem("sb_access_token");
   if(!token) return null;
-  const res=await fetch(`${API_BASE}/auth/v1/user`,{
+  const r=await fetch(`${API_BASE}/auth/v1/user`,{
     headers:{Authorization:`Bearer ${token}`,apikey:ANON_KEY}
   });
-  return res.ok?token:null;
+  return r.ok?token:null;
 }
 
 async function fetchJson(url,token){
-  const r=await fetch(url,{
-    headers:{Authorization:`Bearer ${token}`,apikey:ANON_KEY}
-  });
+  const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`,apikey:ANON_KEY}});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
-/* UI ACTION */
 function createWorkOrder(){
   location.href="work-order-new.html";
 }
 
-/* RENDER */
-function renderTechCards(){
-  const stats={};
-  technicians.forEach(t=>stats[t.employee_id]={hrs:0,rev:0,jobs:0});
+/* KPI */
+function renderKPIs(){
+  const bucket=(b)=>orders.filter(w=>statusIn(b,w.status));
+  const card=(t,c)=>`
+    <div class="card kpi">
+      <div class="label">${t}</div>
+      <div class="value">${c.length}</div>
+    </div>`;
+  document.getElementById("kpis").innerHTML =
+    card("Scheduled",bucket("scheduled"))+
+    card("Waiting",bucket("waiting"))+
+    card("Complications",bucket("complications"))+
+    card("Completed",bucket("completed"));
+}
 
+/* TECH */
+function renderTechCards(){
+  const counts={};
+  technicians.forEach(t=>counts[t.employee_id]=0);
   orders.forEach(w=>{
-    if(activeTechId && w.assigned_to!==activeTechId) return;
-    if(activeKpiFilter && !statusIn(activeKpiFilter,w.status)) return;
-    if(!stats[w.assigned_to]) return;
-    stats[w.assigned_to].jobs++;
+    if(w.assigned_employee_id && counts[w.assigned_employee_id]!=null)
+      counts[w.assigned_employee_id]++;
   });
 
   document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
-      const s=stats[t.employee_id];
-      const name=`${t.first_name||""} ${t.last_name||""}`.trim()||"Tech";
+      const name=t.name||`${t.first_name||""} ${t.last_name||""}`.trim();
       const initials=name.split(" ").map(x=>x[0]).join("").slice(0,2);
       return `
         <div class="card tech ${activeTechId===t.employee_id?'active':''}"
           onclick="selectTech('${t.employee_id}')">
           <div class="techLeft">
-            <div class="value">${s.jobs} jobs</div>
+            <div class="value">${counts[t.employee_id]} jobs</div>
             <div class="muted">Today</div>
           </div>
           <div class="techRight">
@@ -272,32 +214,38 @@ function renderTechCards(){
     }).join("");
 }
 
+function selectTech(id){
+  activeTechId=(activeTechId===id)?null:id;
+  renderWorkOrders();
+}
+
+/* WORK ORDERS */
 function renderWorkOrders(){
   const list=document.getElementById("workOrders");
-  if(!orders.length){
+  let filtered=orders;
+  if(activeTechId) filtered=filtered.filter(w=>w.assigned_employee_id===activeTechId);
+
+  if(!filtered.length){
     list.innerHTML=`<div class="muted">No work orders.</div>`;
     return;
   }
-  list.innerHTML=orders.map(w=>`
-    <div class="card">
-      <strong>${w.customer_name||"—"}</strong> · ${w.status}
-      <div class="muted">${w.summary||"—"}</div>
-    </div>
-  `).join("");
-}
 
-function selectTech(id){
-  activeTechId=(activeTechId===id)?null:id;
-  renderTechCards();
+  list.innerHTML=filtered.map(w=>{
+    const tech=w.assigned_employee_id
+      ? employeesById[w.assigned_employee_id]?.name||"Assigned Tech"
+      : "Unassigned";
+    return `
+      <div class="card wo">
+        <strong>${w.customer_name||"Unknown Customer"}</strong> · ${w.status}
+        <div class="muted">${w.summary||""}</div>
+        <div class="muted">Tech: ${tech}</div>
+      </div>`;
+  }).join("");
 }
 
 async function load(){
   const token=await validateAuth();
-  if(!token){
-    localStorage.removeItem("sb_access_token");
-    location.replace("login.html");
-    return;
-  }
+  if(!token){ logout(); return; }
 
   try{
     employees=await fetchJson(`${FUNCTIONS_BASE}/employees`,token);
@@ -306,15 +254,15 @@ async function load(){
 
     orders=await fetchJson(`${FUNCTIONS_BASE}/work_orders`,token);
 
-    if(orders[0]?.tenant_name){
+    if(orders[0]?.tenant_name)
       document.getElementById("tenantTitle").textContent=orders[0].tenant_name;
-    }
 
+    renderKPIs();
     renderTechCards();
     renderWorkOrders();
   }catch(err){
     document.getElementById("workOrders").innerHTML=
-      `<div class="error">${err.message||err}</div>`;
+      `<div class="error">${err.message}</div>`;
   }
 }
 
