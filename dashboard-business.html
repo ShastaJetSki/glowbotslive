@@ -50,6 +50,7 @@ button {
 .kpi .value, .tech .value {
   font-size:18px;
   font-weight:600;
+  line-height:1.4;
 }
 .tech {
   cursor:pointer;
@@ -71,6 +72,7 @@ button {
   margin-bottom:10px;
 }
 .muted { color:#9fb0c3; font-size:12px; }
+.error { color:#ffb3b3; white-space:pre-wrap; }
 </style>
 </head>
 
@@ -81,10 +83,10 @@ button {
   <button onclick="logout()">Logout</button>
 </header>
 
-<!-- TOP KPI ROW -->
+<!-- KPI ROW -->
 <div class="kpis" id="kpis"></div>
 
-<!-- EMPLOYEE ROW -->
+<!-- TECH ROW -->
 <div class="kpis" id="techCards"></div>
 
 <!-- WORK ORDERS -->
@@ -112,72 +114,107 @@ let activeEmployee = null;
 
 function hoursBetween(start,end){
   if(!start) return 0;
-  if(!end) return 1;
+  if(!end) return 1; // fallback
   return (new Date(end)-new Date(start))/36e5;
 }
 function money(h){ return `$${(h*LABOR_RATE).toFixed(0)}` }
 
 async function load(){
-  const res = await fetch(`${FUNCTIONS_BASE}/work_orders`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:ANON_KEY}
-  });
-  allOrders = await res.json();
+  try {
+    const res = await fetch(`${FUNCTIONS_BASE}/work_orders`,{
+      headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+    });
+    if(!res.ok) throw new Error(await res.text());
+    allOrders = await res.json();
 
-  renderKPIs();
-  renderEmployees();
-  renderWorkOrders();
+    renderKPIs();
+    renderTechnicians();
+    renderWorkOrders();
+  } catch(err){
+    document.body.innerHTML = `<div class="error">${err.message}</div>`;
+  }
 }
 
 function renderKPIs(){
-  let today=0,future=0;
+  let today=0, future=0, waiting=0, blocked=0, completed=0;
+
   allOrders.forEach(w=>{
     if(!w.scheduled_start) return;
     const s=new Date(w.scheduled_start);
     const hrs=hoursBetween(w.scheduled_start,w.scheduled_end);
-    if(!ACTIVE_STATUSES.includes(w.status)) return;
-    if(s>=startOfToday && s<=endOfToday) today+=hrs;
-    if(s>endOfToday) future+=hrs;
+
+    const isToday = s>=startOfToday && s<=endOfToday;
+    const isFuture = s>endOfToday;
+
+    if(ACTIVE_STATUSES.includes(w.status)){
+      if(isToday) today+=hrs;
+      if(isFuture) future+=hrs;
+    }
+    if(["waiting","waiting_parts"].includes(w.status) && isToday) waiting+=hrs;
+    if(["blocked","issue","needs_approval"].includes(w.status) && isToday) blocked+=hrs;
+    if(w.status==="completed" && isToday) completed+=hrs;
   });
 
-  document.getElementById("kpis").innerHTML=`
+  let html = "";
+
+  if(today>0 || future>0){
+    html+=`
     <div class="kpi">
       <div class="label">Scheduled Work</div>
       <div class="value">
-        Today: ${today.toFixed(1)} hrs / ${money(today)}<br>
-        <span class="muted">Future: ${future.toFixed(1)} hrs / ${money(future)}</span>
+        ${today>0?`Today: ${today.toFixed(1)} hrs / ${money(today)}<br>`:""}
+        ${future>0?`<span class="muted">Future: ${future.toFixed(1)} hrs / ${money(future)}</span>`:""}
       </div>
     </div>`;
+  }
+  if(waiting>0){
+    html+=`<div class="kpi"><div class="label">Waiting on Parts</div><div class="value">${waiting.toFixed(1)} hrs / ${money(waiting)}</div></div>`;
+  }
+  if(blocked>0){
+    html+=`<div class="kpi"><div class="label">Complications</div><div class="value">${blocked.toFixed(1)} hrs / ${money(blocked)}</div></div>`;
+  }
+  if(completed>0){
+    html+=`<div class="kpi"><div class="label">Completed Today</div><div class="value">${completed.toFixed(1)} hrs / ${money(completed)}</div></div>`;
+  }
+
+  document.getElementById("kpis").innerHTML = html;
 }
 
-function renderEmployees(){
-  const map={};
+function renderTechnicians(){
+  const map = {};
 
   allOrders.forEach(w=>{
-    if(!w.assigned_employee_id||!w.scheduled_start) return;
-    const id=w.assigned_employee_id;
+    if(!w.assigned_employee_id || !w.scheduled_start) return;
+    if(!ACTIVE_STATUSES.includes(w.status) && w.status!=="completed") return;
+
+    const id = w.assigned_employee_id;
     if(!map[id]) map[id]={today:0,future:0};
-    const hrs=hoursBetween(w.scheduled_start,w.scheduled_end);
+
     const s=new Date(w.scheduled_start);
+    const hrs=hoursBetween(w.scheduled_start,w.scheduled_end);
+
     if(s>=startOfToday && s<=endOfToday) map[id].today+=hrs;
     if(s>endOfToday) map[id].future+=hrs;
   });
 
   document.getElementById("techCards").innerHTML =
-    Object.entries(map).map(([id,v])=>`
-      <div class="tech ${activeEmployee===id?'active':''}"
-           onclick="selectEmployee('${id}')">
-        <div class="label">Employee</div>
-        <div class="value">
-          Today: ${v.today.toFixed(1)} hrs / ${money(v.today)}<br>
-          <span class="muted">Future: ${v.future.toFixed(1)} hrs / ${money(v.future)}</span>
+    Object.entries(map)
+      .filter(([_,v])=>v.today>0||v.future>0)
+      .map(([id,v])=>`
+        <div class="tech ${activeEmployee===id?'active':''}"
+             onclick="selectEmployee('${id}')">
+          <div class="label">Technician</div>
+          <div class="value">
+            ${v.today>0?`Today: ${v.today.toFixed(1)} hrs / ${money(v.today)}<br>`:""}
+            ${v.future>0?`<span class="muted">Future: ${v.future.toFixed(1)} hrs / ${money(v.future)}</span>`:""}
+          </div>
         </div>
-      </div>
-    `).join("");
+      `).join("");
 }
 
 function selectEmployee(id){
   activeEmployee = activeEmployee===id ? null : id;
-  renderEmployees();
+  renderTechnicians();
   renderWorkOrders();
 }
 
@@ -191,7 +228,7 @@ function renderWorkOrders(){
     list.map(w=>`
       <div class="card">
         ${w.summary||"Work Order"} · ${w.status}
-        <div class="muted">${w.assigned_employee_id||"Unassigned"}</div>
+        <div class="muted">${w.assigned_employee_id || "Unassigned"}</div>
       </div>
     `).join("");
 }
