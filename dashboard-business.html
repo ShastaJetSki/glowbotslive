@@ -1,48 +1,108 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Business Dashboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta charset="utf-8" />
+  <title>Business Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<meta name="supabase-anon-key"
-  content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+  <meta name="supabase-anon-key"
+    content="YOUR_ANON_KEY_HERE" />
 
-<style>
-body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
-button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; background:#1a2535; color:#fff; cursor:pointer; }
+  <style>
+    body {
+      margin:0;
+      padding:24px;
+      font-family:system-ui;
+      background:#0b0f14;
+      color:#e8eef6;
+    }
 
-.row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
-.card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
+    header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:18px;
+    }
 
-.kpi { min-width:260px; flex:1 1 260px; cursor:pointer; }
-.tech { min-width:260px; flex:1 1 260px; cursor:pointer; }
+    button {
+      padding:8px 14px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:#1a2535;
+      color:#fff;
+      cursor:pointer;
+    }
 
-.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+    h2 {
+      margin:18px 0 10px;
+      font-size:18px;
+    }
 
-.label { font-size:12px; color:#9fb0c3; }
-.value { font-size:18px; font-weight:650; margin-top:6px; }
-.muted { font-size:12px; color:#9fb0c3; margin-top:6px; }
+    .row {
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
+    }
 
-h2 { margin:18px 0 10px; font-size:18px; }
-.wo { margin-bottom:10px; }
-.error { color:#ffb3b3; white-space:pre-wrap; }
-</style>
+    .card {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:14px 16px;
+    }
+
+    .kpi { min-width:260px; flex:1 1 260px; }
+    .tech {
+      min-width:240px;
+      flex:1 1 240px;
+      cursor:pointer;
+    }
+
+    .tech.active {
+      border-color:#3b82f6;
+      box-shadow:0 0 0 1px rgba(59,130,246,.35) inset;
+    }
+
+    .label {
+      font-size:12px;
+      color:#9fb0c3;
+    }
+
+    .value {
+      font-size:18px;
+      font-weight:650;
+      margin-top:6px;
+    }
+
+    .muted {
+      font-size:12px;
+      color:#9fb0c3;
+      margin-top:6px;
+    }
+
+    .wo {
+      margin-bottom:10px;
+    }
+
+    .error {
+      color:#ffb3b3;
+      white-space:pre-wrap;
+    }
+  </style>
 </head>
 
 <body>
 
 <header>
-  <h1>Business Dashboard</h1>
+  <h1 style="margin:0;">Business Dashboard</h1>
   <button onclick="logout()">Logout</button>
 </header>
 
-<!-- KPI CARDS -->
+<!-- KPI -->
 <div class="row" id="kpis"></div>
 
-<!-- TECH CARDS -->
+<!-- TECHS -->
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
 
@@ -51,192 +111,149 @@ h2 { margin:18px 0 10px; font-size:18px; }
 <div id="workOrders">Loading…</div>
 
 <script>
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
-const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+  const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 
-let employees = [];
-let employeesById = {};
-let technicians = [];
+  const ANON_KEY =
+    document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let customers = [];
-let customersById = {};
+  let employees = [];
+  let employeesById = {};
+  let technicians = [];
+  let orders = [];
+  let activeTechId = null;
 
-let orders = [];
+  function money(n) {
+    return `$${Number(n || 0).toFixed(2)}`;
+  }
 
-let activeTech = null;
-let activeFilter = null;
+  function logout() {
+    localStorage.removeItem("sb_access_token");
+    location.replace("login.html");
+  }
 
-function money(n){ return `$${Number(n||0).toFixed(2)}`; }
+  async function fetchJson(url, token) {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: ANON_KEY
+      }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
 
-function logout(){
-  localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
-}
+  async function validateAuth() {
+    const token = localStorage.getItem("sb_access_token");
+    if (!token) return null;
 
-async function fetchJson(url, token){
-  const res = await fetch(url,{
-    headers:{
-      Authorization:`Bearer ${token}`,
-      apikey:ANON_KEY
+    const res = await fetch(`${API_BASE}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: ANON_KEY
+      }
+    });
+
+    if (!res.ok) return null;
+    return token;
+  }
+
+  function renderKPIs() {
+    document.getElementById("kpis").innerHTML = `
+      <div class="card kpi">
+        <div class="label">Scheduled</div>
+        <div class="value">${orders.length} Jobs</div>
+      </div>
+    `;
+  }
+
+  function renderTechCards() {
+    document.getElementById("techCards").innerHTML =
+      technicians.map(t => {
+        const jobs = orders.filter(o => o.assigned_to === t.employee_id);
+        const active = activeTechId === t.employee_id ? "active" : "";
+
+        return `
+          <div class="card tech ${active}"
+               onclick="selectTech('${t.employee_id}')">
+            <div class="label">
+              Tech · ${t.name || "Unknown"}
+            </div>
+            <div class="value">
+              ${jobs.length} Jobs
+            </div>
+          </div>
+        `;
+      }).join("");
+  }
+
+  function selectTech(id) {
+    activeTechId = activeTechId === id ? null : id;
+    renderTechCards();
+    renderWorkOrders();
+  }
+
+  window.selectTech = selectTech;
+
+  function renderWorkOrders() {
+    const list = document.getElementById("workOrders");
+
+    const filtered = activeTechId
+      ? orders.filter(o => o.assigned_to === activeTechId)
+      : orders;
+
+    if (!filtered.length) {
+      list.innerHTML = `<div class="muted">No work orders.</div>`;
+      return;
     }
-  });
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
 
-// fallback until schedule hours are wired
-function jobHours(w){ return w.estimated_hours || 1; }
-
-function jobRevenue(w){
-  const tech = employeesById[w.assigned_to];
-  if(!tech) return 0;
-  return jobHours(w) * Number(tech.hourly_labor_rate || 0);
-}
-
-function applyFilters(){
-  let data = [...orders];
-  if(activeTech) data = data.filter(w => w.assigned_to === activeTech);
-  if(activeFilter) data = data.filter(w => w.status === activeFilter);
-  return data;
-}
-
-/* ================= KPI CARDS ================= */
-
-function renderKPIs(){
-  const bucket = s =>
-    orders.filter(w => w.status === s)
-      .reduce((a,w)=>a + jobHours(w),0);
-
-  document.getElementById("kpis").innerHTML = `
-    <div class="card kpi ${activeFilter==='scheduled'?'active':''}" onclick="setFilter('scheduled')">
-      <div class="label">Scheduled</div>
-      <div class="value">${bucket('scheduled').toFixed(1)} hrs</div>
-    </div>
-
-    <div class="card kpi ${activeFilter==='waiting_parts'?'active':''}" onclick="setFilter('waiting_parts')">
-      <div class="label">Waiting on Parts</div>
-      <div class="value">${bucket('waiting_parts').toFixed(1)} hrs</div>
-    </div>
-
-    <div class="card kpi ${activeFilter==='complications'?'active':''}" onclick="setFilter('complications')">
-      <div class="label">Complications</div>
-      <div class="value">${bucket('complications').toFixed(1)} hrs</div>
-    </div>
-
-    <div class="card kpi ${activeFilter==='completed'?'active':''}" onclick="setFilter('completed')">
-      <div class="label">Completed</div>
-      <div class="value">${bucket('completed').toFixed(1)} hrs</div>
-    </div>
-  `;
-}
-
-/* ================= TECH CARDS ================= */
-
-function renderTechCards(){
-  document.getElementById("techCards").innerHTML =
-    technicians.map(t=>{
-      const techOrders = orders.filter(w => w.assigned_to === t.employee_id);
-      const hrs = techOrders.reduce((a,w)=>a + jobHours(w),0);
-      const rev = techOrders.reduce((a,w)=>a + jobRevenue(w),0);
+    list.innerHTML = filtered.map(o => {
+      const tech = employeesById[o.assigned_to];
+      const techName = tech ? tech.name : "Unassigned";
 
       return `
-        <div class="card tech ${activeTech===t.employee_id?'active':''}"
-             onclick="toggleTech('${t.employee_id}')">
-          <div class="label">Tech · ${t.first_name}</div>
-          <div class="value">${hrs.toFixed(1)} hrs / ${money(rev)}</div>
-          <div class="muted">Jobs: ${techOrders.length}</div>
+        <div class="card wo">
+          <div><strong>${o.customer_name || "Customer"}</strong> · ${o.status}</div>
+          <div class="muted">
+            ${o.customer_phone || "—"} — ${o.summary || ""}
+          </div>
+          <div class="muted">
+            Assigned to: ${techName}
+          </div>
         </div>
       `;
     }).join("");
-}
-
-/* ================= WORK ORDERS ================= */
-
-function renderWorkOrders(){
-  const list = document.getElementById("workOrders");
-  const data = applyFilters();
-
-  if(!data.length){
-    list.innerHTML = `<div class="muted">No work orders for this view.</div>`;
-    return;
   }
 
-  list.innerHTML = data.map(w=>{
-    const customer = customersById[w.customer_id];
-    const tech = employeesById[w.assigned_to];
-
-    const customerName = customer
-      ? `${customer.first_name} ${customer.last_name || ""}`.trim()
-      : "Customer";
-
-    const customerPhone = customer?.phone || "";
-    const techName = tech ? tech.first_name : "Unassigned";
-
-    return `
-      <div class="card wo">
-        <strong>${customerName} · ${w.status}</strong><br>
-        <span class="muted">${customerPhone} — ${w.summary}</span><br>
-        <span class="muted">Assigned to: ${techName}</span>
-      </div>
-    `;
-  }).join("");
-}
-
-/* ================= FILTER HANDLERS ================= */
-
-function toggleTech(id){
-  activeTech = activeTech === id ? null : id;
-  renderTechCards();
-  renderWorkOrders();
-}
-
-function setFilter(s){
-  activeFilter = activeFilter === s ? null : s;
-  renderKPIs();
-  renderWorkOrders();
-}
-
-window.toggleTech = toggleTech;
-window.setFilter = setFilter;
-
-/* ================= LOAD (SAFE) ================= */
-
-async function load(){
-  const token = localStorage.getItem("sb_access_token");
-  if(!token){ logout(); return; }
-
-  try {
-    // REQUIRED
-    employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
-    orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
-
-    employeesById = {};
-    employees.forEach(e => employeesById[e.employee_id] = e);
-    technicians = employees.filter(e => e.role === "technician");
-
-    // OPTIONAL — must never break page
-    try {
-      customers = await fetchJson(`${FUNCTIONS_BASE}/customers`, token);
-      customersById = {};
-      customers.forEach(c => customersById[c.customer_id] = c);
-    } catch {
-      customers = [];
-      customersById = {};
+  async function load() {
+    const token = await validateAuth();
+    if (!token) {
+      localStorage.removeItem("sb_access_token");
+      location.replace("login.html");
+      return;
     }
 
-    renderKPIs();
-    renderTechCards();
-    renderWorkOrders();
+    try {
+      employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+      orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-  } catch (err) {
-    document.getElementById("workOrders").innerHTML =
-      `<div class="error">LOAD ERROR:\n${err.message}</div>`;
+      employeesById = {};
+      employees.forEach(e => employeesById[e.employee_id] = e);
+
+      technicians = employees.filter(e => e.role === "technician");
+
+      renderKPIs();
+      renderTechCards();
+      renderWorkOrders();
+
+    } catch (err) {
+      document.getElementById("workOrders").innerHTML =
+        `<div class="error">${err.message}</div>`;
+    }
   }
-}
 
-load();
+  load();
 </script>
 
 </body>
