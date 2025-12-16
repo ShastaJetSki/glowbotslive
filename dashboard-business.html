@@ -6,8 +6,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
 
 <meta name="supabase-anon-key"
   content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
@@ -20,7 +18,8 @@ button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; backgro
 .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
 .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
 .kpi { min-width:260px; flex:1 1 260px; cursor:pointer; }
-.tech { min-width:240px; flex:1 1 240px; cursor:pointer; }
+.tech { min-width:260px; flex:1 1 260px; cursor:pointer; }
+
 .active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
 
 .label { font-size:12px; color:#9fb0c3; }
@@ -65,11 +64,7 @@ let activeTech = null;
 let activeFilter = null;
 
 function money(n){ return `$${Number(n||0).toFixed(2)}`; }
-
-function logout(){
-  localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
-}
+function logout(){ localStorage.removeItem("sb_access_token"); location.replace("login.html"); }
 
 async function fetchJson(url, token){
   const res = await fetch(url,{
@@ -79,47 +74,45 @@ async function fetchJson(url, token){
   return res.json();
 }
 
+// fallback until schedules are wired
 function jobHours(w){ return w.estimated_hours || 1; }
 
+function jobRevenue(w){
+  const tech = employeesById[w.assigned_to];
+  if(!tech) return 0;
+  return jobHours(w) * Number(tech.hourly_labor_rate || 0);
+}
+
 function applyFilters(){
-  let filtered = [...orders];
-  if(activeTech) filtered = filtered.filter(w => w.assigned_to === activeTech);
-  if(activeFilter) filtered = filtered.filter(w => w.status === activeFilter);
-  return filtered;
+  let data = [...orders];
+  if(activeTech) data = data.filter(w => w.assigned_to === activeTech);
+  if(activeFilter) data = data.filter(w => w.status === activeFilter);
+  return data;
 }
 
 function renderKPIs(){
-  const buckets = {
-    scheduled: { h:0 },
-    waiting_parts: { h:0 },
-    complications: { h:0 },
-    completed: { h:0 }
-  };
-
-  orders.forEach(w=>{
-    const hrs = jobHours(w);
-    if(buckets[w.status]) buckets[w.status].h += hrs;
-  });
+  const bucket = s =>
+    orders.filter(w=>w.status===s).reduce((a,w)=>a+jobHours(w),0);
 
   document.getElementById("kpis").innerHTML = `
     <div class="card kpi ${activeFilter==='scheduled'?'active':''}" onclick="setFilter('scheduled')">
       <div class="label">Scheduled Work</div>
-      <div class="value">${buckets.scheduled.h.toFixed(1)} hrs</div>
+      <div class="value">${bucket('scheduled').toFixed(1)} hrs</div>
     </div>
 
     <div class="card kpi ${activeFilter==='waiting_parts'?'active':''}" onclick="setFilter('waiting_parts')">
       <div class="label">Waiting on Parts</div>
-      <div class="value">${buckets.waiting_parts.h.toFixed(1)} hrs</div>
+      <div class="value">${bucket('waiting_parts').toFixed(1)} hrs</div>
     </div>
 
     <div class="card kpi ${activeFilter==='complications'?'active':''}" onclick="setFilter('complications')">
       <div class="label">Complications</div>
-      <div class="value">${buckets.complications.h.toFixed(1)} hrs</div>
+      <div class="value">${bucket('complications').toFixed(1)} hrs</div>
     </div>
 
     <div class="card kpi ${activeFilter==='completed'?'active':''}" onclick="setFilter('completed')">
       <div class="label">Completed</div>
-      <div class="value">${buckets.completed.h.toFixed(1)} hrs</div>
+      <div class="value">${bucket('completed').toFixed(1)} hrs</div>
     </div>
   `;
 }
@@ -127,12 +120,16 @@ function renderKPIs(){
 function renderTechCards(){
   document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
-      const name = `TECH / ${t.last_name} / ${t.first_name} ${t.last_name}`;
+      const techOrders = orders.filter(w=>w.assigned_to===t.employee_id);
+      const hrs = techOrders.reduce((a,w)=>a+jobHours(w),0);
+      const rev = techOrders.reduce((a,w)=>a+jobRevenue(w),0);
+
       return `
         <div class="card tech ${activeTech===t.employee_id?'active':''}"
              onclick="toggleTech('${t.employee_id}')">
-          <div class="label">${name}</div>
-          <div class="value">${money(t.hourly_labor_rate)}/hr</div>
+          <div class="label">TECH / ${t.last_name} / ${t.first_name} ${t.last_name}</div>
+          <div class="value">${hrs.toFixed(1)} hrs / ${money(rev)}</div>
+          <div class="muted">Jobs: ${techOrders.length}</div>
         </div>
       `;
     }).join("");
@@ -150,9 +147,11 @@ function renderWorkOrders(){
   list.innerHTML = data.map(w=>{
     const tech = employeesById[w.assigned_to];
     const techName = tech ? `${tech.first_name} ${tech.last_name}` : "Unassigned";
+
     return `
       <div class="card wo">
-        <strong>${w.summary}</strong> · ${w.status}<br/>
+        <strong>${w.customer_name || "Customer"} · ${w.customer_phone || ""}</strong><br>
+        <span class="muted">${w.status} · ${w.summary}</span><br>
         <span class="muted">Assigned: ${techName}</span>
       </div>
     `;
@@ -160,13 +159,13 @@ function renderWorkOrders(){
 }
 
 function toggleTech(id){
-  activeTech = activeTech === id ? null : id;
+  activeTech = activeTech===id ? null : id;
   renderTechCards();
   renderWorkOrders();
 }
 
-function setFilter(status){
-  activeFilter = activeFilter === status ? null : status;
+function setFilter(s){
+  activeFilter = activeFilter===s ? null : s;
   renderKPIs();
   renderWorkOrders();
 }
@@ -182,8 +181,8 @@ async function load(){
   orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
   employeesById = {};
-  employees.forEach(e => employeesById[e.employee_id] = e);
-  technicians = employees.filter(e => e.role === "technician");
+  employees.forEach(e=>employeesById[e.employee_id]=e);
+  technicians = employees.filter(e=>e.role==='technician');
 
   renderKPIs();
   renderTechCards();
