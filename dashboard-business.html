@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Business Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="supabase-anon-key"
+    content="YOUR_ANON_KEY_HERE" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui;
+      background: #0b0f14;
+      color: #e8eef6;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid #2a3b55;
+      background: #1a2535;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .kpis {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .kpi {
+      background: #0f1621;
+      border: 1px solid #223044;
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 200px;
+    }
+
+    .kpi .label {
+      font-size: 12px;
+      color: #9fb0c3;
+    }
+
+    .kpi .value {
+      font-size: 22px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: #0f1621;
+      border: 1px solid #223044;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .job-name {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .muted {
+      color: #9fb0c3;
+      font-size: 13px;
+    }
+
+    .meta {
+      font-size: 11px;
+      color: #7c8ca3;
+      margin-top: 6px;
+    }
+
+    .error {
+      color: #ffb3b3;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Business Dashboard</h1>
+  <button onclick="logout()">Logout</button>
+</header>
+
+<div class="kpis" id="kpis"></div>
+<div id="content">Loading…</div>
+
+<script>
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const FUNCTIONS_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1`;
+
+  const ANON_KEY =
+    document.querySelector('meta[name="supabase-anon-key"]').content;
+
+  const token = localStorage.getItem("sb_access_token");
+  if (!token) location.href = "login.html";
+
+  function money(n) {
+    return `$${Number(n || 0).toFixed(2)}`;
+  }
+
+  async function load() {
+    const content = document.getElementById("content");
+
+    try {
+      const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      const orders = await res.json();
+
+      /* =======================
+         KPI CALCS (simple)
+      ======================= */
+      const scheduled = orders.filter(o => o.status === "scheduled");
+      const inProgress = orders.filter(o => o.status === "in_progress");
+
+      const scheduledRevenue = scheduled.reduce(
+        (sum, o) => sum + Number(o.labor_total || 0), 0
+      );
+
+      document.getElementById("kpis").innerHTML = `
+        <div class="kpi">
+          <div class="label">Scheduled Jobs</div>
+          <div class="value">${scheduled.length} · ${money(scheduledRevenue)}</div>
+        </div>
+
+        <div class="kpi">
+          <div class="label">In Progress</div>
+          <div class="value">${inProgress.length}</div>
+        </div>
+      `;
+
+      content.innerHTML = "";
+
+      if (!orders.length) {
+        content.innerHTML = "<div class='muted'>No work orders.</div>";
+        return;
+      }
+
+      orders.forEach((wo) => {
+        content.innerHTML += `
+          <div class="card">
+
+            <!-- CUSTOMER -->
+            <div class="job-name">
+              ${wo.customer_name || "Unknown Customer"}
+            </div>
+
+            <div class="muted">
+              ${wo.customer_phone ? `📞 ${wo.customer_phone}` : ""}
+            </div>
+
+            <!-- JOB SUMMARY + HOURS -->
+            <div class="muted" style="margin-top:6px;">
+              ${wo.summary || "Service"} ·
+              ${wo.labor_total ? (wo.labor_total / (wo.assigned_rate || 1)).toFixed(1) : "0.0"} hrs
+            </div>
+
+            <!-- STATUS -->
+            <div class="muted" style="margin-top:4px;">
+              Status: ${wo.status}
+            </div>
+
+            <!-- TOTALS -->
+            <div style="margin-top:6px;">
+              Labor: ${money(wo.labor_total)} ·
+              Parts: ${money(wo.parts_total)} ·
+              <strong>Total: ${money(wo.grand_total)}</strong>
+            </div>
+
+            <!-- TECH -->
+            <div class="meta">
+              Assigned: ${wo.assigned_name || "Unassigned"}
+            </div>
+
+            <div class="meta">
+              WO ${wo.work_order_id.slice(0, 8)} ·
+              Created ${new Date(wo.created_at).toLocaleString()}
+            </div>
+
+          </div>
+        `;
+      });
+
+    } catch (err) {
+      console.error(err);
+      content.innerHTML =
+        `<div class="error">FETCH ERROR:\n${err.message}</div>`;
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("sb_access_token");
+    location.href = "login.html";
+  }
+
+  load();
+</script>
+
+</body>
+</html>
