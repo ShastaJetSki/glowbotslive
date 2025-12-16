@@ -9,20 +9,72 @@
 content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
 <style>
-body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; background:#1a2535; color:#fff; cursor:pointer; }
-.kpis { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
-.kpi, .tech { background:#0f1621; border:1px solid #223044; border-radius:12px; padding:16px; min-width:260px; }
-.kpi .label, .tech .label { font-size:12px; color:#9fb0c3; }
-.kpi .value, .tech .value { font-size:18px; font-weight:600; line-height:1.4; }
-.tech { cursor:pointer; transition:transform .15s ease, border-color .15s ease; }
-.tech:hover { transform:translateY(-2px); border-color:#3b82f6; }
-.tech.active { border-color:#3b82f6; }
-.section { margin-top:28px; }
-.card { background:#0f1621; border:1px solid #223044; border-radius:12px; padding:14px; margin-bottom:10px; }
-.muted { color:#9fb0c3; font-size:12px; }
-.error { color:#ffb3b3; white-space:pre-wrap; }
+body {
+  margin:0;
+  padding:24px;
+  font-family:system-ui;
+  background:#0b0f14;
+  color:#e8eef6;
+}
+header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+button {
+  padding:8px 14px;
+  border-radius:10px;
+  border:1px solid #2a3b55;
+  background:#1a2535;
+  color:#fff;
+  cursor:pointer;
+}
+.kpis, .techs {
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-bottom:24px;
+}
+.kpi, .tech {
+  background:#0f1621;
+  border:1px solid #223044;
+  border-radius:12px;
+  padding:16px;
+  min-width:260px;
+}
+.kpi .label, .tech .label {
+  font-size:12px;
+  color:#9fb0c3;
+}
+.kpi .value, .tech .value {
+  font-size:18px;
+  font-weight:600;
+  line-height:1.4;
+}
+.tech {
+  cursor:pointer;
+}
+.tech.active {
+  border-color:#3b82f6;
+}
+.section {
+  margin-top:24px;
+}
+.card {
+  background:#0f1621;
+  border:1px solid #223044;
+  border-radius:12px;
+  padding:14px;
+  margin-bottom:10px;
+}
+.muted {
+  color:#9fb0c3;
+  font-size:12px;
+}
+.error {
+  color:#ffb3b3;
+}
 </style>
 </head>
 
@@ -34,7 +86,7 @@ button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; backgro
 </header>
 
 <div class="kpis" id="kpis"></div>
-<div class="kpis" id="techCards"></div>
+<div class="techs" id="techCards"></div>
 
 <div class="section">
   <h3>Work Orders</h3>
@@ -42,40 +94,39 @@ button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; backgro
 </div>
 
 <script>
+/* ================= CONFIG ================= */
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
 const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
+const DEFAULT_JOB_HOURS = 1.0;
 const LABOR_RATE = Number(localStorage.getItem("shop_labor_rate") || 50);
 
-const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
-const endOfToday = new Date(); endOfToday.setHours(23,59,59,999);
-
-const ACTIVE_STATUSES = ["new","open","scheduled","in_progress","waiting","waiting_parts"];
-
+/* ================= STATE ================= */
 let allOrders = [];
 let activeEmployee = null;
 
-function hoursBetween(start,end){
-  if(!start) return 0;
-  if(!end) return 1;
-  return (new Date(end)-new Date(start))/36e5;
-}
-function money(h){ return `$${(h*LABOR_RATE).toFixed(0)}`; }
+/* ================= TIME HELPERS ================= */
+const startOfToday = new Date();
+startOfToday.setHours(0,0,0,0);
+const endOfToday = new Date();
+endOfToday.setHours(23,59,59,999);
 
-function logout(){
-  localStorage.removeItem("sb_access_token");
-  location.href = "login.html";
-}
+function money(h){ return `$${(h * LABOR_RATE).toFixed(0)}`; }
 
-// ✅ One safe guard: validate token ONCE before loading data
-async function validateAuthOrRedirect() {
-  const token = localStorage.getItem("sb_access_token");
-  if (!token) {
-    window.location.replace("login.html");
-    return null;
+function jobHours(w){
+  if (w.scheduled_start && w.scheduled_end) {
+    return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
   }
+  if (w.status === "scheduled") return DEFAULT_JOB_HOURS;
+  return 0;
+}
+
+/* ================= AUTH ================= */
+async function validateAuth(){
+  const token = localStorage.getItem("sb_access_token");
+  if (!token) return logout(true);
 
   try {
     const res = await fetch(`${API_BASE}/auth/v1/user`, {
@@ -84,150 +135,129 @@ async function validateAuthOrRedirect() {
         apikey: ANON_KEY
       }
     });
-
-    if (!res.ok) throw new Error("Invalid token");
-
-    // ✅ token valid
+    if (!res.ok) throw new Error();
     return token;
-
-  } catch (e) {
-    localStorage.removeItem("sb_access_token");
-    window.location.replace("login.html");
-    return null;
+  } catch {
+    logout(true);
   }
 }
 
-async function load() {
-  const token = await validateAuthOrRedirect();
+function logout(force){
+  localStorage.removeItem("sb_access_token");
+  if (force) location.replace("login.html");
+  else location.href = "login.html";
+}
+
+/* ================= LOAD ================= */
+async function load(){
+  const token = await validateAuth();
   if (!token) return;
 
   try {
     const res = await fetch(`${FUNCTIONS_BASE}/work_orders`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: ANON_KEY
+      headers:{
+        Authorization:`Bearer ${token}`,
+        apikey:ANON_KEY
       }
     });
-
-    if (!res.ok) throw new Error(await res.text());
+    if(!res.ok) throw new Error(await res.text());
     allOrders = await res.json();
-
     renderKPIs();
-    renderTechnicians();
-    renderWorkOrders();
-
-  } catch (err) {
+    renderTechs();
+    renderOrders();
+  } catch(err){
     document.getElementById("workOrders").innerHTML =
-      `<div class="error">${err.message || String(err)}</div>`;
+      `<div class="error">${err.message}</div>`;
   }
 }
 
+/* ================= KPI ================= */
 function renderKPIs(){
   let today=0, future=0, waiting=0, blocked=0, completed=0;
 
   allOrders.forEach(w=>{
-    if(!w.scheduled_start) return;
+    const hrs = jobHours(w);
+    const s = w.scheduled_start ? new Date(w.scheduled_start) : null;
+    const isToday = s && s>=startOfToday && s<=endOfToday;
+    const isFuture = s && s>endOfToday;
 
-    const s = new Date(w.scheduled_start);
-    const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
-
-    const isToday = s>=startOfToday && s<=endOfToday;
-    const isFuture = s>endOfToday;
-
-    if(ACTIVE_STATUSES.includes(w.status)){
-      if(isToday) today += hrs;
-      if(isFuture) future += hrs;
+    if(["scheduled","in_progress","new"].includes(w.status)){
+      if(isToday) today+=hrs;
+      if(isFuture) future+=hrs;
     }
-    if(["waiting","waiting_parts"].includes(w.status) && isToday) waiting += hrs;
-    if(["blocked","issue","needs_approval"].includes(w.status) && isToday) blocked += hrs;
-    if(w.status==="completed" && isToday) completed += hrs;
+    if(["waiting","waiting_parts"].includes(w.status)) waiting+=hrs;
+    if(["blocked","issue"].includes(w.status)) blocked+=hrs;
+    if(w.status==="completed" && isToday) completed+=hrs;
   });
 
-  let html = "";
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi">
+      <div class="label">Scheduled Work</div>
+      <div class="value">
+        Today: ${today.toFixed(1)} hrs / ${money(today)}<br>
+        <span class="muted">Future: ${future.toFixed(1)} hrs / ${money(future)}</span>
+      </div>
+    </div>
 
-  if (today>0 || future>0) {
-    html += `
-      <div class="kpi">
-        <div class="label">Scheduled Work</div>
-        <div class="value">
-          ${today>0?`Today: ${today.toFixed(1)} hrs / ${money(today)}<br>`:""}
-          ${future>0?`<span class="muted">Future: ${future.toFixed(1)} hrs / ${money(future)}</span>`:""}
-        </div>
-      </div>`;
-  }
+    <div class="kpi">
+      <div class="label">Waiting on Parts / Service</div>
+      <div class="value">${waiting.toFixed(1)} hrs / ${money(waiting)}</div>
+    </div>
 
-  if (waiting>0) {
-    html += `<div class="kpi"><div class="label">Waiting on Parts</div><div class="value">${waiting.toFixed(1)} hrs / ${money(waiting)}</div></div>`;
-  }
+    <div class="kpi">
+      <div class="label">Complications</div>
+      <div class="value">${blocked.toFixed(1)} hrs / ${money(blocked)}</div>
+    </div>
 
-  if (blocked>0) {
-    html += `<div class="kpi"><div class="label">Complications</div><div class="value">${blocked.toFixed(1)} hrs / ${money(blocked)}</div></div>`;
-  }
-
-  if (completed>0) {
-    html += `<div class="kpi"><div class="label">Completed Today</div><div class="value">${completed.toFixed(1)} hrs / ${money(completed)}</div></div>`;
-  }
-
-  document.getElementById("kpis").innerHTML = html;
+    <div class="kpi">
+      <div class="label">Completed Today</div>
+      <div class="value">${completed.toFixed(1)} hrs / ${money(completed)}</div>
+    </div>
+  `;
 }
 
-function renderTechnicians(){
-  // Only show tech cards when there is time assigned to an employee_id
+/* ================= TECH CARDS ================= */
+function renderTechs(){
   const map = {};
-
   allOrders.forEach(w=>{
-    if(!w.assigned_employee_id || !w.scheduled_start) return;
-
-    // Only count active-ish work for utilization
-    if(!ACTIVE_STATUSES.includes(w.status) && w.status!=="completed") return;
-
-    const id = w.assigned_employee_id;
-    if(!map[id]) map[id] = { today:0, future:0 };
-
-    const s = new Date(w.scheduled_start);
-    const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
-
-    if(s>=startOfToday && s<=endOfToday) map[id].today += hrs;
-    if(s>endOfToday) map[id].future += hrs;
+    if(!w.assigned_employee_id) return;
+    const hrs = jobHours(w);
+    if(!map[w.assigned_employee_id])
+      map[w.assigned_employee_id]={today:0,future:0};
+    map[w.assigned_employee_id].today+=hrs;
   });
 
   document.getElementById("techCards").innerHTML =
-    Object.entries(map)
-      .filter(([_,v])=>v.today>0 || v.future>0)
-      .map(([id,v])=>`
-        <div class="tech ${activeEmployee===id?'active':''}"
-             onclick="selectEmployee('${id}')">
-          <div class="label">Technician</div>
-          <div class="value">
-            ${v.today>0?`Today: ${v.today.toFixed(1)} hrs / ${money(v.today)}<br>`:""}
-            ${v.future>0?`<span class="muted">Future: ${v.future.toFixed(1)} hrs / ${money(v.future)}</span>`:""}
-          </div>
-        </div>
-      `).join("");
-}
-
-function selectEmployee(id){
-  activeEmployee = (activeEmployee === id) ? null : id;
-  renderTechnicians();
-  renderWorkOrders();
-}
-
-function renderWorkOrders(){
-  const list = allOrders.filter(w=>{
-    if(activeEmployee && w.assigned_employee_id !== activeEmployee) return false;
-    return true;
-  });
-
-  document.getElementById("workOrders").innerHTML =
-    list.map(w=>`
-      <div class="card">
-        ${w.summary || "Work Order"} · ${w.status}
-        <div class="muted">
-          Assigned: ${w.assigned_employee_id || "Unassigned"}
-          ${w.scheduled_start ? " · " + new Date(w.scheduled_start).toLocaleString() : ""}
+    Object.entries(map).map(([id,v])=>`
+      <div class="tech ${activeEmployee===id?'active':''}"
+           onclick="selectTech('${id}')">
+        <div class="label">Technician</div>
+        <div class="value">
+          Today: ${v.today.toFixed(1)} hrs / ${money(v.today)}
         </div>
       </div>
     `).join("");
+}
+
+function selectTech(id){
+  activeEmployee = activeEmployee===id?null:id;
+  renderTechs();
+  renderOrders();
+}
+
+/* ================= WORK ORDERS ================= */
+function renderOrders(){
+  document.getElementById("workOrders").innerHTML =
+    allOrders
+      .filter(w=>!activeEmployee || w.assigned_employee_id===activeEmployee)
+      .map(w=>`
+        <div class="card">
+          ${w.summary} · ${w.status}
+          <div class="muted">
+            Assigned: ${w.assigned_employee_id||"Unassigned"}
+          </div>
+        </div>
+      `).join("");
 }
 
 load();
