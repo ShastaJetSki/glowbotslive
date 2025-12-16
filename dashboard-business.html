@@ -5,6 +5,7 @@
   <title>Business Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+  <!-- Supabase anon key -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
@@ -34,23 +35,23 @@
       display:flex;
       flex-wrap:wrap;
       gap:12px;
-      margin-bottom:24px;
+      margin-bottom:28px;
     }
     .kpi {
       background:#0f1621;
       border:1px solid #223044;
       border-radius:12px;
-      padding:14px 16px;
-      min-width:200px;
+      padding:16px;
+      min-width:220px;
     }
     .kpi .label {
       font-size:12px;
       color:#9fb0c3;
+      margin-bottom:6px;
     }
     .kpi .value {
-      font-size:22px;
+      font-size:20px;
       font-weight:600;
-      margin-top:4px;
     }
     .section {
       margin-top:28px;
@@ -74,23 +75,10 @@
   <button onclick="logout()">Logout</button>
 </header>
 
+<!-- TOP KPI CARDS -->
 <div class="kpis" id="kpis"></div>
 
-<div class="section">
-  <h3>⚠️ Action Required</h3>
-  <div id="actionRequired"></div>
-</div>
-
-<div class="section">
-  <h3>Today</h3>
-  <div id="todayStats"></div>
-</div>
-
-<div class="section">
-  <h3>🧑‍🔧 Tech Utilization</h3>
-  <div id="techStats"></div>
-</div>
-
+<!-- OTHER SECTIONS CAN STAY BELOW -->
 <div class="section">
   <h3>Recent Activity</h3>
   <div id="recentActivity"></div>
@@ -104,20 +92,27 @@
 
   if (!token) location.href = "login.html";
 
-  const money = n => `$${Number(n || 0).toFixed(2)}`;
+  // 🔧 Shop labor rate (from settings-business.html)
+  const LABOR_RATE = Number(localStorage.getItem("shop_labor_rate") || 50);
 
   const startOfToday = new Date();
   startOfToday.setHours(0,0,0,0);
 
-  const daysAgo = (n) => {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d;
-  };
-
   function hoursBetween(start, end) {
     if (!start || !end) return 0;
     return (new Date(end) - new Date(start)) / 36e5;
+  }
+
+  function kpiCard(label, hours) {
+    const revenue = hours * LABOR_RATE;
+    return `
+      <div class="kpi">
+        <div class="label">${label}</div>
+        <div class="value">
+          ${hours.toFixed(1)} hrs / $${revenue.toFixed(0)}
+        </div>
+      </div>
+    `;
   }
 
   async function load() {
@@ -132,92 +127,38 @@
       if (!res.ok) throw new Error(await res.text());
       const orders = await res.json();
 
-      const sevenDaysAgo = daysAgo(7);
-      const thirtyDaysAgo = daysAgo(30);
-
-      /* ================= KPIs ================= */
-
-      const openJobs = orders.filter(w =>
-        ["new","scheduled","waiting"].includes(w.status)
-      ).length;
-
-      const inProgress = orders.filter(w => w.status === "in_progress").length;
-      const waitingParts = orders.filter(w => w.status === "waiting_parts").length;
-
-      const completed7 = orders.filter(w =>
-        w.status === "completed" &&
-        new Date(w.updated_at || w.created_at) >= sevenDaysAgo
-      );
-
-      const revenue7 = completed7.reduce((s,w)=>s+Number(w.grand_total||0),0);
-
-      /* ================= TECH HOURS ================= */
-
-      let hoursToday = 0;
-      let hours7 = 0;
-      let hours30 = 0;
+      let openHrs = 0;
+      let waitingHrs = 0;
+      let blockedHrs = 0;
+      let completedHrs = 0;
 
       orders.forEach(w => {
-        const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
-        if (!hrs) return;
+        if (!w.scheduled_start || !w.scheduled_end) return;
 
         const start = new Date(w.scheduled_start);
-        if (start >= startOfToday) hoursToday += hrs;
-        if (start >= sevenDaysAgo) hours7 += hrs;
-        if (start >= thirtyDaysAgo) hours30 += hrs;
+        if (start < startOfToday) return;
+
+        const hrs = hoursBetween(w.scheduled_start, w.scheduled_end);
+
+        if (["new","scheduled","in_progress"].includes(w.status)) {
+          openHrs += hrs;
+        } else if (["waiting","waiting_parts"].includes(w.status)) {
+          waitingHrs += hrs;
+        } else if (["blocked","issue","needs_approval"].includes(w.status)) {
+          blockedHrs += hrs;
+        } else if (w.status === "completed") {
+          completedHrs += hrs;
+        }
       });
 
-      let techNote = "Normal utilization";
-      if (hoursToday < 4) techNote = "⚠️ Techs underutilized today";
-      if (hoursToday > 7) techNote = "🔥 Techs overloaded today";
-
       document.getElementById("kpis").innerHTML = `
-        <div class="kpi"><div class="label">Open Jobs</div><div class="value">${openJobs}</div></div>
-        <div class="kpi"><div class="label">In Progress</div><div class="value">${inProgress}</div></div>
-        <div class="kpi"><div class="label">Waiting on Parts</div><div class="value">${waitingParts}</div></div>
-        <div class="kpi"><div class="label">Completed (7d)</div><div class="value">${completed7.length}</div></div>
-        <div class="kpi"><div class="label">Revenue (7d)</div><div class="value">${money(revenue7)}</div></div>
+        ${kpiCard("Open Jobs (Today)", openHrs)}
+        ${kpiCard("Waiting on Parts / Service", waitingHrs)}
+        ${kpiCard("Complications", blockedHrs)}
+        ${kpiCard("Completed Today", completedHrs)}
       `;
 
-      /* ================= ACTION REQUIRED ================= */
-
-      const blocking = orders.filter(w =>
-        ["waiting_parts","ready"].includes(w.status)
-      );
-
-      document.getElementById("actionRequired").innerHTML =
-        blocking.length
-          ? blocking.map(w => `<div class="card">${w.summary} · ${w.status}</div>`).join("")
-          : `<div class="muted">No blocking jobs</div>`;
-
-      /* ================= TODAY ================= */
-
-      const startedToday = orders.filter(w =>
-        w.status === "in_progress" &&
-        new Date(w.updated_at) >= startOfToday
-      ).length;
-
-      const completedToday = orders.filter(w =>
-        w.status === "completed" &&
-        new Date(w.updated_at) >= startOfToday
-      ).length;
-
-      document.getElementById("todayStats").innerHTML = `
-        <div class="card">Started Today: <strong>${startedToday}</strong></div>
-        <div class="card">Completed Today: <strong>${completedToday}</strong></div>
-      `;
-
-      /* ================= TECH STATS ================= */
-
-      document.getElementById("techStats").innerHTML = `
-        <div class="card">Hours Today: <strong>${hoursToday.toFixed(1)} hrs</strong></div>
-        <div class="card">Hours (7 Days): <strong>${hours7.toFixed(1)} hrs</strong></div>
-        <div class="card">Hours (30 Days): <strong>${hours30.toFixed(1)} hrs</strong></div>
-        <div class="card">${techNote}</div>
-      `;
-
-      /* ================= RECENT ACTIVITY ================= */
-
+      // Recent activity (simple)
       document.getElementById("recentActivity").innerHTML =
         orders
           .sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at))
