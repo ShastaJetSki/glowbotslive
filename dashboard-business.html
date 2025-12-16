@@ -1,112 +1,221 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Business Dashboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <title>Business Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<meta name="supabase-anon-key"
-content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4"/>
+  <meta name="supabase-anon-key"
+    content="YOUR_ANON_KEY_HERE" />
 
-<style>
-body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
-header{display:flex;justify-content:space-between;align-items:center}
-.row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:14px;flex:1}
-.tech{cursor:pointer}
-.tech.active{border-color:#3b82f6}
-.muted{color:#9fb0c3;font-size:13px}
-button{background:#1a2535;color:#fff;border:1px solid #2a3b55;border-radius:10px;padding:8px 12px}
-</style>
+  <style>
+    body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+    header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+
+    button {
+      padding:6px 12px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:#1a2535;
+      color:#fff;
+      cursor:pointer;
+      font-size:12px;
+    }
+
+    h2 { margin:20px 0 10px; font-size:18px; }
+
+    .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+    .card {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:14px 16px;
+    }
+
+    .kpi { min-width:260px; flex:1 1 260px; }
+    .tech { min-width:240px; flex:1 1 240px; cursor:pointer; }
+    .tech.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+
+    .label { font-size:12px; color:#9fb0c3; }
+    .value { font-size:18px; font-weight:650; margin-top:6px; }
+    .muted { font-size:12px; color:#9fb0c3; margin-top:6px; }
+
+    .wo { margin-bottom:10px; }
+    .error { color:#ffb3b3; white-space:pre-wrap; }
+  </style>
 </head>
 
 <body>
 
 <header>
-<h1>Business Dashboard</h1>
-<button onclick="logout()">Logout</button>
+  <h1>Business Dashboard</h1>
+  <button onclick="logout()">Logout</button>
 </header>
 
+<!-- BUSINESS KPI CARDS -->
+<div class="row" id="kpis"></div>
+
+<!-- TECH CARDS -->
+<h2>Technicians</h2>
 <div class="row" id="techCards"></div>
 
+<!-- WORK ORDERS -->
 <h2>Work Orders</h2>
-<div id="orders">Loading…</div>
+<div id="workOrders">Loading…</div>
 
 <script>
-const PROJECT_REF="kxqkwpkmtgvmthpafoqx";
-const API=`https://${PROJECT_REF}.supabase.co`;
-const FN=`${API}/functions/v1`;
-const KEY=document.querySelector('meta[name="supabase-anon-key"]').content;
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let token=localStorage.getItem("sb_access_token");
-let employeesById={};
-let activeTech=null;
-let orders=[];
+const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+const endOfToday = new Date(); endOfToday.setHours(23,59,59,999);
+
+let employees = [];
+let employeesById = {};
+let technicians = [];
+let orders = [];
+let activeTechId = null;
+
+function money(n){ return `$${Number(n||0).toFixed(2)}`; }
+
+function jobHours(w){
+  if (w.scheduled_start && w.scheduled_end) {
+    return (new Date(w.scheduled_end)-new Date(w.scheduled_start))/36e5;
+  }
+  if (w.status === "scheduled") return 1;
+  return 0;
+}
+
+function orderRevenue(w){
+  const hrs = jobHours(w);
+  const rate = employeesById[w.assigned_to]?.hourly_labor_rate || 0;
+  return hrs * rate;
+}
+
+async function fetchJson(url, token){
+  const res = await fetch(url, {
+    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+  });
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function validateAuth(){
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return null;
+  const res = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+  });
+  return res.ok ? token : null;
+}
 
 function logout(){
   localStorage.removeItem("sb_access_token");
-  location.href="login.html";
+  location.replace("login.html");
 }
 
-/* ✅ SAFE TOKEN VALIDATION — NO LOOP */
-async function validateToken(){
-  if(!token) return false;
-  const r=await fetch(`${API}/auth/v1/user`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:KEY}
+/* KPI RENDER */
+function renderKPIs(){
+  let todayH=0, todayRev=0;
+
+  orders.forEach(w=>{
+    const s = w.scheduled_start ? new Date(w.scheduled_start) : null;
+    if (["scheduled","in_progress"].includes(w.status)) {
+      if (!s || (s>=startOfToday && s<=endOfToday)) {
+        todayH += jobHours(w);
+        todayRev += orderRevenue(w);
+      }
+    }
   });
-  return r.ok;
+
+  document.getElementById("kpis").innerHTML = `
+    <div class="card kpi">
+      <div class="label">Scheduled Work</div>
+      <div class="value">Today ${todayH.toFixed(1)}h / ${money(todayRev)}</div>
+    </div>
+  `;
 }
 
-async function load(){
-  if(!(await validateToken())){
-    logout();
+/* TECH CARDS */
+function renderTechCards(){
+  const byTech = {};
+  technicians.forEach(t=>byTech[t.employee_id]={h:0,r:0,j:0});
+
+  orders.forEach(w=>{
+    if(!w.assigned_to || !byTech[w.assigned_to]) return;
+    const hrs = jobHours(w);
+    byTech[w.assigned_to].h += hrs;
+    byTech[w.assigned_to].r += orderRevenue(w);
+    byTech[w.assigned_to].j += 1;
+  });
+
+  document.getElementById("techCards").innerHTML =
+    technicians.map(t=>{
+      const s = byTech[t.employee_id];
+      const active = activeTechId===t.employee_id?"active":"";
+      const name = t.name.split(" ")[0];
+      return `
+        <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
+          <div class="label">Tech · ${name}</div>
+          <div class="value">${s.h.toFixed(1)}h / ${money(s.r)}</div>
+          <div class="muted">Jobs: ${s.j}</div>
+          <button onclick="event.stopPropagation()">Details</button>
+        </div>
+      `;
+    }).join("");
+}
+
+window.selectTech = function(id){
+  activeTechId = activeTechId===id?null:id;
+  renderTechCards();
+  renderWorkOrders();
+};
+
+/* WORK ORDERS */
+function renderWorkOrders(){
+  const list = document.getElementById("workOrders");
+  const filtered = orders.filter(o=>!activeTechId || o.assigned_to===activeTechId);
+
+  if(!filtered.length){
+    list.innerHTML = `<div class="muted">No work orders.</div>`;
     return;
   }
 
-  /* EMPLOYEES */
-  const emps=await fetch(`${FN}/employees`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:KEY}
-  }).then(r=>r.json());
-
-  emps.forEach(e=>employeesById[e.employee_id]=e);
-
-  document.getElementById("techCards").innerHTML =
-    emps.filter(e=>e.role==="technician").map(t=>`
-      <div class="card tech ${activeTech===t.employee_id?'active':''}"
-        onclick="selectTech('${t.employee_id}')">
-        <strong>Tech · ${t.name}</strong>
-      </div>
-    `).join("");
-
-  /* WORK ORDERS */
-  orders=await fetch(`${FN}/work_orders`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:KEY}
-  }).then(r=>r.json());
-
-  renderOrders();
-}
-
-function selectTech(id){
-  activeTech = activeTech===id ? null : id;
-  load();
-}
-
-function renderOrders(){
-  const list = orders.filter(o=>!activeTech || o.assigned_to===activeTech);
-  document.getElementById("orders").innerHTML = list.map(o=>{
+  list.innerHTML = filtered.map(o=>{
     const tech = o.assigned_to
-      ? employeesById[o.assigned_to]?.name || "Unknown Tech"
+      ? employeesById[o.assigned_to]?.name.split(" ")[0]
       : "Unassigned";
-
     return `
-      <div class="card">
-        <strong>${o.customer_name || "Customer"} · ${o.status}</strong>
-        <div class="muted">${o.customer_phone || ""}</div>
-        <div class="muted">${o.summary}</div>
+      <div class="card wo">
+        <strong>${o.customer_name || "—"} · ${o.status}</strong>
+        <div class="muted">${o.customer_phone || ""} — ${o.summary}</div>
         <div class="muted">Assigned to: ${tech}</div>
       </div>
     `;
   }).join("");
+}
+
+/* LOAD */
+async function load(){
+  const token = await validateAuth();
+  if(!token){ logout(); return; }
+
+  try{
+    employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+    employees.forEach(e=>employeesById[e.employee_id]=e);
+    technicians = employees.filter(e=>e.role==="technician");
+
+    orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
+
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  }catch(err){
+    document.getElementById("workOrders").innerHTML =
+      `<div class="error">${err.message}</div>`;
+  }
 }
 
 load();
