@@ -16,8 +16,10 @@ button { padding:8px 14px; border-radius:10px; border:1px solid #2a3b55; backgro
 
 .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
 .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
+
 .kpi { min-width:260px; flex:1 1 260px; cursor:pointer; }
 .tech { min-width:260px; flex:1 1 260px; cursor:pointer; }
+
 .active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
 
 .label { font-size:12px; color:#9fb0c3; }
@@ -56,23 +58,34 @@ const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').conten
 let employees = [];
 let employeesById = {};
 let technicians = [];
+
+let customers = [];
+let customersById = {};
+
 let orders = [];
 
 let activeTech = null;
 let activeFilter = null;
 
 function money(n){ return `$${Number(n||0).toFixed(2)}`; }
-function logout(){ localStorage.removeItem("sb_access_token"); location.replace("login.html"); }
+
+function logout(){
+  localStorage.removeItem("sb_access_token");
+  location.replace("login.html");
+}
 
 async function fetchJson(url, token){
   const res = await fetch(url,{
-    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+    headers:{
+      Authorization:`Bearer ${token}`,
+      apikey:ANON_KEY
+    }
   });
   if(!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-// fallback until scheduling is finalized
+// simple fallback until scheduling is finalized
 function jobHours(w){ return w.estimated_hours || 1; }
 
 function jobRevenue(w){
@@ -88,13 +101,16 @@ function applyFilters(){
   return data;
 }
 
+/* ================= KPI CARDS ================= */
+
 function renderKPIs(){
   const bucket = s =>
-    orders.filter(w=>w.status===s).reduce((a,w)=>a+jobHours(w),0);
+    orders.filter(w => w.status === s)
+      .reduce((a,w)=>a + jobHours(w),0);
 
   document.getElementById("kpis").innerHTML = `
     <div class="card kpi ${activeFilter==='scheduled'?'active':''}" onclick="setFilter('scheduled')">
-      <div class="label">Scheduled Work</div>
+      <div class="label">Scheduled</div>
       <div class="value">${bucket('scheduled').toFixed(1)} hrs</div>
     </div>
 
@@ -115,12 +131,14 @@ function renderKPIs(){
   `;
 }
 
+/* ================= TECH CARDS ================= */
+
 function renderTechCards(){
   document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
-      const techOrders = orders.filter(w=>w.assigned_to===t.employee_id);
-      const hrs = techOrders.reduce((a,w)=>a+jobHours(w),0);
-      const rev = techOrders.reduce((a,w)=>a+jobRevenue(w),0);
+      const techOrders = orders.filter(w => w.assigned_to === t.employee_id);
+      const hrs = techOrders.reduce((a,w)=>a + jobHours(w),0);
+      const rev = techOrders.reduce((a,w)=>a + jobRevenue(w),0);
 
       return `
         <div class="card tech ${activeTech===t.employee_id?'active':''}"
@@ -133,6 +151,8 @@ function renderTechCards(){
     }).join("");
 }
 
+/* ================= WORK ORDERS ================= */
+
 function renderWorkOrders(){
   const list = document.getElementById("workOrders");
   const data = applyFilters();
@@ -143,27 +163,36 @@ function renderWorkOrders(){
   }
 
   list.innerHTML = data.map(w=>{
+    const customer = customersById[w.customer_id];
     const tech = employeesById[w.assigned_to];
+
+    const customerName = customer
+      ? `${customer.first_name} ${customer.last_name || ""}`.trim()
+      : "Unknown Customer";
+
+    const customerPhone = customer?.phone || "";
     const techName = tech ? tech.first_name : "Unassigned";
 
     return `
       <div class="card wo">
-        <strong>${w.customer_name || "Customer"} · ${w.status}</strong><br>
-        <span class="muted">${w.customer_phone || ""} — ${w.summary}</span><br>
+        <strong>${customerName} · ${w.status}</strong><br>
+        <span class="muted">${customerPhone} — ${w.summary}</span><br>
         <span class="muted">Assigned to: ${techName}</span>
       </div>
     `;
   }).join("");
 }
 
+/* ================= FILTER HANDLERS ================= */
+
 function toggleTech(id){
-  activeTech = activeTech===id ? null : id;
+  activeTech = activeTech === id ? null : id;
   renderTechCards();
   renderWorkOrders();
 }
 
 function setFilter(s){
-  activeFilter = activeFilter===s ? null : s;
+  activeFilter = activeFilter === s ? null : s;
   renderKPIs();
   renderWorkOrders();
 }
@@ -171,16 +200,23 @@ function setFilter(s){
 window.toggleTech = toggleTech;
 window.setFilter = setFilter;
 
+/* ================= LOAD ================= */
+
 async function load(){
   const token = localStorage.getItem("sb_access_token");
   if(!token){ logout(); return; }
 
   employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+  customers = await fetchJson(`${FUNCTIONS_BASE}/customers`, token);
   orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
   employeesById = {};
-  employees.forEach(e=>employeesById[e.employee_id]=e);
-  technicians = employees.filter(e=>e.role==='technician');
+  employees.forEach(e => employeesById[e.employee_id] = e);
+
+  customersById = {};
+  customers.forEach(c => customersById[c.customer_id] = c);
+
+  technicians = employees.filter(e => e.role === "technician");
 
   renderKPIs();
   renderTechCards();
