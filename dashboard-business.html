@@ -9,30 +9,11 @@
   content="PASTE_YOUR_ANON_KEY_HERE" />
 
 <style>
-body {
-  margin:0; padding:24px;
-  font-family:system-ui;
-  background:#0b0f14;
-  color:#e8eef6;
-}
-header {
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:18px;
-}
-.header-left h1 {
-  margin:0;
-  font-size:32px;
-}
-.header-right {
-  text-align:right;
-}
-.app-name {
-  font-size:12px;
-  color:#9fb0c3;
-  margin-bottom:6px;
-}
+body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+header { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+h1 { margin:0; font-size:32px; }
+.app-name { font-size:12px; color:#9fb0c3; margin-bottom:6px; }
+
 button {
   padding:8px 14px;
   border-radius:10px;
@@ -43,16 +24,7 @@ button {
 }
 
 .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
-
-.card {
-  background:#0f1621;
-  border:1px solid #223044;
-  border-radius:14px;
-  padding:14px 16px;
-}
-
-.kpi { min-width:260px; flex:1 1 260px; cursor:pointer; }
-.kpi:hover { border-color:#2f4461; }
+.card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
 
 .tech {
   min-width:260px;
@@ -62,20 +34,14 @@ button {
   align-items:center;
   cursor:pointer;
 }
-.tech.active {
-  border-color:#3b82f6;
-  box-shadow:0 0 0 1px rgba(59,130,246,.35) inset;
-}
+.tech.active { border-color:#3b82f6; }
 
 .tech-left .value { font-size:18px; font-weight:650; }
 .tech-left .muted { font-size:12px; color:#9fb0c3; }
 
-.tech-right {
-  text-align:center;
-}
+.tech-right { text-align:center; }
 .tech-photo {
-  width:48px;
-  height:48px;
+  width:48px; height:48px;
   border-radius:50%;
   background:#1a2535;
   display:flex;
@@ -83,10 +49,7 @@ button {
   justify-content:center;
   font-weight:700;
 }
-.tech-name {
-  font-size:12px;
-  margin-top:6px;
-}
+.tech-name { font-size:12px; margin-top:6px; }
 
 .filters { display:flex; gap:8px; margin:8px 0 14px; flex-wrap:wrap; }
 .pill {
@@ -107,26 +70,15 @@ button {
 <body>
 
 <header>
-  <div class="header-left">
-    <h1 id="tenantName">Your Business</h1>
-  </div>
-  <div class="header-right">
+  <h1 id="tenantName">Business</h1>
+  <div style="text-align:right">
     <div class="app-name">WorkLogicPro</div>
     <button onclick="logout()">Logout</button>
   </div>
 </header>
 
-<div class="row" id="kpis"></div>
-
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
-
-<div class="filters">
-  <div class="pill active" onclick="setRange('today')" id="btnToday">Today</div>
-  <div class="pill" onclick="setRange('week')" id="btnWeek">This Week</div>
-  <div class="pill" onclick="setRange('all')" id="btnAll">All</div>
-  <div class="pill" onclick="clearFilters()">Clear Filters</div>
-</div>
 
 <h2>Work Orders</h2>
 <div id="workOrders">Loading…</div>
@@ -143,10 +95,9 @@ const STATUS_BUCKETS = {
   complications: ["diagnosis_required","customer_approval"],
   completed: ["completed","closed"]
 };
-const DEFAULT_JOB_HOURS = 1;
 
-let employees=[], employeesById={}, technicians=[], orders=[];
-let activeTechId=null, activeRange="today", activeKpiFilter=null;
+let employees = [], employeesById = {}, technicians = [], orders = [];
+let activeTechId = null;
 
 function statusIn(bucket, status){
   return STATUS_BUCKETS[bucket]?.includes(status);
@@ -157,112 +108,107 @@ function logout(){
   location.replace("login.html");
 }
 
+/* 🔒 AUTH — RESTORED TO WORKING VERSION */
 async function validateAuth(){
   const token = localStorage.getItem("sb_access_token");
   if (!token) return null;
-  const r = await fetch(`${API_BASE}/auth/v1/user`, {
-    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+
+  const res = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: ANON_KEY,
+      Accept: "application/json"
+    }
   });
-  return r.ok ? token : null;
+
+  if (!res.ok) return null;
+  return token;
 }
 
 async function fetchJson(url, token){
-  const r = await fetch(url, {
-    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: ANON_KEY,
+      Accept: "application/json"
+    }
   });
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 function jobHours(w){
-  if(w.scheduled_start && w.scheduled_end){
+  if (w.scheduled_start && w.scheduled_end) {
     return (new Date(w.scheduled_end)-new Date(w.scheduled_start))/36e5;
   }
-  return w.status==="scheduled"?DEFAULT_JOB_HOURS:0;
+  return w.status === "scheduled" ? 1 : 0;
 }
 
 function orderRevenue(w){
   const rate = employeesById[w.assigned_to]?.hourly_labor_rate || 0;
-  return jobHours(w)*rate;
+  return jobHours(w) * rate;
 }
 
 function renderTechCards(){
-  const stats={};
-  technicians.forEach(t=>stats[t.employee_id]={hrs:0,rev:0,jobs:0});
+  const stats = {};
+  technicians.forEach(t => stats[t.employee_id] = { hrs:0, rev:0, jobs:0 });
 
-  orders.forEach(w=>{
-    if(activeTechId && w.assigned_to!==activeTechId) return;
-    if(activeKpiFilter && !statusIn(activeKpiFilter,w.status)) return;
-    if(!stats[w.assigned_to]) return;
-    stats[w.assigned_to].hrs+=jobHours(w);
-    stats[w.assigned_to].rev+=orderRevenue(w);
+  orders.forEach(w => {
+    if (!stats[w.assigned_to]) return;
+    stats[w.assigned_to].hrs += jobHours(w);
+    stats[w.assigned_to].rev += orderRevenue(w);
     stats[w.assigned_to].jobs++;
   });
 
   document.getElementById("techCards").innerHTML =
-    technicians.map(t=>{
-      const s=stats[t.employee_id];
-      const name=`${t.first_name||""} ${t.last_name||""}`.trim();
-      const initials=name.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
+    technicians.map(t => {
+      const s = stats[t.employee_id];
+      const name = `${t.first_name||""} ${t.last_name||""}`.trim();
+      const initials = name.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
+
       return `
       <div class="card tech ${activeTechId===t.employee_id?'active':''}"
-        onclick="selectTech('${t.employee_id}')">
+        onclick="activeTechId='${t.employee_id}'; renderTechCards();">
         <div class="tech-left">
           <div class="value">${s.hrs.toFixed(1)}h / $${s.rev.toFixed(2)}</div>
           <div class="muted">Jobs: ${s.jobs}</div>
         </div>
         <div class="tech-right">
-          <div class="tech-photo">
-            ${t.profile_photo_url
-              ? `<img src="${t.profile_photo_url}" style="width:100%;height:100%;border-radius:50%">`
-              : initials}
-          </div>
+          <div class="tech-photo">${initials}</div>
           <div class="tech-name">${name || "Tech"}</div>
         </div>
       </div>`;
     }).join("");
 }
 
-function selectTech(id){
-  activeTechId = activeTechId===id?null:id;
-  renderTechCards(); renderWorkOrders();
-}
-
 function renderWorkOrders(){
-  const list=document.getElementById("workOrders");
-  const filtered=orders.filter(w=>{
-    if(activeTechId && w.assigned_to!==activeTechId) return false;
-    if(activeKpiFilter && !statusIn(activeKpiFilter,w.status)) return false;
-    return true;
-  });
-  if(!filtered.length){
-    list.innerHTML=`<div class="muted">No work orders.</div>`;
+  const list = document.getElementById("workOrders");
+  if (!orders.length) {
+    list.innerHTML = `<div class="muted">No work orders.</div>`;
     return;
   }
-  list.innerHTML=filtered.map(w=>`
+  list.innerHTML = orders.map(w => `
     <div class="card">
       <strong>${w.customer_name||"—"}</strong> · ${w.status}
       <div class="muted">${w.customer_phone||"—"} — ${w.summary||"—"}</div>
-    </div>`).join("");
+    </div>
+  `).join("");
 }
 
 async function load(){
-  const token=await validateAuth();
-  if(!token){ logout(); return; }
+  const token = await validateAuth();
+  if (!token) { logout(); return; }
 
-  const empRes=await fetchJson(`${FUNCTIONS_BASE}/employees`,token);
-  if(empRes.tenant_name){
-    document.getElementById("tenantName").textContent=empRes.tenant_name;
-  }
+  employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+  employees.forEach(e => employeesById[e.employee_id] = e);
+  technicians = employees.filter(e => e.role === "technician");
 
-  employees=Array.isArray(empRes)?empRes:empRes.data;
-  employees.forEach(e=>employeesById[e.employee_id]=e);
-  technicians=employees.filter(e=>e.role==="technician");
+  orders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
 
-  orders=await fetchJson(`${FUNCTIONS_BASE}/work_orders`,token);
-
-  renderTechCards(); renderWorkOrders();
+  renderTechCards();
+  renderWorkOrders();
 }
+
 load();
 </script>
 
