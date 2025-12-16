@@ -44,13 +44,13 @@ button {
   cursor:pointer;
 }
 
-.row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+.row { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:18px; }
 
 .card {
   background:#0f1621;
   border:1px solid #223044;
-  border-radius:14px;
-  padding:14px 16px;
+  border-radius:16px;
+  padding:18px;
 }
 
 /* KPI */
@@ -58,31 +58,65 @@ button {
 .kpi .label { font-size:12px; color:#9fb0c3; }
 .kpi .value { font-size:22px; font-weight:700; }
 
-/* TECH */
+/* TECH CARD — MANAGER VIEW */
 .tech {
-  min-width:260px;
-  flex:1 1 260px;
+  min-width:320px;
+  flex:1 1 320px;
   display:flex;
   justify-content:space-between;
   align-items:center;
-  cursor:pointer;
 }
-.tech.active {
-  border-color:#3b82f6;
-  box-shadow:0 0 0 1px rgba(59,130,246,.35) inset;
+
+.techLeft {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
-.techLeft .value { font-size:18px; font-weight:650; }
-.techLeft .muted { font-size:12px; color:#9fb0c3; }
-.techRight { display:flex; flex-direction:column; align-items:center; gap:6px; }
-.avatar {
-  width:52px; height:52px; border-radius:50%;
-  background:#0b0f14; border:1px solid #223044;
-  display:flex; align-items:center; justify-content:center;
+
+.hours {
+  font-size:20px;
   font-weight:700;
 }
-.techName { font-size:12px; }
 
-/* FILTERS */
+.sub {
+  font-size:12px;
+  color:#9fb0c3;
+}
+
+.load {
+  font-size:12px;
+  font-weight:700;
+}
+
+.load.light { color:#4ade80; }
+.load.normal { color:#60a5fa; }
+.load.heavy { color:#f59e0b; }
+.load.over { color:#ef4444; }
+
+.techRight {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+}
+
+.avatar {
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  background:#0b0f14;
+  border:1px solid #223044;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  font-weight:700;
+}
+
+.techName {
+  font-size:12px;
+}
+
 .filters { display:flex; gap:8px; margin:10px 0 16px; }
 .pill {
   padding:6px 10px;
@@ -92,7 +126,6 @@ button {
   font-size:12px;
   cursor:pointer;
 }
-.pill.active { border-color:#3b82f6; }
 
 .muted { font-size:12px; color:#9fb0c3; }
 .wo { margin-bottom:10px; }
@@ -115,13 +148,6 @@ button {
 <h2>Technicians</h2>
 <div class="row" id="techCards"></div>
 
-<div class="filters">
-  <div class="pill active" onclick="setRange('today')" id="btnToday">Today</div>
-  <div class="pill" onclick="setRange('week')" id="btnWeek">This Week</div>
-  <div class="pill" onclick="setRange('all')" id="btnAll">All</div>
-  <div class="pill" onclick="clearFilters()">Clear Filters</div>
-</div>
-
 <h2>
   Work Orders
   <button onclick="createWorkOrder()">+ New Work Order</button>
@@ -135,17 +161,10 @@ const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-const STATUS_BUCKETS = {
-  scheduled:["scheduled","in_progress","repairing","testing","ready_for_pickup"],
-  waiting:["awaiting_parts","parts_on_order"],
-  complications:["diagnosis_required","customer_approval"],
-  completed:["completed","closed"]
-};
+const DAILY_CAPACITY = 8;
+const WEEKLY_CAPACITY = 40;
 
 let employees=[], employeesById={}, technicians=[], orders=[];
-let activeTechId=null, activeRange="today";
-
-function statusIn(bucket,s){ return STATUS_BUCKETS[bucket].includes(s); }
 
 function logout(){
   localStorage.removeItem("sb_access_token");
@@ -167,80 +186,80 @@ async function fetchJson(url,token){
   return r.json();
 }
 
+function hoursBetween(a,b){
+  if(!a||!b) return 1;
+  return (new Date(b)-new Date(a))/36e5;
+}
+
 function createWorkOrder(){
   location.href="work-order-new.html";
 }
 
-/* KPI */
-function renderKPIs(){
-  const bucket=(b)=>orders.filter(w=>statusIn(b,w.status));
-  const card=(t,c)=>`
-    <div class="card kpi">
-      <div class="label">${t}</div>
-      <div class="value">${c.length}</div>
-    </div>`;
-  document.getElementById("kpis").innerHTML =
-    card("Scheduled",bucket("scheduled"))+
-    card("Waiting",bucket("waiting"))+
-    card("Complications",bucket("complications"))+
-    card("Completed",bucket("completed"));
-}
-
-/* TECH */
+/* TECH CARDS — CAPACITY VIEW */
 function renderTechCards(){
-  const counts={};
-  technicians.forEach(t=>counts[t.employee_id]=0);
-  orders.forEach(w=>{
-    if(w.assigned_employee_id && counts[w.assigned_employee_id]!=null)
-      counts[w.assigned_employee_id]++;
-  });
+  const todayStart=new Date(); todayStart.setHours(0,0,0,0);
+  const todayEnd=new Date(); todayEnd.setHours(23,59,59,999);
+
+  const weekStart=new Date(todayStart);
+  weekStart.setDate(todayStart.getDate()-((todayStart.getDay()+6)%7));
 
   document.getElementById("techCards").innerHTML =
     technicians.map(t=>{
       const name=t.name||`${t.first_name||""} ${t.last_name||""}`.trim();
       const initials=name.split(" ").map(x=>x[0]).join("").slice(0,2);
+
+      const techOrders=orders.filter(w=>w.assigned_employee_id===t.employee_id);
+
+      let todayHours=0;
+      let weekHours=0;
+
+      techOrders.forEach(w=>{
+        const h=hoursBetween(w.scheduled_start,w.scheduled_end);
+        const d=w.scheduled_start?new Date(w.scheduled_start):null;
+
+        if(d && d>=todayStart && d<=todayEnd) todayHours+=h;
+        if(d && d>=weekStart) weekHours+=h;
+      });
+
+      const loadPct=weekHours/WEEKLY_CAPACITY;
+      let loadClass="light", loadLabel="LIGHT";
+      if(loadPct>=0.5) loadClass="normal", loadLabel="NORMAL";
+      if(loadPct>=0.8) loadClass="heavy", loadLabel="HEAVY";
+      if(loadPct>1) loadClass="over", loadLabel="OVERBOOKED";
+
       return `
-        <div class="card tech ${activeTechId===t.employee_id?'active':''}"
-          onclick="selectTech('${t.employee_id}')">
+        <div class="card tech">
           <div class="techLeft">
-            <div class="value">${counts[t.employee_id]} jobs</div>
-            <div class="muted">Today</div>
+            <div class="hours">${todayHours.toFixed(1)}h</div>
+            <div class="sub">Booked Today</div>
+
+            <div class="hours">${weekHours.toFixed(1)}h</div>
+            <div class="sub">Booked This Week</div>
+
+            <div class="load ${loadClass}">● ${loadLabel}</div>
           </div>
+
           <div class="techRight">
             <div class="avatar">${initials}</div>
             <div class="techName">${name}</div>
           </div>
-        </div>`;
+        </div>
+      `;
     }).join("");
 }
 
-function selectTech(id){
-  activeTechId=(activeTechId===id)?null:id;
-  renderWorkOrders();
-}
-
-/* WORK ORDERS */
 function renderWorkOrders(){
   const list=document.getElementById("workOrders");
-  let filtered=orders;
-  if(activeTechId) filtered=filtered.filter(w=>w.assigned_employee_id===activeTechId);
-
-  if(!filtered.length){
+  if(!orders.length){
     list.innerHTML=`<div class="muted">No work orders.</div>`;
     return;
   }
-
-  list.innerHTML=filtered.map(w=>{
-    const tech=w.assigned_employee_id
-      ? employeesById[w.assigned_employee_id]?.name||"Assigned Tech"
-      : "Unassigned";
-    return `
-      <div class="card wo">
-        <strong>${w.customer_name||"Unknown Customer"}</strong> · ${w.status}
-        <div class="muted">${w.summary||""}</div>
-        <div class="muted">Tech: ${tech}</div>
-      </div>`;
-  }).join("");
+  list.innerHTML=orders.map(w=>`
+    <div class="card wo">
+      <strong>${w.customer_name||"Unknown Customer"}</strong> · ${w.status}
+      <div class="muted">${w.summary||""}</div>
+    </div>
+  `).join("");
 }
 
 async function load(){
@@ -257,7 +276,6 @@ async function load(){
     if(orders[0]?.tenant_name)
       document.getElementById("tenantTitle").textContent=orders[0].tenant_name;
 
-    renderKPIs();
     renderTechCards();
     renderWorkOrders();
   }catch(err){
