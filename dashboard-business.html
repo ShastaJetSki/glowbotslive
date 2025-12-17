@@ -144,6 +144,7 @@
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
   const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+  const REST_BASE = `${API_BASE}/rest/v1`; // ← Supabase REST API
   const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
   // SSOT status buckets (matches DB constraint vocabulary)
@@ -167,10 +168,10 @@
   let vehicles = [];
   let vehiclesById = {};
 
-  let activeTechId = null;          // null | employee_id | "__unassigned__"
-  let activeRange = "today";        // today | week | all
-  let activeKpi = null;             // scheduled | waiting | complications | completed | null
-  let activeSort = null;            // null | "priority"
+  let activeTechId = null;
+  let activeRange = "today";
+  let activeKpi = null;
+  let activeSort = null;
 
   // Date helpers
   function startOfToday(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
@@ -178,7 +179,7 @@
   function startOfWeekMonday(){
     const now = new Date();
     const d = new Date(now);
-    d.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
+    d.setDate(now.getDate() - ((now.getDay() + 6) % 7));
     d.setHours(0,0,0,0);
     return d;
   }
@@ -190,7 +191,7 @@
     location.replace("login.html");
   }
 
-  /* AUTH (do not change) */
+  /* AUTH */
   async function validateAuth(){
     const token = localStorage.getItem("sb_access_token");
     if (!token) return null;
@@ -203,9 +204,23 @@
     return token;
   }
 
+  // Fetch from edge functions (for work_orders, employees)
   async function fetchJson(url, token){
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // NEW: Fetch from REST API (for customers, vehicles - bypasses CORS)
+  async function fetchRest(table, token){
+    const res = await fetch(`${REST_BASE}/${table}?select=*`, {
+      headers: { 
+        Authorization: `Bearer ${token}`, 
+        apikey: ANON_KEY,
+        'Content-Type': 'application/json'
+      }
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -217,11 +232,9 @@
 
   // Enhanced: Use actual labor_total or calculate from scheduled hours and employee rate
   function jobRevenue(w){
-    // If we have actual totals, use them
     if (w.grand_total && w.grand_total > 0) return Number(w.grand_total);
     if (w.labor_total && w.labor_total > 0) return Number(w.labor_total);
 
-    // Fallback: calculate from scheduled hours
     if (w.scheduled_start && w.scheduled_end) {
       const hours = (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
       const assignedId = w.assigned_employee_id || w.assigned_to;
@@ -233,7 +246,6 @@
     return 0;
   }
 
-  // Overdue helper (SSOT)
   function isOverdue(w){
     if (!w.scheduled_start) return false;
     if (["completed","closed"].includes(w.status)) return false;
@@ -318,7 +330,6 @@
     renderWorkOrders();
   };
 
-  /* Range + Sort */
   window.setRange = function(r){
     activeRange = r;
 
@@ -551,12 +562,13 @@
     }
 
     try {
-      // Fetch all data in parallel
+      // Fetch work_orders and employees from edge functions (these work)
+      // Fetch customers and vehicles from REST API (bypasses CORS)
       const [rawEmployees, rawOrders, rawCustomers, rawVehicles] = await Promise.all([
         fetchJson(`${FUNCTIONS_BASE}/employees`, token),
         fetchJson(`${FUNCTIONS_BASE}/work_orders`, token),
-        fetchJson(`${FUNCTIONS_BASE}/customers`, token),
-        fetchJson(`${FUNCTIONS_BASE}/vehicles`, token)
+        fetchRest('customers', token),  // ← REST API instead
+        fetchRest('vehicles', token)     // ← REST API instead
       ]);
 
       // Process employees
@@ -579,7 +591,7 @@
       vehiclesById = {};
       vehicles.forEach(v => vehiclesById[v.vehicle_id] = v);
 
-      // Process work orders - normalize assignment
+      // Process work orders
       orders = (Array.isArray(rawOrders) ? rawOrders : []).map(w => ({
         ...w,
         assigned_employee_id: w.assigned_employee_id || null,
