@@ -2,13 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>WorkLogic Pro – Login</title>
+  <title>WorkLogic Pro – Login (Debug)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Supabase anon public key - MUST MATCH ALL OTHER PAGES -->
-  <meta name="supabase-anon-key"
-    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMzMzUzNDcsImV4cCI6MjA0ODkxMTM0N30.lXiCI05K9r_1vd6qPn-bXWzRJjQgs38geg71uxiv4CU" />
-
   <style>
     * { box-sizing: border-box; }
     body {
@@ -32,189 +27,170 @@
       border:1px solid #2a3b55; background:#1a2535; color:#fff; cursor:pointer;
     }
     button:disabled { opacity:.6; cursor:not-allowed; }
-    .error {
-      margin-top:16px; padding:12px; border-radius:12px; background:#2a1414;
-      border:1px solid #553333; color:#ffb3b3; font-size:14px; display:none; white-space:pre-wrap;
+    .message {
+      margin-top:16px; padding:12px; border-radius:12px;
+      font-size:14px; white-space:pre-wrap;
+    }
+    .error { background:#2a1414; border:1px solid #553333; color:#ffb3b3; }
+    .info { background:#1a2a3a; border:1px solid #2a4a6a; color:#93c5fd; }
+    pre { 
+      background:#1a2535; 
+      padding:8px; 
+      border-radius:6px; 
+      overflow-x:auto; 
+      font-size:11px;
+      margin:8px 0;
     }
   </style>
 </head>
-
 <body>
-  <div class="card">
-    <h1>WorkLogic Pro</h1>
-    <div class="muted">Sign in to continue</div>
 
-    <label>Email</label>
-    <input id="email" type="email" autocomplete="username" />
+<div class="card">
+  <h1>WorkLogic Pro</h1>
+  <div class="muted">Login Debug Mode</div>
 
-    <label>Password</label>
-    <input id="password" type="password" autocomplete="current-password" />
+  <label>Email</label>
+  <input id="email" type="email" value="boxsterbrothers@gmail.com" />
 
-    <button id="login">Sign In</button>
+  <label>Password</label>
+  <input id="password" type="password" />
 
-    <div id="error" class="error"></div>
-  </div>
+  <button id="loginBtn1">Method 1: /token?grant_type=password</button>
+  <button id="loginBtn2">Method 2: /signup (then /token)</button>
+  
+  <div id="output"></div>
+</div>
 
 <script>
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4";
 
-  console.log('🚀 Login page loaded');
-  console.log('ANON_KEY:', ANON_KEY);
+  const output = document.getElementById('output');
 
-  const emailInput = document.getElementById("email");
-  const passwordInput = document.getElementById("password");
-  const loginBtn = document.getElementById("login");
-  const errorBox = document.getElementById("error");
-
-  function showError(msg){
-    console.error('❌ Error:', msg);
-    errorBox.textContent = msg;
-    errorBox.style.display = "block";
-  }
-  function clearError(){
-    errorBox.textContent = "";
-    errorBox.style.display = "none";
+  function showMessage(msg, type = 'info') {
+    output.innerHTML = `<div class="message ${type}">${msg}</div>`;
   }
 
-  async function validateToken(token){
-    console.log('Validating token...');
-    const res = await fetch(`${API_BASE}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
-    });
-    console.log('Token validation result:', res.ok);
-    return res.ok;
-  }
-
-  async function safeAutoRedirect(){
-    console.log('Checking for existing token...');
-    const token = localStorage.getItem("sb_access_token");
-    if (!token) {
-      console.log('No token found');
-      return;
-    }
-
-    console.log('Token found, validating...');
-    // ✅ only redirect if token is VALID
-    const ok = await validateToken(token);
-    if (ok) {
-      console.log('✅ Token valid, redirecting to dashboard');
-      location.replace("dashboard-business.html");
-    } else {
-      // ✅ token expired or invalid: clear it and stay on login
-      console.log('❌ Token invalid, clearing and staying on login');
-      localStorage.removeItem("sb_access_token");
-    }
-  }
-
-  async function login(){
-    console.log('🔐 Login attempt for:', emailInput.value.trim());
-    console.log('API_BASE:', API_BASE);
-    console.log('ANON_KEY:', ANON_KEY);
+  // Method 1: Standard password grant
+  document.getElementById('loginBtn1').addEventListener('click', async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
     
-    clearError();
-    loginBtn.disabled = true;
-
+    showMessage('Testing Method 1...', 'info');
+    console.log('=== METHOD 1 ===');
+    
     try {
-      const loginUrl = `${API_BASE}/auth/v1/token?grant_type=password`;
-      console.log('📤 Sending login request to:', loginUrl);
+      const url = `${API_BASE}/auth/v1/token?grant_type=password`;
+      console.log('URL:', url);
+      console.log('Body:', { email, password: '[HIDDEN]' });
       
-      const requestBody = {
-        email: emailInput.value.trim(),
-        password: passwordInput.value
-      };
-      console.log('Request body:', { email: requestBody.email, password: '[HIDDEN]' });
-      
-      let res;
-      try {
-        res = await fetch(loginUrl, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json", 
-            "apikey": ANON_KEY 
-          },
-          body: JSON.stringify(requestBody)
-        });
-      } catch (fetchError) {
-        console.error('❌ Fetch failed:', fetchError);
-        console.error('This usually means:');
-        console.error('1. Network error (offline?)');
-        console.error('2. CORS issue (wrong domain?)');
-        console.error('3. Supabase project issue');
-        
-        // Try to get more info
-        console.log('Testing basic connectivity...');
-        try {
-          const testRes = await fetch(`${API_BASE}/rest/v1/`, {
-            headers: { "apikey": ANON_KEY }
-          });
-          console.log('Basic connectivity test result:', testRes.status);
-        } catch (testErr) {
-          console.error('Basic connectivity also failed:', testErr);
-        }
-        
-        throw new Error('Network error - cannot reach Supabase. Check your internet connection and Supabase project status.');
-      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "apikey": ANON_KEY
+        },
+        body: JSON.stringify({ email, password })
+      });
 
-      console.log('📥 Response status:', res.status);
-      console.log('📥 Response headers:', Object.fromEntries(res.headers.entries()));
-      
-      const responseText = await res.text();
-      console.log('📥 Response body (raw):', responseText);
+      console.log('Status:', res.status);
+      const text = await res.text();
+      console.log('Response:', text);
       
       let data;
       try {
-        data = JSON.parse(responseText);
-        console.log('📥 Response body (parsed):', data);
-      } catch (parseErr) {
-        console.error('❌ Failed to parse response:', parseErr);
-        throw new Error('Invalid response from server');
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
       }
 
-      if (!res.ok) {
-        console.error('❌ Login failed with status:', res.status);
-        console.error('❌ Error details:', data);
-        throw new Error(data.error_description || data.error || data.msg || `Login failed (${res.status})`);
+      if (res.ok && data.access_token) {
+        showMessage('✅ Method 1 SUCCESS!\n\n' + JSON.stringify(data, null, 2), 'info');
+        localStorage.setItem("sb_access_token", data.access_token);
+        setTimeout(() => location.replace("dashboard-business.html"), 2000);
+      } else {
+        showMessage('❌ Method 1 FAILED\n\nStatus: ' + res.status + '\n\n' + JSON.stringify(data, null, 2), 'error');
       }
-
-      if (!data.access_token) {
-        console.error('❌ No access token in response:', data);
-        throw new Error("No access token returned");
-      }
-
-      console.log('✅ Login successful!');
-      console.log('✅ Access token received (length):', data.access_token.length);
-      console.log('💾 Saving token to localStorage...');
-
-      // ✅ store JWT
-      localStorage.setItem("sb_access_token", data.access_token);
-
-      // Verify it was saved
-      const saved = localStorage.getItem("sb_access_token");
-      console.log('✅ Token saved:', saved ? 'YES' : 'NO');
-      console.log('✅ Saved token matches:', saved === data.access_token ? 'YES' : 'NO');
-
-      console.log('🚀 Redirecting to dashboard...');
-      // ✅ go to business dashboard
-      location.replace("dashboard-business.html");
-
     } catch (err) {
-      console.error('❌ Login error:', err);
-      console.error('❌ Error stack:', err.stack);
-      showError(err.message || String(err));
-    } finally {
-      loginBtn.disabled = false;
+      console.error('Method 1 error:', err);
+      showMessage('❌ Method 1 ERROR\n\n' + err.message, 'error');
     }
-  }
-
-  loginBtn.addEventListener("click", login);
-  passwordInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") login();
   });
 
-  // ✅ critical fix: no redirect loop on expired tokens
-  safeAutoRedirect();
+  // Method 2: Using /signup endpoint (works for existing users too in some configs)
+  document.getElementById('loginBtn2').addEventListener('click', async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    
+    showMessage('Testing Method 2...', 'info');
+    console.log('=== METHOD 2 ===');
+    
+    try {
+      const url = `${API_BASE}/auth/v1/signup`;
+      console.log('URL:', url);
+      
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "apikey": ANON_KEY
+        },
+        body: JSON.stringify({ 
+          email, 
+          password,
+          options: {
+            data: {}
+          }
+        })
+      });
+
+      console.log('Status:', res.status);
+      const text = await res.text();
+      console.log('Response:', text);
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
+
+      if (res.ok && (data.access_token || data.session?.access_token)) {
+        const token = data.access_token || data.session.access_token;
+        showMessage('✅ Method 2 SUCCESS!\n\n' + JSON.stringify(data, null, 2), 'info');
+        localStorage.setItem("sb_access_token", token);
+        setTimeout(() => location.replace("dashboard-business.html"), 2000);
+      } else if (res.status === 400 && data.msg?.includes('already registered')) {
+        // User exists, now try to login
+        showMessage('User exists, trying login...', 'info');
+        
+        const loginRes = await fetch(`${API_BASE}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "apikey": ANON_KEY
+          },
+          body: JSON.stringify({ email, password })
+        });
+        
+        const loginData = await loginRes.json();
+        
+        if (loginRes.ok && loginData.access_token) {
+          showMessage('✅ Login SUCCESS!\n\n' + JSON.stringify(loginData, null, 2), 'info');
+          localStorage.setItem("sb_access_token", loginData.access_token);
+          setTimeout(() => location.replace("dashboard-business.html"), 2000);
+        } else {
+          showMessage('❌ Login FAILED\n\n' + JSON.stringify(loginData, null, 2), 'error');
+        }
+      } else {
+        showMessage('❌ Method 2 FAILED\n\nStatus: ' + res.status + '\n\n' + JSON.stringify(data, null, 2), 'error');
+      }
+    } catch (err) {
+      console.error('Method 2 error:', err);
+      showMessage('❌ Method 2 ERROR\n\n' + err.message, 'error');
+    }
+  });
 </script>
 </body>
 </html>
