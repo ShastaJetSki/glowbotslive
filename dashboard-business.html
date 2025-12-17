@@ -279,6 +279,7 @@
     return `${Number(hours || 0).toFixed(1)}h / ${money(rev)}`;
   }
 
+  // OVERDUE LOGIC: scheduled_start < NOW AND status NOT IN ('completed','closed')
   function isOverdue(w){
     if (!w.scheduled_start) return false;
     if (["completed","closed"].includes(w.status)) return false;
@@ -432,7 +433,11 @@
           (!activeKpi || statusIn(activeKpi, w.status))
         );
 
-        const hasOverdue = orders.some(w => w.assigned_employee_id === t.employee_id && isOverdue(w));
+        // RED DOT: Check if this tech has ANY overdue work orders (ignores filters)
+        const hasOverdue = orders.some(w => 
+          w.assigned_employee_id === t.employee_id && 
+          isOverdue(w)
+        );
 
         let todayH = 0;
         let weekH = 0;
@@ -512,7 +517,7 @@
     return `<span class="priority ${p}">${p}</span>`;
   }
 
-  /* Work orders - Clean display with financial info on right */
+  /* Work orders - OPTION 3: Clean display with job summary in title */
   function renderWorkOrders(){
     const list = document.getElementById("workOrders");
     const filtered = workOrdersFiltered();
@@ -554,22 +559,24 @@
         : "Unassigned";
 
       // Calculate revenue
-      const revenue = jobRevenue(w);
       const hours = jobHours(w);
 
-      const jobDesc = w.summary || "";
+      // Get job summary
+      const jobDesc = w.summary || "No description";
+
+      // RED DOT: Show if this work order is overdue
+      const overdueIndicator = isOverdue(w) ? '<span class="dot"></span>' : '';
 
       return `
         <div class="card wo">
           <div class="woRow">
             <div style="flex:1;">
               <div>
-                ${priorityBadge(w.priority)}
-                <strong>${customerName}</strong>
+                ${overdueIndicator}${priorityBadge(w.priority)}
+                <strong>${customerName} - ${jobDesc}</strong>
               </div>
               <div class="muted">${customerPhone}</div>
               <div class="muted">${vehicleDisplay}</div>
-              <div class="muted">${jobDesc}</div>
               <div class="woStatus">${w.status}</div>
             </div>
             <div class="woRight">
@@ -617,24 +624,12 @@
       vehiclesById = {};
       vehicles.forEach(v => vehiclesById[v.vehicle_id] = v);
 
-      // Process work orders and DEDUPLICATE by work_order_id
-      const allOrders = (Array.isArray(rawOrders) ? rawOrders : []).map(w => ({
+      // Process work orders
+      orders = (Array.isArray(rawOrders) ? rawOrders : []).map(w => ({
         ...w,
         assigned_employee_id: w.assigned_employee_id || null,
         assigned_to: w.assigned_to || null
       }));
-
-      // Remove duplicates - keep first occurrence of each work_order_id
-      const seen = new Set();
-      orders = allOrders.filter(w => {
-        if (seen.has(w.work_order_id)) {
-          return false; // Skip duplicate
-        }
-        seen.add(w.work_order_id);
-        return true;
-      });
-
-      console.log(`Loaded ${rawOrders.length} work orders, ${orders.length} unique`);
 
       setTenantTitleSafely();
 
