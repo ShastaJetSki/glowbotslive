@@ -262,21 +262,31 @@
     return (first || last) ? `${first} ${last}`.trim() : (t.name || "Tech");
   }
 
- function setTenantTitleSafely(){
-  const el = document.getElementById("tenantTitle");
+  function setTenantTitleSafely(){
+    const el = document.getElementById("tenantTitle");
 
-  const name =
-    orders.find(o => o.tenant_name)?.tenant_name ||
-    employees.find(e => e.tenant_name)?.tenant_name ||
-    "Business Dashboard";
+    // pick first non-empty tenant_name we can find
+    let name = "";
+    for (const o of (Array.isArray(orders) ? orders : [])) {
+      if (typeof o?.tenant_name === "string" && o.tenant_name.trim()) { name = o.tenant_name.trim(); break; }
+    }
+    if (!name) {
+      for (const e of (Array.isArray(employees) ? employees : [])) {
+        if (typeof e?.tenant_name === "string" && e.tenant_name.trim()) { name = e.tenant_name.trim(); break; }
+      }
+    }
+    if (!name) name = "Business Dashboard";
 
-  el.textContent = name;
-}
-
+    el.textContent = name;
+    document.title = name;
+  }
 
   /* KPI rendering */
   function renderKPIs(){
-    const inView = orders.filter(w => inRange(w));
+    const kpisEl = document.getElementById("kpis");
+    if (!kpisEl) return;
+
+    const inView = (Array.isArray(orders) ? orders : []).filter(w => inRange(w));
 
     const scheduled = inView.filter(w => statusIn("scheduled", w.status));
     const waiting = inView.filter(w => statusIn("waiting", w.status));
@@ -293,7 +303,7 @@
       </div>
     `;
 
-    document.getElementById("kpis").innerHTML =
+    kpisEl.innerHTML =
       kpiCard("scheduled", "Scheduled Work", scheduled) +
       kpiCard("waiting", "Waiting on Parts/Serviced", waiting) +
       kpiCard("complications", "Needs Approval / Diagnosis", complications) +
@@ -360,63 +370,67 @@
 
   /* Tech cards */
   function renderTechCards(){
+    const techEl = document.getElementById("techCards");
+    if (!techEl) return;
+
     const sToday = startOfToday();
     const eToday = endOfToday();
     const sWeek = startOfWeekMonday();
 
-    document.getElementById("techCards").innerHTML =
-      technicians.map(t=>{
-        const name = techDisplayName(t);
-        const initials = initialsFromName(name);
+    techEl.innerHTML = (Array.isArray(technicians) ? technicians : []).map(t=>{
+      const name = techDisplayName(t);
+      const initials = initialsFromName(name);
 
-        // FIX: mine must be computed INSIDE the map, per-tech
-        const mine = orders.filter(w =>
-          w.assigned_employee_id === t.employee_id &&
-          inRange(w) &&
-          (!activeKpi || statusIn(activeKpi, w.status))
-        );
+      // Per-tech orders MUST be computed inside map (this is the fix for “all tech cards same”)
+      const mine = (Array.isArray(orders) ? orders : []).filter(w =>
+        w.assigned_employee_id === t.employee_id &&
+        inRange(w) &&
+        (!activeKpi || statusIn(activeKpi, w.status))
+      );
 
-        // overdue must ignore range + KPI (use ALL orders)
-        const hasOverdue = orders.some(w => w.assigned_employee_id === t.employee_id && isOverdue(w));
+      // overdue must ignore range + KPI (use ALL orders)
+      const hasOverdue = (Array.isArray(orders) ? orders : []).some(w =>
+        w.assigned_employee_id === t.employee_id && isOverdue(w)
+      );
 
-        let todayH = 0;
-        let weekH = 0;
+      let todayH = 0;
+      let weekH = 0;
 
-        mine.forEach(w=>{
-          const hrs = jobHours(w);
-          const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
+      mine.forEach(w=>{
+        const hrs = jobHours(w);
+        const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
 
-          if (d && d >= sToday && d <= eToday) todayH += hrs;
-          if (d && d >= sWeek) weekH += hrs;
-        });
+        if (d && d >= sToday && d <= eToday) todayH += hrs;
+        if (d && d >= sWeek) weekH += hrs;
+      });
 
-        const pct = weekH / 40;
-        let cls="light", lbl="LIGHT";
-        if (pct >= 0.5) { cls="normal"; lbl="NORMAL"; }
-        if (pct >= 0.8) { cls="heavy"; lbl="HEAVY"; }
-        if (pct >  1.0) { cls="over";  lbl="OVERBOOKED"; }
+      const pct = weekH / 40;
+      let cls="light", lbl="LIGHT";
+      if (pct >= 0.5) { cls="normal"; lbl="NORMAL"; }
+      if (pct >= 0.8) { cls="heavy"; lbl="HEAVY"; }
+      if (pct >  1.0) { cls="over";  lbl="OVERBOOKED"; }
 
-        const active = activeTechId === t.employee_id ? "active" : "";
+      const active = activeTechId === t.employee_id ? "active" : "";
 
-        return `
-          <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
-            <div class="techLeft">
-              <div class="metric">${formatHrsRev(todayH)}</div>
-              <div class="sub">Booked Today</div>
+      return `
+        <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
+          <div class="techLeft">
+            <div class="metric">${formatHrsRev(todayH)}</div>
+            <div class="sub">Booked Today</div>
 
-              <div class="metric">${formatHrsRev(weekH)}</div>
-              <div class="sub">Booked This Week</div>
+            <div class="metric">${formatHrsRev(weekH)}</div>
+            <div class="sub">Booked This Week</div>
 
-              <div class="load ${cls}">${hasOverdue ? '<span class="dot"></span>' : ''}${lbl}</div>
-            </div>
-
-            <div class="techRight">
-              <div class="avatar">${initials}</div>
-              <div class="techName">${name}</div>
-            </div>
+            <div class="load ${cls}">${hasOverdue ? '<span class="dot"></span>' : ''}${lbl}</div>
           </div>
-        `;
-      }).join("");
+
+          <div class="techRight">
+            <div class="avatar">${initials}</div>
+            <div class="techName">${name}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
   window.selectTech = function(id){
@@ -437,16 +451,15 @@
   }
 
   function workOrdersFiltered(){
-    // 1) Range
-    let arr = orders.filter(w => inRange(w));
+    let arr = (Array.isArray(orders) ? orders : []).filter(w => inRange(w));
 
-    // 2) Hide completed by default unless KPI is set to completed
+    // Hide completed by default unless KPI is set to completed
     if (!activeKpi) arr = arr.filter(w => !statusIn("completed", w.status));
 
-    // 3) KPI filter
+    // KPI filter
     if (activeKpi) arr = arr.filter(w => statusIn(activeKpi, w.status));
 
-    // 4) Tech filter / Unassigned
+    // Tech filter / Unassigned
     if (activeTechId === "__unassigned__") {
       arr = arr.filter(w => !w.assigned_employee_id);
     } else if (activeTechId) {
@@ -458,6 +471,8 @@
 
   function renderWorkOrders(){
     const list = document.getElementById("workOrders");
+    if (!list) return;
+
     const filtered = workOrdersFiltered();
 
     if (!filtered.length) {
@@ -465,7 +480,6 @@
       return;
     }
 
-    // Sort: chronological always; priority only if selected
     filtered.sort((a,b)=>{
       if (activeSort === "priority") {
         const pr = priorityRank(a.priority) - priorityRank(b.priority);
@@ -501,6 +515,16 @@
     }).join("");
   }
 
+  function showFatal(err){
+    const msg = (err && (err.message || err)) ? String(err.message || err) : "Unknown error";
+    const wo = document.getElementById("workOrders");
+    const tc = document.getElementById("techCards");
+    const kp = document.getElementById("kpis");
+    if (kp) kp.innerHTML = "";
+    if (tc) tc.innerHTML = "";
+    if (wo) wo.innerHTML = `<div class="error">DASHBOARD ERROR:\n${msg}</div>`;
+  }
+
   async function load(){
     const token = await validateAuth();
     if (!token) {
@@ -511,41 +535,53 @@
 
     try {
       // Employees
-      employees = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
-
-      // Normalize employee name + index
+      const emp = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+      employees = Array.isArray(emp) ? emp : [];
       employees = employees.map(e => ({ ...e, name: techDisplayName(e) }));
+
       employeesById = {};
-      employees.forEach(e => employeesById[e.employee_id] = e);
+      employees.forEach(e => { if (e && e.employee_id) employeesById[e.employee_id] = e; });
 
       technicians = employees.filter(e => e.role === "technician");
 
       // Work Orders
       const rawOrders = await fetchJson(`${FUNCTIONS_BASE}/work_orders`, token);
+      const list = Array.isArray(rawOrders) ? rawOrders : [];
 
       // Normalize assignment ONCE (SSOT)
-      orders = (Array.isArray(rawOrders) ? rawOrders : []).map(w => ({
+      orders = list.map(w => ({
         ...w,
         assigned_employee_id: w.assigned_employee_id || w.assigned_to || null
       }));
 
       setTenantTitleSafely();
 
+      // default UI state (don’t rely on click handlers firing in weird order)
+      activeRange = "today";
+      activeSort = null;
+      activeTechId = null;
+      activeKpi = null;
+
       renderKPIs();
       renderTechCards();
       renderWorkOrders();
 
-      // default UI state
+      // ensure default button visuals
       setRange("today");
-      setSort(null);
+      const p = document.getElementById("sortPriority");
+      if (p) p.classList.remove("active");
 
     } catch (err) {
-      document.getElementById("workOrders").innerHTML =
-        `<div class="error">DASHBOARD ERROR:\n${err?.message || err}</div>`;
+      showFatal(err);
     }
   }
 
-  load();
+  // Make sure load runs even if the script gets moved around
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", load);
+  } else {
+    load();
+  }
 </script>
 
 </body>
