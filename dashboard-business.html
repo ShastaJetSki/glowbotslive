@@ -146,7 +146,7 @@
   let activeTechId = null;
   let activeRange = "today";   // today | week | all
   let activeKpi = null;        // scheduled | waiting | complications | completed | null
-  let activeSort = "soonest";  // soonest | latest | priority
+  let activeSort = "chrono"; // locked default: due soonest → latest
 
   // Date helpers
   function startOfToday(){
@@ -275,9 +275,9 @@
 
     document.getElementById("kpis").innerHTML =
       kpiCard("scheduled", "Scheduled Work", scheduled) +
-      kpiCard("waiting", "Waiting on Parts", waiting) +
+      kpiCard("waiting", "Waiting on Parts/Serviced", waiting) +
       kpiCard("complications", "Needs Approval / Diagnosis", complications) +
-      kpiCard("completed", "Completed", completed);
+      kpiCard("completed", "Ready for Pickup", completed);
   }
 
   window.toggleKpi = function(key){
@@ -384,26 +384,38 @@
   }
 
   window.selectTech = function(id){
-    activeTechId = (activeTechId === id) ? null : id;
-    renderTechCards();
-    renderWorkOrders();
-  }
+  activeTechId = (activeTechId === id) ? null : id;
+  renderTechCards();
+  renderWorkOrders();
+
+  // auto-scroll so it feels responsive
+  document.getElementById("workOrders")
+    .scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 
   function workOrdersFiltered(){
-    // Start from range
-    let arr = orders.filter(w => inRange(w));
+  // 1️⃣ Range filter
+  let arr = orders.filter(w => inRange(w));
 
-    // Default list excludes completed unless KPI=completed
-    if (!activeKpi) arr = arr.filter(defaultExcludeCompleted);
-
-    // KPI filter applies if selected
-    if (activeKpi) arr = arr.filter(w => statusIn(activeKpi, w.status));
-
-    // Tech filter applies if selected
-    if (activeTechId) arr = arr.filter(w => w.assigned_employee_id === activeTechId);
-
-    return arr;
+  // 2️⃣ Default: hide completed unless KPI = completed
+  if (!activeKpi) {
+    arr = arr.filter(w => !statusIn("completed", w.status));
   }
+
+  // 3️⃣ KPI filter
+  if (activeKpi) {
+    arr = arr.filter(w => statusIn(activeKpi, w.status));
+  }
+
+  // 4️⃣ Tech filter (SSOT fix)
+  if (activeTechId) {
+    arr = arr.filter(w => w.assigned_employee_id === activeTechId);
+  }
+
+  return arr;
+}
+
 
   function priorityRank(p){
     // optional: adjust later if your enum differs
@@ -424,19 +436,26 @@
     }
 
     // Sorting (default soonest -> furthest)
-    filtered.sort((a,b)=>{
-      if (activeSort === "latest") {
-        return new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0);
-      }
-      if (activeSort === "priority") {
-        const pr = priorityRank(a.priority) - priorityRank(b.priority);
-        if (pr !== 0) return pr;
-      }
-      // soonest:
-      const da = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
-      const db = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
-      return da - db;
-    });
+filtered.sort((a, b) => {
+  // Priority override only if selected
+  if (activeSort === "priority") {
+    const pr = priorityRank(a.priority) - priorityRank(b.priority);
+    if (pr !== 0) return pr;
+  }
+
+  // Always chronological (soonest → latest)
+  const da = a.scheduled_start
+    ? new Date(a.scheduled_start).getTime()
+    : Number.MAX_SAFE_INTEGER;
+
+  const db = b.scheduled_start
+    ? new Date(b.scheduled_start).getTime()
+    : Number.MAX_SAFE_INTEGER;
+
+  return da - db;
+});
+
+
 
     // IMPORTANT: replace HTML (not +=) to prevent repeating scroll bug
     list.innerHTML = filtered.map(w=>{
