@@ -259,7 +259,18 @@
   </h2>
   <div id="workOrders">Loading…</div>
 
-  <!-- Modal removed - using work-order-edit.html instead -->
+  <!-- Work Order Detail Modal -->
+  <div id="woModal" class="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modalContent">
+      <div class="modalHeader">
+        <div class="modalTitle" id="modalTitle">Work Order Details</div>
+      </div>
+      <div class="modalBody" id="modalBody"></div>
+      <div class="modalFooter">
+        <button class="closeBtn" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
 <script>
   console.log('🚀 Dashboard script loading...');
@@ -655,6 +666,107 @@
     return `<span class="priority ${p}">${p}</span>`;
   }
 
+  /* ========== MODAL FUNCTIONS ========== */
+
+  window.openWorkOrderDetail = function(workOrderId) {
+    const wo = orders.find(w => w.work_order_id === workOrderId);
+    if (!wo) return;
+
+    const customer = customersById[wo.customer_id];
+    const vehicle = vehiclesById[wo.vehicle_id];
+    const techId = wo.assigned_employee_id || wo.assigned_to;
+    const tech = techId ? employeesById[techId] : null;
+
+    const customerName = customer 
+      ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() 
+      : "Unknown Customer";
+    const vehicleDisplay = vehicle 
+      ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+      : "No vehicle";
+    const techName = tech 
+      ? `${tech.first_name || ''} ${tech.last_name || ''}`.trim()
+      : "Unassigned";
+
+    document.getElementById('modalTitle').textContent = wo.summary || "Work Order Details";
+    document.getElementById('modalBody').innerHTML = `
+      <div class="detailRow">
+        <div class="detailLabel">Status</div>
+        <div class="detailValue">${wo.status}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Priority</div>
+        <div class="detailValue">${priorityBadge(wo.priority)}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Customer</div>
+        <div class="detailValue">${customerName}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Phone</div>
+        <div class="detailValue">
+          ${customer?.phone ? `<a href="tel:${customer.phone}" style="color:#60a5fa;text-decoration:none;">${customer.phone}</a>` : 'N/A'}
+        </div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Email</div>
+        <div class="detailValue">
+          ${customer?.email ? `<a href="mailto:${customer.email}" style="color:#60a5fa;text-decoration:none;">${customer.email}</a>` : 'N/A'}
+        </div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Vehicle</div>
+        <div class="detailValue">${vehicleDisplay}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">VIN</div>
+        <div class="detailValue">${vehicle?.vin_or_cf_number || 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Assigned To</div>
+        <div class="detailValue">${techName}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Scheduled Start</div>
+        <div class="detailValue">${wo.scheduled_start ? new Date(wo.scheduled_start).toLocaleString() : 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Scheduled End</div>
+        <div class="detailValue">${wo.scheduled_end ? new Date(wo.scheduled_end).toLocaleString() : 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Estimated Hours</div>
+        <div class="detailValue">${jobHours(wo).toFixed(1)}h</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Estimated Revenue</div>
+        <div class="detailValue">${money(jobRevenue(wo))}</div>
+      </div>
+      ${wo.details ? `
+      <div class="detailRow">
+        <div class="detailLabel">Details</div>
+        <div class="detailValue" style="white-space:pre-wrap;">${wo.details}</div>
+      </div>
+      ` : ''}
+      ${wo.customer_notes ? `
+      <div class="detailRow">
+        <div class="detailLabel">Customer Notes</div>
+        <div class="detailValue" style="white-space:pre-wrap;">${wo.customer_notes}</div>
+      </div>
+      ` : ''}
+      ${wo.internal_notes ? `
+      <div class="detailRow">
+        <div class="detailLabel">Tech Notes</div>
+        <div class="detailValue" style="white-space:pre-wrap;">${wo.internal_notes}</div>
+      </div>
+      ` : ''}
+    `;
+    document.getElementById('woModal').classList.add('active');
+  };
+
+  window.closeModal = function() {
+    document.getElementById('woModal').classList.remove('active');
+  };
+
   /* ========== WORK ORDERS SECTION ========== */
 
   /* Work orders - OPTION 3: Clean display with job summary in title */
@@ -720,7 +832,7 @@
       const overdueIndicator = isOverdue(w) ? '<span class="dot"></span>' : '';
 
       return `
-        <div class="card wo" onclick="window.location.href='work-order-edit.html?id=${w.work_order_id}'" style="cursor:pointer;">
+        <div class="card wo" onclick="openWorkOrderDetail('${w.work_order_id}')" style="cursor:pointer;">
           <div class="woRow">
             <div style="flex:1;">
               <div style="margin-bottom:4px;">
