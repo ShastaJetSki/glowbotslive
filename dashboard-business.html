@@ -71,12 +71,14 @@
     /* --- overdue red dot --- */
 .dot {
   display:inline-block;
-  width:8px;
-  height:8px;
+  width:6px;
+  height:6px;
   border-radius:50%;
-  background:#ef4444;
-  margin-left:6px;
+  background:#ff2d2d;
+  box-shadow:0 0 6px #ff2d2d;
+  margin-right:6px;
 }
+
 
 .dot.big {
   width:10px;
@@ -221,14 +223,18 @@
   }
 
   function jobHours(w){
-    if (w.scheduled_start && w.scheduled_end) {
-      return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
-    }
-    // fallback for scheduled-like statuses
-    if (w.scheduled_start && !w.scheduled_end) {
-  // assume 2–4 hour diagnostic/short job instead of flat 1h
-  return w.status === "diagnosis_required" ? 2 : 3;
+  if (w.scheduled_start && w.scheduled_end) {
+    return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
+  }
+
+  // fallback estimates by status
+  if (w.status === "diagnosis_required") return 2;
+  if (w.status === "awaiting_parts") return 1;
+  if (["scheduled","in_progress","repairing","testing"].includes(w.status)) return 3;
+
+  return 0;
 }
+
 
 
   // --------------------------------------------------
@@ -377,14 +383,18 @@ function isOverdue(w){
         const name = techDisplayName(t);
         const initials = initialsFromName(name);
 
-        const mine = scoped.filter(w => w.assigned_employee_id === t.employee_id);
+        const mine = scoped.filter(w =>
+  (w.assigned_employee_id || w.assigned_to) === t.employee_id
+);
+
        
         // 🔴 overdue detection per tech
         // 🔴 overdue detection must IGNORE date range
 const hasOverdue = orders.some(w =>
-  w.assigned_employee_id === t.employee_id &&
+  (w.assigned_employee_id || w.assigned_to) === t.employee_id &&
   isOverdue(w)
 );
+
 console.log("TECH", name, "hasOverdue:", hasOverdue);
 
 
