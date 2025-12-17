@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth Debug - WorkLogicPro</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:monospace;
+      background:#0a0e1a;
+      color:#e8eef6;
+      padding:40px;
+    }
+    .section {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:12px;
+      padding:20px;
+      margin-bottom:20px;
+    }
+    h2 {
+      color:#60a5fa;
+      margin-bottom:16px;
+    }
+    .good { color:#10b981; }
+    .bad { color:#ef4444; }
+    .info { color:#9fb0c3; }
+    pre {
+      background:#1a2535;
+      padding:12px;
+      border-radius:8px;
+      overflow-x:auto;
+      margin:8px 0;
+    }
+    button {
+      padding:12px 24px;
+      background:#2563eb;
+      border:none;
+      border-radius:8px;
+      color:#fff;
+      cursor:pointer;
+      margin:8px 8px 8px 0;
+    }
+    button:hover {
+      background:#1d4ed8;
+    }
+  </style>
+</head>
+<body>
+
+<h1 style="margin-bottom:24px;">🔍 Authentication Debug</h1>
+
+<div class="section">
+  <h2>1. LocalStorage Contents</h2>
+  <div id="localStorageContent"></div>
+</div>
+
+<div class="section">
+  <h2>2. Token Validation</h2>
+  <button onclick="testToken()">Test Token</button>
+  <div id="tokenTest"></div>
+</div>
+
+<div class="section">
+  <h2>3. User Info</h2>
+  <button onclick="getUserInfo()">Get User Info</button>
+  <div id="userInfo"></div>
+</div>
+
+<div class="section">
+  <h2>4. Employee Lookup</h2>
+  <button onclick="getEmployee()">Get Employee</button>
+  <div id="employeeInfo"></div>
+</div>
+
+<div class="section">
+  <h2>5. Quick Actions</h2>
+  <button onclick="window.location.href='dashboard-business.html'">Go to Dashboard</button>
+  <button onclick="window.location.href='work-orders.html'">Go to Work Orders</button>
+  <button onclick="clearAndReload()">Clear All & Reload</button>
+</div>
+
+<script>
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+  const REST_BASE = `${API_BASE}/rest/v1`;
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMzMzUzNDcsImV4cCI6MjA0ODkxMTM0N30.lXiCI05K9r_1vd6qPn-bXWzRJjQgs38geg71uxiv4CU";
+
+  // 1. Show localStorage
+  function showLocalStorage() {
+    const content = document.getElementById('localStorageContent');
+    const items = [];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const value = localStorage.getItem(key);
+      items.push({ key, value: value.substring(0, 100) + (value.length > 100 ? '...' : '') });
+    }
+    
+    if (items.length === 0) {
+      content.innerHTML = '<div class="bad">❌ localStorage is EMPTY</div>';
+    } else {
+      content.innerHTML = `
+        <div class="good">✅ Found ${items.length} items:</div>
+        ${items.map(item => `
+          <div style="margin:8px 0;">
+            <strong>${item.key}:</strong>
+            <pre>${item.value}</pre>
+          </div>
+        `).join('')}
+      `;
+    }
+    
+    // Check for specific token
+    const token = localStorage.getItem('sb_access_token');
+    if (token) {
+      content.innerHTML += '<div class="good">✅ sb_access_token EXISTS</div>';
+    } else {
+      content.innerHTML += '<div class="bad">❌ sb_access_token NOT FOUND</div>';
+    }
+  }
+
+  // 2. Test token
+  async function testToken() {
+    const output = document.getElementById('tokenTest');
+    output.innerHTML = '<div class="info">Testing...</div>';
+    
+    const token = localStorage.getItem('sb_access_token');
+    
+    if (!token) {
+      output.innerHTML = '<div class="bad">❌ No token found in localStorage</div>';
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        const user = await res.json();
+        output.innerHTML = `
+          <div class="good">✅ Token is VALID!</div>
+          <pre>${JSON.stringify(user, null, 2)}</pre>
+        `;
+      } else {
+        output.innerHTML = `
+          <div class="bad">❌ Token is INVALID</div>
+          <div>Status: ${res.status}</div>
+          <pre>${await res.text()}</pre>
+        `;
+      }
+    } catch (err) {
+      output.innerHTML = `<div class="bad">❌ Error: ${err.message}</div>`;
+    }
+  }
+
+  // 3. Get user info
+  async function getUserInfo() {
+    const output = document.getElementById('userInfo');
+    output.innerHTML = '<div class="info">Fetching...</div>';
+    
+    const token = localStorage.getItem('sb_access_token');
+    if (!token) {
+      output.innerHTML = '<div class="bad">❌ No token</div>';
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        const user = await res.json();
+        output.innerHTML = `
+          <div class="good">✅ User Info:</div>
+          <pre>${JSON.stringify(user, null, 2)}</pre>
+        `;
+      } else {
+        output.innerHTML = `<div class="bad">❌ Failed: ${res.status}</div>`;
+      }
+    } catch (err) {
+      output.innerHTML = `<div class="bad">❌ Error: ${err.message}</div>`;
+    }
+  }
+
+  // 4. Get employee
+  async function getEmployee() {
+    const output = document.getElementById('employeeInfo');
+    output.innerHTML = '<div class="info">Fetching...</div>';
+    
+    const token = localStorage.getItem('sb_access_token');
+    if (!token) {
+      output.innerHTML = '<div class="bad">❌ No token</div>';
+      return;
+    }
+    
+    try {
+      // Get user first
+      const userRes = await fetch(`${API_BASE}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!userRes.ok) {
+        output.innerHTML = '<div class="bad">❌ Cannot get user</div>';
+        return;
+      }
+      
+      const user = await userRes.json();
+      
+      // Try to get employee by user_id
+      let url = `${REST_BASE}/employees?user_id=eq.${user.id}`;
+      output.innerHTML += `<div class="info">Trying: ${url}</div>`;
+      
+      let res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      
+      let employees = await res.json();
+      
+      if (employees.length === 0) {
+        // Try by tenant
+        const tenantId = '11111111-1111-1111-1111-111111111111';
+        url = `${REST_BASE}/employees?tenant_id=eq.${tenantId}&limit=1`;
+        output.innerHTML += `<div class="info">Trying: ${url}</div>`;
+        
+        res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+        
+        employees = await res.json();
+      }
+      
+      if (employees.length > 0) {
+        output.innerHTML += `
+          <div class="good">✅ Employee Found:</div>
+          <pre>${JSON.stringify(employees[0], null, 2)}</pre>
+        `;
+      } else {
+        output.innerHTML += '<div class="bad">❌ No employee found</div>';
+      }
+      
+    } catch (err) {
+      output.innerHTML += `<div class="bad">❌ Error: ${err.message}</div>`;
+    }
+  }
+
+  function clearAndReload() {
+    if (confirm('Clear all localStorage and reload?')) {
+      localStorage.clear();
+      location.reload();
+    }
+  }
+
+  // Auto-run on load
+  showLocalStorage();
+</script>
+
+</body>
+</html>
