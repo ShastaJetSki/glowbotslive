@@ -119,6 +119,84 @@
       font-size:11px;
       color:#9fb0c3;
     }
+
+    /* Edit button */
+    .editBtn {
+      padding:4px 10px;
+      border-radius:6px;
+      border:1px solid #3b82f6;
+      background:#1e3a5f;
+      color:#60a5fa;
+      font-size:11px;
+      cursor:pointer;
+      margin-top:4px;
+    }
+    .editBtn:hover {
+      background:#2563eb;
+      color:#fff;
+    }
+
+    /* Modal */
+    .modal {
+      display:none;
+      position:fixed;
+      top:0; left:0; right:0; bottom:0;
+      background:rgba(0,0,0,0.85);
+      z-index:1000;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+    }
+    .modal.active { display:flex; }
+    .modalContent {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:24px;
+      max-width:600px;
+      width:100%;
+      max-height:80vh;
+      overflow-y:auto;
+    }
+    .modalHeader {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:16px;
+    }
+    .modalTitle {
+      font-size:20px;
+      font-weight:700;
+    }
+    .closeBtn {
+      padding:4px 12px;
+      border-radius:6px;
+      border:1px solid #223044;
+      background:#1a2535;
+      color:#9fb0c3;
+      cursor:pointer;
+      font-size:14px;
+    }
+    .closeBtn:hover {
+      background:#2a3b55;
+      color:#fff;
+    }
+    .detailRow {
+      display:flex;
+      padding:8px 0;
+      border-bottom:1px solid #1a2535;
+    }
+    .detailLabel {
+      font-size:12px;
+      color:#9fb0c3;
+      width:120px;
+      flex-shrink:0;
+    }
+    .detailValue {
+      font-size:14px;
+      color:#e8eef6;
+      flex:1;
+    }
   </style>
 </head>
 
@@ -158,6 +236,17 @@
     <button onclick="createWorkOrder()">+ New Work Order</button>
   </h2>
   <div id="workOrders">Loading…</div>
+
+  <!-- Work Order Detail Modal -->
+  <div id="woModal" class="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modalContent">
+      <div class="modalHeader">
+        <div class="modalTitle" id="modalTitle">Work Order Details</div>
+        <button class="closeBtn" onclick="closeModal()">Close</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
 
 <script>
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
@@ -549,6 +638,102 @@
     return `<span class="priority ${p}">${p}</span>`;
   }
 
+  // Modal functions
+  window.openWorkOrderDetail = function(workOrderId) {
+    const wo = orders.find(w => w.work_order_id === workOrderId);
+    if (!wo) return;
+
+    const customer = customersById[wo.customer_id];
+    const vehicle = vehiclesById[wo.vehicle_id];
+    const techId = wo.assigned_employee_id || wo.assigned_to;
+    const tech = techId ? employeesById[techId] : null;
+
+    const customerName = customer 
+      ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() 
+      : "Unknown Customer";
+    const vehicleDisplay = vehicle 
+      ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+      : "No vehicle";
+    const techName = tech 
+      ? `${tech.first_name || ''} ${tech.last_name || ''}`.trim()
+      : "Unassigned";
+
+    document.getElementById('modalTitle').textContent = wo.summary || "Work Order Details";
+    document.getElementById('modalBody').innerHTML = `
+      <div class="detailRow">
+        <div class="detailLabel">Status</div>
+        <div class="detailValue">${wo.status}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Priority</div>
+        <div class="detailValue">${priorityBadge(wo.priority)}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Customer</div>
+        <div class="detailValue">${customerName}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Phone</div>
+        <div class="detailValue">${customer?.phone || 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Email</div>
+        <div class="detailValue">${customer?.email || 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Vehicle</div>
+        <div class="detailValue">${vehicleDisplay}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">VIN</div>
+        <div class="detailValue">${vehicle?.vin_or_cf_number || 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Assigned To</div>
+        <div class="detailValue">${techName}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Scheduled Start</div>
+        <div class="detailValue">${wo.scheduled_start ? new Date(wo.scheduled_start).toLocaleString() : 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Scheduled End</div>
+        <div class="detailValue">${wo.scheduled_end ? new Date(wo.scheduled_end).toLocaleString() : 'N/A'}</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Estimated Hours</div>
+        <div class="detailValue">${jobHours(wo).toFixed(1)}h</div>
+      </div>
+      <div class="detailRow">
+        <div class="detailLabel">Estimated Revenue</div>
+        <div class="detailValue">${money(jobRevenue(wo))}</div>
+      </div>
+      ${wo.details ? `
+      <div class="detailRow">
+        <div class="detailLabel">Details</div>
+        <div class="detailValue">${wo.details}</div>
+      </div>
+      ` : ''}
+      ${wo.internal_notes ? `
+      <div class="detailRow">
+        <div class="detailLabel">Internal Notes</div>
+        <div class="detailValue">${wo.internal_notes}</div>
+      </div>
+      ` : ''}
+    `;
+
+    document.getElementById('woModal').classList.add('active');
+  };
+
+  window.closeModal = function() {
+    document.getElementById('woModal').classList.remove('active');
+  };
+
+  window.editWorkOrder = function(workOrderId, event) {
+    event.stopPropagation(); // Prevent modal from opening
+    window.location.href = `work-order-edit.html?id=${workOrderId}`;
+  };
+
   /* Work orders - OPTION 3: Clean display with job summary in title */
   function renderWorkOrders(){
     const list = document.getElementById("workOrders");
@@ -586,6 +771,18 @@
       // Get tech info
       const techId = w.assigned_employee_id || w.assigned_to;
       const tech = techId ? employeesById[techId] : null;
+      
+      // Debug logging
+      if (!tech && techId) {
+        console.log('Tech not found:', {
+          workOrderId: w.work_order_id,
+          techId: techId,
+          assigned_employee_id: w.assigned_employee_id,
+          assigned_to: w.assigned_to,
+          availableTechs: Object.keys(employeesById)
+        });
+      }
+      
       const techName = tech 
         ? `${tech.first_name || ''} ${tech.last_name || ''}`.trim() || "Unknown Tech"
         : "Unassigned";
@@ -600,7 +797,7 @@
       const overdueIndicator = isOverdue(w) ? '<span class="dot"></span>' : '';
 
       return `
-        <div class="card wo">
+        <div class="card wo" onclick="openWorkOrderDetail('${w.work_order_id}')" style="cursor:pointer;">
           <div class="woRow">
             <div style="flex:1;">
               <div>
@@ -614,6 +811,7 @@
             <div class="woRight">
               <div class="woRevenue">${formatHrsRev(hours)}</div>
               <div class="woTech">${techName}</div>
+              <button class="editBtn" onclick="editWorkOrder('${w.work_order_id}', event)">Edit</button>
             </div>
           </div>
         </div>
