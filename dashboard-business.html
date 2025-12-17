@@ -101,6 +101,24 @@
     .priority.high { background:#f59e0b; color:#fff; }
     .priority.normal { background:#3b82f6; color:#fff; }
     .priority.low { background:#6b7280; color:#fff; }
+
+    /* Work order card right side */
+    .woRight {
+      text-align:right;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      min-width:100px;
+    }
+    .woRevenue {
+      font-size:14px;
+      font-weight:700;
+      color:#e8eef6;
+    }
+    .woTech {
+      font-size:11px;
+      color:#9fb0c3;
+    }
   </style>
 </head>
 
@@ -144,10 +162,18 @@
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
   const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
-  const REST_BASE = `${API_BASE}/rest/v1`; // ← Supabase REST API
+  const REST_BASE = `${API_BASE}/rest/v1`;
   const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-  // SSOT status buckets (matches DB constraint vocabulary)
+  // Business Settings - Shop Labor Rate from localStorage
+  const RATE_KEY = "wl_labor_rate";
+  const DEFAULT_LABOR_RATE = 125;
+  function getShopLaborRate(){
+    const v = Number(localStorage.getItem(RATE_KEY));
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_LABOR_RATE;
+  }
+
+  // SSOT status buckets
   const STATUS_BUCKETS = {
     scheduled: ["draft","scheduled","in_progress","repairing","testing","ready_for_pickup"],
     waiting: ["awaiting_parts","parts_on_order"],
@@ -191,7 +217,6 @@
     location.replace("login.html");
   }
 
-  /* AUTH */
   async function validateAuth(){
     const token = localStorage.getItem("sb_access_token");
     if (!token) return null;
@@ -204,7 +229,6 @@
     return token;
   }
 
-  // Fetch from edge functions (for work_orders, employees)
   async function fetchJson(url, token){
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
@@ -213,7 +237,6 @@
     return res.json();
   }
 
-  // NEW: Fetch from REST API (for customers, vehicles - bypasses CORS)
   async function fetchRest(table, token){
     const res = await fetch(`${REST_BASE}/${table}?select=*`, {
       headers: { 
@@ -230,20 +253,30 @@
     location.href = "work-order-new.html";
   }
 
-  // Enhanced: Use actual labor_total or calculate from scheduled hours and employee rate
-  function jobRevenue(w){
-    if (w.grand_total && w.grand_total > 0) return Number(w.grand_total);
-    if (w.labor_total && w.labor_total > 0) return Number(w.labor_total);
-
+  // Calculate hours from scheduled times
+  function jobHours(w){
     if (w.scheduled_start && w.scheduled_end) {
-      const hours = (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
-      const assignedId = w.assigned_employee_id || w.assigned_to;
-      const emp = assignedId ? employeesById[assignedId] : null;
-      const rate = emp?.hourly_labor_rate || 125;
-      return hours * rate;
+      return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
     }
-
+    // Fallback estimates by status
+    if (w.status === "diagnosis_required") return 2;
+    if (w.status === "awaiting_parts") return 1;
+    if (["scheduled","in_progress","repairing","testing","ready_for_pickup"].includes(w.status)) return 3;
     return 0;
+  }
+
+  // Calculate revenue using shop labor rate
+  function jobRevenue(w){
+    const hours = jobHours(w);
+    const shopRate = getShopLaborRate();
+    return hours * shopRate;
+  }
+
+  // Format as "15.3h / $1,913"
+  function formatHrsRev(hours){
+    const shopRate = getShopLaborRate();
+    const rev = hours * shopRate;
+    return `${Number(hours || 0).toFixed(1)}h / ${money(rev)}`;
   }
 
   function isOverdue(w){
@@ -292,7 +325,7 @@
     el.textContent = name;
   }
 
-  /* KPI rendering - ENHANCED with real revenue */
+  /* KPI rendering - Filters tech cards when clicked */
   function renderKPIs(){
     const inView = orders.filter(w => inRange(w));
 
@@ -301,17 +334,15 @@
     const complications = inView.filter(w => statusIn("complications", w.status));
     const completed = inView.filter(w => statusIn("completed", w.status));
 
-    function sumRev(arr){ return arr.reduce((s,w)=> s + jobRevenue(w), 0); }
+    function sumH(arr){ return arr.reduce((s,w)=> s + jobHours(w), 0); }
 
     const kpiCard = (key, title, arr) => {
-      const revenue = sumRev(arr);
-      const count = arr.length;
-      const avg = count > 0 ? revenue / count : 0;
+      const hours = sumH(arr);
       return `
         <div class="card kpi ${activeKpi===key?'active':''}" onclick="toggleKpi('${key}')">
           <div class="label">${title}</div>
-          <div class="value">${money(revenue)}</div>
-          <div class="muted">${count} Jobs · ${money(avg)} avg</div>
+          <div class="value">${formatHrsRev(hours)}</div>
+          <div class="muted">Jobs: ${arr.length}</div>
         </div>
       `;
     };
@@ -326,7 +357,7 @@
   window.toggleKpi = function(key){
     activeKpi = (activeKpi === key) ? null : key;
     renderKPIs();
-    renderTechCards();
+    renderTechCards(); // KPI filters tech cards
     renderWorkOrders();
   };
 
@@ -383,7 +414,7 @@
     renderWorkOrders();
   };
 
-  /* Tech cards - ENHANCED with per-tech hourly rates */
+  /* Tech cards - Filters work orders when clicked */
   function renderTechCards(){
     const sToday = startOfToday();
     const eToday = endOfToday();
@@ -393,8 +424,8 @@
       technicians.map(t=>{
         const name = techDisplayName(t);
         const initials = initialsFromName(name);
-        const rate = t.hourly_labor_rate || 125;
 
+        // Tech card shows jobs in current range AND KPI filter
         const mine = orders.filter(w =>
           w.assigned_employee_id === t.employee_id &&
           inRange(w) &&
@@ -403,19 +434,18 @@
 
         const hasOverdue = orders.some(w => w.assigned_employee_id === t.employee_id && isOverdue(w));
 
-        let todayRev = 0;
-        let weekRev = 0;
+        let todayH = 0;
+        let weekH = 0;
 
         mine.forEach(w=>{
-          const rev = jobRevenue(w);
+          const hrs = jobHours(w);
           const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
 
-          if (d && d >= sToday && d <= eToday) todayRev += rev;
-          if (d && d >= sWeek) weekRev += rev;
+          if (d && d >= sToday && d <= eToday) todayH += hrs;
+          if (d && d >= sWeek) weekH += hrs;
         });
 
-        const weekHours = weekRev / rate;
-        const pct = weekHours / 40;
+        const pct = weekH / 40;
         let cls="light", lbl="LIGHT";
         if (pct >= 0.5) { cls="normal"; lbl="NORMAL"; }
         if (pct >= 0.8) { cls="heavy"; lbl="HEAVY"; }
@@ -426,11 +456,11 @@
         return `
           <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
             <div class="techLeft">
-              <div class="metric">${money(todayRev)}</div>
-              <div class="sub">Booked Today (${(todayRev/rate).toFixed(1)}h @ $${rate}/h)</div>
+              <div class="metric">${formatHrsRev(todayH)}</div>
+              <div class="sub">Booked Today</div>
 
-              <div class="metric">${money(weekRev)}</div>
-              <div class="sub">Booked This Week (${weekHours.toFixed(1)}h)</div>
+              <div class="metric">${formatHrsRev(weekH)}</div>
+              <div class="sub">Booked This Week</div>
 
               <div class="load ${cls}">${hasOverdue ? '<span class="dot"></span>' : ''}${lbl}</div>
             </div>
@@ -447,10 +477,7 @@
   window.selectTech = function(id){
     activeTechId = (activeTechId === id) ? null : id;
     renderTechCards();
-    renderWorkOrders();
-
-    const wo = document.getElementById("workOrders");
-    if (wo) wo.scrollIntoView({ behavior: "smooth", block: "start" });
+    renderWorkOrders(); // Tech card filters work orders
   };
 
   function priorityRank(p){
@@ -485,7 +512,7 @@
     return `<span class="priority ${p}">${p}</span>`;
   }
 
-  /* ENHANCED: Work orders with customer, vehicle, financial info */
+  /* Work orders - Clean display with financial info on right */
   function renderWorkOrders(){
     const list = document.getElementById("workOrders");
     const filtered = workOrdersFiltered();
@@ -511,13 +538,13 @@
       const customerName = customer 
         ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() 
         : "Unknown Customer";
-      const customerPhone = customer?.phone || "—";
+      const customerPhone = customer?.phone || "";
 
       // Get vehicle info
       const vehicle = vehiclesById[w.vehicle_id];
       const vehicleDisplay = vehicle 
         ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
-        : "—";
+        : "";
 
       // Get tech info
       const techId = w.assigned_employee_id || w.assigned_to;
@@ -526,28 +553,30 @@
         ? `${tech.first_name || ''} ${tech.last_name || ''}`.trim() || "Unknown Tech"
         : "Unassigned";
 
-      // Financial info
+      // Calculate revenue
       const revenue = jobRevenue(w);
-      const financialInfo = revenue > 0 
-        ? `💰 ${money(revenue)}${w.labor_total > 0 ? ` (Labor: ${money(w.labor_total)}${w.parts_total > 0 ? `, Parts: ${money(w.parts_total)}` : ''})` : ''}`
-        : '';
+      const hours = jobHours(w);
 
-      const jobDesc = w.summary || "—";
+      const jobDesc = w.summary || "";
 
       return `
         <div class="card wo">
           <div class="woRow">
-            <div>
-              ${priorityBadge(w.priority)}
-              <strong>${customerName}</strong>
+            <div style="flex:1;">
+              <div>
+                ${priorityBadge(w.priority)}
+                <strong>${customerName}</strong>
+              </div>
+              <div class="muted">${customerPhone}</div>
+              <div class="muted">${vehicleDisplay}</div>
+              <div class="muted">${jobDesc}</div>
+              <div class="woStatus">${w.status}</div>
             </div>
-            <div class="woStatus">${w.status}</div>
+            <div class="woRight">
+              <div class="woRevenue">${formatHrsRev(hours)}</div>
+              <div class="woTech">${techName}</div>
+            </div>
           </div>
-          <div class="muted">${customerPhone}</div>
-          <div class="muted">🚗 ${vehicleDisplay}</div>
-          <div class="muted">🔧 ${jobDesc}</div>
-          ${financialInfo ? `<div class="muted">${financialInfo}</div>` : ''}
-          <div class="muted">👨‍🔧 Tech: ${techName}</div>
         </div>
       `;
     }).join("");
@@ -562,20 +591,17 @@
     }
 
     try {
-      // Fetch work_orders and employees from edge functions (these work)
-      // Fetch customers and vehicles from REST API (bypasses CORS)
       const [rawEmployees, rawOrders, rawCustomers, rawVehicles] = await Promise.all([
         fetchJson(`${FUNCTIONS_BASE}/employees`, token),
         fetchJson(`${FUNCTIONS_BASE}/work_orders`, token),
-        fetchRest('customers', token),  // ← REST API instead
-        fetchRest('vehicles', token)     // ← REST API instead
+        fetchRest('customers', token),
+        fetchRest('vehicles', token)
       ]);
 
       // Process employees
       employees = rawEmployees.map(e => ({ 
         ...e, 
-        name: techDisplayName(e),
-        hourly_labor_rate: Number(e.hourly_labor_rate) || 125
+        name: techDisplayName(e)
       }));
       employeesById = {};
       employees.forEach(e => employeesById[e.employee_id] = e);
@@ -595,10 +621,7 @@
       orders = (Array.isArray(rawOrders) ? rawOrders : []).map(w => ({
         ...w,
         assigned_employee_id: w.assigned_employee_id || null,
-        assigned_to: w.assigned_to || null,
-        labor_total: Number(w.labor_total) || 0,
-        parts_total: Number(w.parts_total) || 0,
-        grand_total: Number(w.grand_total) || 0
+        assigned_to: w.assigned_to || null
       }));
 
       setTenantTitleSafely();
