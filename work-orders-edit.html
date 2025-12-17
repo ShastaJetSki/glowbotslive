@@ -432,33 +432,54 @@
   }
 
   async function load() {
+    console.log('🚀 Starting work-orders-edit.html load...');
+    console.log('Work Order ID:', workOrderId);
+    
     const token = await validateAuth();
+    console.log('Token check:', token ? 'Found' : 'Not found');
+    
     if (!token) {
+      console.log('❌ No token, redirecting to login');
       localStorage.removeItem("sb_access_token");
       location.replace("login.html");
       return;
     }
 
     try {
+      console.log('📥 Fetching user info...');
+      
       // Load current user
       const userRes = await fetch(`${API_BASE}/auth/v1/user`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
+      console.log('User response status:', userRes.status);
+      
+      if (!userRes.ok) {
+        throw new Error(`User fetch failed: ${userRes.status}`);
+      }
+      
       currentUser = await userRes.json();
+      console.log('✅ Current user:', currentUser.email);
 
       // Try to get employee record by user_id
+      console.log('📥 Fetching employee by user_id...');
       let empData = await fetchRest('employees', token, `user_id=eq.${currentUser.id}`);
+      console.log('Employee by user_id result:', empData?.length || 0, 'records');
       
       // If not found by user_id, get first employee for this tenant (fallback)
       if (!empData || empData.length === 0) {
-        // Get tenant_id from localStorage or use default
+        console.log('⚠️ No employee by user_id, trying by tenant...');
         const tenantId = localStorage.getItem('tenant_id') || '11111111-1111-1111-1111-111111111111';
+        console.log('Using tenant_id:', tenantId);
         empData = await fetchRest('employees', token, `tenant_id=eq.${tenantId}&limit=1`);
+        console.log('Employee by tenant result:', empData?.length || 0, 'records');
       }
       
       currentEmployee = empData[0];
 
       if (!currentEmployee) {
+        console.log('⚠️ No employee found, using fallback');
         // If still no employee, create a mock one for now
         currentEmployee = {
           employee_id: 'temp',
@@ -469,13 +490,16 @@
         };
       }
 
+      console.log('✅ Employee loaded:', currentEmployee.first_name, currentEmployee.last_name, `(${currentEmployee.role})`);
+
       // Set user info
       document.getElementById('userInfo').textContent = 
         `${currentEmployee.first_name} ${currentEmployee.last_name} (${currentEmployee.role})`;
       document.getElementById('businessName').textContent = 'Shasta Jet Ski Service';
 
       // Load data
-      console.log('Loading work order:', workOrderId);
+      console.log('📥 Loading work order and related data...');
+      console.log('Work Order ID:', workOrderId);
       console.log('Employee tenant:', currentEmployee.tenant_id);
       
       const [customersData, vehiclesData, employeesData, woData] = await Promise.all([
@@ -485,6 +509,12 @@
         fetchRest('work_orders', token, `work_order_id=eq.${workOrderId}`)
       ]);
 
+      console.log('✅ Data loaded:', {
+        customers: customersData.length,
+        vehicles: vehiclesData.length,
+        employees: employeesData.length,
+        workOrder: woData.length
+      });
       console.log('Work order data received:', woData);
 
       customers = customersData;
@@ -493,16 +523,19 @@
       workOrder = woData[0];
       
       if (!workOrder) {
-        console.error('Work order not found in response');
+        console.error('❌ Work order not found in response');
         throw new Error("Work order not found");
       }
 
-      console.log('Successfully loaded work order:', workOrder.summary);
-
+      console.log('✅ Successfully loaded work order:', workOrder.summary);
+      
+      console.log('✅ Rendering form...');
       render();
+      
+      console.log('✅ Load complete!');
 
     } catch (err) {
-      console.error('Load error:', err);
+      console.error('❌ Load error:', err);
       console.error('Error stack:', err.stack);
       document.getElementById('content').innerHTML = 
         `<div class="message messageError">
@@ -510,6 +543,7 @@
           ${err.message}<br><br>
           <strong>Work Order ID:</strong> ${workOrderId}<br>
           <strong>Tenant ID:</strong> ${currentEmployee?.tenant_id || 'unknown'}<br><br>
+          <p style="font-size:12px;margin-top:8px;">Check browser console for details</p>
           <a href="work-orders.html" style="color:#60a5fa;">← Back to Work Orders</a>
         </div>`;
     }
