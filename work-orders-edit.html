@@ -405,7 +405,24 @@
 
   async function fetchRest(table, token, params = "") {
     const url = `${REST_BASE}/${table}?${params}`;
-    return fetchJson(url, token);
+    console.log('Fetching:', url);
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Fetch error:', res.status, errorText);
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
+      return res.json();
+    } catch (err) {
+      console.error('fetchRest error:', err);
+      throw err;
+    }
   }
 
   function showMessage(text, type = "success") {
@@ -458,6 +475,9 @@
       document.getElementById('businessName').textContent = 'Shasta Jet Ski Service';
 
       // Load data
+      console.log('Loading work order:', workOrderId);
+      console.log('Employee tenant:', currentEmployee.tenant_id);
+      
       const [customersData, vehiclesData, employeesData, woData] = await Promise.all([
         fetchRest('customers', token, `tenant_id=eq.${currentEmployee.tenant_id}&order=last_name`),
         fetchRest('vehicles', token, `tenant_id=eq.${currentEmployee.tenant_id}`),
@@ -465,21 +485,33 @@
         fetchRest('work_orders', token, `work_order_id=eq.${workOrderId}`)
       ]);
 
+      console.log('Work order data received:', woData);
+
       customers = customersData;
       vehicles = vehiclesData;
       employees = employeesData;
       workOrder = woData[0];
       
       if (!workOrder) {
+        console.error('Work order not found in response');
         throw new Error("Work order not found");
       }
+
+      console.log('Successfully loaded work order:', workOrder.summary);
 
       render();
 
     } catch (err) {
       console.error('Load error:', err);
+      console.error('Error stack:', err.stack);
       document.getElementById('content').innerHTML = 
-        `<div class="message messageError">Error loading: ${err.message}</div>`;
+        `<div class="message messageError">
+          <strong>Error loading work order:</strong><br>
+          ${err.message}<br><br>
+          <strong>Work Order ID:</strong> ${workOrderId}<br>
+          <strong>Tenant ID:</strong> ${currentEmployee?.tenant_id || 'unknown'}<br><br>
+          <a href="work-orders.html" style="color:#60a5fa;">← Back to Work Orders</a>
+        </div>`;
     }
   }
 
