@@ -107,8 +107,10 @@
       text-align:right;
       display:flex;
       flex-direction:column;
-      gap:4px;
+      justify-content:space-between;
+      align-items:flex-end;
       min-width:100px;
+      align-self:stretch;
     }
     .woRevenue {
       font-size:14px;
@@ -118,18 +120,19 @@
     .woTech {
       font-size:11px;
       color:#9fb0c3;
+      margin-top:4px;
     }
 
     /* Edit button */
     .editBtn {
-      padding:4px 10px;
+      padding:6px 16px;
       border-radius:6px;
       border:1px solid #3b82f6;
       background:#1e3a5f;
       color:#60a5fa;
-      font-size:11px;
+      font-size:12px;
       cursor:pointer;
-      margin-top:4px;
+      margin-top:auto;
     }
     .editBtn:hover {
       background:#2563eb;
@@ -249,11 +252,15 @@
   </div>
 
 <script>
+  console.log('🚀 Dashboard script loading...');
+  
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
   const API_BASE = `https://${PROJECT_REF}.supabase.co`;
   const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
   const REST_BASE = `${API_BASE}/rest/v1`;
   const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+
+  console.log('📡 API configured:', { FUNCTIONS_BASE, REST_BASE });
 
   // Business Settings - Shop Labor Rate from localStorage
   const RATE_KEY = "wl_labor_rate";
@@ -809,8 +816,10 @@
               <div class="woStatus">${w.status}</div>
             </div>
             <div class="woRight">
-              <div class="woRevenue">${formatHrsRev(hours)}</div>
-              <div class="woTech">${techName}</div>
+              <div>
+                <div class="woRevenue">${formatHrsRev(hours)}</div>
+                <div class="woTech">${techName}</div>
+              </div>
               <button class="editBtn" onclick="editWorkOrder('${w.work_order_id}', event)">Edit</button>
             </div>
           </div>
@@ -820,20 +829,34 @@
   }
 
   async function load(){
+    console.log('🔄 Starting data load...');
+    
     const token = await validateAuth();
     if (!token) {
+      console.log('❌ No auth token, redirecting to login');
       localStorage.removeItem("sb_access_token");
       location.replace("login.html");
       return;
     }
 
+    console.log('✅ Auth token validated');
+
     try {
+      console.log('📥 Fetching data from APIs...');
+      
       const [rawEmployees, rawOrders, rawCustomers, rawVehicles] = await Promise.all([
         fetchJson(`${FUNCTIONS_BASE}/employees`, token),
         fetchJson(`${FUNCTIONS_BASE}/work_orders`, token),
         fetchRest('customers', token),
         fetchRest('vehicles', token)
       ]);
+
+      console.log('📊 Raw data received:', {
+        employees: rawEmployees?.length || 0,
+        orders: rawOrders?.length || 0,
+        customers: rawCustomers?.length || 0,
+        vehicles: rawVehicles?.length || 0
+      });
 
       // Process employees
       employees = rawEmployees.map(e => ({ 
@@ -861,6 +884,36 @@
         assigned_to: w.assigned_to || null
       }));
 
+      // Debug: Log tech assignment info
+      console.log('=== TECH ASSIGNMENT DEBUG ===');
+      console.log('Total work orders:', orders.length);
+      console.log('Available techs:', Object.keys(employeesById));
+      console.log('Technician details:', technicians.map(t => ({
+        id: t.employee_id,
+        name: `${t.first_name} ${t.last_name}`
+      })));
+      
+      const assignedCount = orders.filter(w => w.assigned_employee_id || w.assigned_to).length;
+      const unassignedCount = orders.length - assignedCount;
+      console.log('Assigned orders:', assignedCount);
+      console.log('Unassigned orders:', unassignedCount);
+      
+      // Check for mismatched tech IDs
+      const uniqueTechIds = new Set();
+      orders.forEach(w => {
+        const techId = w.assigned_employee_id || w.assigned_to;
+        if (techId) uniqueTechIds.add(techId);
+      });
+      console.log('Unique tech IDs in work orders:', Array.from(uniqueTechIds));
+      
+      // Find tech IDs that don't match
+      uniqueTechIds.forEach(tid => {
+        if (!employeesById[tid]) {
+          console.warn(`⚠️ Work order has unknown tech ID: ${tid}`);
+        }
+      });
+      console.log('=========================');
+
       setTenantTitleSafely();
 
       renderKPIs();
@@ -870,12 +923,16 @@
       setRange("today");
       setSort(null);
 
+      console.log('✅ Dashboard loaded successfully!');
+
     } catch (err) {
+      console.error('❌ Dashboard load error:', err);
       document.getElementById("workOrders").innerHTML =
         `<div class="error">DASHBOARD ERROR:\n${err?.message || err}</div>`;
     }
   }
 
+  console.log('🎬 Starting dashboard load...');
   load();
 </script>
 
