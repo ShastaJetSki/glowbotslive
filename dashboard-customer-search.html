@@ -1,133 +1,142 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8"/>
 <title>Customer Lookup</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 
 <meta name="supabase-anon-key"
-content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+content="YOUR_ANON_KEY_HERE"/>
 
 <style>
 body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
 .appName{position:fixed;top:10px;right:24px;font-size:12px;color:#9fb0c3}
-h1{margin:0;font-size:40px}
-.sub-nav{display:flex;gap:16px;margin:10px 0 20px;padding-bottom:10px;border-bottom:1px solid #1f2937}
-.sub-nav a{color:#9ca3af;text-decoration:none}
-.sub-nav a.active{color:#38bdf8}
+
+.sub-nav{display:flex;gap:16px;margin:10px 0 20px;border-bottom:1px solid #1f2937}
+.sub-nav a{color:#9ca3af;text-decoration:none;padding-bottom:10px}
+.sub-nav a.active{color:#38bdf8;border-bottom:2px solid #38bdf8}
+
+header{margin-bottom:12px}
+h1{margin:0;font-size:38px}
+
 .row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:16px}
-.kpi{flex:1 1 220px;cursor:pointer}
-.kpi.active{border-color:#38bdf8}
+.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:14px 16px;cursor:pointer}
+.card:hover{border-color:#3b82f6}
+
+.kpi{min-width:220px;flex:1}
 .label{font-size:12px;color:#9fb0c3}
 .value{font-size:22px;font-weight:700}
-input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;background:#0b0f14;color:#e8eef6}
-.customer{cursor:pointer}
-.customer:hover{border-color:#38bdf8}
-.muted{font-size:12px;color:#9fb0c3}
 
-/* MODAL */
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;align-items:center;justify-content:center}
+input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;background:#0f1621;color:#fff}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center}
 .modal.active{display:flex}
-.modalContent{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:24px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto}
+.modalContent{background:#0f1621;border-radius:14px;padding:20px;max-width:600px;width:100%}
 </style>
 </head>
 
 <body>
 <div class="appName">WorkLogicPro</div>
 
-<h1>Customer Lookup</h1>
+<header>
+  <h1>Customer Lookup</h1>
+</header>
+
 <div class="sub-nav">
   <a href="dashboard-business.html">Dashboard</a>
   <a class="active">Customers</a>
   <a href="dashboard-vehicle-search.html">Vehicles</a>
-  <a href="dashboard-settings.html">Settings</a>
 </div>
 
-<div class="row" id="kpis"></div>
+<div class="row" id="stats"></div>
 
-<div class="card">
-  <input id="search" placeholder="Search name, phone, email…" oninput="renderCustomers()">
-</div>
+<input id="search" placeholder="Search customer name, phone, email"/>
 
-<div id="results"></div>
+<div class="grid" id="list"></div>
 
-<!-- MODAL -->
-<div id="detailModal" class="modal" onclick="if(event.target===this)closeModal()">
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
   <div class="modalContent" id="modalBody"></div>
 </div>
 
 <script>
 const PROJECT="kxqkwpkmtgvmthpafoqx";
-const API=`https://${PROJECT}.supabase.co`;
-const REST=`${API}/rest/v1`;
+const BASE=`https://${PROJECT}.supabase.co`;
+const REST=`${BASE}/rest/v1`;
+const FN=`${BASE}/functions/v1`;
 const KEY=document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let customers=[],vehicles=[],activeFilter=null;
+let customers=[],vehicles=[],orders=[];
 
-async function auth(){
-  const t=localStorage.getItem("sb_access_token");
-  if(!t)return null;
-  const r=await fetch(`${API}/auth/v1/user`,{headers:{Authorization:`Bearer ${t}`,apikey:KEY}});
-  return r.ok?t:null;
-}
-async function fetchTable(t,token){
-  const r=await fetch(`${REST}/${t}?select=*`,{headers:{Authorization:`Bearer ${token}`,apikey:KEY}});
-  return r.json();
+async function load(){
+  const token=localStorage.getItem("sb_access_token");
+  if(!token){location.href="login.html";return;}
+
+  const h={Authorization:`Bearer ${token}`,apikey:KEY};
+
+  customers=await fetch(`${REST}/customers?select=*`,{headers:h}).then(r=>r.json());
+  vehicles=await fetch(`${REST}/vehicles?select=*`,{headers:h}).then(r=>r.json());
+  orders=await fetch(`${FN}/work_orders`,{headers:h}).then(r=>r.json());
+
+  renderStats();
+  renderList(customers);
 }
 
-function renderKPIs(){
-  const map={};vehicles.forEach(v=>map[v.customer_id]=(map[v.customer_id]||0)+1);
-  const html=`
-  ${kpi("Total Customers",customers.length,"all")}
-  ${kpi("Customers w/ Vehicles",Object.keys(map).length,"with")}
-  ${kpi("Multiple Vehicles",Object.values(map).filter(v=>v>1).length,"multi")}
-  ${kpi("Total Vehicles",vehicles.length,"veh")}
-  `;
-  document.getElementById("kpis").innerHTML=html;
-}
-function kpi(label,val,key){
-  return `<div class="card kpi ${activeFilter===key?'active':''}" onclick="toggle('${key}')">
-    <div class="label">${label}</div><div class="value">${val}</div></div>`;
-}
-function toggle(f){activeFilter=activeFilter===f?null:f;renderKPIs();renderCustomers()}
+function renderStats(){
+  const total=customers.length;
+  const withVeh=new Set(vehicles.map(v=>v.customer_id)).size;
+  const withWO=new Set(orders.map(o=>o.customer_id)).size;
 
-function renderCustomers(){
-  const q=document.getElementById("search").value.toLowerCase();
-  const count={};vehicles.forEach(v=>count[v.customer_id]=(count[v.customer_id]||0)+1);
-  const list=customers.filter(c=>{
-    const t=`${c.first_name} ${c.last_name} ${c.phone||""} ${c.email||""}`.toLowerCase();
-    if(!t.includes(q))return false;
-    if(activeFilter==="with")return count[c.customer_id]>=1;
-    if(activeFilter==="multi")return count[c.customer_id]>=2;
-    return true;
-  });
-  document.getElementById("results").innerHTML=list.map(c=>`
-    <div class="card customer" onclick="openCustomer('${c.customer_id}')">
+  stats.innerHTML=`
+    <div class="card kpi" onclick="renderList(customers)">
+      <div class="label">Total Customers</div>
+      <div class="value">${total}</div>
+    </div>
+    <div class="card kpi" onclick="renderList(customers.filter(c=>vehicles.some(v=>v.customer_id===c.customer_id)))">
+      <div class="label">With Vehicles</div>
+      <div class="value">${withVeh}</div>
+    </div>
+    <div class="card kpi" onclick="renderList(customers.filter(c=>orders.some(o=>o.customer_id===c.customer_id)))">
+      <div class="label">With Work Orders</div>
+      <div class="value">${withWO}</div>
+    </div>`;
+}
+
+function renderList(list){
+  const q=search.value.toLowerCase();
+  list=list.filter(c=>
+    `${c.first_name} ${c.last_name} ${c.phone||""} ${c.email||""}`.toLowerCase().includes(q)
+  );
+
+  listEl.innerHTML=list.map(c=>`
+    <div class="card" onclick="openCustomer('${c.customer_id}')">
       <strong>${c.first_name} ${c.last_name}</strong>
-      <div class="muted">${c.phone||""} ${c.email||""}</div>
-    </div>`).join("")||"<div class='muted'>No results</div>";
+      <div class="label">${c.phone||""}</div>
+    </div>
+  `).join("");
 }
+
+search.oninput=()=>renderList(customers);
 
 function openCustomer(id){
   const c=customers.find(x=>x.customer_id===id);
-  const vs=vehicles.filter(v=>v.customer_id===id);
-  modal(`
-    <h2>${c.first_name} ${c.last_name}</h2>
-    <div class="muted">${c.phone||""}</div>
-    <div class="muted">${c.email||""}</div>
-    ${vs.map(v=>`<div class="muted">• ${v.year} ${v.make} ${v.model}</div>`).join("")}
-  `);
-}
-function modal(html){document.getElementById("modalBody").innerHTML=html;document.getElementById("detailModal").classList.add("active")}
-function closeModal(){document.getElementById("detailModal").classList.remove("active")}
+  const v=vehicles.filter(x=>x.customer_id===id);
+  const o=orders.filter(x=>x.customer_id===id);
 
-(async()=>{
-  const token=await auth(); if(!token){location.replace("login.html");return}
-  customers=await fetchTable("customers",token);
-  vehicles=await fetchTable("vehicles",token);
-  renderKPIs(); renderCustomers();
-})();
+  modalBody.innerHTML=`
+    <h2>${c.first_name} ${c.last_name}</h2>
+    <p>${c.phone||""} • ${c.email||""}</p>
+    <h3>Vehicles</h3>
+    ${v.map(x=>`<div>${x.year||""} ${x.make||""} ${x.model||""} • ${x.license_plate||""}</div>`).join("")||"None"}
+    <h3>Work Orders</h3>
+    ${o.map(x=>`<div>${x.summary} (${x.status})</div>`).join("")||"None"}
+  `;
+  modal.classList.add("active");
+}
+function closeModal(){modal.classList.remove("active");}
+
+load();
 </script>
 </body>
 </html>
