@@ -102,3 +102,202 @@
       background:#0f1621;
       border:1px solid #223044;
       border-radius:14px;
+      padding:14px 16px;
+    }
+
+    .label {
+      font-size:12px;
+      color:#9fb0c3;
+    }
+
+    .value {
+      font-size:18px;
+      font-weight:650;
+      margin-top:6px;
+    }
+
+    /* SEARCH */
+    .searchBox {
+      width:100%;
+      padding:14px 16px;
+      border-radius:10px;
+      border:1px solid #223044;
+      background:#0b0f14;
+      color:#e8eef6;
+      font-size:16px;
+    }
+
+    /* TABLE */
+    table {
+      width:100%;
+      border-collapse:collapse;
+    }
+
+    th, td {
+      padding:10px 8px;
+      border-bottom:1px solid #1a2535;
+      font-size:14px;
+      text-align:left;
+    }
+
+    th {
+      color:#9fb0c3;
+      font-weight:600;
+    }
+
+    tr:hover {
+      background:#0b1220;
+    }
+
+    .badge {
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:600;
+    }
+
+    .badge.active { background:rgba(34,197,94,.2); color:#4ade80; }
+    .badge.lead   { background:rgba(59,130,246,.2); color:#60a5fa; }
+  </style>
+</head>
+
+<body>
+  <div class="appName">WorkLogicPro</div>
+
+  <!-- HEADER (IDENTICAL STRUCTURE) -->
+  <div class="pageHeader">
+    <h1>Customer Lookup</h1>
+    <div class="headerRight">
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="sub-nav">
+    <a href="/dashboard-business.html" class="sub-nav-link">Dashboard</a>
+    <a href="/dashboard-customer-search.html" class="sub-nav-link active">Customers</a>
+    <a href="/dashboard-settings.html" class="sub-nav-link">Settings</a>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="card">
+    <input
+      id="search"
+      class="searchBox"
+      placeholder="Search customer, phone, vehicle, VIN"
+      autofocus
+    />
+  </div>
+
+  <!-- STATS (RESTORED — 6 TOTAL) -->
+  <div class="row">
+    <div class="card">
+      <div class="label">Customers Found</div>
+      <div class="value" id="statCustomers">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Vehicles Found</div>
+      <div class="value" id="statVehicles">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Multi-Vehicle Customers</div>
+      <div class="value" id="statMulti">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Open Work Orders</div>
+      <div class="value" id="statOpenWO">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Vehicles In Shop</div>
+      <div class="value" id="statInShop">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Recent Activity</div>
+      <div class="value" id="statActivity">0</div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Phone</th>
+          <th>Vehicles</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+  </div>
+
+<script>
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const FUNCTIONS_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1`;
+  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+
+  function logout(){
+    localStorage.removeItem("sb_access_token");
+    location.replace("login.html");
+  }
+
+  let debounce;
+  document.getElementById("search").addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(runSearch, 300);
+  });
+
+  async function runSearch(){
+    const token = localStorage.getItem("sb_access_token");
+    if (!token) return logout();
+
+    const q = document.getElementById("search").value;
+
+    const res = await fetch(`${FUNCTIONS_BASE}/customers-search`, {
+      method:"POST",
+      headers:{
+        Authorization:`Bearer ${token}`,
+        apikey:ANON_KEY,
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({ query:q })
+    });
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+
+    // Stats
+    document.getElementById("statCustomers").textContent = data.stats?.customers || 0;
+    document.getElementById("statVehicles").textContent = data.stats?.vehicles || 0;
+    document.getElementById("statMulti").textContent = data.stats?.multi_vehicle_customers || 0;
+    document.getElementById("statOpenWO").textContent = data.stats?.open_work_orders || 0;
+    document.getElementById("statInShop").textContent = data.stats?.vehicles_in_shop || 0;
+    document.getElementById("statActivity").textContent = data.stats?.recent_activity || 0;
+
+    // Table
+    const tbody = document.getElementById("results");
+    tbody.innerHTML = "";
+
+    (data.customers || []).forEach(c => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${c.first_name} ${c.last_name}</td>
+        <td>${c.phone || ""}</td>
+        <td>${c.vehicle_count}</td>
+        <td><span class="badge ${c.status}">${c.status}</span></td>
+        <td>
+          <button onclick="location.href='customer-detail.html?id=${c.customer_id}'">
+            View
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+</script>
+
+</body>
+</html>
