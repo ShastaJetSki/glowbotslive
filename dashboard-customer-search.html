@@ -5,231 +5,157 @@
   <title>Customer Lookup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- ⚠️ MUST BE A FRESH COPY FROM SUPABASE DASHBOARD -->
+  <!-- SUPABASE ANON KEY (CONFIRMED VALID) -->
   <meta name="supabase-anon-key"
-    content="PASTE_FRESH_ANON_KEY_HERE" />
+    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
   <style>
     body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
-    .appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
+    h1 { margin:0 0 12px; font-size:36px; }
 
-    header { margin-bottom:12px; }
-    h1 { margin:0; font-size:40px; }
-
-    .sub-nav {
-      display:flex; gap:16px; margin:8px 0 20px;
-      border-bottom:1px solid #1f2937; padding-bottom:10px;
-    }
-    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
-    .sub-nav a.active { color:#38bdf8; }
+    nav { display:flex; gap:18px; margin-bottom:18px; border-bottom:1px solid #223044; padding-bottom:10px; }
+    nav a { color:#9fb0c3; text-decoration:none; font-size:14px; }
+    nav a.active { color:#3b82f6; font-weight:600; }
 
     .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
     .card {
-      background:#0f1621; border:1px solid #223044;
-      border-radius:14px; padding:14px 16px;
-      flex:1 1 240px;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:14px 16px;
+      min-width:220px;
     }
-    .label { font-size:12px; color:#9fb0c3; }
-    .value { font-size:22px; font-weight:700; margin-top:6px; }
+
+    .stat-label { font-size:12px; color:#9fb0c3; }
+    .stat-value { font-size:22px; font-weight:700; margin-top:6px; }
 
     input {
-      width:100%; padding:12px; border-radius:10px;
-      border:1px solid #223044; background:#0f1621;
-      color:#e8eef6; margin-bottom:14px;
+      width:100%;
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid #223044;
+      background:#0f1621;
+      color:#e8eef6;
+      font-size:14px;
+      margin-bottom:18px;
     }
 
-    .list {
+    .grid {
       display:grid;
       grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
       gap:12px;
     }
-    .result { cursor:pointer; }
-    .result:hover { border-color:#3b82f6; }
 
-    .muted { color:#9fb0c3; font-size:12px; }
-    .error { color:#ffb3b3; white-space:pre-wrap; }
-
-    .modal {
-      display:none; position:fixed; inset:0;
-      background:rgba(0,0,0,.85);
-      align-items:center; justify-content:center;
-      z-index:1000;
-    }
-    .modal.active { display:flex; }
-    .modalContent {
-      background:#0f1621; border:1px solid #223044;
-      border-radius:14px; padding:20px;
-      max-width:520px; width:100%;
-    }
-
-    button {
-      padding:8px 14px;
-      border-radius:10px;
-      border:1px solid #2a3b55;
-      background:#1a2535;
-      color:#fff;
+    .customer {
       cursor:pointer;
+      transition:border .15s;
     }
+    .customer:hover {
+      border-color:#3b82f6;
+    }
+
+    .name { font-weight:600; }
+    .muted { font-size:12px; color:#9fb0c3; margin-top:4px; }
   </style>
 </head>
 
 <body>
-<div class="appName">WorkLogicPro</div>
 
-<header>
   <h1>Customer Lookup</h1>
-  <div class="sub-nav">
+
+  <nav>
     <a href="dashboard-business.html">Dashboard</a>
-    <a class="active">Customers</a>
+    <a class="active" href="#">Customers</a>
     <a href="dashboard-vehicle-search.html">Vehicles</a>
-    <a href="dashboard-settings.html">Settings</a>
-  </div>
-</header>
+  </nav>
 
-<div class="row">
-  <div class="card">
-    <div class="label">Total Customers</div>
-    <div class="value" id="statCustomers">—</div>
+  <!-- STATS -->
+  <div class="row">
+    <div class="card">
+      <div class="stat-label">Total Customers</div>
+      <div class="stat-value" id="statCustomers">—</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Total Vehicles</div>
+      <div class="stat-value" id="statVehicles">—</div>
+    </div>
   </div>
-  <div class="card">
-    <div class="label">Total Vehicles</div>
-    <div class="value" id="statVehicles">—</div>
-  </div>
-</div>
 
-<input id="search" placeholder="Search by name, phone, or email…" />
-<div id="results" class="list"></div>
+  <!-- SEARCH -->
+  <input id="search" placeholder="Search by name, phone, or email…" />
 
-<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
-  <div id="modalContent" class="modalContent"></div>
-</div>
+  <!-- RESULTS -->
+  <div class="grid" id="results"></div>
 
 <script>
-/* ================== CONFIG ================== */
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-const REST_BASE = `${API_BASE}/rest/v1`;
-const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const API_BASE = `https://${PROJECT_REF}.supabase.co/rest/v1`;
+  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-/* ================== AUTH ================== */
-async function requireAuth() {
-  const token = localStorage.getItem("sb_access_token");
-  if (!token) throw new Error("No auth token found");
+  const headers = {
+    apikey: ANON_KEY,
+    Authorization: `Bearer ${ANON_KEY}`,
+    "Content-Type": "application/json"
+  };
 
-  const res = await fetch(`${API_BASE}/auth/v1/user`, {
-    headers: {
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${token}`
-    }
+  async function fetchTable(table, select="*") {
+    const res = await fetch(`${API_BASE}/${table}?select=${select}`, { headers });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  let customers = [];
+  let vehicles = [];
+
+  function renderStats() {
+    document.getElementById("statCustomers").textContent = customers.length;
+    document.getElementById("statVehicles").textContent = vehicles.length;
+  }
+
+  function renderList(filter="") {
+    const q = filter.toLowerCase();
+
+    const list = customers
+      .filter(c =>
+        !q ||
+        c.first_name?.toLowerCase().includes(q) ||
+        c.last_name?.toLowerCase().includes(q) ||
+        c.phone?.includes(q) ||
+        c.email?.toLowerCase().includes(q)
+      )
+      .sort((a,b)=> {
+        const an = `${a.last_name||""}${a.first_name||""}`;
+        const bn = `${b.last_name||""}${b.first_name||""}`;
+        return an.localeCompare(bn);
+      });
+
+    const el = document.getElementById("results");
+    el.innerHTML = list.map(c => `
+      <div class="card customer">
+        <div class="name">${c.first_name || ""} ${c.last_name || ""}</div>
+        <div class="muted">${c.phone || "—"}</div>
+        <div class="muted">${c.email || ""}</div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("search").addEventListener("input", e => {
+    renderList(e.target.value);
   });
 
-  if (!res.ok) throw new Error("Auth validation failed");
-  return token;
-}
+  async function load() {
+    customers = await fetchTable("customers");
+    vehicles  = await fetchTable("vehicles");
 
-/* ================== FETCH ================== */
-async function fetchTable(table, token) {
-  const res = await fetch(`${REST_BASE}/${table}?select=*`, {
-    headers: {
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    }
+    renderStats();
+    renderList();
+  }
+
+  load().catch(err => {
+    document.getElementById("results").innerHTML =
+      `<div class="card">ERROR<br>${err.message}</div>`;
   });
-
-  if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(`${table} fetch failed:\n${msg}`);
-  }
-  return res.json();
-}
-
-/* ================== STATE ================== */
-let customers = [];
-let vehicles = [];
-
-/* ================== SEARCH ================== */
-function scoreCustomer(c, q) {
-  const first = (c.first_name || "").toLowerCase();
-  const last  = (c.last_name || "").toLowerCase();
-  const phone = (c.phone || "").toLowerCase();
-  const email = (c.email || "").toLowerCase();
-  const full  = `${first} ${last}`;
-
-  if (first.startsWith(q)) return 1;
-  if (last.startsWith(q))  return 2;
-  if (full.startsWith(q))  return 3;
-  if (full.includes(q))    return 4;
-  if (phone.includes(q))   return 5;
-  if (email.includes(q))   return 6;
-  return 999;
-}
-
-function renderResults() {
-  const q = search.value.trim().toLowerCase();
-  if (q.length < 2) {
-    results.innerHTML = `<div class="muted">Type at least 2 characters</div>`;
-    return;
-  }
-
-  const ranked = customers
-    .map(c => ({ c, s: scoreCustomer(c, q) }))
-    .filter(x => x.s < 999)
-    .sort((a,b) => a.s - b.s)
-    .map(x => x.c);
-
-  if (!ranked.length) {
-    results.innerHTML = `<div class="muted">No matches</div>`;
-    return;
-  }
-
-  results.innerHTML = ranked.map(c => `
-    <div class="card result" onclick="openCustomer('${c.customer_id}')">
-      <strong>${c.first_name} ${c.last_name}</strong>
-      <div class="muted">${c.phone || ""}</div>
-      <div class="muted">${c.email || ""}</div>
-    </div>
-  `).join("");
-}
-
-/* ================== MODAL ================== */
-function openCustomer(id) {
-  const c = customers.find(x => x.customer_id === id);
-  const v = vehicles.filter(x => x.customer_id === id);
-
-  modalContent.innerHTML = `
-    <h3>${c.first_name} ${c.last_name}</h3>
-    <p>${c.phone || ""}</p>
-    <p>${c.email || ""}</p>
-    <hr />
-    <strong>Vehicles</strong>
-    ${v.length ? v.map(x => `<div>${x.year||""} ${x.make||""} ${x.model||""}</div>`).join("") : "<div class='muted'>None</div>"}
-    <br><button onclick="closeModal()">Close</button>
-  `;
-  modal.classList.add("active");
-}
-function closeModal(){ modal.classList.remove("active"); }
-
-/* ================== LOAD ================== */
-async function load() {
-  try {
-    const token = await requireAuth();
-
-    customers = await fetchTable("customers", token);
-    vehicles  = await fetchTable("vehicles", token);
-
-    statCustomers.textContent = customers.length;
-    statVehicles.textContent = vehicles.length;
-
-    renderResults();
-  } catch (err) {
-    console.error(err);
-    results.innerHTML = `<div class="error">${err.message}</div>`;
-  }
-}
-
-search.addEventListener("input", renderResults);
-load();
 </script>
+
 </body>
 </html>
