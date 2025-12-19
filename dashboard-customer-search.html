@@ -5,157 +5,104 @@
   <title>Customer Lookup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- SUPABASE ANON KEY (CONFIRMED VALID) -->
   <meta name="supabase-anon-key"
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
   <style>
     body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
-    h1 { margin:0 0 12px; font-size:36px; }
+    .appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
+    header { margin-bottom:12px; }
+    h1 { margin:0; font-size:40px; }
 
-    nav { display:flex; gap:18px; margin-bottom:18px; border-bottom:1px solid #223044; padding-bottom:10px; }
-    nav a { color:#9fb0c3; text-decoration:none; font-size:14px; }
-    nav a.active { color:#3b82f6; font-weight:600; }
-
-    .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
-    .card {
-      background:#0f1621;
-      border:1px solid #223044;
-      border-radius:14px;
-      padding:14px 16px;
-      min-width:220px;
+    .sub-nav {
+      display:flex; gap:16px; margin:8px 0 20px;
+      border-bottom:1px solid #1f2937; padding-bottom:10px;
     }
-
-    .stat-label { font-size:12px; color:#9fb0c3; }
-    .stat-value { font-size:22px; font-weight:700; margin-top:6px; }
+    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
+    .sub-nav a.active { color:#38bdf8; }
 
     input {
-      width:100%;
-      padding:12px 14px;
-      border-radius:12px;
-      border:1px solid #223044;
-      background:#0f1621;
-      color:#e8eef6;
-      font-size:14px;
-      margin-bottom:18px;
+      width:100%; padding:12px; border-radius:10px;
+      border:1px solid #223044; background:#0f1621; color:#e8eef6;
+      margin-bottom:14px;
     }
 
-    .grid {
-      display:grid;
-      grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
-      gap:12px;
-    }
-
-    .customer {
-      cursor:pointer;
-      transition:border .15s;
-    }
-    .customer:hover {
-      border-color:#3b82f6;
-    }
-
-    .name { font-weight:600; }
-    .muted { font-size:12px; color:#9fb0c3; margin-top:4px; }
+    .list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+    .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; cursor:pointer; }
+    .card:hover { border-color:#38bdf8; }
+    .muted { color:#9fb0c3; font-size:12px; margin-top:4px; }
   </style>
 </head>
 
 <body>
+<div class="appName">WorkLogicPro</div>
 
+<header>
   <h1>Customer Lookup</h1>
-
-  <nav>
+  <div class="sub-nav">
     <a href="dashboard-business.html">Dashboard</a>
-    <a class="active" href="#">Customers</a>
+    <a class="active">Customers</a>
     <a href="dashboard-vehicle-search.html">Vehicles</a>
-  </nav>
-
-  <!-- STATS -->
-  <div class="row">
-    <div class="card">
-      <div class="stat-label">Total Customers</div>
-      <div class="stat-value" id="statCustomers">—</div>
-    </div>
-    <div class="card">
-      <div class="stat-label">Total Vehicles</div>
-      <div class="stat-value" id="statVehicles">—</div>
-    </div>
+    <a href="dashboard-settings.html">Settings</a>
   </div>
+</header>
 
-  <!-- SEARCH -->
-  <input id="search" placeholder="Search by name, phone, or email…" />
-
-  <!-- RESULTS -->
-  <div class="grid" id="results"></div>
+<input id="search" placeholder="Search by name, phone, or email…" />
+<div class="list" id="results"></div>
 
 <script>
-  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-  const API_BASE = `https://${PROJECT_REF}.supabase.co/rest/v1`;
-  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const REST_BASE = `${API_BASE}/rest/v1`;
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-  const headers = {
-    apikey: ANON_KEY,
-    Authorization: `Bearer ${ANON_KEY}`,
-    "Content-Type": "application/json"
-  };
+async function validateAuth(){
+  const t = localStorage.getItem("sb_access_token");
+  if(!t) return null;
+  const r = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{apikey:ANON_KEY, Authorization:`Bearer ${t}`}
+  });
+  return r.ok ? t : null;
+}
 
-  async function fetchTable(table, select="*") {
-    const res = await fetch(`${API_BASE}/${table}?select=${select}`, { headers });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-  }
+async function fetchTable(table, token){
+  const r = await fetch(`${REST_BASE}/${table}?select=*`, {
+    headers:{apikey:ANON_KEY, Authorization:`Bearer ${token}`}
+  });
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
 
-  let customers = [];
-  let vehicles = [];
+let customers = [];
 
-  function renderStats() {
-    document.getElementById("statCustomers").textContent = customers.length;
-    document.getElementById("statVehicles").textContent = vehicles.length;
-  }
-
-  function renderList(filter="") {
-    const q = filter.toLowerCase();
-
-    const list = customers
-      .filter(c =>
-        !q ||
-        c.first_name?.toLowerCase().includes(q) ||
-        c.last_name?.toLowerCase().includes(q) ||
-        c.phone?.includes(q) ||
-        c.email?.toLowerCase().includes(q)
-      )
-      .sort((a,b)=> {
-        const an = `${a.last_name||""}${a.first_name||""}`;
-        const bn = `${b.last_name||""}${b.first_name||""}`;
-        return an.localeCompare(bn);
-      });
-
-    const el = document.getElementById("results");
-    el.innerHTML = list.map(c => `
-      <div class="card customer">
-        <div class="name">${c.first_name || ""} ${c.last_name || ""}</div>
-        <div class="muted">${c.phone || "—"}</div>
-        <div class="muted">${c.email || ""}</div>
+function render(){
+  const q = search.value.toLowerCase();
+  results.innerHTML = customers
+    .filter(c =>
+      `${c.first_name||""} ${c.last_name||""} ${c.phone||""} ${c.email||""}`
+        .toLowerCase().includes(q)
+    )
+    .sort((a,b)=>`${a.last_name||""}${a.first_name||""}`.localeCompare(
+                   `${b.last_name||""}${b.first_name||""}`))
+    .map(c=>`
+      <div class="card">
+        <strong>${c.first_name||""} ${c.last_name||""}</strong>
+        <div class="muted">${c.phone||"—"}</div>
+        <div class="muted">${c.email||""}</div>
       </div>
     `).join("");
-  }
+}
 
-  document.getElementById("search").addEventListener("input", e => {
-    renderList(e.target.value);
-  });
+async function load(){
+  const token = await validateAuth();
+  if(!token) return location.replace("login.html");
 
-  async function load() {
-    customers = await fetchTable("customers");
-    vehicles  = await fetchTable("vehicles");
+  customers = await fetchTable("customers", token);
+  render();
+}
 
-    renderStats();
-    renderList();
-  }
-
-  load().catch(err => {
-    document.getElementById("results").innerHTML =
-      `<div class="card">ERROR<br>${err.message}</div>`;
-  });
+search.oninput = render;
+load();
 </script>
-
 </body>
 </html>
