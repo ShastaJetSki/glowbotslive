@@ -5,9 +5,9 @@
   <title>Customer Lookup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- MUST MATCH YOUR WORKING DASHBOARD -->
+  <!-- ⚠️ MUST BE A FRESH COPY FROM SUPABASE DASHBOARD -->
   <meta name="supabase-anon-key"
-    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+    content="PASTE_FRESH_ANON_KEY_HERE" />
 
   <style>
     body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
@@ -20,14 +20,8 @@
       display:flex; gap:16px; margin:8px 0 20px;
       border-bottom:1px solid #1f2937; padding-bottom:10px;
     }
-    .sub-nav a {
-      font-size:14px; color:#9ca3af; text-decoration:none; position:relative;
-    }
+    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
     .sub-nav a.active { color:#38bdf8; }
-    .sub-nav a.active::after {
-      content:""; position:absolute; left:0; bottom:-11px;
-      width:100%; height:2px; background:#38bdf8;
-    }
 
     .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
     .card {
@@ -49,12 +43,11 @@
       grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
       gap:12px;
     }
-    .result {
-      cursor:pointer;
-      transition:border-color .15s;
-    }
+    .result { cursor:pointer; }
     .result:hover { border-color:#3b82f6; }
+
     .muted { color:#9fb0c3; font-size:12px; }
+    .error { color:#ffb3b3; white-space:pre-wrap; }
 
     .modal {
       display:none; position:fixed; inset:0;
@@ -105,79 +98,88 @@
 </div>
 
 <input id="search" placeholder="Search by name, phone, or email…" />
+<div id="results" class="list"></div>
 
-<div class="list" id="results"></div>
-
-<!-- MODAL -->
-<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
-  <div class="modalContent" id="modalContent"></div>
+<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
+  <div id="modalContent" class="modalContent"></div>
 </div>
 
 <script>
+/* ================== CONFIG ================== */
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
 const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const REST_BASE = `${API_BASE}/rest/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-/* ---------- AUTH ---------- */
-async function validateAuth(){
+/* ================== AUTH ================== */
+async function requireAuth() {
   const token = localStorage.getItem("sb_access_token");
-  if (!token) return null;
+  if (!token) throw new Error("No auth token found");
 
   const res = await fetch(`${API_BASE}/auth/v1/user`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` }
+    headers: {
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${token}`
+    }
   });
-  return res.ok ? token : null;
+
+  if (!res.ok) throw new Error("Auth validation failed");
+  return token;
 }
 
-async function fetchTable(table, token){
+/* ================== FETCH ================== */
+async function fetchTable(table, token) {
   const res = await fetch(`${REST_BASE}/${table}?select=*`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` }
+    headers: {
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`${table} fetch failed:\n${msg}`);
+  }
   return res.json();
 }
 
-/* ---------- DATA ---------- */
+/* ================== STATE ================== */
 let customers = [];
 let vehicles = [];
 
-/* ---------- SEARCH SCORING ---------- */
-function scoreCustomer(c, q){
-  const query = q.toLowerCase();
+/* ================== SEARCH ================== */
+function scoreCustomer(c, q) {
   const first = (c.first_name || "").toLowerCase();
   const last  = (c.last_name || "").toLowerCase();
   const phone = (c.phone || "").toLowerCase();
   const email = (c.email || "").toLowerCase();
-  const full  = `${first} ${last}`.trim();
+  const full  = `${first} ${last}`;
 
-  if (first.startsWith(query)) return 1;
-  if (last.startsWith(query))  return 2;
-  if (full.startsWith(query))  return 3;
-  if (full.includes(query))    return 4;
-  if (phone.includes(query))   return 5;
-  if (email.includes(query))   return 6;
-
+  if (first.startsWith(q)) return 1;
+  if (last.startsWith(q))  return 2;
+  if (full.startsWith(q))  return 3;
+  if (full.includes(q))    return 4;
+  if (phone.includes(q))   return 5;
+  if (email.includes(q))   return 6;
   return 999;
 }
 
-/* ---------- RENDER ---------- */
-function renderResults(){
+function renderResults() {
   const q = search.value.trim().toLowerCase();
-
   if (q.length < 2) {
-    results.innerHTML = `<div class="muted">Type at least 2 characters to search</div>`;
+    results.innerHTML = `<div class="muted">Type at least 2 characters</div>`;
     return;
   }
 
   const ranked = customers
-    .map(c => ({ c, score: scoreCustomer(c, q) }))
-    .filter(x => x.score < 999)
-    .sort((a,b) => a.score - b.score)
+    .map(c => ({ c, s: scoreCustomer(c, q) }))
+    .filter(x => x.s < 999)
+    .sort((a,b) => a.s - b.s)
     .map(x => x.c);
 
   if (!ranked.length) {
-    results.innerHTML = `<div class="muted">No matches found</div>`;
+    results.innerHTML = `<div class="muted">No matches</div>`;
     return;
   }
 
@@ -190,8 +192,8 @@ function renderResults(){
   `).join("");
 }
 
-/* ---------- MODAL ---------- */
-function openCustomer(id){
+/* ================== MODAL ================== */
+function openCustomer(id) {
   const c = customers.find(x => x.customer_id === id);
   const v = vehicles.filter(x => x.customer_id === id);
 
@@ -201,32 +203,29 @@ function openCustomer(id){
     <p>${c.email || ""}</p>
     <hr />
     <strong>Vehicles</strong>
-    ${v.length
-      ? v.map(x => `<div>${x.year || ""} ${x.make || ""} ${x.model || ""}</div>`).join("")
-      : "<div class='muted'>No vehicles</div>"
-    }
-    <br />
-    <button onclick="closeModal()">Close</button>
+    ${v.length ? v.map(x => `<div>${x.year||""} ${x.make||""} ${x.model||""}</div>`).join("") : "<div class='muted'>None</div>"}
+    <br><button onclick="closeModal()">Close</button>
   `;
   modal.classList.add("active");
 }
+function closeModal(){ modal.classList.remove("active"); }
 
-function closeModal(){
-  modal.classList.remove("active");
-}
+/* ================== LOAD ================== */
+async function load() {
+  try {
+    const token = await requireAuth();
 
-/* ---------- LOAD ---------- */
-async function load(){
-  const token = await validateAuth();
-  if (!token) return location.replace("login.html");
+    customers = await fetchTable("customers", token);
+    vehicles  = await fetchTable("vehicles", token);
 
-  customers = await fetchTable("customers", token);
-  vehicles = await fetchTable("vehicles", token);
+    statCustomers.textContent = customers.length;
+    statVehicles.textContent = vehicles.length;
 
-  statCustomers.textContent = customers.length;
-  statVehicles.textContent = vehicles.length;
-
-  renderResults();
+    renderResults();
+  } catch (err) {
+    console.error(err);
+    results.innerHTML = `<div class="error">${err.message}</div>`;
+  }
 }
 
 search.addEventListener("input", renderResults);
