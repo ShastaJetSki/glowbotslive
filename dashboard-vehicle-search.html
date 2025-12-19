@@ -6,35 +6,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
 <meta name="supabase-anon-key"
-content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+content="REPLACE_WITH_YOUR_ANON_KEY" />
 
 <style>
-body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
-.appName{position:fixed;top:10px;right:24px;font-size:12px;color:#9fb0c3}
-h1{margin:0;font-size:40px}
+body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+.appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
 
-.sub-nav{display:flex;gap:16px;margin:10px 0 20px;padding-bottom:10px;border-bottom:1px solid #1f2937}
-.sub-nav a{color:#9ca3af;text-decoration:none}
-.sub-nav a.active{color:#38bdf8}
+.sub-nav {
+  display:flex; gap:16px; margin:8px 0 20px;
+  padding-bottom:10px; border-bottom:1px solid #1f2937;
+}
+.sub-nav a { color:#9ca3af; text-decoration:none; }
+.sub-nav a.active {
+  color:#38bdf8; font-weight:500;
+  border-bottom:2px solid #38bdf8; padding-bottom:10px;
+}
 
-.row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:16px}
-.kpi{flex:1 1 220px;cursor:pointer}
-.kpi.active{border-color:#38bdf8}
+h1 { margin:0 0 12px; font-size:36px; }
 
-input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;background:#0b0f14;color:#e8eef6}
+.card {
+  background:#0f1621; border:1px solid #223044;
+  border-radius:14px; padding:14px 16px;
+}
+.list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
 
-.vehicle{cursor:pointer}
-.vehicle:hover{border-color:#38bdf8}
+input {
+  width:100%; padding:12px 14px;
+  border-radius:12px; border:1px solid #223044;
+  background:#0f1621; color:#fff;
+}
 
-.label{font-size:12px;color:#9fb0c3}
-.value{font-size:22px;font-weight:700}
-.muted{font-size:12px;color:#9fb0c3}
+.muted { font-size:12px; color:#9fb0c3; }
 
 /* MODAL */
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;align-items:center;justify-content:center}
-.modal.active{display:flex}
-.modalContent{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:80vh;overflow-y:auto}
+.modal {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,.85);
+  align-items:center; justify-content:center; z-index:1000;
+}
+.modal.active { display:flex; }
+.modalContent {
+  background:#0f1621; border:1px solid #223044;
+  border-radius:14px; padding:24px;
+  width:100%; max-width:520px;
+}
 </style>
 </head>
 
@@ -42,158 +57,91 @@ input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;backgr
 <div class="appName">WorkLogicPro</div>
 
 <h1>Vehicle Lookup</h1>
+
 <div class="sub-nav">
-  <a href="dashboard-business.html">Dashboard</a>
-  <a href="dashboard-customer-search.html">Customers</a>
-  <a class="active">Vehicles</a>
-  <a href="dashboard-settings.html">Settings</a>
+  <a href="/dashboard-business.html">Dashboard</a>
+  <a href="/dashboard-customer-search.html">Customers</a>
+  <a href="/dashboard-vehicle-search.html" class="active">Vehicles</a>
 </div>
 
-<!-- STATS -->
-<div class="row" id="kpis"></div>
+<input id="search" placeholder="Search by plate, VIN, make, model…" />
+<div id="results" class="list"></div>
 
-<!-- SEARCH -->
-<div class="card">
-  <input id="search" placeholder="Search plate, VIN, year, make, model…" oninput="renderVehicles()">
-</div>
-
-<!-- RESULTS -->
-<div id="results"></div>
-
-<!-- MODAL -->
-<div id="detailModal" class="modal" onclick="if(event.target===this)closeModal()">
+<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
   <div class="modalContent" id="modalBody"></div>
 </div>
 
 <script>
-const PROJECT="kxqkwpkmtgvmthpafoqx";
-const API=`https://${PROJECT}.supabase.co`;
-const REST=`${API}/rest/v1`;
-const KEY=document.querySelector('meta[name="supabase-anon-key"]').content;
+const PROJECT_REF="kxqkwpkmtgvmthpafoqx";
+const API=`https://${PROJECT_REF}.supabase.co`;
+const FUNCTIONS=`${API}/functions/v1`;
+const ANON=document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let vehicles=[],customers=[],workOrders=[],activeFilter=null;
+let vehicles=[], customers=[];
 
-/* ---------- AUTH ---------- */
 async function auth(){
   const t=localStorage.getItem("sb_access_token");
-  if(!t)return null;
-  const r=await fetch(`${API}/auth/v1/user`,{headers:{Authorization:`Bearer ${t}`,apikey:KEY}});
-  return r.ok?t:null;
+  if(!t) location.href="login.html";
+  return t;
 }
-async function fetchTable(t,token){
-  const r=await fetch(`${REST}/${t}?select=*`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:KEY}
+
+async function fetchFn(path, token){
+  const r=await fetch(`${FUNCTIONS}/${path}`,{
+    headers:{Authorization:`Bearer ${token}`,apikey:ANON}
   });
+  if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
-/* ---------- KPI ---------- */
-function renderKPIs(){
-  const byVehicle={};
-  workOrders.forEach(w=>{
-    if(w.vehicle_id) byVehicle[w.vehicle_id]=(byVehicle[w.vehicle_id]||0)+1;
-  });
+function render(){
+  const q=search.value.toLowerCase();
 
-  const activeStatuses=["scheduled","in_progress","repairing","testing"];
-  const activeVehicles=new Set(workOrders.filter(w=>activeStatuses.includes(w.status)).map(w=>w.vehicle_id));
-  const completedVehicles=new Set(workOrders.filter(w=>["completed","closed"].includes(w.status)).map(w=>w.vehicle_id));
+  const filtered=vehicles
+    .filter(v=>(`${v.make} ${v.model} ${v.year} ${v.vin_or_cf_number||""} ${v.license_plate||""}`).toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const ap=(a.license_plate||"").toLowerCase();
+      const bp=(b.license_plate||"").toLowerCase();
+      if(ap.startsWith(q)) return -1;
+      if(bp.startsWith(q)) return 1;
+      return ap.localeCompare(bp);
+    });
 
-  const kpis=[
-    ["Total Vehicles",vehicles.length,"all"],
-    ["With Work Orders",Object.keys(byVehicle).length,"with"],
-    ["Active Work",activeVehicles.size,"active"],
-    ["Completed / Ready",completedVehicles.size,"done"]
-  ];
-
-  document.getElementById("kpis").innerHTML=kpis.map(
-    k=>`<div class="card kpi ${activeFilter===k[2]?'active':''}" onclick="toggle('${k[2]}')">
-          <div class="label">${k[0]}</div>
-          <div class="value">${k[1]}</div>
-        </div>`
-  ).join("");
-}
-function toggle(f){activeFilter=activeFilter===f?null:f;renderKPIs();renderVehicles()}
-
-/* ---------- RENDER ---------- */
-function renderVehicles(){
-  const q=document.getElementById("search").value.toLowerCase();
-
-  const filtered=vehicles.filter(v=>{
-    const text=`
-      ${v.license_plate||""}
-      ${v.vin_or_cf_number||""}
-      ${v.year||""}
-      ${v.make||""}
-      ${v.model||""}
-    `.toLowerCase();
-
-    if(!text.includes(q)) return false;
-
-    const wos=workOrders.filter(w=>w.vehicle_id===v.vehicle_id);
-    if(activeFilter==="with") return wos.length>0;
-    if(activeFilter==="active") return wos.some(w=>!["completed","closed"].includes(w.status));
-    if(activeFilter==="done") return wos.some(w=>["completed","closed"].includes(w.status));
-
-    return true;
-  });
-
-  document.getElementById("results").innerHTML=
-    filtered.map(v=>{
-      const c=customers.find(c=>c.customer_id===v.customer_id);
-      const count=workOrders.filter(w=>w.vehicle_id===v.vehicle_id).length;
-      return `
-        <div class="card vehicle" onclick="openVehicle('${v.vehicle_id}')">
-          <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong>
-          <div class="muted">Plate: ${v.license_plate||"—"} • VIN: ${v.vin_or_cf_number||"—"}</div>
-          <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
-          <div class="muted">Work Orders: ${count}</div>
-        </div>
-      `;
-    }).join("") || "<div class='muted'>No results</div>";
+  results.innerHTML=filtered.map(v=>{
+    const c=customers.find(x=>x.customer_id===v.customer_id);
+    return `
+      <div class="card item" onclick="openVehicle('${v.vehicle_id}')">
+        <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong>
+        <div class="muted">Plate: ${v.license_plate||"—"}</div>
+        <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
+      </div>
+    `;
+  }).join("");
 }
 
-/* ---------- MODAL ---------- */
 function openVehicle(id){
   const v=vehicles.find(x=>x.vehicle_id===id);
-  const c=customers.find(c=>c.customer_id===v.customer_id);
-  const wos=workOrders.filter(w=>w.vehicle_id===id);
+  const c=customers.find(x=>x.customer_id===v.customer_id);
 
-  document.getElementById("modalBody").innerHTML=`
+  modalBody.innerHTML=`
     <h2>${v.year||""} ${v.make||""} ${v.model||""}</h2>
     <div class="muted">Plate: ${v.license_plate||"—"}</div>
     <div class="muted">VIN / CF: ${v.vin_or_cf_number||"—"}</div>
     <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
-
-    <h3 style="margin-top:16px;">Work Orders</h3>
-    ${
-      wos.length
-      ? wos.map(w=>`
-          <div class="card">
-            <strong>${w.summary||"Work Order"}</strong>
-            <div class="muted">Status: ${w.status}</div>
-            <div class="muted">Created: ${new Date(w.created_at).toLocaleDateString()}</div>
-          </div>
-        `).join("")
-      : "<div class='muted'>No work orders</div>"
-    }
+    <div style="margin-top:16px;text-align:center">
+      <button onclick="closeModal()">Close</button>
+    </div>
   `;
-  document.getElementById("detailModal").classList.add("active");
-}
-function closeModal(){
-  document.getElementById("detailModal").classList.remove("active");
+  modal.classList.add("active");
 }
 
-/* ---------- INIT ---------- */
+function closeModal(){ modal.classList.remove("active"); }
+
 (async()=>{
-  const token=await auth();
-  if(!token){location.replace("login.html");return}
-
-  vehicles=await fetchTable("vehicles",token);
-  customers=await fetchTable("customers",token);
-  workOrders=await fetchTable("work_orders",token);
-
-  renderKPIs();
-  renderVehicles();
+  const t=await auth();
+  vehicles=await fetchFn("vehicles",t);
+  customers=await fetchFn("customers",t);
+  render();
+  search.oninput=render;
 })();
 </script>
 </body>
