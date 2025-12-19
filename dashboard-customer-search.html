@@ -22,11 +22,7 @@
       padding-bottom:10px;
       border-bottom:1px solid #1f2937;
     }
-    .sub-nav a {
-      font-size:14px;
-      color:#9ca3af;
-      text-decoration:none;
-    }
+    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
     .sub-nav a.active { color:#38bdf8; font-weight:500; }
 
     .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
@@ -41,6 +37,11 @@
     .kpi {
       min-width:220px;
       flex:1 1 220px;
+      cursor:pointer;
+    }
+    .kpi.active {
+      border-color:#38bdf8;
+      box-shadow:0 0 0 1px rgba(56,189,248,.4) inset;
     }
     .label { font-size:12px; color:#9fb0c3; }
     .value { font-size:22px; font-weight:700; margin-top:6px; }
@@ -56,7 +57,7 @@
     }
 
     .customer { cursor:pointer; }
-    .customer:hover { border-color:#3b82f6; }
+    .customer:hover { border-color:#38bdf8; }
 
     .muted { font-size:12px; color:#9fb0c3; }
     .vehicles { margin-top:8px; padding-left:12px; }
@@ -68,7 +69,6 @@
 
 <header>
   <h1>Customer Lookup</h1>
-
   <div class="sub-nav">
     <a href="dashboard-business.html">Dashboard</a>
     <a href="dashboard-customer-search.html" class="active">Customers</a>
@@ -76,15 +76,12 @@
   </div>
 </header>
 
-<!-- KPI CARDS -->
+<!-- KPI ROW -->
 <div class="row" id="kpis"></div>
 
 <!-- SEARCH -->
 <div class="card">
-  <input
-    id="search"
-    placeholder="Search by name, phone, or email…"
-    oninput="renderCustomers()" />
+  <input id="search" placeholder="Search by name, phone, or email…" oninput="renderCustomers()" />
 </div>
 
 <div id="results"></div>
@@ -97,16 +94,11 @@ const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').conten
 
 let customers = [];
 let vehicles = [];
-
-function logout(){
-  localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
-}
+let activeFilter = null;
 
 async function validateAuth(){
   const token = localStorage.getItem("sb_access_token");
   if (!token) return null;
-
   const res = await fetch(`${API_BASE}/auth/v1/user`, {
     headers: { Authorization:`Bearer ${token}`, apikey:ANON_KEY }
   });
@@ -115,31 +107,47 @@ async function validateAuth(){
 
 async function fetchRest(table, token){
   const res = await fetch(`${REST_BASE}/${table}?select=*`, {
-    headers:{
-      Authorization:`Bearer ${token}`,
-      apikey:ANON_KEY
-    }
+    headers:{ Authorization:`Bearer ${token}`, apikey:ANON_KEY }
   });
   if(!res.ok) throw await res.text();
   return res.json();
 }
 
+/* KPI FILTERING */
+function setFilter(type){
+  activeFilter = activeFilter === type ? null : type;
+  renderKPIs();
+  renderCustomers();
+}
+
 /* KPI RENDER */
 function renderKPIs(){
   const el = document.getElementById("kpis");
-  const total = customers.length;
-  const active = customers.filter(c=>c.status==="active").length;
-  const leads = customers.filter(c=>c.status==="lead").length;
-  const withVehicles = new Set(vehicles.map(v=>v.customer_id)).size;
+
+  const withVehicles = new Map();
+  vehicles.forEach(v=>{
+    if(!withVehicles.has(v.customer_id)) withVehicles.set(v.customer_id,0);
+    withVehicles.set(v.customer_id, withVehicles.get(v.customer_id)+1);
+  });
+
+  const totalCustomers = customers.length;
+  const customersWithVehicles = withVehicles.size;
+  const multiVehicleCustomers = [...withVehicles.values()].filter(c=>c>1).length;
   const totalVehicles = vehicles.length;
 
-  el.innerHTML = `
-    <div class="card kpi"><div class="label">Total Customers</div><div class="value">${total}</div></div>
-    <div class="card kpi"><div class="label">Active Customers</div><div class="value">${active}</div></div>
-    <div class="card kpi"><div class="label">Leads</div><div class="value">${leads}</div></div>
-    <div class="card kpi"><div class="label">Customers w/ Vehicles</div><div class="value">${withVehicles}</div></div>
-    <div class="card kpi"><div class="label">Total Vehicles</div><div class="value">${totalVehicles}</div></div>
-  `;
+  function kpi(title,value,key){
+    return `
+      <div class="card kpi ${activeFilter===key?'active':''}" onclick="setFilter('${key}')">
+        <div class="label">${title}</div>
+        <div class="value">${value}</div>
+      </div>`;
+  }
+
+  el.innerHTML =
+    kpi("Total Customers", totalCustomers, "all") +
+    kpi("Customers w/ Vehicles", customersWithVehicles, "withVehicles") +
+    kpi("Multiple Vehicles", multiVehicleCustomers, "multiVehicle") +
+    kpi("Total Vehicles", totalVehicles, "vehicles");
 }
 
 /* CUSTOMER LIST */
@@ -147,33 +155,38 @@ function renderCustomers(){
   const q = document.getElementById("search").value.toLowerCase();
   const el = document.getElementById("results");
 
-  const filtered = customers.filter(c=>{
-    const t = `${c.first_name} ${c.last_name} ${c.phone||""} ${c.email||""}`.toLowerCase();
-    return t.includes(q);
+  const vehicleCount = {};
+  vehicles.forEach(v=>{
+    vehicleCount[v.customer_id]=(vehicleCount[v.customer_id]||0)+1;
   });
 
-  el.innerHTML = filtered.map(c=>{
+  let list = customers.filter(c=>{
+    const t = `${c.first_name} ${c.last_name} ${c.phone||""} ${c.email||""}`.toLowerCase();
+    if(!t.includes(q)) return false;
+
+    if(activeFilter==="withVehicles") return vehicleCount[c.customer_id]>=1;
+    if(activeFilter==="multiVehicle") return vehicleCount[c.customer_id]>=2;
+    if(activeFilter==="vehicles") return true;
+    return true;
+  });
+
+  el.innerHTML = list.map(c=>{
     const vs = vehicles.filter(v=>v.customer_id===c.customer_id);
     return `
-      <div class="card customer">
+      <div class="card customer" onclick="location.href='dashboard-customer-detail.html?id=${c.customer_id}'">
         <strong>${c.first_name} ${c.last_name}</strong>
         <div class="muted">${c.phone||""} ${c.email||""}</div>
-
         ${vs.length ? `
           <div class="vehicles">
-            ${vs.map(v=>`
-              <div class="muted">• ${v.year||""} ${v.make||""} ${v.model||""}</div>
-            `).join("")}
-          </div>
-        `:""}
-      </div>
-    `;
+            ${vs.map(v=>`<div class="muted">• ${v.year||""} ${v.make||""} ${v.model||""}</div>`).join("")}
+          </div>`:""}
+      </div>`;
   }).join("") || `<div class="muted">No customers found</div>`;
 }
 
 async function load(){
   const token = await validateAuth();
-  if(!token){ logout(); return; }
+  if(!token){ location.replace("login.html"); return; }
 
   customers = await fetchRest("customers", token);
   vehicles  = await fetchRest("vehicles", token);
