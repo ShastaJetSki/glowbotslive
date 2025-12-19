@@ -1,1 +1,252 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Customer Lookup — WorkLogicPro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .container {
+      padding: 24px;
+      max-width: 1400px;
+      margin: auto;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 22px;
+    }
+
+    /* SEARCH */
+    .search-box {
+      margin-bottom: 16px;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 18px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      outline: none;
+    }
+
+    .search-box input::placeholder {
+      color: var(--muted);
+    }
+
+    /* MINI DASH */
+    .mini-dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .card .label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .card .value {
+      font-size: 26px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    thead {
+      background: #020617;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    tr:hover {
+      background: #020617;
+    }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    .badge.active { background: rgba(34,197,94,.15); color: var(--success); }
+    .badge.lead { background: rgba(56,189,248,.15); color: var(--accent); }
+    .badge.inactive { background: rgba(245,158,11,.15); color: var(--warning); }
+
+    .btn {
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #020617;
+      font-size: 13px;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Customer Lookup</h1>
+
+    <!-- SEARCH -->
+    <div class="search-box">
+      <input
+        id="searchInput"
+        type="text"
+        placeholder="Search customer, phone, vehicle, VIN..."
+        autofocus
+      />
+    </div>
+
+    <!-- MINI DASHBOARD -->
+    <div class="mini-dashboard">
+      <div class="card">
+        <div class="label">Customers Found</div>
+        <div class="value" id="statCustomers">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Vehicles Found</div>
+        <div class="value" id="statVehicles">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Multi-Vehicle Customers</div>
+        <div class="value" id="statMulti">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Open Work Orders</div>
+        <div class="value" id="statOpenWO">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Vehicles In Shop</div>
+        <div class="value" id="statVehiclesInShop">0</div>
+      </div>
+    </div>
+
+    <!-- RESULTS TABLE -->
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Phone</th>
+          <th>Vehicles</th>
+          <th>Last Activity</th>
+          <th>Open WO</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody">
+        <!-- rows injected here -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const input = document.getElementById("searchInput");
+    let debounce;
+
+    input.addEventListener("input", () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(runSearch, 350);
+    });
+
+    async function runSearch() {
+      const q = input.value.trim();
+
+      const res = await fetch("/functions/v1/customers-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q })
+      });
+
+      const data = await res.json();
+
+      updateStats(data.stats);
+      renderTable(data.customers);
+    }
+
+    function updateStats(s) {
+      document.getElementById("statCustomers").textContent = s.customers || 0;
+      document.getElementById("statVehicles").textContent = s.vehicles || 0;
+      document.getElementById("statMulti").textContent = s.multi_vehicle_customers || 0;
+      document.getElementById("statOpenWO").textContent = s.open_work_orders || 0;
+      document.getElementById("statVehiclesInShop").textContent = s.vehicles_in_shop || 0;
+    }
+
+    function renderTable(rows) {
+      const body = document.getElementById("resultsBody");
+      body.innerHTML = "";
+
+      rows.forEach(c => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.first_name} ${c.last_name}</td>
+          <td>${c.phone || ""}</td>
+          <td>${c.vehicle_count}</td>
+          <td>${c.last_activity || "—"}</td>
+          <td>${c.open_work_orders}</td>
+          <td><span class="badge ${c.status}">${c.status}</span></td>
+          <td><button class="btn" onclick="viewCustomer('${c.customer_id}')">View</button></td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    function viewCustomer(id) {
+      window.location.href = `/customer-detail.html?id=${id}`;
+    }
+  </script>
+</body>
+</html>
