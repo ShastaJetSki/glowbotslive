@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
 <meta name="supabase-anon-key"
-content="REPLACE_WITH_YOUR_ANON_KEY" />
+content="PASTE_YOUR_ANON_KEY_HERE" />
 
 <style>
 body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
@@ -37,19 +37,6 @@ input {
 }
 
 .muted { font-size:12px; color:#9fb0c3; }
-
-/* MODAL */
-.modal {
-  display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,.85);
-  align-items:center; justify-content:center; z-index:1000;
-}
-.modal.active { display:flex; }
-.modalContent {
-  background:#0f1621; border:1px solid #223044;
-  border-radius:14px; padding:24px;
-  width:100%; max-width:520px;
-}
 </style>
 </head>
 
@@ -67,81 +54,69 @@ input {
 <input id="search" placeholder="Search by plate, VIN, make, model…" />
 <div id="results" class="list"></div>
 
-<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
-  <div class="modalContent" id="modalBody"></div>
-</div>
-
 <script>
-const PROJECT_REF="kxqkwpkmtgvmthpafoqx";
-const API=`https://${PROJECT_REF}.supabase.co`;
-const FUNCTIONS=`${API}/functions/v1`;
-const ANON=document.querySelector('meta[name="supabase-anon-key"]').content;
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let vehicles=[], customers=[];
+let vehicles = [];
+let customers = [];
 
-async function auth(){
-  const t=localStorage.getItem("sb_access_token");
-  if(!t) location.href="login.html";
-  return t;
+async function validateAuth() {
+  const token = localStorage.getItem("sb_access_token");
+  if (!token) location.replace("login.html");
+  return token;
 }
 
-async function fetchFn(path, token){
-  const r=await fetch(`${FUNCTIONS}/${path}`,{
-    headers:{Authorization:`Bearer ${token}`,apikey:ANON}
-  });
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
+async function fetchTable(table, token) {
+  const res = await fetch(
+    `https://${PROJECT_REF}.supabase.co/rest/v1/${table}?select=*`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: ANON_KEY,
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
-function render(){
-  const q=search.value.toLowerCase();
+function render() {
+  const q = search.value.toLowerCase();
 
-  const filtered=vehicles
-    .filter(v=>(`${v.make} ${v.model} ${v.year} ${v.vin_or_cf_number||""} ${v.license_plate||""}`).toLowerCase().includes(q))
-    .sort((a,b)=>{
-      const ap=(a.license_plate||"").toLowerCase();
-      const bp=(b.license_plate||"").toLowerCase();
-      if(ap.startsWith(q)) return -1;
-      if(bp.startsWith(q)) return 1;
+  const filtered = vehicles
+    .filter(v =>
+      (`${v.make} ${v.model} ${v.year} ${v.vin_or_cf_number||""} ${v.license_plate||""}`)
+        .toLowerCase().includes(q)
+    )
+    .sort((a,b) => {
+      const ap = (a.license_plate||"").toLowerCase();
+      const bp = (b.license_plate||"").toLowerCase();
+      if (ap.startsWith(q)) return -1;
+      if (bp.startsWith(q)) return 1;
       return ap.localeCompare(bp);
     });
 
-  results.innerHTML=filtered.map(v=>{
-    const c=customers.find(x=>x.customer_id===v.customer_id);
+  results.innerHTML = filtered.map(v => {
+    const c = customers.find(x => x.customer_id === v.customer_id);
     return `
-      <div class="card item" onclick="openVehicle('${v.vehicle_id}')">
+      <div class="card">
         <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong>
         <div class="muted">Plate: ${v.license_plate||"—"}</div>
-        <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
+        <div class="muted">Owner: ${c ? `${c.first_name} ${c.last_name}` : "—"}</div>
       </div>
     `;
   }).join("");
 }
 
-function openVehicle(id){
-  const v=vehicles.find(x=>x.vehicle_id===id);
-  const c=customers.find(x=>x.customer_id===v.customer_id);
-
-  modalBody.innerHTML=`
-    <h2>${v.year||""} ${v.make||""} ${v.model||""}</h2>
-    <div class="muted">Plate: ${v.license_plate||"—"}</div>
-    <div class="muted">VIN / CF: ${v.vin_or_cf_number||"—"}</div>
-    <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
-    <div style="margin-top:16px;text-align:center">
-      <button onclick="closeModal()">Close</button>
-    </div>
-  `;
-  modal.classList.add("active");
-}
-
-function closeModal(){ modal.classList.remove("active"); }
-
-(async()=>{
-  const t=await auth();
-  vehicles=await fetchFn("vehicles",t);
-  customers=await fetchFn("customers",t);
+(async () => {
+  const token = await validateAuth();
+  vehicles  = await fetchTable("vehicles", token);
+  customers = await fetchTable("customers", token);
   render();
-  search.oninput=render;
+  search.oninput = render;
 })();
 </script>
 </body>
