@@ -11,7 +11,7 @@
   <style>
     body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
     .appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
-    header { margin-bottom:12px; }
+
     h1 { margin:0; font-size:40px; }
 
     .sub-nav {
@@ -22,14 +22,60 @@
     .sub-nav a.active { color:#38bdf8; }
 
     input {
-      width:100%; padding:12px; border-radius:10px;
-      border:1px solid #223044; background:#0f1621; color:#e8eef6;
+      width:100%; padding:12px;
+      border-radius:10px; border:1px solid #223044;
+      background:#0f1621; color:#e8eef6;
       margin-bottom:14px;
     }
 
-    .list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
-    .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
-    .muted { color:#9fb0c3; font-size:12px; }
+    .list {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+      gap:12px;
+    }
+
+    .card {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:14px 16px;
+      cursor:pointer;
+    }
+    .card:hover { border-color:#38bdf8; }
+
+    .muted { color:#9fb0c3; font-size:12px; margin-top:4px; }
+
+    /* MODAL */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.85);
+      z-index:999;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal.active { display:flex; }
+
+    .modalContent {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:20px;
+      width:100%;
+      max-width:620px;
+      max-height:80vh;
+      overflow:auto;
+    }
+
+    button {
+      padding:8px 14px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:#1a2535;
+      color:#fff;
+      cursor:pointer;
+    }
   </style>
 </head>
 
@@ -48,6 +94,24 @@
 
 <input id="search" placeholder="Search by plate, VIN, make, model…" />
 <div class="list" id="results"></div>
+
+<!-- VEHICLE MODAL -->
+<div id="vehicleModal" class="modal" onclick="if(event.target===this) closeVehicleModal()">
+  <div class="modalContent">
+    <h2 id="vehicleTitle"></h2>
+    <div id="vehicleMeta" class="muted"></div>
+
+    <h3 style="margin-top:16px;">Customer</h3>
+    <div id="vehicleCustomer" class="muted"></div>
+
+    <h3 style="margin-top:16px;">Work Orders</h3>
+    <div id="vehicleWorkOrders" class="list"></div>
+
+    <div style="margin-top:16px; text-align:right;">
+      <button onclick="closeVehicleModal()">Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
@@ -72,22 +136,75 @@ async function fetchTable(table, token){
   return r.json();
 }
 
-let vehicles=[];
+let vehicles = [];
 
 function render(){
   const q = search.value.toLowerCase();
   results.innerHTML = vehicles
     .filter(v =>
       `${v.license_plate||""} ${v.vin_or_cf_number||""} ${v.make||""} ${v.model||""}`
-      .toLowerCase().includes(q)
+        .toLowerCase().includes(q)
     )
-    .map(v=>`
-      <div class="card">
+    .map(v => `
+      <div class="card" onclick="openVehicle('${v.vehicle_id}')">
         <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong>
         <div class="muted">Plate: ${v.license_plate||"—"}</div>
         <div class="muted">VIN/CF: ${v.vin_or_cf_number||"—"}</div>
       </div>
     `).join("");
+}
+
+async function openVehicle(vehicleId){
+  const token = localStorage.getItem("sb_access_token");
+  const v = vehicles.find(x => x.vehicle_id === vehicleId);
+  if(!v) return;
+
+  vehicleTitle.textContent = `${v.year||""} ${v.make||""} ${v.model||""}`;
+  vehicleMeta.innerHTML = `
+    Plate: ${v.license_plate || "—"}<br>
+    VIN / CF: ${v.vin_or_cf_number || "—"}
+  `;
+
+  // Fetch customer
+  let customerHtml = "Unknown";
+  if (v.customer_id) {
+    const cRes = await fetch(
+      `${REST_BASE}/customers?customer_id=eq.${v.customer_id}&select=*`,
+      { headers:{apikey:ANON_KEY, Authorization:`Bearer ${token}`} }
+    );
+    const c = cRes.ok ? (await cRes.json())[0] : null;
+    if (c) {
+      customerHtml = `
+        ${c.first_name} ${c.last_name}<br>
+        ${c.phone || ""}<br>
+        ${c.email || ""}
+      `;
+    }
+  }
+  vehicleCustomer.innerHTML = customerHtml;
+
+  // Fetch work orders
+  const wRes = await fetch(
+    `${REST_BASE}/work_orders?vehicle_id=eq.${vehicleId}&select=*`,
+    { headers:{apikey:ANON_KEY, Authorization:`Bearer ${token}`} }
+  );
+  const workOrders = wRes.ok ? await wRes.json() : [];
+
+  vehicleWorkOrders.innerHTML = workOrders.length
+    ? workOrders.map(w => `
+        <div class="card">
+          <strong>${w.summary || "Work Order"}</strong>
+          <div class="muted">Status: ${w.status}</div>
+          <div class="muted">Created: ${new Date(w.created_at).toLocaleDateString()}</div>
+        </div>
+      `).join("")
+    : `<div class="muted">No work orders found.</div>`;
+
+  vehicleModal.classList.add("active");
+}
+
+function closeVehicleModal(){
+  vehicleModal.classList.remove("active");
 }
 
 async function load(){
@@ -97,7 +214,7 @@ async function load(){
   render();
 }
 
-search.oninput = render;
+search.addEventListener("input", render);
 load();
 </script>
 </body>
