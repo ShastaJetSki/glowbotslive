@@ -1,62 +1,29 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8"/>
 <title>Customer Lookup</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 
 <meta name="supabase-anon-key"
-content="PASTE_YOUR_ANON_KEY_HERE" />
+content="REPLACE_WITH_YOUR_ANON_KEY"/>
 
 <style>
-body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
-.appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
-
-.sub-nav {
-  display:flex; gap:16px; margin:8px 0 20px;
-  padding-bottom:10px; border-bottom:1px solid #1f2937;
-}
-.sub-nav a { color:#9ca3af; text-decoration:none; font-size:14px; }
-.sub-nav a.active {
-  color:#38bdf8; font-weight:500;
-  border-bottom:2px solid #38bdf8; padding-bottom:10px;
-}
-
-h1 { margin:0 0 12px; font-size:36px; }
-
-.row { display:flex; gap:12px; flex-wrap:wrap; }
-.card {
-  background:#0f1621; border:1px solid #223044;
-  border-radius:14px; padding:14px 16px;
-}
-.stat { min-width:220px; }
-.stat .label { font-size:12px; color:#9fb0c3; }
-.stat .value { font-size:22px; font-weight:700; }
-
-input {
-  width:100%; padding:12px 14px; margin-top:16px;
-  border-radius:12px; border:1px solid #223044;
-  background:#0f1621; color:#fff;
-}
-
-.list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
-.item { cursor:pointer; }
-.item:hover { border-color:#38bdf8; }
-
-.muted { font-size:12px; color:#9fb0c3; }
-
-/* MODAL */
-.modal {
-  display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,.85);
-  align-items:center; justify-content:center; z-index:1000;
-}
-.modal.active { display:flex; }
-.modalContent {
-  background:#0f1621; border:1px solid #223044;
-  border-radius:14px; padding:24px;
-  width:100%; max-width:520px;
-}
+body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
+.appName{position:fixed;top:10px;right:24px;font-size:12px;color:#9fb0c3}
+h1{margin:0;font-size:40px}
+.sub-nav{display:flex;gap:16px;margin:8px 0 20px;padding-bottom:10px;border-bottom:1px solid #1f2937}
+.sub-nav a{font-size:14px;color:#9ca3af;text-decoration:none}
+.sub-nav a.active{color:#38bdf8;font-weight:500}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:14px 16px;cursor:pointer}
+input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;background:#0f1621;color:#fff}
+.stat{min-width:220px}
+.label{font-size:12px;color:#9fb0c3}
+.value{font-size:22px;font-weight:700}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);align-items:center;justify-content:center}
+.modal.active{display:flex}
+.modalBox{background:#0f1621;border-radius:14px;border:1px solid #223044;padding:20px;max-width:600px;width:100%}
 </style>
 </head>
 
@@ -66,107 +33,106 @@ input {
 <h1>Customer Lookup</h1>
 
 <div class="sub-nav">
-  <a href="/dashboard-business.html">Dashboard</a>
-  <a href="/dashboard-customer-search.html" class="active">Customers</a>
-  <a href="/dashboard-vehicle-search.html">Vehicles</a>
+  <a href="dashboard-business.html">Dashboard</a>
+  <a class="active">Customers</a>
+  <a href="dashboard-vehicle-search.html">Vehicles</a>
 </div>
 
-<div class="row">
-  <div class="card stat">
-    <div class="label">Total Customers</div>
-    <div class="value" id="statCustomers">—</div>
-  </div>
-</div>
+<input id="search" placeholder="Search name, phone, email"/>
 
-<input id="search" placeholder="Search by name, phone, email…" />
+<div class="row" id="stats"></div>
+<div class="row" id="results"></div>
 
-<div id="results" class="list"></div>
-
-<div id="modal" class="modal" onclick="if(event.target===this)closeModal()">
-  <div class="modalContent" id="modalBody"></div>
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modalBox" id="modalBox"></div>
 </div>
 
 <script>
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+const PROJECT_REF="kxqkwpkmtgvmthpafoqx";
+const API=`https://${PROJECT_REF}.supabase.co/rest/v1`;
+const ANON=document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let customers = [];
-let vehicles = [];
+const token=localStorage.getItem("sb_access_token");
+if(!token) location.replace("login.html");
 
-async function validateAuth() {
-  const token = localStorage.getItem("sb_access_token");
-  if (!token) location.replace("login.html");
-  return token;
+const headers={
+  apikey:ANON,
+  Authorization:`Bearer ${token}`,
+  "Content-Type":"application/json"
+};
+
+let customers=[],vehicles=[],workOrders=[];
+let activeFilter=null;
+
+async function fetchTable(t){
+  const r=await fetch(`${API}/${t}?select=*`,{headers});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
-async function fetchTable(table, token) {
-  const res = await fetch(
-    `https://${PROJECT_REF}.supabase.co/rest/v1/${table}?select=*`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: ANON_KEY,
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      }
-    }
-  );
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+function renderStats(){
+  document.getElementById("stats").innerHTML=`
+    <div class="card stat" onclick="setFilter(null)">
+      <div class="label">Total Customers</div>
+      <div class="value">${customers.length}</div>
+    </div>
+    <div class="card stat" onclick="setFilter('vehicles')">
+      <div class="label">Customers w/ Vehicles</div>
+      <div class="value">${new Set(vehicles.map(v=>v.customer_id)).size}</div>
+    </div>
+    <div class="card stat" onclick="setFilter('work')">
+      <div class="label">Customers w/ Work Orders</div>
+      <div class="value">${new Set(workOrders.map(w=>w.customer_id)).size}</div>
+    </div>
+  `;
 }
 
-function render() {
-  statCustomers.textContent = customers.length;
-  const q = search.value.toLowerCase();
+function setFilter(f){activeFilter=f;renderResults()}
 
-  const filtered = customers
-    .filter(c =>
-      (`${c.first_name} ${c.last_name} ${c.phone||""} ${c.email||""}`)
-        .toLowerCase().includes(q)
-    )
-    .sort((a,b) => {
-      const an = `${a.first_name} ${a.last_name}`.toLowerCase();
-      const bn = `${b.first_name} ${b.last_name}`.toLowerCase();
-      if (an.startsWith(q)) return -1;
-      if (bn.startsWith(q)) return 1;
-      return an.localeCompare(bn);
-    });
+function renderResults(){
+  const q=document.getElementById("search").value.toLowerCase();
+  let list=customers.filter(c=>{
+    if(activeFilter==="vehicles" && !vehicles.some(v=>v.customer_id===c.customer_id)) return false;
+    if(activeFilter==="work" && !workOrders.some(w=>w.customer_id===c.customer_id)) return false;
+    return `${c.first_name} ${c.last_name} ${c.phone} ${c.email}`.toLowerCase().includes(q);
+  });
 
-  results.innerHTML = filtered.map(c => `
-    <div class="card item" onclick="openCustomer('${c.customer_id}')">
-      <strong>${c.first_name} ${c.last_name}</strong>
-      <div class="muted">${c.phone||""} ${c.email||""}</div>
+  document.getElementById("results").innerHTML=list.map(c=>`
+    <div class="card" onclick="openCustomer('${c.customer_id}')">
+      <strong>${c.first_name} ${c.last_name}</strong><br/>
+      ${c.phone||""}<br/>
+      ${c.email||""}
     </div>
   `).join("");
 }
 
-function openCustomer(id) {
-  const c = customers.find(x => x.customer_id === id);
-  const vs = vehicles.filter(v => v.customer_id === id);
+function openCustomer(id){
+  const c=customers.find(x=>x.customer_id===id);
+  const v=vehicles.filter(v=>v.customer_id===id);
+  const w=workOrders.filter(w=>w.customer_id===id);
 
-  modalBody.innerHTML = `
-    <h2>${c.first_name} ${c.last_name}</h2>
-    <div class="muted">${c.phone||""}</div>
-    <div class="muted">${c.email||""}</div>
-    <h3 style="margin-top:16px">Vehicles</h3>
-    ${vs.length
-      ? vs.map(v => `<div class="muted">• ${v.year||""} ${v.make||""} ${v.model||""} — ${v.license_plate||"—"}</div>`).join("")
-      : "<div class='muted'>None</div>"}
-    <div style="margin-top:16px;text-align:center">
-      <button onclick="closeModal()">Close</button>
-    </div>
+  document.getElementById("modalBox").innerHTML=`
+    <h3>${c.first_name} ${c.last_name}</h3>
+    <p>${c.phone||""}<br/>${c.email||""}</p>
+    <h4>Vehicles</h4>
+    ${v.map(v=>`${v.year||""} ${v.make||""} ${v.model||""} (${v.license_plate||""})`).join("<br/>")||"None"}
+    <h4>Work Orders</h4>
+    ${w.map(w=>w.summary).join("<br/>")||"None"}
+    <br/><br/>
+    <button onclick="closeModal()">Close</button>
   `;
-  modal.classList.add("active");
+  document.getElementById("modal").classList.add("active");
 }
+function closeModal(){document.getElementById("modal").classList.remove("active")}
 
-function closeModal() { modal.classList.remove("active"); }
+document.getElementById("search").oninput=renderResults;
 
-(async () => {
-  const token = await validateAuth();
-  customers = await fetchTable("customers", token);
-  vehicles  = await fetchTable("vehicles", token);
-  render();
-  search.oninput = render;
+(async()=>{
+  customers=await fetchTable("customers");
+  vehicles=await fetchTable("vehicles");
+  workOrders=await fetchTable("work_orders");
+  renderStats();
+  renderResults();
 })();
 </script>
 </body>
