@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Vehicle Lookup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="supabase-anon-key"
+content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+
+<style>
+body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
+.appName{position:fixed;top:10px;right:24px;font-size:12px;color:#9fb0c3}
+h1{margin:0;font-size:40px}
+.sub-nav{display:flex;gap:16px;margin:10px 0 20px;padding-bottom:10px;border-bottom:1px solid #1f2937}
+.sub-nav a{color:#9ca3af;text-decoration:none}
+.sub-nav a.active{color:#38bdf8}
+.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:16px;margin-bottom:12px}
+.vehicle{cursor:pointer}
+.vehicle:hover{border-color:#38bdf8}
+.muted{font-size:12px;color:#9fb0c3}
+
+/* MODAL */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;align-items:center;justify-content:center}
+.modal.active{display:flex}
+.modalContent{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:24px;width:100%;max-width:520px}
+</style>
+</head>
+
+<body>
+<div class="appName">WorkLogicPro</div>
+
+<h1>Vehicle Lookup</h1>
+<div class="sub-nav">
+  <a href="dashboard-business.html">Dashboard</a>
+  <a href="dashboard-customer-search.html">Customers</a>
+  <a class="active">Vehicles</a>
+  <a href="dashboard-settings.html">Settings</a>
+</div>
+
+<div class="card">
+  <input id="search" placeholder="Search VIN, year, make, model…" oninput="renderVehicles()">
+</div>
+
+<div id="results"></div>
+
+<div id="detailModal" class="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modalContent" id="modalBody"></div>
+</div>
+
+<script>
+const PROJECT="kxqkwpkmtgvmthpafoqx";
+const API=`https://${PROJECT}.supabase.co`;
+const REST=`${API}/rest/v1`;
+const KEY=document.querySelector('meta[name="supabase-anon-key"]').content;
+
+let vehicles=[],customers=[];
+
+async function auth(){
+  const t=localStorage.getItem("sb_access_token");
+  if(!t)return null;
+  const r=await fetch(`${API}/auth/v1/user`,{headers:{Authorization:`Bearer ${t}`,apikey:KEY}});
+  return r.ok?t:null;
+}
+async function fetchTable(t,token){
+  const r=await fetch(`${REST}/${t}?select=*`,{headers:{Authorization:`Bearer ${token}`,apikey:KEY}});
+  return r.json();
+}
+
+function renderVehicles(){
+  const q=document.getElementById("search").value.toLowerCase();
+  const list=vehicles.filter(v=>{
+    const t=`${v.vin_or_cf_number||""} ${v.year||""} ${v.make||""} ${v.model||""}`.toLowerCase();
+    return t.includes(q);
+  });
+  document.getElementById("results").innerHTML=list.map(v=>{
+    const c=customers.find(c=>c.customer_id===v.customer_id);
+    return `
+      <div class="card vehicle" onclick="openVehicle('${v.vehicle_id}')">
+        <strong>${v.year} ${v.make} ${v.model}</strong>
+        <div class="muted">VIN: ${v.vin_or_cf_number||"—"}</div>
+        <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
+      </div>`;
+  }).join("")||"<div class='muted'>No results</div>";
+}
+
+function openVehicle(id){
+  const v=vehicles.find(x=>x.vehicle_id===id);
+  const c=customers.find(c=>c.customer_id===v.customer_id);
+  modal(`
+    <h2>${v.year} ${v.make} ${v.model}</h2>
+    <div class="muted">VIN / CF: ${v.vin_or_cf_number||"—"}</div>
+    <div class="muted">Owner: ${c?`${c.first_name} ${c.last_name}`:"—"}</div>
+  `);
+}
+function modal(html){document.getElementById("modalBody").innerHTML=html;document.getElementById("detailModal").classList.add("active")}
+function closeModal(){document.getElementById("detailModal").classList.remove("active")}
+
+(async()=>{
+  const token=await auth(); if(!token){location.replace("login.html");return}
+  vehicles=await fetchTable("vehicles",token);
+  customers=await fetchTable("customers",token);
+  renderVehicles();
+})();
+</script>
+</body>
+</html>
