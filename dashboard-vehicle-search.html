@@ -1,107 +1,104 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<title>Vehicle Lookup</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8" />
+  <title>Vehicle Lookup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<meta name="supabase-anon-key"
-content="REPLACE_WITH_YOUR_ANON_KEY"/>
+  <meta name="supabase-anon-key"
+    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
-<style>
-body{margin:0;padding:24px;font-family:system-ui;background:#0b0f14;color:#e8eef6}
-.appName{position:fixed;top:10px;right:24px;font-size:12px;color:#9fb0c3}
-h1{margin:0;font-size:40px}
-.sub-nav{display:flex;gap:16px;margin:8px 0 20px;padding-bottom:10px;border-bottom:1px solid #1f2937}
-.sub-nav a{font-size:14px;color:#9ca3af;text-decoration:none}
-.sub-nav a.active{color:#38bdf8;font-weight:500}
-.row{display:flex;gap:12px;flex-wrap:wrap}
-.card{background:#0f1621;border:1px solid #223044;border-radius:14px;padding:14px 16px;cursor:pointer}
-input{width:100%;padding:10px;border-radius:10px;border:1px solid #223044;background:#0f1621;color:#fff}
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);align-items:center;justify-content:center}
-.modal.active{display:flex}
-.modalBox{background:#0f1621;border-radius:14px;border:1px solid #223044;padding:20px;max-width:600px;width:100%}
-</style>
+  <style>
+    body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+    .appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
+    header { margin-bottom:12px; }
+    h1 { margin:0; font-size:40px; }
+
+    .sub-nav {
+      display:flex; gap:16px; margin:8px 0 20px;
+      border-bottom:1px solid #1f2937; padding-bottom:10px;
+    }
+    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
+    .sub-nav a.active { color:#38bdf8; }
+
+    input {
+      width:100%; padding:12px; border-radius:10px;
+      border:1px solid #223044; background:#0f1621; color:#e8eef6;
+      margin-bottom:14px;
+    }
+
+    .list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+    .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
+    .muted { color:#9fb0c3; font-size:12px; }
+  </style>
 </head>
 
 <body>
 <div class="appName">WorkLogicPro</div>
 
-<h1>Vehicle Lookup</h1>
+<header>
+  <h1>Vehicle Lookup</h1>
+  <div class="sub-nav">
+    <a href="dashboard-business.html">Dashboard</a>
+    <a href="dashboard-customer-search.html">Customers</a>
+    <a class="active">Vehicles</a>
+    <a href="dashboard-settings.html">Settings</a>
+  </div>
+</header>
 
-<div class="sub-nav">
-  <a href="dashboard-business.html">Dashboard</a>
-  <a href="dashboard-customer-search.html">Customers</a>
-  <a class="active">Vehicles</a>
-</div>
-
-<input id="search" placeholder="Search license plate, VIN, make, model"/>
-
-<div class="row" id="results"></div>
-
-<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
-  <div class="modalBox" id="modalBox"></div>
-</div>
+<input id="search" placeholder="Search by plate, VIN, make, model…" />
+<div class="list" id="results"></div>
 
 <script>
-const PROJECT_REF="kxqkwpkmtgvmthpafoqx";
-const API=`https://${PROJECT_REF}.supabase.co/rest/v1`;
-const ANON=document.querySelector('meta[name="supabase-anon-key"]').content;
-const token=localStorage.getItem("sb_access_token");
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const REST_BASE = `${API_BASE}/rest/v1`;
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-const headers={
-  apikey:ANON,
-  Authorization:`Bearer ${token}`,
-  "Content-Type":"application/json"
-};
+async function validateAuth(){
+  const t = localStorage.getItem("sb_access_token");
+  if(!t) return null;
+  const r = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{apikey:ANON_KEY, Authorization:`Bearer ${t}`}
+  });
+  return r.ok ? t : null;
+}
 
-let vehicles=[],customers=[],orders=[];
-
-async function fetchTable(t){
-  const r=await fetch(`${API}/${t}?select=*`,{headers});
+async function fetchTable(table, token){
+  const r = await fetch(`${REST_BASE}/${table}?select=*`, {
+    headers:{apikey:ANON_KEY, Authorization:`Bearer ${token}`}
+  });
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
+let vehicles=[];
+
 function render(){
-  const q=document.getElementById("search").value.toLowerCase();
-  document.getElementById("results").innerHTML=vehicles.filter(v=>
-    `${v.license_plate} ${v.vin_or_cf_number} ${v.make} ${v.model}`.toLowerCase().includes(q)
-  ).map(v=>`
-    <div class="card" onclick="openVehicle('${v.vehicle_id}')">
-      <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong><br/>
-      Plate: ${v.license_plate||"—"}
-    </div>
-  `).join("");
+  const q = search.value.toLowerCase();
+  results.innerHTML = vehicles
+    .filter(v =>
+      `${v.license_plate||""} ${v.vin_or_cf_number||""} ${v.make||""} ${v.model||""}`
+      .toLowerCase().includes(q)
+    )
+    .map(v=>`
+      <div class="card">
+        <strong>${v.year||""} ${v.make||""} ${v.model||""}</strong>
+        <div class="muted">Plate: ${v.license_plate||"—"}</div>
+        <div class="muted">VIN/CF: ${v.vin_or_cf_number||"—"}</div>
+      </div>
+    `).join("");
 }
 
-function openVehicle(id){
-  const v=vehicles.find(x=>x.vehicle_id===id);
-  const c=customers.find(c=>c.customer_id===v.customer_id);
-  const w=orders.filter(o=>o.vehicle_id===id);
-
-  document.getElementById("modalBox").innerHTML=`
-    <h3>${v.year||""} ${v.make||""} ${v.model||""}</h3>
-    <p>Plate: ${v.license_plate||""}</p>
-    <p>Owner: ${c?`${c.first_name} ${c.last_name}`:"Unknown"}</p>
-    <h4>Work Orders</h4>
-    ${w.map(w=>w.summary).join("<br/>")||"None"}
-    <br/><br/>
-    <button onclick="closeModal()">Close</button>
-  `;
-  document.getElementById("modal").classList.add("active");
-}
-
-function closeModal(){document.getElementById("modal").classList.remove("active")}
-
-document.getElementById("search").oninput=render;
-
-(async()=>{
-  vehicles=await fetchTable("vehicles");
-  customers=await fetchTable("customers");
-  orders=await fetchTable("work_orders");
+async function load(){
+  const token = await validateAuth();
+  if(!token) return location.replace("login.html");
+  vehicles = await fetchTable("vehicles", token);
   render();
-})();
+}
+
+search.oninput = render;
+load();
 </script>
 </body>
 </html>
