@@ -510,18 +510,18 @@
     
     <div class="setting-row">
       <div>
-        <div class="setting-label">Labor Rate</div>
-        <div class="setting-description">Hourly rate for labor calculations ($/hr)</div>
-      </div>
-      <input type="number" id="laborRate" min="0" step="1" placeholder="125" />
-    </div>
-
-    <div class="setting-row">
-      <div>
         <div class="setting-label">Business Name</div>
         <div class="setting-description">Your company or shop name</div>
       </div>
       <input type="text" id="businessName" placeholder="Business Name" />
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Contact Name</div>
+        <div class="setting-description">Primary contact person name</div>
+      </div>
+      <input type="text" id="contactName" placeholder="Contact Name" />
     </div>
 
     <div class="setting-row">
@@ -538,6 +538,14 @@
         <div class="setting-description">Primary contact phone number</div>
       </div>
       <input type="text" id="contactPhone" placeholder="(555) 555-5555" />
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Labor Rate</div>
+        <div class="setting-description">Hourly rate for labor calculations ($/hr)</div>
+      </div>
+      <input type="number" id="laborRate" min="0" step="1" placeholder="125" />
     </div>
 
     <button class="save-btn" onclick="saveSettings()">Save Settings</button>
@@ -594,6 +602,7 @@ const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').conten
 
 const RATE_KEY = "wl_labor_rate";
 const BUSINESS_NAME_KEY = "wl_business_name";
+const CONTACT_NAME_KEY = "wl_contact_name";
 const CONTACT_EMAIL_KEY = "wl_contact_email";
 const CONTACT_PHONE_KEY = "wl_contact_phone";
 
@@ -633,6 +642,9 @@ function loadSettings(){
   const businessName = localStorage.getItem(BUSINESS_NAME_KEY);
   if(businessName) document.getElementById('businessName').value = businessName;
 
+  const contactName = localStorage.getItem(CONTACT_NAME_KEY);
+  if(contactName) document.getElementById('contactName').value = contactName;
+
   const contactEmail = localStorage.getItem(CONTACT_EMAIL_KEY);
   if(contactEmail) document.getElementById('contactEmail').value = contactEmail;
 
@@ -643,6 +655,7 @@ function loadSettings(){
 function saveSettings(){
   const laborRate = document.getElementById('laborRate').value;
   const businessName = document.getElementById('businessName').value;
+  const contactName = document.getElementById('contactName').value;
   const contactEmail = document.getElementById('contactEmail').value;
   const contactPhone = document.getElementById('contactPhone').value;
 
@@ -651,6 +664,7 @@ function saveSettings(){
   }
   
   if(businessName) localStorage.setItem(BUSINESS_NAME_KEY, businessName);
+  if(contactName) localStorage.setItem(CONTACT_NAME_KEY, contactName);
   if(contactEmail) localStorage.setItem(CONTACT_EMAIL_KEY, contactEmail);
   if(contactPhone) localStorage.setItem(CONTACT_PHONE_KEY, contactPhone);
 
@@ -966,6 +980,10 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   // Get current user role
   const currentUser = window.currentUserEmployee;
   const canEdit = currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager');
+  
+  console.log('Current user:', currentUser);
+  console.log('Can edit:', canEdit);
+  console.log('Force edit mode:', forceEditMode);
 
   // Calculate years with company
   const hireDate = emp.hire_date ? new Date(emp.hire_date) : null;
@@ -1247,7 +1265,10 @@ async function handleNewEmployeeSubmit(e){
   e.preventDefault();
   
   const token = localStorage.getItem('sb_access_token');
-  if(!token) return;
+  if(!token) {
+    showAvatarMessage('Not authenticated', 'error');
+    return;
+  }
 
   const formData = {
     first_name: document.getElementById('newFirstName').value.trim(),
@@ -1257,10 +1278,12 @@ async function handleNewEmployeeSubmit(e){
     address: document.getElementById('newAddress').value.trim() || null,
     role: document.getElementById('newRole').value,
     hire_date: document.getElementById('newHireDate').value || null,
-    status: document.getElementById('newStatus').value,
-    pay_type: document.getElementById('newPayType').value,
+    status: document.getElementById('newStatus').value || 'active',
+    pay_type: document.getElementById('newPayType').value || 'hourly',
     pay_rate: parseFloat(document.getElementById('newPayRate').value) || 0
   };
+
+  console.log('Creating employee with data:', formData);
 
   try {
     showAvatarMessage('Adding employee...', 'muted');
@@ -1277,9 +1300,20 @@ async function handleNewEmployeeSubmit(e){
     });
 
     if(!response.ok) {
-      const error = await response.text();
-      throw new Error(error);
+      const errorText = await response.text();
+      console.error('Employee creation failed:', errorText);
+      let errorMessage = 'Failed to create employee';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.hint || errorText;
+      } catch {
+        errorMessage = errorText;
+      }
+      throw new Error(errorMessage);
     }
+
+    const newEmployee = await response.json();
+    console.log('Employee created successfully:', newEmployee);
 
     showAvatarMessage('Employee added successfully!', 'success');
     closeEmployeeModal();
