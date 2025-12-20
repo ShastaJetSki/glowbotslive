@@ -10,16 +10,49 @@
 
   <style>
     body { margin:0; padding:24px; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+    
+    /* pin app name top-right */
     .appName { position:fixed; top:10px; right:24px; font-size:12px; color:#9fb0c3; }
 
-    h1 { font-size:40px; margin:0; }
+    header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:16px; flex-wrap:wrap; }
+    h1 { margin:0; font-size:40px; }
+    h2 { margin:18px 0 10px; font-size:18px; }
 
+    /* Updated sub-nav under title */
     .sub-nav {
-      display:flex; gap:16px; margin:10px 0 18px;
-      padding-bottom:10px; border-bottom:1px solid #1f2937;
+      display:flex;
+      gap:16px;
+      margin: 8px 0 0;
+      padding-bottom:10px;
+      border-bottom:1px solid #1f2937;
+      flex-wrap:wrap;
     }
-    .sub-nav a { font-size:14px; color:#9ca3af; text-decoration:none; }
-    .sub-nav a.active { color:#38bdf8; }
+    .sub-nav-link {
+      font-size:14px;
+      color:#9ca3af;
+      text-decoration:none;
+      padding:4px 2px;
+      position:relative;
+    }
+    .sub-nav-link:hover { color:#e5e7eb; }
+    .sub-nav-link.active { color:#38bdf8; font-weight:500; }
+    .sub-nav-link.active::after {
+      content:"";
+      position:absolute;
+      left:0;
+      bottom:-11px;
+      width:100%;
+      height:2px;
+      background:#38bdf8;
+      border-radius:2px;
+    }
+
+    /* Button group for Settings and Logout */
+    .header-buttons {
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
 
     input {
       width:100%; padding:12px;
@@ -89,53 +122,79 @@
       background:#1a2535;
       color:#fff;
       cursor:pointer;
+      white-space:nowrap;
+    }
+    button:hover { background:#243648; }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      header { padding-bottom: 8px; }
+      h1 { font-size: 32px; }
+      .header-buttons { width: 100%; justify-content: flex-end; }
     }
   </style>
 </head>
 
 <body>
-<div class="appName">WorkLogicPro</div>
+  <div class="appName">WorkLogicPro</div>
 
-<header>
-  <h1>Customer Lookup</h1>
-  <div class="sub-nav">
-    <a href="dashboard-business.html">Dashboard</a>
-    <a class="active">Customers</a>
-    <a href="dashboard-vehicle-search.html">Vehicles</a>
-    <a href="dashboard-settings.html">Settings</a>
-  </div>
-</header>
+  <header>
+    <div>
+      <h1 id="tenantTitle">Customer Lookup</h1>
 
-<div class="stats">
-  <div class="stat-card">
-    <div class="stat-label">Total Customers</div>
-    <div class="stat-value" id="totalCustomers">0</div>
-  </div>
-</div>
+      <div class="sub-nav">
+        <a href="dashboard-business.html" class="sub-nav-link">Dashboard</a>
+        <a href="dashboard-customer-search.html" class="sub-nav-link active">Customers</a>
+        <a href="dashboard-vehicle-search.html" class="sub-nav-link">Vehicles</a>
+        <a href="dashboard-scheduling.html" class="sub-nav-link">Scheduling</a>
+      </div>
+    </div>
 
-<input id="search" placeholder="Search by name, phone, or email…" />
-<div class="list" id="results"></div>
+    <div class="header-buttons">
+      <button onclick="goToSettings()">Settings</button>
+      <button onclick="logout()">Logout</button>
+    </div>
+  </header>
 
-<!-- CUSTOMER MODAL -->
-<div id="customerModal" class="modal" onclick="if(event.target===this) closeModal()">
-  <div class="modalContent">
-    <h2 id="modalTitle"></h2>
-    <div id="modalCustomerInfo" class="muted"></div>
-
-    <h3 style="margin-top:16px;">Vehicles</h3>
-    <div id="customerVehicles" class="list"></div>
-
-    <div style="margin-top:16px; text-align:right;">
-      <button onclick="closeModal()">Close</button>
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Total Customers</div>
+      <div class="stat-value" id="totalCustomers">0</div>
     </div>
   </div>
-</div>
+
+  <input id="search" placeholder="Search by name, phone, or email…" />
+  <div class="list" id="results"></div>
+
+  <!-- CUSTOMER MODAL -->
+  <div id="customerModal" class="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modalContent">
+      <h2 id="modalTitle"></h2>
+      <div id="modalCustomerInfo" class="muted"></div>
+
+      <h3 style="margin-top:16px;">Vehicles</h3>
+      <div id="customerVehicles" class="list"></div>
+
+      <div style="margin-top:16px; text-align:right;">
+        <button onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
 <script>
 const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
 const API_BASE = `https://${PROJECT_REF}.supabase.co`;
 const REST_BASE = `${API_BASE}/rest/v1`;
 const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+
+function logout(){
+  localStorage.removeItem("sb_access_token");
+  location.replace("login.html");
+}
+
+function goToSettings(){
+  location.href = "dashboard-settings.html";
+}
 
 async function validateAuth(){
   const token = localStorage.getItem("sb_access_token");
@@ -219,6 +278,14 @@ async function load(){
 
   customers = await fetchTable("customers", token);
   totalCustomers.textContent = customers.length;
+  
+  // Set tenant title if available
+  const tenantEl = document.getElementById("tenantTitle");
+  if(customers.length > 0 && customers[0].tenant_name) {
+    tenantEl.textContent = customers[0].tenant_name;
+    document.title = customers[0].tenant_name + " - Customers";
+  }
+  
   render();
 }
 
