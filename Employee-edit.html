@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Employee - WorkLogic Pro</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .edit-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .edit-card {
+      background: #1a2535;
+      border: 1px solid #223044;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .form-section {
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #9fb0c3;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-row {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #e8eef6;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      background: #0f1621;
+      color: #e8eef6;
+      font-family: system-ui;
+      font-size: 14px;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .button-row {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-cancel {
+      background: transparent;
+      color: #9fb0c3;
+    }
+    .btn-cancel:hover {
+      background: #0f1621;
+    }
+    .btn-save {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: white;
+    }
+    .btn-save:hover {
+      background: #2563eb;
+    }
+    .btn-delete {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: white;
+      margin-right: auto;
+    }
+    .btn-delete:hover {
+      background: #dc2626;
+    }
+    .message {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid #10b981;
+      color: #10b981;
+    }
+    .error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+  </style>
+</head>
+<body>
+  <div class="edit-container">
+    <h1 id="pageTitle">Edit Employee</h1>
+    
+    <div id="messageArea"></div>
+
+    <form id="employeeForm" class="edit-card">
+      <div class="form-section">
+        <div class="section-title">Employee Information</div>
+        
+        <div class="form-row">
+          <label for="employeeName">Full Name *</label>
+          <input type="text" id="employeeName" required />
+        </div>
+
+        <div class="form-row">
+          <label for="employeeRole">Role *</label>
+          <select id="employeeRole" required>
+            <option value="owner">Owner</option>
+            <option value="manager">Manager</option>
+            <option value="technician">Technician</option>
+            <option value="service_advisor">Service Advisor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="laborRate">Hourly Labor Rate ($)</label>
+          <input type="number" id="laborRate" step="0.01" min="0" />
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button type="button" class="btn btn-delete" onclick="deleteEmployee()">Delete Employee</button>
+        <button type="button" class="btn btn-cancel" onclick="cancel()">Cancel</button>
+        <button type="submit" class="btn btn-save">Save Changes</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const API_BASE = "https://kxqkwpkmtgvmthpafoqx.supabase.co";
+    const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQzODE1MjksImV4cCI6MjA0OTk1NzUyOX0.wkret51JR-xvO92emp-2gFEFOPEP2u_wKvMKi4UrG-Q";
+    const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+
+    let employeeId = null;
+
+    async function validateAuth() {
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) return null;
+
+      try {
+        const response = await fetch(`${API_BASE}/auth/v1/user`, {
+          headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+        });
+        if (!response.ok) return null;
+        return { user: await response.json() };
+      } catch {
+        return null;
+      }
+    }
+
+    async function loadEmployee() {
+      const params = new URLSearchParams(window.location.search);
+      employeeId = params.get('id');
+
+      if (!employeeId) {
+        showMessage('No employee ID provided', 'error');
+        return;
+      }
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${FUNCTIONS_BASE}/employees/${employeeId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY
+          }
+        });
+
+        if (!response.ok) throw new Error('Failed to load employee');
+
+        const employee = await response.json();
+        
+        // Populate form
+        document.getElementById('employeeName').value = employee.name || '';
+        document.getElementById('employeeRole').value = employee.role || 'technician';
+        document.getElementById('laborRate').value = employee.hourly_labor_rate || '';
+        
+        document.getElementById('pageTitle').textContent = `Edit ${employee.name || 'Employee'}`;
+
+      } catch (err) {
+        console.error('Load error:', err);
+        showMessage('Error loading employee: ' + err.message, 'error');
+      }
+    }
+
+    async function saveEmployee(e) {
+      e.preventDefault();
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) return;
+
+      const updateData = {
+        name: document.getElementById('employeeName').value.trim(),
+        role: document.getElementById('employeeRole').value
+      };
+
+      const laborRate = document.getElementById('laborRate').value;
+      if (laborRate) {
+        updateData.hourly_labor_rate = parseFloat(laborRate);
+      }
+
+      try {
+        const response = await fetch(`${FUNCTIONS_BASE}/employees/${employeeId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY
+          },
+          body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error || 'Failed to update employee');
+        }
+
+        showMessage('Employee updated successfully!', 'success');
+        
+        setTimeout(() => {
+          window.location.href = 'dashboard-settings.html';
+        }, 1500);
+
+      } catch (err) {
+        console.error('Save error:', err);
+        showMessage('Error saving: ' + err.message, 'error');
+      }
+    }
+
+    async function deleteEmployee() {
+      if (!confirm('Are you sure you want to delete this employee? This action cannot be undone.')) {
+        return;
+      }
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${FUNCTIONS_BASE}/employees/${employeeId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete employee');
+        }
+
+        showMessage('Employee deleted successfully!', 'success');
+        
+        setTimeout(() => {
+          window.location.href = 'dashboard-settings.html';
+        }, 1000);
+
+      } catch (err) {
+        console.error('Delete error:', err);
+        showMessage('Error deleting: ' + err.message, 'error');
+      }
+    }
+
+    function cancel() {
+      window.location.href = 'dashboard-settings.html';
+    }
+
+    function showMessage(msg, type) {
+      const area = document.getElementById('messageArea');
+      area.innerHTML = `<div class="message ${type}">${msg}</div>`;
+      setTimeout(() => { area.innerHTML = ''; }, 5000);
+    }
+
+    document.getElementById('employeeForm').addEventListener('submit', saveEmployee);
+
+    async function init() {
+      const auth = await validateAuth();
+      if (!auth) {
+        window.location.href = 'login.html';
+        return;
+      }
+      loadEmployee();
+    }
+
+    init();
+  </script>
+</body>
+</html>
