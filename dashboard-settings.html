@@ -1048,7 +1048,7 @@ function showEmployeeMessage(msg, type = 'success'){
   setTimeout(() => { area.innerHTML = ''; }, 5000);
 }
 
-function viewEmployeeProfile(employeeId, forceEditMode = false){
+function viewEmployeeProfile(employeeId){
   const emp = employees.find(e => e.employee_id === employeeId);
   if(!emp) return;
 
@@ -1063,44 +1063,176 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   console.log('Can edit:', canEdit);
 
   const laborRate = emp.hourly_labor_rate || 0;
+  const metadata = emp.metadata || {};
+  
+  // Parse certifications
+  const certifications = metadata.certifications || [];
+  const certificationsText = Array.isArray(certifications) ? certifications.join('\n') : '';
+  
+  const hireDate = metadata.hire_date || '';
 
   const modalBody = document.getElementById('modalEmployeeBody');
 
-  // Always show read-only view with Edit link
-  modalBody.innerHTML = `
-    <div class="modal-section">
-      <div class="modal-section-title">Employee Information</div>
-      <div class="modal-info-row">
-        <span class="modal-label">Name</span>
-        <span class="modal-value">${name}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Role</span>
-        <span class="modal-value">${emp.role || 'Employee'}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Hourly Labor Rate</span>
-        <span class="modal-value">$${laborRate}/hr</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Status</span>
-        <span class="modal-value">${emp.is_active ? 'Active' : 'Inactive'}</span>
-      </div>
-    </div>
+  if(canEdit) {
+    // Editable form for owners/managers
+    modalBody.innerHTML = `
+      <form id="employeeProfileForm">
+        <div class="modal-section">
+          <div class="modal-section-title">Personal Information</div>
+          <div class="modal-info-row">
+            <span class="modal-label">First Name *</span>
+            <input type="text" class="modal-input" id="editFirstName" value="${emp.first_name || ''}" required />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Last Name *</span>
+            <input type="text" class="modal-input" id="editLastName" value="${emp.last_name || ''}" required />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Email</span>
+            <input type="email" class="modal-input" id="editEmail" value="${metadata.email || ''}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Phone</span>
+            <input type="tel" class="modal-input" id="editPhone" value="${metadata.phone || ''}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Address</span>
+            <input type="text" class="modal-input" id="editAddress" value="${metadata.address || ''}" />
+          </div>
+        </div>
 
-    <div class="modal-footer">
-      ${canEdit ? `<button type="button" class="modal-delete-btn" onclick="deleteEmployeeFromModal('${emp.employee_id}')">Delete</button>` : ''}
-      <button onclick="closeEmployeeModal()">Close</button>
-      ${canEdit ? `<button onclick="editEmployee('${emp.employee_id}')" class="modal-save-btn">Edit</button>` : ''}
-    </div>
-  `;
+        <div class="modal-section">
+          <div class="modal-section-title">Employment Details</div>
+          <div class="modal-info-row">
+            <span class="modal-label">Role *</span>
+            <select class="modal-select" id="editRole" required>
+              <option value="owner" ${emp.role === 'owner' ? 'selected' : ''}>Owner</option>
+              <option value="manager" ${emp.role === 'manager' ? 'selected' : ''}>Manager</option>
+              <option value="technician" ${emp.role === 'technician' ? 'selected' : ''}>Technician</option>
+              <option value="service_advisor" ${emp.role === 'service_advisor' ? 'selected' : ''}>Service Advisor</option>
+              <option value="admin" ${emp.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Hourly Labor Rate ($)</span>
+            <input type="number" class="modal-input" id="editLaborRate" value="${laborRate}" step="0.01" min="0" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Hire Date</span>
+            <input type="date" class="modal-input" id="editHireDate" value="${hireDate}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Status</span>
+            <select class="modal-select" id="editStatus">
+              <option value="true" ${emp.is_active ? 'selected' : ''}>Active</option>
+              <option value="false" ${!emp.is_active ? 'selected' : ''}>Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Certifications & Notes</div>
+          <div class="modal-info-row">
+            <span class="modal-label">Certifications</span>
+            <textarea class="modal-textarea" id="editCertifications" rows="3">${certificationsText}</textarea>
+            <div class="muted" style="margin-top:4px;">Enter one certification per line</div>
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Notes</span>
+            <textarea class="modal-textarea" id="editNotes" rows="3">${metadata.notes || ''}</textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="modal-delete-btn" onclick="deleteEmployeeFromModal('${emp.employee_id}')">Delete</button>
+          <button type="button" onclick="closeEmployeeModal()">Cancel</button>
+          <button type="submit" class="modal-save-btn">Save Changes</button>
+        </div>
+      </form>
+    `;
+
+    document.getElementById('employeeProfileForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveEmployeeProfile(emp.employee_id);
+    });
+
+  } else {
+    // Read-only view for non-managers
+    const yearsWithCompany = hireDate ? 
+      ((new Date() - new Date(hireDate)) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1) : 'N/A';
+
+    const certificationsHtml = certifications.length > 0
+      ? `<ul class="accomplishments-list">${certifications.map(c => `<li>${c}</li>`).join('')}</ul>`
+      : '<div style="color:#9fb0c3; font-size:13px;">No certifications recorded</div>';
+
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">Personal Information</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Name</span>
+          <span class="modal-value">${name}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Email</span>
+          <span class="modal-value">${metadata.email || 'Not set'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <span class="modal-value">${metadata.phone || 'Not set'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Address</span>
+          <span class="modal-value">${metadata.address || 'Not set'}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Employment Details</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Role</span>
+          <span class="modal-value">${emp.role || 'Employee'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Hourly Labor Rate</span>
+          <span class="modal-value">$${laborRate}/hr</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Hire Date</span>
+          <span class="modal-value">${hireDate ? new Date(hireDate).toLocaleDateString() : 'Not set'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Years with Company</span>
+          <span class="modal-value">${yearsWithCompany} years</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <span class="modal-value">${emp.is_active ? 'Active' : 'Inactive'}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Certifications</div>
+        ${certificationsHtml}
+      </div>
+
+      ${metadata.notes ? `
+        <div class="modal-section">
+          <div class="modal-section-title">Notes</div>
+          <div style="color:#e8eef6; font-size:13px; line-height:1.6;">${metadata.notes}</div>
+        </div>
+      ` : ''}
+
+      <div class="modal-footer">
+        <button onclick="closeEmployeeModal()">Close</button>
+      </div>
+    `;
+  }
 
   document.getElementById('employeeModal').classList.add('active');
-  document.body.style.overflow = 'hidden'; // Prevent background scroll
+  document.body.style.overflow = 'hidden';
 }
 
 function editEmployee(employeeId){
-  // Navigate to employee edit page
   window.location.href = `employee-edit.html?id=${employeeId}`;
 }
 
@@ -1112,7 +1244,7 @@ function addNewEmployee(){
   modalBody.innerHTML = `
     <form id="newEmployeeForm">
       <div class="modal-section">
-        <div class="modal-section-title">Employee Information</div>
+        <div class="modal-section-title">Personal Information</div>
         <div class="modal-info-row">
           <span class="modal-label">First Name *</span>
           <input type="text" class="modal-input" id="newFirstName" required />
@@ -1121,6 +1253,22 @@ function addNewEmployee(){
           <span class="modal-label">Last Name *</span>
           <input type="text" class="modal-input" id="newLastName" required />
         </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Email</span>
+          <input type="email" class="modal-input" id="newEmail" placeholder="employee@example.com" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <input type="tel" class="modal-input" id="newPhone" placeholder="(555) 123-4567" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Address</span>
+          <input type="text" class="modal-input" id="newAddress" placeholder="123 Main St, City, State ZIP" />
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Employment Details</div>
         <div class="modal-info-row">
           <span class="modal-label">Role *</span>
           <select class="modal-select" id="newRole" required>
@@ -1133,8 +1281,32 @@ function addNewEmployee(){
           </select>
         </div>
         <div class="modal-info-row">
-          <span class="modal-label">Hourly Labor Rate</span>
+          <span class="modal-label">Hourly Labor Rate ($)</span>
           <input type="number" class="modal-input" id="newLaborRate" placeholder="42.00" step="0.01" min="0" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Hire Date</span>
+          <input type="date" class="modal-input" id="newHireDate" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <select class="modal-select" id="newStatus">
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Certifications & Notes</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Certifications</span>
+          <textarea class="modal-textarea" id="newCertifications" placeholder="ASE Master Certified&#10;EPA 609 Certified&#10;State Inspection License" rows="3"></textarea>
+          <div class="muted" style="margin-top:4px;">Enter one certification per line</div>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Notes</span>
+          <textarea class="modal-textarea" id="newNotes" placeholder="Additional notes about this employee..." rows="3"></textarea>
         </div>
       </div>
 
@@ -1174,14 +1346,30 @@ async function handleNewEmployeeSubmit(e){
 
     const userData = await userResponse.json();
     
+    // Collect additional data for metadata
+    const certifications = document.getElementById('newCertifications').value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    const metadata = {
+      email: document.getElementById('newEmail').value.trim() || null,
+      phone: document.getElementById('newPhone').value.trim() || null,
+      address: document.getElementById('newAddress').value.trim() || null,
+      hire_date: document.getElementById('newHireDate').value || null,
+      certifications: certifications.length > 0 ? certifications : null,
+      notes: document.getElementById('newNotes').value.trim() || null
+    };
+
     // Build employee data with required fields
     const formData = {
       first_name: document.getElementById('newFirstName').value.trim(),
       last_name: document.getElementById('newLastName').value.trim(),
       role: document.getElementById('newRole').value,
-      user_id: userData.id,  // Current user's ID
-      tenant_id: userData.user_metadata?.tenant_id || userData.id, // Use tenant_id from metadata or user_id
-      is_active: true
+      user_id: userData.id,
+      tenant_id: userData.user_metadata?.tenant_id || userData.id,
+      is_active: document.getElementById('newStatus').value === 'true',
+      metadata: metadata
     };
 
     const laborRate = document.getElementById('newLaborRate').value;
@@ -1228,6 +1416,75 @@ async function handleNewEmployeeSubmit(e){
   } catch(err) {
     console.error('Add employee error:', err);
     showAvatarMessage('Error adding employee: ' + err.message, 'error');
+  }
+}
+
+async function saveEmployeeProfile(employeeId){
+  const token = localStorage.getItem('sb_access_token');
+  if(!token) return;
+
+  try {
+    // Collect certifications
+    const certifications = document.getElementById('editCertifications').value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    // Build metadata object
+    const metadata = {
+      email: document.getElementById('editEmail').value.trim() || null,
+      phone: document.getElementById('editPhone').value.trim() || null,
+      address: document.getElementById('editAddress').value.trim() || null,
+      hire_date: document.getElementById('editHireDate').value || null,
+      certifications: certifications.length > 0 ? certifications : null,
+      notes: document.getElementById('editNotes').value.trim() || null
+    };
+
+    const updateData = {
+      first_name: document.getElementById('editFirstName').value.trim(),
+      last_name: document.getElementById('editLastName').value.trim(),
+      role: document.getElementById('editRole').value,
+      is_active: document.getElementById('editStatus').value === 'true',
+      metadata: metadata
+    };
+
+    const laborRate = document.getElementById('editLaborRate').value;
+    if(laborRate && parseFloat(laborRate) >= 0) {
+      updateData.hourly_labor_rate = parseFloat(laborRate);
+    }
+
+    showAvatarMessage('Saving changes...', 'muted');
+
+    const response = await fetch(`${API_BASE}/rest/v1/employees?employee_id=eq.${employeeId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if(!response.ok) {
+      const errorText = await response.text();
+      console.error('Update failed:', errorText);
+      throw new Error('Failed to save employee profile');
+    }
+
+    // Update local data
+    const emp = employees.find(e => e.employee_id === employeeId);
+    if(emp) {
+      Object.assign(emp, updateData);
+    }
+
+    showAvatarMessage('Profile updated successfully!', 'success');
+    closeEmployeeModal();
+    renderEmployees();
+
+  } catch(err) {
+    console.error('Save error:', err);
+    showAvatarMessage('Error saving profile: ' + err.message, 'error');
   }
 }
 
