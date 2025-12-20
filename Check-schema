@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Schema Check</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #0f1621;
+      color: #e8eef6;
+    }
+    .card {
+      background: #1a2535;
+      border: 1px solid #223044;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    h1 { color: #e8eef6; }
+    h2 { color: #9fb0c3; margin-top: 0; }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background: #2563eb; }
+    pre {
+      background: #0f1621;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      border: 1px solid #223044;
+    }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>Database Schema Checker</h1>
+
+  <div class="card">
+    <h2>Check Employees Table</h2>
+    <button onclick="checkEmployeesSchema()">Check Employees Table Columns</button>
+    <div id="employeesResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>Sample Employee Data</h2>
+    <button onclick="getSampleEmployee()">Get Sample Employee Record</button>
+    <div id="sampleResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>Create Minimal Employee</h2>
+    <p>Try to create an employee with only first_name and last_name (minimal fields)</p>
+    <button onclick="createMinimalEmployee()">Test Create</button>
+    <div id="createResult"></div>
+  </div>
+
+  <script>
+    const API_BASE = "https://kxqkwpkmtgvmthpafoqx.supabase.co";
+    const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQzODE1MjksImV4cCI6MjA0OTk1NzUyOX0.wkret51JR-xvO92emp-2gFEFOPEP2u_wKvMKi4UrG-Q";
+    const REST_BASE = `${API_BASE}/rest/v1`;
+    const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+
+    async function checkEmployeesSchema() {
+      const result = document.getElementById('employeesResult');
+      result.innerHTML = '<p>Checking...</p>';
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) {
+        result.innerHTML = '<p class="error">Not logged in. Please log in first on the main site.</p>';
+        return;
+      }
+
+      try {
+        // Try to get all columns by requesting with select=*
+        const response = await fetch(`${REST_BASE}/employees?select=*&limit=1`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.length > 0) {
+          const columns = Object.keys(data[0]);
+          result.innerHTML = `
+            <div class="success">
+              <h3>Found ${columns.length} columns:</h3>
+              <pre>${JSON.stringify(columns, null, 2)}</pre>
+              <h3>Sample data structure:</h3>
+              <pre>${JSON.stringify(data[0], null, 2)}</pre>
+            </div>
+          `;
+        } else {
+          result.innerHTML = '<p class="error">No employees found in table. Cannot determine columns.</p>';
+        }
+      } catch (err) {
+        result.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+        console.error(err);
+      }
+    }
+
+    async function getSampleEmployee() {
+      const result = document.getElementById('sampleResult');
+      result.innerHTML = '<p>Loading...</p>';
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) {
+        result.innerHTML = '<p class="error">Not logged in.</p>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${FUNCTIONS_BASE}/employees?limit=1`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = await response.json();
+        result.innerHTML = `
+          <div class="success">
+            <h3>Sample Employee Record:</h3>
+            <pre>${JSON.stringify(data[0] || {}, null, 2)}</pre>
+          </div>
+        `;
+      } catch (err) {
+        result.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+      }
+    }
+
+    async function createMinimalEmployee() {
+      const result = document.getElementById('createResult');
+      result.innerHTML = '<p>Attempting to create test employee...</p>';
+
+      const token = localStorage.getItem('sb_access_token');
+      if (!token) {
+        result.innerHTML = '<p class="error">Not logged in.</p>';
+        return;
+      }
+
+      try {
+        // Try with absolute minimal data
+        const testData = {
+          first_name: "Test",
+          last_name: "Employee"
+        };
+
+        result.innerHTML += `<p>Sending data: <pre>${JSON.stringify(testData, null, 2)}</pre></p>`;
+
+        const response = await fetch(`${REST_BASE}/employees`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': ANON_KEY,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(testData)
+        });
+
+        const responseText = await response.text();
+        
+        if (!response.ok) {
+          result.innerHTML += `<p class="error">Failed with status ${response.status}:</p><pre>${responseText}</pre>`;
+        } else {
+          const created = JSON.parse(responseText);
+          result.innerHTML += `<div class="success"><h3>Success! Created employee:</h3><pre>${JSON.stringify(created, null, 2)}</pre></div>`;
+        }
+      } catch (err) {
+        result.innerHTML += `<p class="error">Error: ${err.message}</p>`;
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>
