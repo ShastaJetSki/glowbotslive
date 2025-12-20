@@ -116,7 +116,7 @@
 
     <form id="employeeForm" class="edit-card">
       <div class="form-section">
-        <div class="section-title">Employee Information</div>
+        <div class="section-title">Personal Information</div>
         
         <div class="form-row">
           <label for="firstName">First Name *</label>
@@ -127,6 +127,25 @@
           <label for="lastName">Last Name *</label>
           <input type="text" id="lastName" required />
         </div>
+
+        <div class="form-row">
+          <label for="email">Email</label>
+          <input type="email" id="email" />
+        </div>
+
+        <div class="form-row">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" />
+        </div>
+
+        <div class="form-row">
+          <label for="address">Address</label>
+          <input type="text" id="address" />
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-title">Employment Details</div>
 
         <div class="form-row">
           <label for="employeeRole">Role *</label>
@@ -145,11 +164,31 @@
         </div>
 
         <div class="form-row">
+          <label for="hireDate">Hire Date</label>
+          <input type="date" id="hireDate" />
+        </div>
+
+        <div class="form-row">
           <label for="isActive">Status</label>
           <select id="isActive">
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </select>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-title">Certifications & Notes</div>
+
+        <div class="form-row">
+          <label for="certifications">Certifications</label>
+          <textarea id="certifications" rows="4" style="width:100%; padding:10px; background:#0f1621; color:#e8eef6; border:1px solid #223044; border-radius:8px; font-family:monospace;"></textarea>
+          <div style="color:#9fb0c3; font-size:12px; margin-top:4px;">Enter one certification per line</div>
+        </div>
+
+        <div class="form-row">
+          <label for="notes">Notes</label>
+          <textarea id="notes" rows="4" style="width:100%; padding:10px; background:#0f1621; color:#e8eef6; border:1px solid #223044; border-radius:8px;"></textarea>
         </div>
       </div>
 
@@ -199,7 +238,6 @@
       }
 
       try {
-        // Use REST API with filter
         const response = await fetch(`${API_BASE}/rest/v1/employees?employee_id=eq.${employeeId}&select=*`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -215,13 +253,26 @@
         }
 
         const employee = employees[0];
+        const metadata = employee.metadata || {};
         
-        // Populate form
+        // Populate form - Basic fields
         document.getElementById('firstName').value = employee.first_name || '';
         document.getElementById('lastName').value = employee.last_name || '';
         document.getElementById('employeeRole').value = employee.role || 'technician';
         document.getElementById('laborRate').value = employee.hourly_labor_rate || '';
         document.getElementById('isActive').value = employee.is_active ? 'true' : 'false';
+        
+        // Populate form - Metadata fields
+        document.getElementById('email').value = metadata.email || '';
+        document.getElementById('phone').value = metadata.phone || '';
+        document.getElementById('address').value = metadata.address || '';
+        document.getElementById('hireDate').value = metadata.hire_date || '';
+        document.getElementById('notes').value = metadata.notes || '';
+        
+        // Populate certifications
+        const certifications = metadata.certifications || [];
+        const certificationsText = Array.isArray(certifications) ? certifications.join('\n') : '';
+        document.getElementById('certifications').value = certificationsText;
         
         const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
         document.getElementById('pageTitle').textContent = `Edit ${fullName || 'Employee'}`;
@@ -238,11 +289,28 @@
       const token = localStorage.getItem('sb_access_token');
       if (!token) return;
 
+      // Collect certifications
+      const certifications = document.getElementById('certifications').value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      // Build metadata object
+      const metadata = {
+        email: document.getElementById('email').value.trim() || null,
+        phone: document.getElementById('phone').value.trim() || null,
+        address: document.getElementById('address').value.trim() || null,
+        hire_date: document.getElementById('hireDate').value || null,
+        certifications: certifications.length > 0 ? certifications : null,
+        notes: document.getElementById('notes').value.trim() || null
+      };
+
       const updateData = {
         first_name: document.getElementById('firstName').value.trim(),
         last_name: document.getElementById('lastName').value.trim(),
         role: document.getElementById('employeeRole').value,
-        is_active: document.getElementById('isActive').value === 'true'
+        is_active: document.getElementById('isActive').value === 'true',
+        metadata: metadata
       };
 
       const laborRate = document.getElementById('laborRate').value;
