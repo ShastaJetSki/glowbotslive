@@ -80,22 +80,23 @@ function showAvatarMessage(msg,type){
    ✅ FIXED UPLOAD — DROP-IN
    =========================== */
 async function uploadAvatar(employeeId, file){
-  const token = localStorage.getItem("sb_access_token");
+  const token = localStorage.getItem('sb_access_token');
   if(!token) return;
 
   try {
-    showAvatarMessage("Uploading photo…","muted");
+    showAvatarMessage('Uploading photo...', 'muted');
 
-    const ext = file.name.split(".").pop();
-    const fileName = `${employeeId}-${Date.now()}.${ext}`;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${employeeId}-${Date.now()}.${fileExt}`;
 
+    // REQUIRED by Supabase Storage
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append('file', file);
 
-    const upload = await fetch(
+    const uploadResponse = await fetch(
       `${STORAGE_URL}/object/avatars/${fileName}`,
       {
-        method: "POST",
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           apikey: ANON_KEY
@@ -103,6 +104,40 @@ async function uploadAvatar(employeeId, file){
         body: formData
       }
     );
+
+    if(!uploadResponse.ok){
+      throw new Error(await uploadResponse.text());
+    }
+
+    const updateResponse = await fetch(
+      `${REST_BASE}/employees?employee_id=eq.${employeeId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
+        },
+        body: JSON.stringify({ avatar_url: fileName })
+      }
+    );
+
+    if(!updateResponse.ok){
+      throw new Error('Failed to update employee record');
+    }
+
+    const emp = employees.find(e => e.employee_id === employeeId);
+    if(emp) emp.avatar_url = fileName;
+
+    showAvatarMessage('Photo uploaded successfully!', 'success');
+    renderEmployees();
+
+  } catch(err){
+    console.error('Upload error:', err);
+    showAvatarMessage('Error uploading photo: ' + err.message, 'error');
+  }
+}
+
 
     if(!upload.ok){
       throw new Error(await upload.text());
@@ -141,23 +176,49 @@ async function uploadAvatar(employeeId, file){
    MATCHING REMOVE — DROP-IN
    =========================== */
 async function removeAvatar(employeeId){
-  const token = localStorage.getItem("sb_access_token");
+  if(!confirm('Are you sure you want to remove this photo?')) return;
+
+  const token = localStorage.getItem('sb_access_token');
   if(!token) return;
 
-  const emp = employees.find(e => e.employee_id === employeeId);
-  if(!emp || !emp.avatar_url) return;
-
   try {
+    const emp = employees.find(e => e.employee_id === employeeId);
+    if(!emp || !emp.avatar_url) return;
+
     await fetch(
       `${STORAGE_URL}/object/avatars/${emp.avatar_url}`,
       {
-        method:"DELETE",
-        headers:{
-          Authorization:`Bearer ${token}`,
-          apikey:ANON_KEY
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
         }
       }
     );
+
+    await fetch(
+      `${REST_BASE}/employees?employee_id=eq.${employeeId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
+        },
+        body: JSON.stringify({ avatar_url: null })
+      }
+    );
+
+    emp.avatar_url = null;
+    showAvatarMessage('Photo removed successfully!', 'success');
+    renderEmployees();
+
+  } catch(err){
+    console.error('Remove error:', err);
+    showAvatarMessage('Error removing photo: ' + err.message, 'error');
+  }
+}
+
 
     await fetch(
       `${REST_BASE}/employees?employee_id=eq.${employeeId}`,
