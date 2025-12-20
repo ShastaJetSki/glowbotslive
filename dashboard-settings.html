@@ -180,11 +180,35 @@
       background-position: center;
       cursor: pointer;
       transition: all 0.2s ease;
+      position: relative;
     }
 
     .employee-avatar-preview:hover {
       border-color: #3b82f6;
       transform: scale(1.05);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .employee-avatar-preview::after {
+      content: 'Click to edit';
+      position: absolute;
+      bottom: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(59, 130, 246, 0.95);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .employee-avatar-preview:hover::after {
+      opacity: 1;
     }
 
     .employee-name {
@@ -838,7 +862,7 @@ function renderEmployees(){
 
     return `
       <div class="employee-card">
-        <div class="employee-avatar-preview" style="${avatarStyle}" onclick="viewEmployeeProfile('${emp.employee_id}')">
+        <div class="employee-avatar-preview" style="${avatarStyle}" onclick="viewEmployeeProfile('${emp.employee_id}')" title="Click to view/edit profile">
           ${!avatarUrl ? initials : ''}
         </div>
         <div class="employee-name">${name}</div>
@@ -871,12 +895,59 @@ function renderEmployees(){
           </div>
         </div>
 
-        <button class="view-profile-btn" onclick="viewEmployeeProfile('${emp.employee_id}')">
-          View Profile
+        <button class="remove-btn" onclick="confirmDeleteEmployee('${emp.employee_id}', '${name}')" style="margin-top:8px;">
+          Delete Employee
         </button>
       </div>
     `;
   }).join('');
+}
+
+function confirmDeleteEmployee(employeeId, name) {
+  if(confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
+    deleteEmployeeFromCard(employeeId);
+  }
+}
+
+async function deleteEmployeeFromCard(employeeId) {
+  const token = localStorage.getItem('sb_access_token');
+  if(!token) return;
+
+  try {
+    showAvatarMessage('Deleting employee...', 'muted');
+
+    // Delete avatar if exists
+    const emp = employees.find(e => e.employee_id === employeeId);
+    if(emp && emp.avatar_url) {
+      await fetch(`${STORAGE_URL}/object/avatars/${emp.avatar_url}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'apikey': ANON_KEY
+        }
+      });
+    }
+
+    // Delete employee
+    const response = await fetch(`${API_BASE}/rest/v1/employees?employee_id=eq.${employeeId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY
+      }
+    });
+
+    if(!response.ok) {
+      throw new Error('Failed to delete employee');
+    }
+
+    showAvatarMessage('Employee deleted successfully!', 'success');
+    await loadEmployees();
+
+  } catch(err) {
+    console.error('Delete employee error:', err);
+    showAvatarMessage('Error deleting employee: ' + err.message, 'error');
+  }
 }
 
 function getInitialsFromFullName(fullName) {
