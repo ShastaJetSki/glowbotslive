@@ -478,9 +478,14 @@
 
   <!-- Employee Avatars - MOVED TO TOP -->
   <div class="card">
-    <h2>Employee Profiles</h2>
-    <div class="setting-description" style="margin-bottom:16px;">
-      Manage employee photos, compensation, and profile information. Click "View Profile" for full details.
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div>
+        <h2 style="margin:0;">Employee Profiles</h2>
+        <div class="setting-description">
+          Manage employee photos, compensation, and profile information. Click on an employee to view/edit details.
+        </div>
+      </div>
+      <button onclick="addNewEmployee()" style="white-space:nowrap;">+ Add Employee</button>
     </div>
     <div id="employeeAvatars" class="employee-grid">
       <div style="text-align:center; color:#9fb0c3; padding:20px;">Loading employees...</div>
@@ -537,63 +542,6 @@
 
     <button class="save-btn" onclick="saveSettings()">Save Settings</button>
     <div id="saveMessage"></div>
-  </div>
-
-  <!-- Employee Onboarding -->
-  <div class="card">
-    <h2>Employee Onboarding</h2>
-    <div class="setting-description" style="margin-bottom:16px;">
-      Add new employees to your team. They will receive login credentials via email.
-    </div>
-
-    <form id="employeeForm" style="background:#0b0f14; border:1px solid #223044; border-radius:12px; padding:20px; margin-bottom:16px;">
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">First Name *</label>
-          <input type="text" id="empFirstName" required style="width:100%;" />
-        </div>
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">Last Name *</label>
-          <input type="text" id="empLastName" required style="width:100%;" />
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">Email *</label>
-          <input type="email" id="empEmail" required style="width:100%;" />
-        </div>
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">Phone</label>
-          <input type="text" id="empPhone" placeholder="(555) 555-5555" style="width:100%;" />
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">Role *</label>
-          <select id="empRole" required style="width:100%;">
-            <option value="">Select role...</option>
-            <option value="owner">Owner</option>
-            <option value="manager">Manager</option>
-            <option value="technician">Technician</option>
-            <option value="service_advisor">Service Advisor</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div>
-          <label class="setting-label" style="display:block; margin-bottom:6px;">Status</label>
-          <select id="empStatus" style="width:100%;">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      <button type="submit" class="save-btn" style="margin-top:0;">Add Employee</button>
-    </form>
-
-    <div id="employeeMessage"></div>
   </div>
 
   <!-- Account Settings -->
@@ -986,54 +934,6 @@ async function loadEmployees(){
   }
 }
 
-async function handleEmployeeSubmit(e){
-  e.preventDefault();
-  
-  const token = localStorage.getItem('sb_access_token');
-  if(!token) return;
-
-  const formData = {
-    first_name: document.getElementById('empFirstName').value.trim(),
-    last_name: document.getElementById('empLastName').value.trim(),
-    email: document.getElementById('empEmail').value.trim(),
-    phone: document.getElementById('empPhone').value.trim() || null,
-    role: document.getElementById('empRole').value,
-    status: document.getElementById('empStatus').value || 'active'
-  };
-
-  try {
-    showEmployeeMessage('Adding employee...', 'muted');
-
-    const response = await fetch(`${REST_BASE}/employees`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'apikey': ANON_KEY,
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(formData)
-    });
-
-    if(!response.ok) {
-      const error = await response.text();
-      throw new Error(error);
-    }
-
-    showEmployeeMessage('Employee added successfully!', 'success');
-    
-    // Reset form
-    document.getElementById('employeeForm').reset();
-    
-    // Reload employees
-    await loadEmployees();
-
-  } catch(err) {
-    console.error('Add employee error:', err);
-    showEmployeeMessage('Error adding employee: ' + err.message, 'error');
-  }
-}
-
 function showEmployeeMessage(msg, type = 'success'){
   const area = document.getElementById('employeeMessage');
   area.innerHTML = `<div class="${type}" style="margin-top:12px;">${msg}</div>`;
@@ -1068,7 +968,10 @@ function viewEmployeeProfile(employeeId){
 
   const modalBody = document.getElementById('modalEmployeeBody');
   
-  if(canEdit) {
+  // Store mode in a data attribute
+  const isEditMode = modalBody.dataset.editMode === 'true';
+
+  if(canEdit && isEditMode) {
     // Editable form for owners/managers
     modalBody.innerHTML = `
       <form id="employeeProfileForm">
@@ -1145,7 +1048,7 @@ function viewEmployeeProfile(employeeId){
 
         <div class="modal-footer">
           <button type="button" class="modal-delete-btn" onclick="deleteEmployeeFromModal('${emp.employee_id}')">Delete Employee</button>
-          <button type="button" onclick="closeEmployeeModal()">Cancel</button>
+          <button type="button" onclick="cancelEdit('${emp.employee_id}')">Cancel</button>
           <button type="submit" class="modal-save-btn">Save Changes</button>
         </div>
       </form>
@@ -1157,7 +1060,7 @@ function viewEmployeeProfile(employeeId){
     });
 
   } else {
-    // Read-only view for others
+    // Read-only view
     const payDisplay = payType === 'hourly' 
       ? `$${payRate}/hr`
       : payType === 'percentage'
@@ -1230,12 +1133,157 @@ function viewEmployeeProfile(employeeId){
       </div>
 
       <div class="modal-footer">
+        ${canEdit ? `<button onclick="enableEdit('${emp.employee_id}')" class="modal-save-btn">Edit</button>` : ''}
         <button onclick="closeEmployeeModal()">Close</button>
       </div>
     `;
   }
 
   document.getElementById('employeeModal').classList.add('active');
+}
+
+function enableEdit(employeeId){
+  const modalBody = document.getElementById('modalEmployeeBody');
+  modalBody.dataset.editMode = 'true';
+  viewEmployeeProfile(employeeId);
+}
+
+function cancelEdit(employeeId){
+  const modalBody = document.getElementById('modalEmployeeBody');
+  modalBody.dataset.editMode = 'false';
+  viewEmployeeProfile(employeeId);
+}
+
+function addNewEmployee(){
+  // Set modal for new employee mode
+  document.getElementById('modalEmployeeName').textContent = 'Add New Employee';
+  
+  const modalBody = document.getElementById('modalEmployeeBody');
+  modalBody.innerHTML = `
+    <form id="newEmployeeForm">
+      <div class="modal-section">
+        <div class="modal-section-title">Personal Information</div>
+        <div class="modal-info-row">
+          <span class="modal-label">First Name *</span>
+          <input type="text" class="modal-input" id="newFirstName" required />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Last Name *</span>
+          <input type="text" class="modal-input" id="newLastName" required />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Email *</span>
+          <input type="email" class="modal-input" id="newEmail" required />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <input type="tel" class="modal-input" id="newPhone" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Address</span>
+          <input type="text" class="modal-input" id="newAddress" />
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Employment Details</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Role *</span>
+          <select class="modal-select" id="newRole" required>
+            <option value="">Select role...</option>
+            <option value="owner">Owner</option>
+            <option value="manager">Manager</option>
+            <option value="technician">Technician</option>
+            <option value="service_advisor">Service Advisor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Hire Date</span>
+          <input type="date" class="modal-input" id="newHireDate" />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <select class="modal-select" id="newStatus">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Compensation</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Pay Type</span>
+          <select class="modal-select" id="newPayType">
+            <option value="hourly">Hourly</option>
+            <option value="percentage">Percentage</option>
+            <option value="salary">Salary</option>
+          </select>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Pay Rate</span>
+          <input type="number" class="modal-input" id="newPayRate" value="0" step="0.01" />
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" onclick="closeEmployeeModal()">Cancel</button>
+        <button type="submit" class="modal-save-btn">Add Employee</button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById('newEmployeeForm').addEventListener('submit', handleNewEmployeeSubmit);
+  document.getElementById('employeeModal').classList.add('active');
+}
+
+async function handleNewEmployeeSubmit(e){
+  e.preventDefault();
+  
+  const token = localStorage.getItem('sb_access_token');
+  if(!token) return;
+
+  const formData = {
+    first_name: document.getElementById('newFirstName').value.trim(),
+    last_name: document.getElementById('newLastName').value.trim(),
+    email: document.getElementById('newEmail').value.trim(),
+    phone: document.getElementById('newPhone').value.trim() || null,
+    address: document.getElementById('newAddress').value.trim() || null,
+    role: document.getElementById('newRole').value,
+    hire_date: document.getElementById('newHireDate').value || null,
+    status: document.getElementById('newStatus').value,
+    pay_type: document.getElementById('newPayType').value,
+    pay_rate: parseFloat(document.getElementById('newPayRate').value) || 0
+  };
+
+  try {
+    showAvatarMessage('Adding employee...', 'muted');
+
+    const response = await fetch(`${REST_BASE}/employees`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(formData)
+    });
+
+    if(!response.ok) {
+      const error = await response.text();
+      throw new Error(error);
+    }
+
+    showAvatarMessage('Employee added successfully!', 'success');
+    closeEmployeeModal();
+    await loadEmployees();
+
+  } catch(err) {
+    console.error('Add employee error:', err);
+    showAvatarMessage('Error adding employee: ' + err.message, 'error');
+  }
 }
 
 async function saveEmployeeProfile(employeeId){
@@ -1342,6 +1390,8 @@ async function deleteEmployeeFromModal(employeeId){
 }
 
 function closeEmployeeModal(){
+  const modalBody = document.getElementById('modalEmployeeBody');
+  modalBody.dataset.editMode = 'false';
   document.getElementById('employeeModal').classList.remove('active');
 }
 
@@ -1361,9 +1411,6 @@ async function load(){
     document.getElementById('tenantTitle').textContent = businessName + ' - Settings';
     document.title = businessName + ' - Settings';
   }
-
-  // Add employee form submit handler
-  document.getElementById('employeeForm').addEventListener('submit', handleEmployeeSubmit);
 }
 
 load();
