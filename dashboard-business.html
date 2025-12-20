@@ -246,11 +246,142 @@
       font-weight:600;
     }
 
+    /* Quick Summary Modal */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.85);
+      z-index:999;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    }
+    .modal.active { display:flex; }
+
+    .modal-content {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:24px;
+      width:100%;
+      max-width:600px;
+      max-height:85vh;
+      overflow-y:auto;
+    }
+
+    .modal-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      margin-bottom:20px;
+      padding-bottom:16px;
+      border-bottom:1px solid #223044;
+    }
+
+    .modal-title {
+      font-size:20px;
+      font-weight:700;
+    }
+
+    .modal-close {
+      background:transparent;
+      border:none;
+      color:#9fb0c3;
+      font-size:24px;
+      cursor:pointer;
+      padding:0;
+      width:32px;
+      height:32px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .modal-close:hover {
+      color:#e8eef6;
+      background:#1a2535;
+      border-radius:8px;
+    }
+
+    .modal-section {
+      margin-bottom:20px;
+    }
+
+    .modal-section:last-child {
+      margin-bottom:0;
+    }
+
+    .modal-section-title {
+      font-size:12px;
+      font-weight:600;
+      color:#9fb0c3;
+      margin-bottom:10px;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .modal-info-row {
+      display:flex;
+      justify-content:space-between;
+      padding:8px 0;
+      border-bottom:1px solid #223044;
+      gap:16px;
+    }
+
+    .modal-info-row:last-child {
+      border-bottom:none;
+    }
+
+    .modal-label {
+      font-size:13px;
+      color:#9fb0c3;
+      flex-shrink:0;
+    }
+
+    .modal-value {
+      font-size:13px;
+      font-weight:500;
+      text-align:right;
+      flex-grow:1;
+    }
+
+    .modal-value a {
+      color:#60a5fa;
+      text-decoration:none;
+    }
+
+    .modal-value a:hover {
+      color:#38bdf8;
+      text-decoration:underline;
+    }
+
+    .modal-footer {
+      margin-top:20px;
+      padding-top:16px;
+      border-top:1px solid #223044;
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+    }
+
+    .btn-details {
+      background:#3b82f6;
+      border-color:#3b82f6;
+    }
+
+    .btn-details:hover {
+      background:#2563eb;
+    }
+
     /* Mobile responsive */
     @media (max-width: 640px) {
       header { padding-bottom: 8px; }
       h1 { font-size: 32px; }
       .header-buttons { width: 100%; justify-content: flex-end; }
+      .modal-content { padding:16px; max-height:90vh; }
+      .modal-info-row { flex-direction:column; gap:4px; }
+      .modal-value { text-align:left; }
     }
   </style>
 </head>
@@ -304,6 +435,21 @@
     <button onclick="createWorkOrder()">+ New Work Order</button>
   </h2>
   <div id="workOrders">Loading…</div>
+
+  <!-- Quick Summary Modal -->
+  <div id="quickSummaryModal" class="modal" onclick="if(event.target===this) closeQuickSummary()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Work Order Summary</div>
+        <button class="modal-close" onclick="closeQuickSummary()">×</button>
+      </div>
+      <div id="modalBody"></div>
+      <div class="modal-footer">
+        <button onclick="closeQuickSummary()">Close</button>
+        <button class="btn-details" id="viewDetailsBtn">View Full Details</button>
+      </div>
+    </div>
+  </div>
 
 <script>
   const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
@@ -794,8 +940,156 @@
   }
 
   window.viewWorkOrder = function(id){
-    // Navigate to work order detail page
-    location.href = `work-order.html?id=${id}`;
+    // Show quick summary modal instead of navigating
+    const wo = orders.find(w => (w.work_order_id || w.id) == id);
+    if(!wo) return;
+
+    // Get customer info
+    const customer = customersById[wo.customer_id];
+    const customerName = customer 
+      ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown Customer'
+      : (wo.customer_name || 'Unknown Customer');
+    
+    const customerPhone = customer?.phone || wo.customer_phone || null;
+    const customerEmail = customer?.email || wo.customer_email || null;
+
+    // Get vehicle info
+    const vehicle = vehiclesById[wo.vehicle_id];
+    const vehicleDisplay = vehicle
+      ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+      : (wo.vehicle_description || 'Vehicle not specified');
+    
+    const vehiclePlate = vehicle?.license_plate || null;
+    const vehicleVin = vehicle?.vin_or_cf_number || null;
+    const vehicleColor = vehicle?.color || null;
+
+    // Get tech info
+    const techId = wo.assigned_employee_id;
+    const tech = techId
+      ? (employeesById[techId]?.name
+          || `${employeesById[techId]?.first_name||""} ${employeesById[techId]?.last_name||""}`.trim()
+          || "Unknown Tech")
+      : "Unassigned";
+
+    // Format dates
+    const scheduleInfo = formatDateTime(wo.scheduled_start);
+    const scheduleDisplay = scheduleInfo 
+      ? `${scheduleInfo.date} @ ${scheduleInfo.time}`
+      : 'Not scheduled';
+
+    // Job description
+    const jobDesc = wo.summary || w.description || 'No description';
+
+    // Priority
+    const priority = (wo.priority || 'low').toLowerCase();
+    const priorityDisplay = priority.charAt(0).toUpperCase() + priority.slice(1);
+
+    // Status
+    const status = wo.status || 'draft';
+    const statusDisplay = formatStatus(status);
+
+    // Hours and revenue
+    const hours = jobHours(wo);
+    const estimate = formatHrsRev(hours);
+
+    // Build modal content
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">Work Order</div>
+        <div class="modal-info-row">
+          <span class="modal-label">ID</span>
+          <span class="modal-value">#${wo.work_order_id || wo.id || 'N/A'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Priority</span>
+          <span class="modal-value"><span class="badge priority-${priority}">${priorityDisplay}</span></span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <span class="modal-value"><span class="badge status status-${status.replace(/_/g, '-')}">${statusDisplay}</span></span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Description</span>
+          <span class="modal-value">${jobDesc}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Customer</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Name</span>
+          <span class="modal-value">${customerName}</span>
+        </div>
+        ${customerPhone ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <span class="modal-value"><a href="tel:${customerPhone}" onclick="event.stopPropagation()">${customerPhone}</a></span>
+        </div>
+        ` : ''}
+        ${customerEmail ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Email</span>
+          <span class="modal-value"><a href="mailto:${customerEmail}" onclick="event.stopPropagation()">${customerEmail}</a></span>
+        </div>
+        ` : ''}
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Vehicle</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Vehicle</span>
+          <span class="modal-value">${vehicleDisplay}</span>
+        </div>
+        ${vehiclePlate ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Plate</span>
+          <span class="modal-value">${vehiclePlate}</span>
+        </div>
+        ` : ''}
+        ${vehicleVin ? `
+        <div class="modal-info-row">
+          <span class="modal-label">VIN</span>
+          <span class="modal-value">${vehicleVin}</span>
+        </div>
+        ` : ''}
+        ${vehicleColor ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Color</span>
+          <span class="modal-value">${vehicleColor}</span>
+        </div>
+        ` : ''}
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Schedule & Assignment</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Assigned To</span>
+          <span class="modal-value">${tech}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Scheduled</span>
+          <span class="modal-value">${scheduleDisplay}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Estimate</span>
+          <span class="modal-value">${estimate}</span>
+        </div>
+      </div>
+    `;
+
+    // Set up details button
+    const detailsBtn = document.getElementById('viewDetailsBtn');
+    detailsBtn.onclick = function() {
+      location.href = `work-order.html?id=${wo.work_order_id || wo.id}`;
+    };
+
+    // Show modal
+    document.getElementById('quickSummaryModal').classList.add('active');
+  };
+
+  window.closeQuickSummary = function(){
+    document.getElementById('quickSummaryModal').classList.remove('active');
   };
 
   function showFatal(err){
