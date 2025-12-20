@@ -178,28 +178,13 @@
       overflow: hidden;
       background-size: cover;
       background-position: center;
-      position: relative;
-    }
-
-    .download-avatar-btn {
-      position: absolute;
-      bottom: 4px;
-      right: 4px;
-      width: 28px;
-      height: 28px;
-      padding: 0;
-      background: #1a2535;
-      border: 1px solid #3b82f6;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
       cursor: pointer;
+      transition: all 0.2s ease;
     }
 
-    .download-avatar-btn:hover {
-      background: #3b82f6;
+    .employee-avatar-preview:hover {
+      border-color: #3b82f6;
+      transform: scale(1.05);
     }
 
     .employee-name {
@@ -351,6 +336,58 @@
       flex-grow: 1;
     }
 
+    .modal-input,
+    .modal-select,
+    .modal-textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      background: #0b0f14;
+      color: #e8eef6;
+      font-family: system-ui;
+      font-size: 13px;
+    }
+
+    .modal-input:focus,
+    .modal-select:focus,
+    .modal-textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    .modal-textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .modal-footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #223044;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .modal-save-btn {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    .modal-save-btn:hover {
+      background: #2563eb;
+    }
+
+    .modal-delete-btn {
+      background: #ef4444;
+      border-color: #ef4444;
+    }
+
+    .modal-delete-btn:hover {
+      background: #dc2626;
+    }
+
     .accomplishments-list {
       list-style: none;
       padding: 0;
@@ -401,49 +438,6 @@
 
     @keyframes spin {
       to { transform: rotate(360deg); }
-    }
-
-    .employee-list-item {
-      background: #0b0f14;
-      border: 1px solid #223044;
-      border-radius: 8px;
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .employee-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .employee-info-name {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 2px;
-    }
-
-    .employee-info-details {
-      font-size: 12px;
-      color: #9fb0c3;
-    }
-
-    .employee-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .delete-btn {
-      padding: 6px 12px;
-      font-size: 12px;
-      background: #ef4444;
-      border-color: #ef4444;
-    }
-
-    .delete-btn:hover {
-      background: #dc2626;
     }
 
     /* Mobile responsive */
@@ -600,13 +594,6 @@
     </form>
 
     <div id="employeeMessage"></div>
-
-    <div style="margin-top:20px;">
-      <div class="setting-label" style="margin-bottom:12px;">Current Employees</div>
-      <div id="employeeList" style="display:grid; gap:8px;">
-        <div style="text-align:center; color:#9fb0c3; padding:20px;">Loading employees...</div>
-      </div>
-    </div>
   </div>
 
   <!-- Account Settings -->
@@ -798,9 +785,8 @@ function renderEmployees(){
 
     return `
       <div class="employee-card">
-        <div class="employee-avatar-preview" style="${avatarStyle}">
+        <div class="employee-avatar-preview" style="${avatarStyle}" onclick="viewEmployeeProfile('${emp.employee_id}')">
           ${!avatarUrl ? initials : ''}
-          ${avatarUrl ? `<button class="download-avatar-btn" onclick="event.stopPropagation(); downloadAvatar('${avatarUrl}', '${name}')" title="Download Photo">↓</button>` : ''}
         </div>
         <div class="employee-name">${name}</div>
         <div class="employee-role">${emp.role || 'Employee'}</div>
@@ -839,36 +825,6 @@ function renderEmployees(){
         <button class="view-profile-btn" onclick="viewEmployeeProfile('${emp.employee_id}')">
           View Profile
         </button>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderEmployeeList(){
-  const container = document.getElementById('employeeList');
-  
-  if(!employees.length) {
-    container.innerHTML = '<div style="text-align:center; color:#9fb0c3; padding:20px;">No employees found.</div>';
-    return;
-  }
-
-  container.innerHTML = employees.map(emp => {
-    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
-    const role = emp.role || 'Employee';
-    const email = emp.email || 'No email';
-    const status = emp.status || 'active';
-    
-    return `
-      <div class="employee-list-item">
-        <div class="employee-info">
-          <div class="employee-info-name">${name}</div>
-          <div class="employee-info-details">
-            ${role.charAt(0).toUpperCase() + role.slice(1)} • ${email} • ${status.charAt(0).toUpperCase() + status.slice(1)}
-          </div>
-        </div>
-        <div class="employee-actions">
-          <button class="delete-btn" onclick="deleteEmployee('${emp.employee_id}')">Delete</button>
-        </div>
       </div>
     `;
   }).join('');
@@ -1002,18 +958,26 @@ async function loadEmployees(){
   if(!token) return;
 
   try {
-    const response = await fetch(`${FUNCTIONS_BASE}/employees`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': ANON_KEY
-      }
-    });
+    const [empResponse, userData] = await Promise.all([
+      fetch(`${FUNCTIONS_BASE}/employees`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'apikey': ANON_KEY
+        }
+      }),
+      fetch(`${API_BASE}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+      }).then(r => r.json())
+    ]);
 
-    if(!response.ok) throw new Error('Failed to load employees');
+    if(!empResponse.ok) throw new Error('Failed to load employees');
 
-    employees = await response.json();
+    employees = await empResponse.json();
+
+    // Store current user's employee record for permission checks
+    window.currentUserEmployee = employees.find(e => e.email === userData.email);
+
     renderEmployees();
-    renderEmployeeList();
 
   } catch(err) {
     console.error('Load employees error:', err);
@@ -1070,14 +1034,275 @@ async function handleEmployeeSubmit(e){
   }
 }
 
-async function deleteEmployee(employeeId){
+function showEmployeeMessage(msg, type = 'success'){
+  const area = document.getElementById('employeeMessage');
+  area.innerHTML = `<div class="${type}" style="margin-top:12px;">${msg}</div>`;
+  setTimeout(() => { area.innerHTML = ''; }, 5000);
+}
+
+function viewEmployeeProfile(employeeId){
+  const emp = employees.find(e => e.employee_id === employeeId);
+  if(!emp) return;
+
+  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+  document.getElementById('modalEmployeeName').textContent = name;
+
+  // Get current user role
+  const currentUser = window.currentUserEmployee;
+  const canEdit = currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager');
+
+  // Calculate years with company
+  const hireDate = emp.hire_date ? new Date(emp.hire_date) : null;
+  const yearsWithCompany = hireDate 
+    ? ((new Date() - hireDate) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1)
+    : 'N/A';
+  const hireDateValue = hireDate ? hireDate.toISOString().split('T')[0] : '';
+
+  // Get compensation info
+  const payRate = emp.pay_rate || 0;
+  const payType = emp.pay_type || 'hourly';
+
+  // Parse accomplishments
+  const accomplishments = emp.accomplishments || [];
+  const accomplishmentsText = accomplishments.join('\n');
+
+  const modalBody = document.getElementById('modalEmployeeBody');
+  
+  if(canEdit) {
+    // Editable form for owners/managers
+    modalBody.innerHTML = `
+      <form id="employeeProfileForm">
+        <div class="modal-section">
+          <div class="modal-section-title">Personal Information</div>
+          <div class="modal-info-row">
+            <span class="modal-label">First Name</span>
+            <input type="text" class="modal-input" id="editFirstName" value="${emp.first_name || ''}" required />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Last Name</span>
+            <input type="text" class="modal-input" id="editLastName" value="${emp.last_name || ''}" required />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Email</span>
+            <input type="email" class="modal-input" id="editEmail" value="${emp.email || ''}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Phone</span>
+            <input type="tel" class="modal-input" id="editPhone" value="${emp.phone || ''}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Address</span>
+            <input type="text" class="modal-input" id="editAddress" value="${emp.address || ''}" />
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Employment Details</div>
+          <div class="modal-info-row">
+            <span class="modal-label">Role</span>
+            <select class="modal-select" id="editRole" required>
+              <option value="owner" ${emp.role === 'owner' ? 'selected' : ''}>Owner</option>
+              <option value="manager" ${emp.role === 'manager' ? 'selected' : ''}>Manager</option>
+              <option value="technician" ${emp.role === 'technician' ? 'selected' : ''}>Technician</option>
+              <option value="service_advisor" ${emp.role === 'service_advisor' ? 'selected' : ''}>Service Advisor</option>
+              <option value="admin" ${emp.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Hire Date</span>
+            <input type="date" class="modal-input" id="editHireDate" value="${hireDateValue}" />
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Status</span>
+            <select class="modal-select" id="editStatus">
+              <option value="active" ${emp.status === 'active' ? 'selected' : ''}>Active</option>
+              <option value="inactive" ${emp.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Compensation</div>
+          <div class="modal-info-row">
+            <span class="modal-label">Pay Type</span>
+            <select class="modal-select" id="editPayType">
+              <option value="hourly" ${payType === 'hourly' ? 'selected' : ''}>Hourly</option>
+              <option value="percentage" ${payType === 'percentage' ? 'selected' : ''}>Percentage</option>
+              <option value="salary" ${payType === 'salary' ? 'selected' : ''}>Salary</option>
+            </select>
+          </div>
+          <div class="modal-info-row">
+            <span class="modal-label">Pay Rate</span>
+            <input type="number" class="modal-input" id="editPayRate" value="${payRate}" step="0.01" />
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Accomplishments & Certifications</div>
+          <textarea class="modal-textarea" id="editAccomplishments" placeholder="Enter one accomplishment per line">${accomplishmentsText}</textarea>
+          <div class="muted" style="margin-top:4px;">Enter one accomplishment or certification per line</div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="modal-delete-btn" onclick="deleteEmployeeFromModal('${emp.employee_id}')">Delete Employee</button>
+          <button type="button" onclick="closeEmployeeModal()">Cancel</button>
+          <button type="submit" class="modal-save-btn">Save Changes</button>
+        </div>
+      </form>
+    `;
+
+    document.getElementById('employeeProfileForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveEmployeeProfile(emp.employee_id);
+    });
+
+  } else {
+    // Read-only view for others
+    const payDisplay = payType === 'hourly' 
+      ? `$${payRate}/hr`
+      : payType === 'percentage'
+      ? `${payRate}% of job`
+      : payType === 'salary'
+      ? `$${payRate.toLocaleString()}/yr`
+      : 'Not set';
+
+    const hireDateDisplay = hireDate ? hireDate.toLocaleDateString() : 'Not set';
+    const accomplishmentsHtml = accomplishments.length > 0
+      ? `<ul class="accomplishments-list">${accomplishments.map(a => `<li>${a}</li>`).join('')}</ul>`
+      : '<div style="color:#9fb0c3; font-size:13px;">No accomplishments recorded yet.</div>';
+
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">Personal Information</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Full Name</span>
+          <span class="modal-value">${name}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Email</span>
+          <span class="modal-value">${emp.email || 'Not set'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <span class="modal-value">${emp.phone || 'Not set'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Address</span>
+          <span class="modal-value">${emp.address || 'Not set'}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Employment Details</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Role</span>
+          <span class="modal-value">${emp.role || 'Employee'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Hire Date</span>
+          <span class="modal-value">${hireDateDisplay}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Years with Company</span>
+          <span class="modal-value">${yearsWithCompany} years</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <span class="modal-value">${emp.status || 'Active'}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Compensation</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Pay Type</span>
+          <span class="modal-value">${payType.charAt(0).toUpperCase() + payType.slice(1)}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Pay Rate</span>
+          <span class="modal-value">${payDisplay}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Accomplishments & Certifications</div>
+        ${accomplishmentsHtml}
+      </div>
+
+      <div class="modal-footer">
+        <button onclick="closeEmployeeModal()">Close</button>
+      </div>
+    `;
+  }
+
+  document.getElementById('employeeModal').classList.add('active');
+}
+
+async function saveEmployeeProfile(employeeId){
+  const token = localStorage.getItem('sb_access_token');
+  if(!token) return;
+
+  const accomplishmentsText = document.getElementById('editAccomplishments').value;
+  const accomplishments = accomplishmentsText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  const updateData = {
+    first_name: document.getElementById('editFirstName').value.trim(),
+    last_name: document.getElementById('editLastName').value.trim(),
+    email: document.getElementById('editEmail').value.trim() || null,
+    phone: document.getElementById('editPhone').value.trim() || null,
+    address: document.getElementById('editAddress').value.trim() || null,
+    role: document.getElementById('editRole').value,
+    hire_date: document.getElementById('editHireDate').value || null,
+    status: document.getElementById('editStatus').value,
+    pay_type: document.getElementById('editPayType').value,
+    pay_rate: parseFloat(document.getElementById('editPayRate').value) || 0,
+    accomplishments: accomplishments
+  };
+
+  try {
+    showAvatarMessage('Saving changes...', 'muted');
+
+    const response = await fetch(`${REST_BASE}/employees?employee_id=eq.${employeeId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if(!response.ok) {
+      throw new Error('Failed to save employee profile');
+    }
+
+    // Update local data
+    const emp = employees.find(e => e.employee_id === employeeId);
+    if(emp) {
+      Object.assign(emp, updateData);
+    }
+
+    showAvatarMessage('Profile updated successfully!', 'success');
+    closeEmployeeModal();
+    renderEmployees();
+
+  } catch(err) {
+    console.error('Save error:', err);
+    showAvatarMessage('Error saving profile: ' + err.message, 'error');
+  }
+}
+
+async function deleteEmployeeFromModal(employeeId){
   if(!confirm('Are you sure you want to delete this employee? This action cannot be undone.')) return;
 
   const token = localStorage.getItem('sb_access_token');
   if(!token) return;
 
   try {
-    showEmployeeMessage('Deleting employee...', 'muted');
+    showAvatarMessage('Deleting employee...', 'muted');
 
     // Delete avatar if exists
     const emp = employees.find(e => e.employee_id === employeeId);
@@ -1104,133 +1329,16 @@ async function deleteEmployee(employeeId){
       throw new Error('Failed to delete employee');
     }
 
-    showEmployeeMessage('Employee deleted successfully!', 'success');
+    showAvatarMessage('Employee deleted successfully!', 'success');
+    closeEmployeeModal();
     
     // Reload employees
     await loadEmployees();
 
   } catch(err) {
     console.error('Delete employee error:', err);
-    showEmployeeMessage('Error deleting employee: ' + err.message, 'error');
+    showAvatarMessage('Error deleting employee: ' + err.message, 'error');
   }
-}
-
-function showEmployeeMessage(msg, type = 'success'){
-  const area = document.getElementById('employeeMessage');
-  area.innerHTML = `<div class="${type}" style="margin-top:12px;">${msg}</div>`;
-  setTimeout(() => { area.innerHTML = ''; }, 5000);
-}
-
-async function downloadAvatar(avatarUrl, employeeName){
-  try {
-    const response = await fetch(avatarUrl);
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${employeeName.replace(/\s+/g, '_')}_avatar.jpg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  } catch(err) {
-    console.error('Download error:', err);
-    showAvatarMessage('Error downloading photo', 'error');
-  }
-}
-
-function viewEmployeeProfile(employeeId){
-  const emp = employees.find(e => e.employee_id === employeeId);
-  if(!emp) return;
-
-  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
-  document.getElementById('modalEmployeeName').textContent = name;
-
-  // Calculate years with company
-  const hireDate = emp.hire_date ? new Date(emp.hire_date) : null;
-  const yearsWithCompany = hireDate 
-    ? ((new Date() - hireDate) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1)
-    : 'N/A';
-  const hireDateDisplay = hireDate ? hireDate.toLocaleDateString() : 'Not set';
-
-  // Get compensation info
-  const payRate = emp.pay_rate || 0;
-  const payType = emp.pay_type || 'hourly';
-  const payDisplay = payType === 'hourly' 
-    ? `$${payRate}/hr`
-    : payType === 'percentage'
-    ? `${payRate}% of job`
-    : payType === 'salary'
-    ? `$${payRate.toLocaleString()}/yr`
-    : 'Not set';
-
-  // Parse accomplishments
-  const accomplishments = emp.accomplishments || [];
-  const accomplishmentsHtml = accomplishments.length > 0
-    ? `<ul class="accomplishments-list">${accomplishments.map(a => `<li>${a}</li>`).join('')}</ul>`
-    : '<div style="color:#9fb0c3; font-size:13px;">No accomplishments recorded yet.</div>';
-
-  const modalBody = document.getElementById('modalEmployeeBody');
-  modalBody.innerHTML = `
-    <div class="modal-section">
-      <div class="modal-section-title">Personal Information</div>
-      <div class="modal-info-row">
-        <span class="modal-label">Full Name</span>
-        <span class="modal-value">${name}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Email</span>
-        <span class="modal-value">${emp.email || 'Not set'}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Phone</span>
-        <span class="modal-value">${emp.phone || 'Not set'}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Address</span>
-        <span class="modal-value">${emp.address || 'Not set'}</span>
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <div class="modal-section-title">Employment Details</div>
-      <div class="modal-info-row">
-        <span class="modal-label">Role</span>
-        <span class="modal-value">${emp.role || 'Employee'}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Hire Date</span>
-        <span class="modal-value">${hireDateDisplay}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Years with Company</span>
-        <span class="modal-value">${yearsWithCompany} years</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Status</span>
-        <span class="modal-value">${emp.status || 'Active'}</span>
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <div class="modal-section-title">Compensation</div>
-      <div class="modal-info-row">
-        <span class="modal-label">Pay Type</span>
-        <span class="modal-value">${payType.charAt(0).toUpperCase() + payType.slice(1)}</span>
-      </div>
-      <div class="modal-info-row">
-        <span class="modal-label">Pay Rate</span>
-        <span class="modal-value">${payDisplay}</span>
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <div class="modal-section-title">Accomplishments & Certifications</div>
-      ${accomplishmentsHtml}
-    </div>
-  `;
-
-  document.getElementById('employeeModal').classList.add('active');
 }
 
 function closeEmployeeModal(){
