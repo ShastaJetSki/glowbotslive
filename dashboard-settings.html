@@ -1162,21 +1162,32 @@ async function handleNewEmployeeSubmit(e){
   try {
     showAvatarMessage('Adding employee...', 'muted');
 
-    // Use Functions API endpoint since REST API has auth issues
-    const response = await fetch(`${API_BASE}/functions/v1/employees`, {
+    // Use REST API with correct table name
+    const response = await fetch(`${API_BASE}/rest/v1/employees`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
-        'apikey': ANON_KEY
+        'apikey': ANON_KEY,
+        'Prefer': 'return=representation'
       },
       body: JSON.stringify(formData)
     });
 
     if(!response.ok) {
       const errorText = await response.text();
-      console.error('Employee creation failed:', errorText);
-      throw new Error(errorText || 'Failed to create employee');
+      console.error('Employee creation failed:', response.status, errorText);
+      
+      // Parse error message
+      let errorMessage = 'Failed to create employee';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.hint || errorJson.details || errorText;
+      } catch {
+        errorMessage = errorText;
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const newEmployee = await response.json();
@@ -1213,8 +1224,8 @@ async function deleteEmployeeFromModal(employeeId){
       });
     }
 
-    // Delete employee using Functions API
-    const response = await fetch(`${API_BASE}/functions/v1/employees/${employeeId}`, {
+    // Delete employee using REST API
+    const response = await fetch(`${API_BASE}/rest/v1/employees?employee_id=eq.${employeeId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
