@@ -822,8 +822,8 @@ function renderEmployees(){
   });
 
   container.innerHTML = sortedEmployees.map(emp => {
-    const name = emp.name || 'Unknown';
-    const initials = getInitialsFromFullName(name);
+    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+    const initials = initialsFromName(emp.first_name, emp.last_name);
     const avatarUrl = getAvatarUrl(emp);
     
     const avatarStyle = avatarUrl 
@@ -862,8 +862,8 @@ function renderEmployees(){
             <span class="stat-value">$${laborRate}/hr</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Role</span>
-            <span class="stat-value">${emp.role || 'N/A'}</span>
+            <span class="stat-label">Status</span>
+            <span class="stat-value">${emp.is_active ? 'Active' : 'Inactive'}</span>
           </div>
         </div>
 
@@ -1048,7 +1048,7 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   const emp = employees.find(e => e.employee_id === employeeId);
   if(!emp) return;
 
-  const name = emp.name || 'Unknown';
+  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
   document.getElementById('modalEmployeeName').textContent = name;
 
   // Get current user role
@@ -1057,7 +1057,6 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   
   console.log('Current user:', currentUser);
   console.log('Can edit:', canEdit);
-  console.log('Force edit mode:', forceEditMode);
 
   const laborRate = emp.hourly_labor_rate || 0;
 
@@ -1078,6 +1077,10 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
       <div class="modal-info-row">
         <span class="modal-label">Hourly Labor Rate</span>
         <span class="modal-value">$${laborRate}/hr</span>
+      </div>
+      <div class="modal-info-row">
+        <span class="modal-label">Status</span>
+        <span class="modal-value">${emp.is_active ? 'Active' : 'Inactive'}</span>
       </div>
     </div>
 
@@ -1106,8 +1109,12 @@ function addNewEmployee(){
       <div class="modal-section">
         <div class="modal-section-title">Employee Information</div>
         <div class="modal-info-row">
-          <span class="modal-label">Full Name *</span>
-          <input type="text" class="modal-input" id="newName" placeholder="John Doe" required />
+          <span class="modal-label">First Name *</span>
+          <input type="text" class="modal-input" id="newFirstName" required />
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Last Name *</span>
+          <input type="text" class="modal-input" id="newLastName" required />
         </div>
         <div class="modal-info-row">
           <span class="modal-label">Role *</span>
@@ -1147,22 +1154,39 @@ async function handleNewEmployeeSubmit(e){
     return;
   }
 
-  const formData = {
-    name: document.getElementById('newName').value.trim(),
-    role: document.getElementById('newRole').value
-  };
-
-  const laborRate = document.getElementById('newLaborRate').value;
-  if(laborRate && parseFloat(laborRate) > 0) {
-    formData.hourly_labor_rate = parseFloat(laborRate);
-  }
-
-  console.log('Creating employee with data:', formData);
-
   try {
+    // Get current user to extract tenant_id and user_id
+    const userResponse = await fetch(`${API_BASE}/auth/v1/user`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY
+      }
+    });
+
+    if(!userResponse.ok) {
+      throw new Error('Failed to get user info');
+    }
+
+    const userData = await userResponse.json();
+    
+    // Build employee data with required fields
+    const formData = {
+      first_name: document.getElementById('newFirstName').value.trim(),
+      last_name: document.getElementById('newLastName').value.trim(),
+      role: document.getElementById('newRole').value,
+      user_id: userData.id,  // Current user's ID
+      tenant_id: userData.user_metadata?.tenant_id || userData.id, // Use tenant_id from metadata or user_id
+      is_active: true
+    };
+
+    const laborRate = document.getElementById('newLaborRate').value;
+    if(laborRate && parseFloat(laborRate) > 0) {
+      formData.hourly_labor_rate = parseFloat(laborRate);
+    }
+
+    console.log('Creating employee with data:', formData);
     showAvatarMessage('Adding employee...', 'muted');
 
-    // Use REST API with correct table name
     const response = await fetch(`${API_BASE}/rest/v1/employees`, {
       method: 'POST',
       headers: {
@@ -1178,7 +1202,6 @@ async function handleNewEmployeeSubmit(e){
       const errorText = await response.text();
       console.error('Employee creation failed:', response.status, errorText);
       
-      // Parse error message
       let errorMessage = 'Failed to create employee';
       try {
         const errorJson = JSON.parse(errorText);
