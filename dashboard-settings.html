@@ -822,30 +822,15 @@ function renderEmployees(){
   });
 
   container.innerHTML = sortedEmployees.map(emp => {
-    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
-    const initials = initialsFromName(emp.first_name, emp.last_name);
+    const name = emp.name || 'Unknown';
+    const initials = getInitialsFromFullName(name);
     const avatarUrl = getAvatarUrl(emp);
     
     const avatarStyle = avatarUrl 
       ? `background-image: url('${avatarUrl}');` 
       : '';
 
-    // Calculate years with company
-    const hireDate = emp.hire_date ? new Date(emp.hire_date) : null;
-    const yearsWithCompany = hireDate 
-      ? ((new Date() - hireDate) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1)
-      : 'N/A';
-
-    // Get compensation info
-    const payRate = emp.pay_rate || 0;
-    const payType = emp.pay_type || 'hourly';
-    const payDisplay = payType === 'hourly' 
-      ? `$${payRate}/hr`
-      : payType === 'percentage'
-      ? `${payRate}% of job`
-      : payType === 'salary'
-      ? `$${payRate.toLocaleString()}/yr`
-      : 'Not set';
+    const laborRate = emp.hourly_labor_rate || 0;
 
     return `
       <div class="employee-card">
@@ -873,16 +858,12 @@ function renderEmployees(){
 
         <div class="employee-stats">
           <div class="stat-row">
-            <span class="stat-label">Email</span>
-            <span class="stat-value">${emp.email || 'Not set'}</span>
+            <span class="stat-label">Labor Rate</span>
+            <span class="stat-value">$${laborRate}/hr</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Phone</span>
-            <span class="stat-value">${emp.phone || 'Not set'}</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Status</span>
-            <span class="stat-value">${emp.status || 'Active'}</span>
+            <span class="stat-label">Role</span>
+            <span class="stat-value">${emp.role || 'N/A'}</span>
           </div>
         </div>
 
@@ -892,6 +873,13 @@ function renderEmployees(){
       </div>
     `;
   }).join('');
+}
+
+function getInitialsFromFullName(fullName) {
+  if (!fullName) return '?';
+  const parts = fullName.trim().split(' ');
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
 async function handleFileSelect(event, employeeId){
@@ -1060,7 +1048,7 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   const emp = employees.find(e => e.employee_id === employeeId);
   if(!emp) return;
 
-  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+  const name = emp.name || 'Unknown';
   document.getElementById('modalEmployeeName').textContent = name;
 
   // Get current user role
@@ -1071,125 +1059,41 @@ function viewEmployeeProfile(employeeId, forceEditMode = false){
   console.log('Can edit:', canEdit);
   console.log('Force edit mode:', forceEditMode);
 
-  // Calculate years with company
-  const hireDate = emp.hire_date ? new Date(emp.hire_date) : null;
-  const yearsWithCompany = hireDate 
-    ? ((new Date() - hireDate) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1)
-    : 'N/A';
-  const hireDateValue = hireDate ? hireDate.toISOString().split('T')[0] : '';
-
-  // Get compensation info
-  const payRate = emp.pay_rate || 0;
-  const payType = emp.pay_type || 'hourly';
-
-  // Parse accomplishments
-  const accomplishments = emp.accomplishments || [];
-  const accomplishmentsText = accomplishments.join('\n');
+  const laborRate = emp.hourly_labor_rate || 0;
 
   const modalBody = document.getElementById('modalEmployeeBody');
 
-  if(canEdit && forceEditMode) {
-    // Editable form for owners/managers
-    modalBody.innerHTML = `
-      <form id="employeeProfileForm">
-        <div class="modal-section">
-          <div class="modal-section-title">Personal Information</div>
-          <div class="modal-info-row">
-            <span class="modal-label">First Name</span>
-            <input type="text" class="modal-input" id="editFirstName" value="${emp.first_name || ''}" required />
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-label">Last Name</span>
-            <input type="text" class="modal-input" id="editLastName" value="${emp.last_name || ''}" required />
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-label">Email</span>
-            <input type="email" class="modal-input" id="editEmail" value="${emp.email || ''}" />
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-label">Phone</span>
-            <input type="tel" class="modal-input" id="editPhone" value="${emp.phone || ''}" />
-          </div>
-        </div>
-
-        <div class="modal-section">
-          <div class="modal-section-title">Employment Details</div>
-          <div class="modal-info-row">
-            <span class="modal-label">Role</span>
-            <select class="modal-select" id="editRole" required>
-              <option value="owner" ${emp.role === 'owner' ? 'selected' : ''}>Owner</option>
-              <option value="manager" ${emp.role === 'manager' ? 'selected' : ''}>Manager</option>
-              <option value="technician" ${emp.role === 'technician' ? 'selected' : ''}>Technician</option>
-              <option value="service_advisor" ${emp.role === 'service_advisor' ? 'selected' : ''}>Service Advisor</option>
-              <option value="admin" ${emp.role === 'admin' ? 'selected' : ''}>Admin</option>
-            </select>
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-label">Status</span>
-            <select class="modal-select" id="editStatus">
-              <option value="active" ${emp.status === 'active' ? 'selected' : ''}>Active</option>
-              <option value="inactive" ${emp.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="modal-delete-btn" onclick="deleteEmployeeFromModal('${emp.employee_id}')">Delete Employee</button>
-          <button type="button" onclick="closeEmployeeModal()">Cancel</button>
-          <button type="submit" class="modal-save-btn">Save Changes</button>
-        </div>
-      </form>
-    `;
-
-    document.getElementById('employeeProfileForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      saveEmployeeProfile(emp.employee_id);
-    });
-
-  } else {
-    // Read-only view
-    modalBody.innerHTML = `
-      <div class="modal-section">
-        <div class="modal-section-title">Personal Information</div>
-        <div class="modal-info-row">
-          <span class="modal-label">Full Name</span>
-          <span class="modal-value">${name}</span>
-        </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Email</span>
-          <span class="modal-value">${emp.email || 'Not set'}</span>
-        </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Phone</span>
-          <span class="modal-value">${emp.phone || 'Not set'}</span>
-        </div>
+  // Always show read-only view with Edit link
+  modalBody.innerHTML = `
+    <div class="modal-section">
+      <div class="modal-section-title">Employee Information</div>
+      <div class="modal-info-row">
+        <span class="modal-label">Name</span>
+        <span class="modal-value">${name}</span>
       </div>
-
-      <div class="modal-section">
-        <div class="modal-section-title">Employment Details</div>
-        <div class="modal-info-row">
-          <span class="modal-label">Role</span>
-          <span class="modal-value">${emp.role || 'Employee'}</span>
-        </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Status</span>
-          <span class="modal-value">${emp.status || 'Active'}</span>
-        </div>
+      <div class="modal-info-row">
+        <span class="modal-label">Role</span>
+        <span class="modal-value">${emp.role || 'Employee'}</span>
       </div>
-
-      <div class="modal-footer">
-        <button onclick="closeEmployeeModal()">Close</button>
-        ${canEdit ? `<button onclick="enableEdit('${emp.employee_id}')" class="modal-save-btn">Edit</button>` : ''}
+      <div class="modal-info-row">
+        <span class="modal-label">Hourly Labor Rate</span>
+        <span class="modal-value">$${laborRate}/hr</span>
       </div>
-    `;
-  }
+    </div>
+
+    <div class="modal-footer">
+      <button onclick="closeEmployeeModal()">Close</button>
+      ${canEdit ? `<button onclick="editEmployee('${emp.employee_id}')" class="modal-save-btn">Edit Employee</button>` : ''}
+    </div>
+  `;
 
   document.getElementById('employeeModal').classList.add('active');
   document.body.style.overflow = 'hidden'; // Prevent background scroll
 }
 
-function enableEdit(employeeId){
-  viewEmployeeProfile(employeeId, true);
+function editEmployee(employeeId){
+  // Navigate to employee edit page
+  window.location.href = `employee-edit.html?id=${employeeId}`;
 }
 
 function addNewEmployee(){
@@ -1200,27 +1104,11 @@ function addNewEmployee(){
   modalBody.innerHTML = `
     <form id="newEmployeeForm">
       <div class="modal-section">
-        <div class="modal-section-title">Personal Information</div>
+        <div class="modal-section-title">Employee Information</div>
         <div class="modal-info-row">
-          <span class="modal-label">First Name *</span>
-          <input type="text" class="modal-input" id="newFirstName" required />
+          <span class="modal-label">Full Name *</span>
+          <input type="text" class="modal-input" id="newName" placeholder="John Doe" required />
         </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Last Name *</span>
-          <input type="text" class="modal-input" id="newLastName" required />
-        </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Email</span>
-          <input type="email" class="modal-input" id="newEmail" />
-        </div>
-        <div class="modal-info-row">
-          <span class="modal-label">Phone</span>
-          <input type="tel" class="modal-input" id="newPhone" />
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-section-title">Employment Details</div>
         <div class="modal-info-row">
           <span class="modal-label">Role *</span>
           <select class="modal-select" id="newRole" required>
@@ -1233,11 +1121,8 @@ function addNewEmployee(){
           </select>
         </div>
         <div class="modal-info-row">
-          <span class="modal-label">Status</span>
-          <select class="modal-select" id="newStatus">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          <span class="modal-label">Hourly Labor Rate</span>
+          <input type="number" class="modal-input" id="newLaborRate" placeholder="42.00" step="0.01" min="0" />
         </div>
       </div>
 
@@ -1262,33 +1147,28 @@ async function handleNewEmployeeSubmit(e){
     return;
   }
 
-  // Only include fields that definitely exist in the employees table
   const formData = {
-    first_name: document.getElementById('newFirstName').value.trim(),
-    last_name: document.getElementById('newLastName').value.trim(),
-    role: document.getElementById('newRole').value,
-    status: document.getElementById('newStatus').value || 'active'
+    name: document.getElementById('newName').value.trim(),
+    role: document.getElementById('newRole').value
   };
 
-  // Add optional fields only if they have values
-  const email = document.getElementById('newEmail').value.trim();
-  const phone = document.getElementById('newPhone').value.trim();
-  
-  if(email) formData.email = email;
-  if(phone) formData.phone = phone;
+  const laborRate = document.getElementById('newLaborRate').value;
+  if(laborRate && parseFloat(laborRate) > 0) {
+    formData.hourly_labor_rate = parseFloat(laborRate);
+  }
 
   console.log('Creating employee with data:', formData);
 
   try {
     showAvatarMessage('Adding employee...', 'muted');
 
-    const response = await fetch(`${REST_BASE}/employees`, {
+    // Use Functions API endpoint since REST API has auth issues
+    const response = await fetch(`${API_BASE}/functions/v1/employees`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
-        'apikey': ANON_KEY,
-        'Prefer': 'return=representation'
+        'apikey': ANON_KEY
       },
       body: JSON.stringify(formData)
     });
@@ -1296,14 +1176,7 @@ async function handleNewEmployeeSubmit(e){
     if(!response.ok) {
       const errorText = await response.text();
       console.error('Employee creation failed:', errorText);
-      let errorMessage = 'Failed to create employee';
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.message || errorJson.hint || errorText;
-      } catch {
-        errorMessage = errorText;
-      }
-      throw new Error(errorMessage);
+      throw new Error(errorText || 'Failed to create employee');
     }
 
     const newEmployee = await response.json();
@@ -1316,58 +1189,6 @@ async function handleNewEmployeeSubmit(e){
   } catch(err) {
     console.error('Add employee error:', err);
     showAvatarMessage('Error adding employee: ' + err.message, 'error');
-  }
-}
-
-async function saveEmployeeProfile(employeeId){
-  const token = localStorage.getItem('sb_access_token');
-  if(!token) return;
-
-  // Only include fields that exist in the employees table
-  const updateData = {
-    first_name: document.getElementById('editFirstName').value.trim(),
-    last_name: document.getElementById('editLastName').value.trim(),
-    role: document.getElementById('editRole').value,
-    status: document.getElementById('editStatus').value
-  };
-
-  // Add optional fields only if they have values
-  const email = document.getElementById('editEmail').value.trim();
-  const phone = document.getElementById('editPhone').value.trim();
-  
-  if(email) updateData.email = email;
-  if(phone) updateData.phone = phone;
-
-  try {
-    showAvatarMessage('Saving changes...', 'muted');
-
-    const response = await fetch(`${REST_BASE}/employees?employee_id=eq.${employeeId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'apikey': ANON_KEY
-      },
-      body: JSON.stringify(updateData)
-    });
-
-    if(!response.ok) {
-      throw new Error('Failed to save employee profile');
-    }
-
-    // Update local data
-    const emp = employees.find(e => e.employee_id === employeeId);
-    if(emp) {
-      Object.assign(emp, updateData);
-    }
-
-    showAvatarMessage('Profile updated successfully!', 'success');
-    closeEmployeeModal();
-    renderEmployees();
-
-  } catch(err) {
-    console.error('Save error:', err);
-    showAvatarMessage('Error saving profile: ' + err.message, 'error');
   }
 }
 
@@ -1392,8 +1213,8 @@ async function deleteEmployeeFromModal(employeeId){
       });
     }
 
-    // Delete employee
-    const response = await fetch(`${REST_BASE}/employees?employee_id=eq.${employeeId}`, {
+    // Delete employee using Functions API
+    const response = await fetch(`${API_BASE}/functions/v1/employees/${employeeId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
