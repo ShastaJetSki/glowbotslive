@@ -669,32 +669,6 @@
     </div>
   </header>
 
-  <!-- System Recommendation -->
-  <div class="card" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 51, 234, 0.05) 100%); border: 1px solid rgba(59, 130, 246, 0.3); margin-bottom: 20px;">
-    <div style="display: flex; align-items: start; gap: 16px;">
-      <div style="font-size: 32px; flex-shrink: 0;">💡</div>
-      <div style="flex: 1;">
-        <h3 style="margin: 0 0 8px 0; color: #60a5fa; font-size: 16px;">System Recommendation</h3>
-        <p style="margin: 0 0 12px 0; color: #e8eef6; line-height: 1.6;">
-          <strong>Missing Database Column:</strong> Your employees table needs a <code style="background: rgba(59, 130, 246, 0.2); padding: 2px 6px; border-radius: 4px; font-family: monospace;">metadata</code> column to store extended employee information (email, phone, address, certifications, notes).
-        </p>
-        <details style="margin-top: 12px;">
-          <summary style="cursor: pointer; color: #60a5fa; font-weight: 500; user-select: none;">Show SQL to add metadata column</summary>
-          <pre style="background: #0b0f14; padding: 12px; border-radius: 8px; margin-top: 8px; overflow-x: auto; border: 1px solid #223044;"><code style="color: #e8eef6; font-size: 13px;">-- Run this in Supabase SQL Editor
-ALTER TABLE employees 
-ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
-
--- Add comment
-COMMENT ON COLUMN employees.metadata IS 'Stores extended employee data: email, phone, address, hire_date, certifications, notes';</code></pre>
-          <p style="margin-top: 8px; color: #9fb0c3; font-size: 13px;">
-            After running this SQL, employee profiles will be able to store email, phone, address, hire dates, certifications, and notes.
-          </p>
-        </details>
-      </div>
-      <button onclick="this.parentElement.parentElement.remove()" style="background: transparent; border: none; color: #9fb0c3; cursor: pointer; font-size: 20px; padding: 4px 8px; flex-shrink: 0;" title="Dismiss">×</button>
-    </div>
-  </div>
-
   <!-- Employee Avatars - MOVED TO TOP -->
   <div class="card">
     <button class="accordion-header active" onclick="toggleAccordion(this)">
@@ -1111,24 +1085,34 @@ function confirmDeleteEmployee(employeeId, name) {
 
 async function deleteEmployeeFromCard(employeeId) {
   const token = localStorage.getItem('sb_access_token');
-  if(!token) return;
+  if(!token) {
+    showAvatarMessage('Not authenticated', 'error');
+    return;
+  }
 
   try {
     showAvatarMessage('Deleting employee...', 'muted');
+    console.log('Deleting employee:', employeeId);
+
+    // Find employee
+    const emp = employees.find(e => e.employee_id === employeeId);
+    console.log('Employee to delete:', emp);
 
     // Delete avatar if exists
-    const emp = employees.find(e => e.employee_id === employeeId);
     if(emp && emp.avatar_url) {
-      await fetch(`${STORAGE_URL}/object/avatars/${emp.avatar_url}`, {
+      console.log('Deleting avatar:', emp.avatar_url);
+      const avatarResp = await fetch(`${STORAGE_URL}/object/avatars/${emp.avatar_url}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
           'apikey': ANON_KEY
         }
       });
+      console.log('Avatar delete response:', avatarResp.status);
     }
 
-    // Delete employee
+    // Delete employee from database
+    console.log('Deleting from database...');
     const response = await fetch(`${API_BASE}/rest/v1/employees?employee_id=eq.${employeeId}`, {
       method: 'DELETE',
       headers: {
@@ -1137,16 +1121,22 @@ async function deleteEmployeeFromCard(employeeId) {
       }
     });
 
+    console.log('Delete response:', response.status, response.statusText);
+
     if(!response.ok) {
-      throw new Error('Failed to delete employee');
+      const errorText = await response.text();
+      console.error('Delete failed:', errorText);
+      throw new Error(`Failed to delete employee: ${response.status} ${errorText}`);
     }
 
     showAvatarMessage('Employee deleted successfully!', 'success');
+    
+    // Reload employee list
     await loadEmployees();
 
   } catch(err) {
     console.error('Delete employee error:', err);
-    showAvatarMessage('Error deleting employee: ' + err.message, 'error');
+    showAvatarMessage('Error: ' + err.message, 'error');
   }
 }
 
@@ -1299,7 +1289,36 @@ async function loadEmployees(){
 
     if(!empResponse.ok) throw new Error('Failed to load employees');
 
-    employees = await empResponse.json();
+    let allEmployees = await empResponse.json();
+    
+    // Filter out test/placeholder employees but keep real ones
+    employees = allEmployees.filter(emp => {
+      const firstName = (emp.first_name || '').trim();
+      const lastName = (emp.last_name || '').trim();
+      
+      // Exclude if first_name contains @ (email addresses)
+      if (firstName.includes('@')) return false;
+      
+      // Exclude specific test patterns where BOTH match the pattern
+      const testPatterns = [
+        { first: ['Alex', 'Mark', 'Evan', 'Pat', 'Loren', 'Eddie', 'Casey', 'Joey', 'Wes', 'Sam', 'Kyle', 'Roger'], last: ['Tech1', 'Tech2', 'Tech3'] },
+        { first: ['Jade', 'Dana', 'Riley', 'Morgan', 'Maria'], last: ['Parts'] },
+        { first: ['Chris', 'Jordan', 'Taylor', 'Kelly', 'Lee'], last: ['Manager'] },
+        { first: ['North', 'Rapid', 'Midtown', 'Sierra'], last: ['Owner'] }
+      ];
+      
+      for (const pattern of testPatterns) {
+        if (pattern.first.includes(firstName) && pattern.last.includes(lastName)) {
+          return false; // Exclude this test employee
+        }
+      }
+      
+      // Keep all others (real employees)
+      return true;
+    });
+    
+    console.log('All employees:', allEmployees.length);
+    console.log('Filtered employees:', employees.length, employees);
 
     // Store current user's employee record for permission checks
     window.currentUserEmployee = employees.find(e => e.email === userData.email);
@@ -1308,6 +1327,9 @@ async function loadEmployees(){
 
   } catch(err) {
     console.error('Load employees error:', err);
+    showAvatarMessage('Error loading employees: ' + err.message, 'error');
+  }
+}
     document.getElementById('employeeAvatars').innerHTML = 
       '<div style="text-align:center; color:#ef4444; padding:20px;">Error loading employees.</div>';
   }
@@ -1840,8 +1862,25 @@ async function load(){
     document.getElementById('userEmail').textContent = auth.user.email;
   }
 
+  // Load employees first to check permissions
+  await loadEmployees();
+  
+  // Check if current user has permission to access settings
+  const currentUser = window.currentUserEmployee;
+  console.log('Current user employee record:', currentUser);
+  
+  if (!currentUser) {
+    alert('Access Denied: Your employee profile was not found. Please contact your administrator.');
+    return location.replace('dashboard-business.html');
+  }
+  
+  if (currentUser.role !== 'owner' && currentUser.role !== 'manager') {
+    alert('Access Denied: Only owners and managers can access settings.');
+    return location.replace('dashboard-business.html');
+  }
+
+  // User has permission, load settings
   loadSettings();
-  loadEmployees();
 
   const businessName = localStorage.getItem(BUSINESS_NAME_KEY);
   if(businessName) {
