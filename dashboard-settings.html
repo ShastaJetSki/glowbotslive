@@ -1176,6 +1176,49 @@ async function getTenantId(token){
     }
   });
 
+// ==============================
+// Settings key map (DB <-> UI)
+// ==============================
+const SETTINGS_MAP = {
+  business_name: "businessName",
+  contact_name: "contactName",
+  contact_email: "contactEmail",
+  contact_phone: "contactPhone",
+  labor_rate: "laborRate",
+  local_tax: "localTax",
+
+  // Branding
+  business_address: "businessAddress",
+  business_hours: "businessHours",
+  shop_phone: "shopPhone",
+  website_url: "websiteUrl",
+  license_number: "licenseNumber",
+  tax_id: "taxId",
+
+  // Financial
+  parts_markup: "partsMarkup",
+  shop_supply_fee: "shopSupplyFee",
+  environmental_fee: "environmentalFee",
+  hazmat_fee: "hazmatFee",
+  max_discount: "maxDiscount",
+  payment_terms: "paymentTerms",
+
+  // Invoicing
+  invoice_prefix: "invoicePrefix",
+  next_invoice_number: "nextInvoiceNumber",
+  invoice_footer: "invoiceFooter",
+  payment_instructions: "paymentInstructions",
+  estimate_valid_days: "estimateValidDays",
+
+  // Work Orders
+  default_wo_status: "defaultWorkOrderStatus",
+  default_priority: "defaultWorkOrderPriority",
+  require_customer_approval: "requireCustomerApproval",
+  auto_assign_technician: "autoAssignTechnician",
+  warranty_days: "defaultWarrantyDays"
+};
+
+  
   if(!r.ok){
     throw new Error("Failed to load user");
   }
@@ -1248,6 +1291,55 @@ function saveSettings(){
     localStorage.setItem(RATE_KEY, laborRate);
   }
 
+// ==============================
+// Load settings from Supabase
+// ==============================
+async function loadSettingsFromSupabase(){
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+
+  try {
+    const tenantId = await getTenantId(token);
+
+    const r = await fetch(
+      `${REST_BASE}/business_settings?tenant_id=eq.${tenantId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY
+        }
+      }
+    );
+
+    if(!r.ok) return;
+
+    const rows = await r.json();
+    if(!rows.length) return;
+
+    const settings = rows[0];
+
+    Object.entries(SETTINGS_MAP).forEach(([dbKey, inputId]) => {
+      const el = document.getElementById(inputId);
+      if(!el) return;
+
+      if(settings[dbKey] !== null && settings[dbKey] !== undefined){
+        if(el.type === "checkbox"){
+          el.checked = settings[dbKey];
+        } else {
+          el.value = settings[dbKey];
+        }
+      }
+    });
+
+    console.log("✅ Settings loaded from Supabase");
+
+  } catch(err){
+    console.error("Settings load error:", err);
+  }
+}
+
+
+  
   if(localTax && Number(localTax) >= 0) {
     localStorage.setItem(LOCAL_TAX_KEY, localTax);
   }
