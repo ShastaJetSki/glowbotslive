@@ -343,14 +343,16 @@ function money(n){
 
 async function loadBusinessSettings(){
   try {
-    const r = await sbFetch(`${REST_BASE}/business_settings?tenant_id=eq.${TENANT_ID}`, { token: AUTH.token });
+    const r = await sbFetch(`${REST_BASE}/business_settings?select=*&limit=1`, { token: AUTH.token });
     if(!r.ok) {
+      console.error('Failed to load business settings:', await r.text());
       businessSettings = getDefaultSettings();
       return;
     }
     const rows = await r.json();
     businessSettings = rows[0] || getDefaultSettings();
   } catch(err) {
+    console.error('Business settings error:', err);
     businessSettings = getDefaultSettings();
   }
 }
@@ -462,8 +464,12 @@ function renderInvoiceSummary(){
 async function loadCustomers(){
   const sel = document.getElementById("customer_id");
   sel.innerHTML = `<option value="">Loading…</option>`;
-  const r = await sbFetch(`${REST_BASE}/customers?select=customer_id,first_name,last_name,business_name&tenant_id=eq.${TENANT_ID}&order=created_at.desc`, { token: AUTH.token });
-  if(!r.ok){ sel.innerHTML = `<option value="">Failed to load</option>`; return; }
+  const r = await sbFetch(`${REST_BASE}/customers?select=customer_id,first_name,last_name,business_name&order=created_at.desc`, { token: AUTH.token });
+  if(!r.ok){ 
+    console.error('Failed to load customers:', await r.text());
+    sel.innerHTML = `<option value="">Failed to load</option>`; 
+    return; 
+  }
   customers = await r.json();
   sel.innerHTML = `<option value="">Select customer…</option>` + customers.map(c=>{
     const name = (c.business_name || `${c.first_name||""} ${c.last_name||""}`.trim() || "Customer");
@@ -475,9 +481,13 @@ async function loadVehicles(){
   const sel = document.getElementById("vehicle_id");
   sel.innerHTML = `<option value="">Loading…</option>`;
   const custId = document.getElementById("customer_id").value;
-  const filter = custId ? `&customer_id=eq.${custId}` : "";
-  const r = await sbFetch(`${REST_BASE}/vehicles?select=vehicle_id,make,model,year,vin_or_cf_number,license_plate&tenant_id=eq.${TENANT_ID}${filter}&order=created_at.desc`, { token: AUTH.token });
-  if(!r.ok){ sel.innerHTML = `<option value="">Failed to load</option>`; return; }
+  const filter = custId ? `customer_id=eq.${custId}&` : "";
+  const r = await sbFetch(`${REST_BASE}/vehicles?select=vehicle_id,make,model,year,vin_or_cf_number,license_plate&${filter}order=created_at.desc`, { token: AUTH.token });
+  if(!r.ok){ 
+    console.error('Failed to load vehicles:', await r.text());
+    sel.innerHTML = `<option value="">Failed to load</option>`; 
+    return; 
+  }
   vehicles = await r.json();
   sel.innerHTML = `<option value="">Select vehicle…</option>` + vehicles.map(v=>{
     const label = `${v.year||""} ${v.make||""} ${v.model||""}`.trim();
@@ -492,14 +502,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadEmployees(){
-  const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,first_name,last_name,role,hourly_labor_rate&tenant_id=eq.${TENANT_ID}&order=role.asc,first_name.asc`, { token: AUTH.token });
-  if(!r.ok) { employees = []; return; }
+  const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,first_name,last_name,role,hourly_labor_rate&order=role.asc,first_name.asc`, { token: AUTH.token });
+  if(!r.ok) { 
+    console.error('Failed to load employees:', await r.text());
+    employees = []; 
+    return; 
+  }
   employees = await r.json();
 }
 
 async function loadWorkOrder(){
-  const r = await sbFetch(`${REST_BASE}/work_orders?select=*&tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token });
-  if(!r.ok) throw new Error("Failed to load work order");
+  const r = await sbFetch(`${REST_BASE}/work_orders?select=*&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token });
+  if(!r.ok) {
+    console.error('Failed to load work order:', await r.text());
+    throw new Error("Failed to load work order");
+  }
   const rows = await r.json();
   if(!rows.length) throw new Error("Work order not found");
   workOrder = rows[0];
@@ -533,8 +550,11 @@ async function saveWorkOrder(){
       internal_notes: document.getElementById("internal_notes").value.trim() || null
     };
 
-    const r = await sbFetch(`${REST_BASE}/work_orders?tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token, method:"PATCH", body: payload });
-    if(!r.ok) throw new Error("Save failed");
+    const r = await sbFetch(`${REST_BASE}/work_orders?work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token, method:"PATCH", body: payload });
+    if(!r.ok) {
+      console.error('Save failed:', await r.text());
+      throw new Error("Save failed");
+    }
     setMsg("✅ Work order saved.", "success");
   }catch(err){
     setMsg("Error: " + err.message, "error");
@@ -545,8 +565,12 @@ function lineId(row){ return row.labor_line_id || row.id; }
 function timeId(row){ return row.time_entry_id || row.id; }
 
 async function loadLaborLines(){
-  const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?select=*&tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
-  if(!r.ok){ laborLines = []; return; }
+  const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?select=*&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
+  if(!r.ok){ 
+    console.error('Failed to load labor lines:', await r.text());
+    laborLines = []; 
+    return; 
+  }
   laborLines = await r.json();
 }
 
@@ -554,14 +578,14 @@ async function loadMyTimeState(){
   const myEmployeeId = await getMyEmployeeId();
   if(!myEmployeeId){ myOpenEntries = {}; myClockedSeconds = {}; return; }
 
-  const rOpen = await sbFetch(`${REST_BASE}/work_order_time_entries?select=*&tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}&ended_at=is.null`, { token: AUTH.token });
+  const rOpen = await sbFetch(`${REST_BASE}/work_order_time_entries?select=*&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}&ended_at=is.null`, { token: AUTH.token });
   myOpenEntries = {};
   if(rOpen.ok){
     const rows = await rOpen.json();
     for(const e of rows) myOpenEntries[e.labor_line_id] = e;
   }
 
-  const rAll = await sbFetch(`${REST_BASE}/work_order_time_entries?select=labor_line_id,started_at,ended_at&tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}`, { token: AUTH.token });
+  const rAll = await sbFetch(`${REST_BASE}/work_order_time_entries?select=labor_line_id,started_at,ended_at&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}`, { token: AUTH.token });
   myClockedSeconds = {};
   if(rAll.ok){
     const rows = await rAll.json();
@@ -576,7 +600,7 @@ async function loadMyTimeState(){
 
 async function getMyEmployeeId(){
   const user = AUTH.user;
-  const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,user_id&tenant_id=eq.${TENANT_ID}&user_id=eq.${user.id}&limit=1`, { token: AUTH.token });
+  const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,user_id&user_id=eq.${user.id}&limit=1`, { token: AUTH.token });
   if(!r.ok) return null;
   const rows = await r.json();
   return rows[0]?.employee_id || null;
@@ -663,7 +687,6 @@ function renderLines(){
 async function addLine(){
   try{
     const payload = {
-      tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
       description: "New labor line",
       billed_hours: 0,
@@ -671,7 +694,11 @@ async function addLine(){
       assigned_employee_id: null
     };
     const r = await sbFetch(`${REST_BASE}/work_order_labor_lines`, { token: AUTH.token, method: "POST", prefer: "return=representation", body: payload });
-    if(!r.ok) throw new Error("Add line failed");
+    if(!r.ok) {
+      const errorText = await r.text();
+      console.error('Add line failed:', errorText);
+      throw new Error("Add line failed: " + errorText);
+    }
     await reloadAllLines();
     setMsg("✅ Line added.", "success");
   }catch(err){
@@ -699,8 +726,11 @@ async function saveLine(id){
         payload[k] = el.value.trim() || null;
       }
     });
-    const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?tenant_id=eq.${TENANT_ID}&labor_line_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
-    if(!r.ok) throw new Error("Save line failed");
+    const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?labor_line_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
+    if(!r.ok) {
+      console.error('Save line failed:', await r.text());
+      throw new Error("Save line failed");
+    }
     await reloadAllLines();
     setMsg("✅ Line saved.", "success");
   }catch(err){
@@ -710,8 +740,12 @@ async function saveLine(id){
 
 async function deleteLine(id){
   if(!confirm("Delete this labor line?")) return;
-  const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?tenant_id=eq.${TENANT_ID}&labor_line_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
-  if(!r.ok){ setMsg("Delete failed", "error"); return; }
+  const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?labor_line_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
+  if(!r.ok){ 
+    console.error('Delete failed:', await r.text());
+    setMsg("Delete failed", "error"); 
+    return; 
+  }
   await reloadAllLines();
   setMsg("✅ Line deleted.", "success");
 }
@@ -723,7 +757,6 @@ async function clockIn(laborLineId){
     if(myOpenEntries[laborLineId]) return setMsg("Already clocked in", "error");
 
     const payload = {
-      tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
       labor_line_id: laborLineId,
       employee_id: empId,
@@ -731,7 +764,10 @@ async function clockIn(laborLineId){
       ended_at: null
     };
     const r = await sbFetch(`${REST_BASE}/work_order_time_entries`, { token: AUTH.token, method:"POST", prefer:"return=representation", body: payload });
-    if(!r.ok) throw new Error("Clock in failed");
+    if(!r.ok) {
+      console.error('Clock in failed:', await r.text());
+      throw new Error("Clock in failed");
+    }
     await refreshTimeOnly();
     setMsg("⏱ Clocked in.", "success");
   }catch(err){
@@ -745,8 +781,11 @@ async function clockOut(laborLineId){
     if(!open) return setMsg("No running timer", "error");
     const id = timeId(open);
     const payload = { ended_at: new Date().toISOString() };
-    const r = await sbFetch(`${REST_BASE}/work_order_time_entries?tenant_id=eq.${TENANT_ID}&time_entry_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
-    if(!r.ok) throw new Error("Clock out failed");
+    const r = await sbFetch(`${REST_BASE}/work_order_time_entries?time_entry_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
+    if(!r.ok) {
+      console.error('Clock out failed:', await r.text());
+      throw new Error("Clock out failed");
+    }
     await refreshTimeOnly();
     setMsg("✅ Clocked out.", "success");
   }catch(err){
@@ -757,8 +796,12 @@ async function clockOut(laborLineId){
 function partId(row){ return row.part_id || row.id; }
 
 async function loadParts(){
-  const r = await sbFetch(`${REST_BASE}/work_order_parts?select=*&tenant_id=eq.${TENANT_ID}&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
-  if(!r.ok){ parts = []; return; }
+  const r = await sbFetch(`${REST_BASE}/work_order_parts?select=*&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
+  if(!r.ok){ 
+    console.error('Failed to load parts:', await r.text());
+    parts = []; 
+    return; 
+  }
   parts = await r.json();
 }
 
@@ -812,14 +855,16 @@ function renderParts(){
 async function addPart(){
   try{
     const payload = {
-      tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
       part_name: "New part",
       cost: 0,
       quantity: 1
     };
     const r = await sbFetch(`${REST_BASE}/work_order_parts`, { token: AUTH.token, method: "POST", prefer: "return=representation", body: payload });
-    if(!r.ok) throw new Error("Add part failed");
+    if(!r.ok) {
+      console.error('Add part failed:', await r.text());
+      throw new Error("Add part failed");
+    }
     await loadParts();
     recalculate();
     setMsg("✅ Part added.", "success");
@@ -846,8 +891,11 @@ async function savePart(id){
         payload[k] = el.value.trim() || null;
       }
     });
-    const r = await sbFetch(`${REST_BASE}/work_order_parts?tenant_id=eq.${TENANT_ID}&part_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
-    if(!r.ok) throw new Error("Save part failed");
+    const r = await sbFetch(`${REST_BASE}/work_order_parts?part_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
+    if(!r.ok) {
+      console.error('Save part failed:', await r.text());
+      throw new Error("Save part failed");
+    }
     await loadParts();
     recalculate();
     setMsg("✅ Part saved.", "success");
@@ -858,8 +906,12 @@ async function savePart(id){
 
 async function deletePart(id){
   if(!confirm("Delete this part?")) return;
-  const r = await sbFetch(`${REST_BASE}/work_order_parts?tenant_id=eq.${TENANT_ID}&part_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
-  if(!r.ok){ setMsg("Delete failed", "error"); return; }
+  const r = await sbFetch(`${REST_BASE}/work_order_parts?part_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
+  if(!r.ok){ 
+    console.error('Delete part failed:', await r.text());
+    setMsg("Delete failed", "error"); 
+    return; 
+  }
   await loadParts();
   recalculate();
   setMsg("✅ Part deleted.", "success");
