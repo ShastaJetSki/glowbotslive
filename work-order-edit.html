@@ -512,7 +512,8 @@ async function loadEmployees(){
 }
 
 async function loadWorkOrder(){
-  const r = await sbFetch(`${REST_BASE}/work_orders?select=*&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token });
+  // Load work order with tenant info
+  const r = await sbFetch(`${REST_BASE}/work_orders?select=*,tenants(business_name)&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token });
   if(!r.ok) {
     console.error('Failed to load work order:', await r.text());
     throw new Error("Failed to load work order");
@@ -533,6 +534,12 @@ async function loadWorkOrder(){
   document.getElementById("reference").value = workOrder.reference ?? "";
   document.getElementById("customer_notes").value = workOrder.customer_notes ?? "";
   document.getElementById("internal_notes").value = workOrder.internal_notes ?? "";
+  
+  // Update displays with business name and WO number
+  const businessName = workOrder.tenants?.business_name || "Shop";
+  const woNumber = workOrder.work_order_number || workOrder.wo_number || `WO-${String(workOrder.work_order_id).slice(0,8)}`;
+  document.getElementById("woIdDisplay").textContent = woNumber;
+  document.getElementById("tenantDisplay").textContent = businessName;
 }
 
 async function saveWorkOrder(){
@@ -631,10 +638,41 @@ async function updateLineRate(selectEl){
   }
   recalculate();
   
-  // Auto-save when tech is changed
+  // Auto-save when tech is changed (silently)
   const lineId = tr.getAttribute('data-line-id');
   if(lineId){
-    await saveLine(lineId);
+    try{
+      const inputs = tr.querySelectorAll("[data-k]");
+      const payload = {};
+      inputs.forEach(el=>{
+        const k = el.getAttribute("data-k");
+        if(el.tagName === "SELECT"){
+          payload[k] = el.value || null;
+        } else if(el.type === "number"){
+          payload[k] = el.value === "" ? null : Number(el.value);
+        } else {
+          payload[k] = el.value.trim() || null;
+        }
+      });
+      
+      // Calculate line_total
+      const hours = Number(payload.hours || 0);
+      const rate = Number(payload.rate || 0);
+      payload.line_total = hours * rate;
+      
+      const r = await sbFetch(`${REST_BASE}/labor_entries?labor_entry_id=eq.${lineId}`, { 
+        token: AUTH.token, 
+        method:"PATCH", 
+        body: payload 
+      });
+      
+      if(r.ok){
+        // Reload to show saved data
+        await reloadAllLines();
+      }
+    }catch(err){
+      console.error('Silent save failed:', err);
+    }
   }
 }
 
@@ -993,14 +1031,11 @@ async function load(){
 
   TENANT_ID = await getTenantId(AUTH.token);
 
-  document.getElementById("woIdDisplay").textContent = `WO: ${WORK_ORDER_ID}`;
-  document.getElementById("tenantDisplay").textContent = `Tenant: ${TENANT_ID}`;
-
   await loadBusinessSettings();
   await loadCustomers();
   await loadVehicles();
   await loadEmployees();
-  await loadWorkOrder();
+  await loadWorkOrder(); // This now sets the WO and tenant displays
   await reloadAllLines();
   await loadParts();
   recalculate();
