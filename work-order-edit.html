@@ -220,6 +220,7 @@
       <table>
         <thead>
           <tr>
+            <th style="min-width:120px;">Labor Code</th>
             <th style="min-width:200px;">Description</th>
             <th style="min-width:140px;">Assigned Tech</th>
             <th class="right" style="min-width:80px;">Billed Hrs</th>
@@ -231,7 +232,7 @@
           </tr>
         </thead>
         <tbody id="linesTbody">
-          <tr><td colspan="8" class="small">Loading lines…</td></tr>
+          <tr><td colspan="9" class="small">Loading lines…</td></tr>
         </tbody>
       </table>
     </div>
@@ -647,9 +648,24 @@ async function loadMyTimeState(){
 
 async function getMyEmployeeId(){
   const user = AUTH.user;
+  if(!user || !user.id) {
+    console.error('No authenticated user found');
+    return null;
+  }
+  
   const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,user_id&user_id=eq.${user.id}&limit=1`, { token: AUTH.token });
-  if(!r.ok) return null;
+  if(!r.ok) {
+    console.error('Failed to fetch employee record:', await r.text());
+    return null;
+  }
+  
   const rows = await r.json();
+  if(!rows || rows.length === 0) {
+    console.warn('No employee record found for user:', user.id);
+    console.warn('User email:', user.email);
+    console.warn('To use time tracking, create an employee record linked to your user account.');
+  }
+  
   return rows[0]?.employee_id || null;
 }
 
@@ -683,7 +699,7 @@ async function updateLineRate(selectEl){
 function renderLines(){
   const tb = document.getElementById("linesTbody");
   if(!laborLines.length){
-    tb.innerHTML = `<tr><td colspan="8" class="small">No labor lines yet.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9" class="small">No labor lines yet.</td></tr>`;
     return;
   }
 
@@ -699,6 +715,9 @@ function renderLines(){
 
     return `
       <tr data-line-id="${id}">
+        <td>
+          <input data-k="labor_code" type="text" value="${(line.labor_code || "").replaceAll('"','&quot;')}" placeholder="Code" onchange="recalculate()" style="font-size:13px; width:100px;" />
+        </td>
         <td>
           <input data-k="description" type="text" value="${(line.description || "").replaceAll('"','&quot;')}" placeholder="Labor description" onchange="recalculate()" style="font-size:13px;" />
         </td>
@@ -1066,27 +1085,41 @@ async function reloadAll(){
 }
 
 async function load(){
-  WORK_ORDER_ID = qs("id");
-  if(!WORK_ORDER_ID){
-    // Redirect to dashboard - no work order ID provided
-    return location.replace("dashboard-business.html");
+  try {
+    WORK_ORDER_ID = qs("id");
+    if(!WORK_ORDER_ID){
+      // Redirect to dashboard - no work order ID provided
+      return location.replace("dashboard-business.html");
+    }
+
+    AUTH = await validateAuth();
+    if(!AUTH) return location.replace("login.html");
+
+    document.body.classList.add('auth-verified');
+
+    TENANT_ID = await getTenantId(AUTH.token);
+
+    await loadBusinessSettings();
+    await loadCustomers();
+    await loadVehicles();
+    await loadEmployees();
+    await loadWorkOrder(); // This now sets the WO and tenant displays
+    await reloadAllLines();
+    await loadParts();
+    recalculate();
+    
+    // Hide loading message
+    const hint = document.getElementById("hint");
+    if(hint) hint.style.display = "none";
+    
+  } catch(err) {
+    console.error("Load error:", err);
+    const hint = document.getElementById("hint");
+    if(hint) {
+      hint.textContent = "Error loading work order: " + err.message;
+      hint.style.color = "#ef4444";
+    }
   }
-
-  AUTH = await validateAuth();
-  if(!AUTH) return location.replace("login.html");
-
-  document.body.classList.add('auth-verified');
-
-  TENANT_ID = await getTenantId(AUTH.token);
-
-  await loadBusinessSettings();
-  await loadCustomers();
-  await loadVehicles();
-  await loadEmployees();
-  await loadWorkOrder(); // This now sets the WO and tenant displays
-  await reloadAllLines();
-  await loadParts();
-  recalculate();
 }
 
 load();
