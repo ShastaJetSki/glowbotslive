@@ -370,8 +370,8 @@ function getDefaultSettings(){
 
 function calculateLaborSubtotal(){
   return laborLines.reduce((sum, line) => {
-    const hours = Number(line.billed_hours || 0);
-    const rate = Number(line.labor_rate || businessSettings.labor_rate || 0);
+    const hours = Number(line.hours || 0);
+    const rate = Number(line.rate || businessSettings.labor_rate || 0);
     return sum + (hours * rate);
   }, 0);
 }
@@ -464,7 +464,7 @@ function renderInvoiceSummary(){
 async function loadCustomers(){
   const sel = document.getElementById("customer_id");
   sel.innerHTML = `<option value="">Loading…</option>`;
-  const r = await sbFetch(`${REST_BASE}/customers?select=customer_id,first_name,last_name,business_name&order=created_at.desc`, { token: AUTH.token });
+  const r = await sbFetch(`${REST_BASE}/customers?select=customer_id,first_name,last_name&order=created_at.desc`, { token: AUTH.token });
   if(!r.ok){ 
     console.error('Failed to load customers:', await r.text());
     sel.innerHTML = `<option value="">Failed to load</option>`; 
@@ -472,7 +472,7 @@ async function loadCustomers(){
   }
   customers = await r.json();
   sel.innerHTML = `<option value="">Select customer…</option>` + customers.map(c=>{
-    const name = (c.business_name || `${c.first_name||""} ${c.last_name||""}`.trim() || "Customer");
+    const name = (`${c.first_name||""} ${c.last_name||""}`.trim() || "Customer");
     return `<option value="${c.customer_id}">${name}</option>`;
   }).join("");
 }
@@ -561,11 +561,11 @@ async function saveWorkOrder(){
   }
 }
 
-function lineId(row){ return row.labor_line_id || row.id; }
+function lineId(row){ return row.labor_entry_id || row.id; }
 function timeId(row){ return row.time_entry_id || row.id; }
 
 async function loadLaborLines(){
-  const r = await sbFetch(`${REST_BASE}/labor_lines?select=*&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
+  const r = await sbFetch(`${REST_BASE}/labor_entries?select=*&work_order_id=eq.${WORK_ORDER_ID}&order=created_at.asc`, { token: AUTH.token });
   if(!r.ok){ 
     console.error('Failed to load labor lines:', await r.text());
     laborLines = []; 
@@ -615,15 +615,15 @@ function techSelectHtml(selectedId){
       return `<option value="${e.employee_id}" ${sel}>${name}${rate}</option>`;
     })
   );
-  // Use assigned_employee_id to match labor_lines table
-  return `<select data-k="assigned_employee_id" onchange="updateLineRate(this)">${options.join("")}</select>`;
+  // Use employee_id to match labor_entries table
+  return `<select data-k="employee_id" onchange="updateLineRate(this)">${options.join("")}</select>`;
 }
 
 function updateLineRate(selectEl){
   const empId = selectEl.value;
   const emp = employees.find(e => e.employee_id === empId);
   const tr = selectEl.closest('tr');
-  const rateInput = tr.querySelector('[data-k="labor_rate"]');
+  const rateInput = tr.querySelector('[data-k="rate"]');
   if(emp && emp.hourly_labor_rate){
     rateInput.value = emp.hourly_labor_rate;
   } else {
@@ -641,8 +641,8 @@ function renderLines(){
 
   tb.innerHTML = laborLines.map(line=>{
     const id = lineId(line);
-    const billed = Number(line.billed_hours || 0);
-    const rate = Number(line.labor_rate || businessSettings.labor_rate || 0);
+    const billed = Number(line.hours || 0);
+    const rate = Number(line.rate || businessSettings.labor_rate || 0);
     const revenue = billed * rate;
 
     const mySec = myClockedSeconds[id] || 0;
@@ -654,12 +654,12 @@ function renderLines(){
         <td>
           <input data-k="description" type="text" value="${(line.description || "").replaceAll('"','&quot;')}" placeholder="Labor description" onchange="recalculate()" style="font-size:13px;" />
         </td>
-        <td>${techSelectHtml(line.assigned_employee_id || null)}</td>
+        <td>${techSelectHtml(line.employee_id || null)}</td>
         <td class="right">
-          <input data-k="billed_hours" type="number" min="0" step="0.1" value="${billed}" onchange="recalculate()" style="font-size:13px; width:70px;" />
+          <input data-k="hours" type="number" min="0" step="0.1" value="${billed}" onchange="recalculate()" style="font-size:13px; width:70px;" />
         </td>
         <td class="right">
-          <input data-k="labor_rate" type="number" min="0" step="1" value="${rate}" onchange="recalculate()" style="font-size:13px; width:80px;" />
+          <input data-k="rate" type="number" min="0" step="1" value="${rate}" onchange="recalculate()" style="font-size:13px; width:80px;" />
         </td>
         <td class="right">
           <div style="font-weight:600;">${myHours}</div>
@@ -696,15 +696,15 @@ async function addLine(){
       tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
       description: "New labor line",
-      billed_hours: 0,
-      labor_rate: businessSettings.labor_rate || 0
+      hours: 0,
+      rate: businessSettings.labor_rate || 0
       // Employee assignment will be set via dropdown after creation
     };
     
     console.log('Payload being sent:', JSON.stringify(payload, null, 2));
-    console.log('URL:', `${REST_BASE}/labor_lines`);
+    console.log('URL:', `${REST_BASE}/labor_entries`);
     
-    const r = await sbFetch(`${REST_BASE}/labor_lines`, { token: AUTH.token, method: "POST", prefer: "return=representation", body: payload });
+    const r = await sbFetch(`${REST_BASE}/labor_entries`, { token: AUTH.token, method: "POST", prefer: "return=representation", body: payload });
     
     console.log('Response status:', r.status);
     console.log('Response ok:', r.ok);
@@ -745,7 +745,7 @@ async function saveLine(id){
     
     console.log('Saving line with payload:', payload);
     
-    const r = await sbFetch(`${REST_BASE}/labor_lines?labor_line_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
+    const r = await sbFetch(`${REST_BASE}/labor_entries?labor_entry_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
     if(!r.ok) {
       const errorText = await r.text();
       console.error('Save line failed:', errorText);
@@ -760,7 +760,7 @@ async function saveLine(id){
 
 async function deleteLine(id){
   if(!confirm("Delete this labor line?")) return;
-  const r = await sbFetch(`${REST_BASE}/labor_lines?labor_line_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
+  const r = await sbFetch(`${REST_BASE}/labor_entries?labor_entry_id=eq.${id}`, { token: AUTH.token, method:"DELETE" });
   if(!r.ok){ 
     console.error('Delete failed:', await r.text());
     setMsg("Delete failed", "error"); 
