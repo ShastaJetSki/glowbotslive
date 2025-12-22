@@ -94,7 +94,16 @@
 </head>
 
 <body>
-  <div class="appName">WorkLogicPro</div>
+  <!-- Navigation Bar -->
+  <nav style="background:#0f1621; border-bottom:1px solid #223044; padding:12px 24px; margin:-24px -24px 24px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="display:flex; gap:20px; align-items:center;">
+      <div style="font-weight:600; font-size:18px; color:#3b82f6;">WorkLogicPro</div>
+      <a href="dashboard-business.html" style="color:#9fb0c3; text-decoration:none; font-size:14px;">Dashboard</a>
+      <a href="dashboard-customer-search.html" style="color:#9fb0c3; text-decoration:none; font-size:14px;">Customers</a>
+      <a href="dashboard-vehicle-search.html" style="color:#9fb0c3; text-decoration:none; font-size:14px;">Vehicles</a>
+    </div>
+    <button onclick="logout()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3;">Logout</button>
+  </nav>
 
   <header>
     <div>
@@ -103,7 +112,6 @@
     </div>
     <div class="row">
       <button onclick="location.href='dashboard-business.html'">Dashboard</button>
-      <button class="danger" onclick="logout()">Logout</button>
     </div>
   </header>
 
@@ -207,13 +215,18 @@
             <th class="right" style="min-width:90px;">Clocked Hrs</th>
             <th style="min-width:200px;">Clock Controls</th>
             <th class="right" style="min-width:100px;">Line Total</th>
-            <th style="min-width:110px;">Actions</th>
+            <th style="min-width:60px;">Delete</th>
           </tr>
         </thead>
         <tbody id="linesTbody">
           <tr><td colspan="8" class="small">Loading lines…</td></tr>
         </tbody>
       </table>
+    </div>
+    
+    <!-- Save All Button -->
+    <div style="display:flex; justify-content:flex-end; margin-top:16px; gap:12px;">
+      <button class="primary" onclick="saveAllLines()">Save All Lines</button>
     </div>
   </div>
 
@@ -537,7 +550,7 @@ async function loadWorkOrder(){
   
   // Update displays with business name and WO number
   const businessName = workOrder.tenants?.name || "Shop";
-  const woNumber = workOrder.work_order_number || workOrder.wo_number || workOrder.order_number || `WO-${String(workOrder.work_order_id).slice(0,8)}`;
+  const woNumber = workOrder.wo_number ? `WO-${workOrder.wo_number}` : `WO-${String(workOrder.work_order_id).slice(0,8)}`;
   document.getElementById("woIdDisplay").textContent = woNumber;
   document.getElementById("tenantDisplay").textContent = businessName;
 }
@@ -637,43 +650,7 @@ async function updateLineRate(selectEl){
     rateInput.value = businessSettings.labor_rate || 0;
   }
   recalculate();
-  
-  // Auto-save when tech is changed (silently)
-  const lineId = tr.getAttribute('data-line-id');
-  if(lineId){
-    try{
-      const inputs = tr.querySelectorAll("[data-k]");
-      const payload = {};
-      inputs.forEach(el=>{
-        const k = el.getAttribute("data-k");
-        if(el.tagName === "SELECT"){
-          payload[k] = el.value || null;
-        } else if(el.type === "number"){
-          payload[k] = el.value === "" ? null : Number(el.value);
-        } else {
-          payload[k] = el.value.trim() || null;
-        }
-      });
-      
-      // Calculate line_total
-      const hours = Number(payload.hours || 0);
-      const rate = Number(payload.rate || 0);
-      payload.line_total = hours * rate;
-      
-      const r = await sbFetch(`${REST_BASE}/labor_entries?labor_entry_id=eq.${lineId}`, { 
-        token: AUTH.token, 
-        method:"PATCH", 
-        body: payload 
-      });
-      
-      if(r.ok){
-        // Reload to show saved data
-        await reloadAllLines();
-      }
-    }catch(err){
-      console.error('Silent save failed:', err);
-    }
-  }
+  // Note: No auto-save here - user will click "Save All Lines" button
 }
 
 function renderLines(){
@@ -719,10 +696,7 @@ function renderLines(){
           <div style="font-weight:600;">${money(revenue)}</div>
         </td>
         <td>
-          <div class="actions">
-            <button class="btn-sm" onclick="saveLine('${id}')">Save</button>
-            <button class="btn-sm danger" onclick="deleteLine('${id}')">Del</button>
-          </div>
+          <button class="btn-sm danger" onclick="deleteLine('${id}')">Del</button>
         </td>
       </tr>
     `;
@@ -821,6 +795,50 @@ async function deleteLine(id){
   }
   await reloadAllLines();
   setMsg("✅ Line deleted.", "success");
+}
+
+async function saveAllLines(){
+  try{
+    let savedCount = 0;
+    const allRows = document.querySelectorAll('#linesTbody tr[data-line-id]');
+    
+    for(const tr of allRows){
+      const lineId = tr.getAttribute('data-line-id');
+      const inputs = tr.querySelectorAll("[data-k]");
+      const payload = {};
+      
+      inputs.forEach(el=>{
+        const k = el.getAttribute("data-k");
+        if(el.tagName === "SELECT"){
+          payload[k] = el.value || null;
+        } else if(el.type === "number"){
+          payload[k] = el.value === "" ? null : Number(el.value);
+        } else {
+          payload[k] = el.value.trim() || null;
+        }
+      });
+      
+      // Calculate line_total (required field)
+      const hours = Number(payload.hours || 0);
+      const rate = Number(payload.rate || 0);
+      payload.line_total = hours * rate;
+      
+      const r = await sbFetch(`${REST_BASE}/labor_entries?labor_entry_id=eq.${lineId}`, { 
+        token: AUTH.token, 
+        method:"PATCH", 
+        body: payload 
+      });
+      
+      if(r.ok){
+        savedCount++;
+      }
+    }
+    
+    await reloadAllLines();
+    setMsg(`✅ ${savedCount} line(s) saved.`, "success");
+  }catch(err){
+    setMsg("Error: " + err.message, "error");
+  }
 }
 
 async function clockIn(laborLineId){
