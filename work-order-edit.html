@@ -615,7 +615,8 @@ function techSelectHtml(selectedId){
       return `<option value="${e.employee_id}" ${sel}>${name}${rate}</option>`;
     })
   );
-  return `<select data-k="assigned_employee_id" onchange="updateLineRate(this)">${options.join("")}</select>`;
+  // Try common column names - the saveLine function will handle which one works
+  return `<select data-k="employee_id" onchange="updateLineRate(this)">${options.join("")}</select>`;
 }
 
 function updateLineRate(selectEl){
@@ -653,7 +654,7 @@ function renderLines(){
         <td>
           <input data-k="description" type="text" value="${(line.description || "").replaceAll('"','&quot;')}" placeholder="Labor description" onchange="recalculate()" style="font-size:13px;" />
         </td>
-        <td>${techSelectHtml(line.assigned_employee_id || null)}</td>
+        <td>${techSelectHtml(line.employee_id || line.assigned_employee_id || line.assigned_to || line.technician_id || null)}</td>
         <td class="right">
           <input data-k="billed_hours" type="number" min="0" step="0.1" value="${billed}" onchange="recalculate()" style="font-size:13px; width:70px;" />
         </td>
@@ -686,22 +687,37 @@ function renderLines(){
 
 async function addLine(){
   try{
+    console.log('=== ADD LINE DEBUG START ===');
+    console.log('TENANT_ID:', TENANT_ID);
+    console.log('WORK_ORDER_ID:', WORK_ORDER_ID);
+    console.log('businessSettings:', businessSettings);
+    
     const payload = {
+      tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
       description: "New labor line",
       billed_hours: 0,
-      labor_rate: businessSettings.labor_rate || 0,
-      assigned_employee_id: null
+      labor_rate: businessSettings.labor_rate || 0
+      // Employee assignment will be set via dropdown after creation
     };
+    
+    console.log('Payload being sent:', JSON.stringify(payload, null, 2));
+    console.log('URL:', `${REST_BASE}/work_order_labor_lines`);
+    
     const r = await sbFetch(`${REST_BASE}/work_order_labor_lines`, { token: AUTH.token, method: "POST", prefer: "return=representation", body: payload });
+    
+    console.log('Response status:', r.status);
+    console.log('Response ok:', r.ok);
+    
     if(!r.ok) {
       const errorText = await r.text();
-      console.error('Add line failed:', errorText);
+      console.error('Add line failed - full response:', errorText);
       throw new Error("Add line failed: " + errorText);
     }
     await reloadAllLines();
     setMsg("✅ Line added.", "success");
   }catch(err){
+    console.error('=== ADD LINE ERROR ===', err);
     setMsg("Error: " + err.message, "error");
   }
 }
@@ -726,10 +742,14 @@ async function saveLine(id){
         payload[k] = el.value.trim() || null;
       }
     });
+    
+    console.log('Saving line with payload:', payload);
+    
     const r = await sbFetch(`${REST_BASE}/work_order_labor_lines?labor_line_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
     if(!r.ok) {
-      console.error('Save line failed:', await r.text());
-      throw new Error("Save line failed");
+      const errorText = await r.text();
+      console.error('Save line failed:', errorText);
+      throw new Error("Save failed: " + errorText);
     }
     await reloadAllLines();
     setMsg("✅ Line saved.", "success");
