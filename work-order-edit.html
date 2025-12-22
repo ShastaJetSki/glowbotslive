@@ -103,7 +103,7 @@
   <!-- Sticky Header -->
   <div style="position:sticky; top:0; z-index:100; background:#0b0f14; border-bottom:1px solid #223044;">
     <!-- Title and Logo Bar -->
-    <div style="padding:20px 24px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
       <h1 style="margin:0; font-size:32px; font-weight:600;" id="title">Edit Work Order</h1>
       <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
     </div>
@@ -610,24 +610,37 @@ async function loadLaborLines(){
 
 async function loadMyTimeState(){
   const myEmployeeId = await getMyEmployeeId();
-  if(!myEmployeeId){ myOpenEntries = {}; myClockedSeconds = {}; return; }
+  if(!myEmployeeId){ 
+    myOpenEntries = {}; 
+    myClockedSeconds = {}; 
+    return; 
+  }
 
-  const rOpen = await sbFetch(`${REST_BASE}/work_order_time_entries?select=*&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}&ended_at=is.null`, { token: AUTH.token });
+  // Load open time entries (clocked in, not clocked out)
+  const rOpen = await sbFetch(`${REST_BASE}/labor_time_entries?select=*&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}&clock_out=is.null`, { token: AUTH.token });
   myOpenEntries = {};
   if(rOpen.ok){
     const rows = await rOpen.json();
-    for(const e of rows) myOpenEntries[e.labor_line_id] = e;
+    for(const entry of rows) {
+      if(entry.labor_entry_id) {
+        myOpenEntries[entry.labor_entry_id] = entry;
+      }
+    }
   }
 
-  const rAll = await sbFetch(`${REST_BASE}/work_order_time_entries?select=labor_line_id,started_at,ended_at&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}`, { token: AUTH.token });
+  // Load ALL time entries to calculate total clocked hours per labor line
+  const rAll = await sbFetch(`${REST_BASE}/labor_time_entries?select=*&work_order_id=eq.${WORK_ORDER_ID}&employee_id=eq.${myEmployeeId}`, { token: AUTH.token });
   myClockedSeconds = {};
   if(rAll.ok){
     const rows = await rAll.json();
-    for(const e of rows){
-      const start = new Date(e.started_at).getTime();
-      const end = e.ended_at ? new Date(e.ended_at).getTime() : Date.now();
-      const sec = Math.max(0, Math.round((end - start)/1000));
-      myClockedSeconds[e.labor_line_id] = (myClockedSeconds[e.labor_line_id] || 0) + sec;
+    for(const entry of rows){
+      if(!entry.labor_entry_id) continue;
+      
+      const start = new Date(entry.clock_in).getTime();
+      const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
+      const seconds = Math.max(0, Math.round((end - start) / 1000));
+      
+      myClockedSeconds[entry.labor_entry_id] = (myClockedSeconds[entry.labor_entry_id] || 0) + seconds;
     }
   }
 }
@@ -855,20 +868,21 @@ async function saveAllLines(){
   }
 }
 
-async function clockIn(laborLineId){
+async function clockIn(laborEntryId){
   try{
     const empId = await getMyEmployeeId();
-    if(!empId) return setMsg("No employee record", "error");
-    if(myOpenEntries[laborLineId]) return setMsg("Already clocked in", "error");
+    if(!empId) return setMsg("No employee record found", "error");
+    if(myOpenEntries[laborEntryId]) return setMsg("Already clocked in to this line", "error");
 
     const payload = {
+      tenant_id: TENANT_ID,
       work_order_id: WORK_ORDER_ID,
-      labor_line_id: laborLineId,
+      labor_entry_id: laborEntryId,
       employee_id: empId,
-      started_at: new Date().toISOString(),
-      ended_at: null
+      clock_in: new Date().toISOString()
     };
-    const r = await sbFetch(`${REST_BASE}/work_order_time_entries`, { token: AUTH.token, method:"POST", prefer:"return=representation", body: payload });
+    
+    const r = await sbFetch(`${REST_BASE}/labor_time_entries`, { token: AUTH.token, method:"POST", prefer:"return=representation", body: payload });
     if(!r.ok) {
       console.error('Clock in failed:', await r.text());
       throw new Error("Clock in failed");
@@ -880,13 +894,15 @@ async function clockIn(laborLineId){
   }
 }
 
-async function clockOut(laborLineId){
+async function clockOut(laborEntryId){
   try{
-    const open = myOpenEntries[laborLineId];
-    if(!open) return setMsg("No running timer", "error");
-    const id = timeId(open);
-    const payload = { ended_at: new Date().toISOString() };
-    const r = await sbFetch(`${REST_BASE}/work_order_time_entries?time_entry_id=eq.${id}`, { token: AUTH.token, method:"PATCH", body: payload });
+    const open = myOpenEntries[laborEntryId];
+    if(!open) return setMsg("No running timer for this line", "error");
+    
+    const timeEntryId = open.time_entry_id;
+    const payload = { clock_out: new Date().toISOString() };
+    
+    const r = await sbFetch(`${REST_BASE}/labor_time_entries?time_entry_id=eq.${timeEntryId}`, { token: AUTH.token, method:"PATCH", body: payload });
     if(!r.ok) {
       console.error('Clock out failed:', await r.text());
       throw new Error("Clock out failed");
