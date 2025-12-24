@@ -441,7 +441,7 @@ function render(){
     
     if (activeWO) {
       const woNum = activeWO.wo_number || activeWO.work_order_id.substring(0, 8);
-      const tech = employees.find(e => e.employee_id === activeWO.assigned_tech_id);
+      const tech = employees.find(e => e.employee_id === activeWO.assigned_employee_id);
       const techName = tech ? `${tech.first_name} ${tech.last_name}` : 'Unassigned';
       const status = activeWO.status || 'draft';
       
@@ -511,18 +511,32 @@ async function load(){
   vehicles = await fetchTable("vehicles", token);
   customers = await fetchTable("customers", token);
   
-  // Load work orders with status not completed/closed
-  const woResponse = await fetch(
-    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_tech_id&status=not.in.(completed,closed)`,
+  // Load ALL work orders first to see what we have
+  const allWOResponse = await fetch(
+    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_employee_id`,
     { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } }
   );
-  workOrders = woResponse.ok ? await woResponse.json() : [];
+  const allWorkOrders = allWOResponse.ok ? await allWOResponse.json() : [];
   
-  console.log('Loaded work orders:', workOrders.length);
+  console.log('All work orders:', allWorkOrders.length);
+  console.log('Status breakdown:', allWorkOrders.reduce((acc, wo) => {
+    acc[wo.status] = (acc[wo.status] || 0) + 1;
+    return acc;
+  }, {}));
+  
+  // Filter to only non-completed/closed work orders
+  workOrders = allWorkOrders.filter(wo => 
+    wo.status !== 'completed' && 
+    wo.status !== 'closed' &&
+    wo.vehicle_id // Must have a vehicle assigned
+  );
+  
+  console.log('Active work orders (not completed/closed):', workOrders.length);
   console.log('Work orders by vehicle:', workOrders.map(wo => ({
     vehicle_id: wo.vehicle_id,
     wo_number: wo.wo_number,
-    status: wo.status
+    status: wo.status,
+    assigned_employee_id: wo.assigned_employee_id
   })));
   
   // Load employees to get tech names
