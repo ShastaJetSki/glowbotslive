@@ -91,8 +91,61 @@
       border-radius:14px;
       padding:14px 16px;
       cursor:pointer;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
     }
     .card:hover { border-color:#38bdf8; }
+    
+    .customer-info {
+      flex:1;
+      min-width:0;
+    }
+    
+    .customer-stats {
+      text-align:right;
+      flex-shrink:0;
+      min-width:120px;
+    }
+    
+    .customer-spend {
+      font-size:16px;
+      font-weight:700;
+      color:#4ade80;
+      margin-bottom:2px;
+    }
+    
+    .customer-last-spend {
+      font-size:13px;
+      font-weight:600;
+      color:#60a5fa;
+      margin-bottom:6px;
+    }
+    
+    .customer-new {
+      font-size:11px;
+      font-weight:600;
+      color:#9fb0c3;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      margin-bottom:6px;
+    }
+    
+    .star-rating {
+      color:#fbbf24;
+      font-size:13px;
+      letter-spacing:1px;
+    }
+    
+    .manager-only {
+      display:none;
+    }
+    
+    body.is-manager .manager-only,
+    body.is-owner .manager-only {
+      display:block;
+    }
 
     .muted { font-size:12px; color:#9fb0c3; margin-top:4px; }
 
@@ -117,6 +170,75 @@
       max-width:620px;
       max-height:80vh;
       overflow:auto;
+    }
+    
+    .work-order-list {
+      margin-top:12px;
+    }
+    
+    .work-order-item {
+      background:#0b0f14;
+      border:1px solid #223044;
+      border-radius:8px;
+      padding:12px;
+      margin-bottom:8px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      cursor:pointer;
+      text-decoration:none;
+      color:inherit;
+    }
+    
+    .work-order-item:hover {
+      border-color:#3b82f6;
+    }
+    
+    .work-order-number {
+      font-weight:600;
+      color:#3b82f6;
+      font-size:14px;
+    }
+    
+    .work-order-date {
+      font-size:12px;
+      color:#9fb0c3;
+    }
+    
+    .work-order-status {
+      font-size:11px;
+      padding:4px 8px;
+      border-radius:6px;
+      background:#1a2535;
+      text-transform:uppercase;
+      font-weight:600;
+    }
+    
+    .rating-container {
+      display:flex;
+      gap:8px;
+      align-items:center;
+      margin-top:12px;
+    }
+    
+    .rating-stars {
+      font-size:24px;
+      cursor:pointer;
+      user-select:none;
+    }
+    
+    .rating-stars span {
+      color:#374151;
+      transition:color 0.2s;
+    }
+    
+    .rating-stars span.filled {
+      color:#fbbf24;
+    }
+    
+    .rating-stars span:hover,
+    .rating-stars span:hover ~ span {
+      color:#fbbf24 !important;
     }
 
     button {
@@ -185,6 +307,23 @@
     <div class="modalContent">
       <h2 id="modalTitle"></h2>
       <div id="modalCustomerInfo" class="muted"></div>
+      
+      <div class="rating-container manager-only">
+        <div style="font-size:12px; color:#9fb0c3; font-weight:500;">Rate Customer Experience:</div>
+        <div class="rating-stars" id="ratingStars">
+          <span data-rating="1">★</span>
+          <span data-rating="2">★</span>
+          <span data-rating="3">★</span>
+          <span data-rating="4">★</span>
+          <span data-rating="5">★</span>
+        </div>
+        <div style="font-size:11px; color:#9fb0c3; margin-top:4px; font-style:italic;">
+          Manager/Owner Only - Rate customer's behavior and experience
+        </div>
+      </div>
+
+      <h3 style="margin-top:16px;">Work Orders</h3>
+      <div id="customerWorkOrders" class="work-order-list"></div>
 
       <h3 style="margin-top:16px;">Vehicles</h3>
       <div id="customerVehicles" class="list"></div>
@@ -286,32 +425,114 @@ function render(){
     norm(c.phone).includes(q)
   );
 
-  results.innerHTML = filtered.map(c => `
-    <div class="card" onclick="openCustomer('${c.customer_id}')">
-      <strong>${c.first_name || ""} ${c.last_name || ""}</strong>
-      <div class="muted">${c.phone || "—"}</div>
-      <div class="muted">${c.email || "—"}</div>
-    </div>
-  `).join("");
+  results.innerHTML = filtered.map(c => {
+    const lifetimeSpend = c.lifetime_spend || 0;
+    const lastSpend = c.last_work_order_spend || 0;
+    const rating = c.customer_rating || 0;
+    const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+    
+    // Determine if showing "New Customer" or last spend amount
+    let lastSpendDisplay = '';
+    if (lifetimeSpend === 0 && lastSpend === 0) {
+      lastSpendDisplay = '<div class="customer-new">New Customer</div>';
+    } else {
+      lastSpendDisplay = `<div class="customer-last-spend">Last: $${lastSpend.toFixed(2)}</div>`;
+    }
+    
+    return `
+      <div class="card" onclick="openCustomer('${c.customer_id}')">
+        <div class="customer-info">
+          <strong>${c.first_name || ""} ${c.last_name || ""}</strong>
+          <div class="muted">${c.phone || "—"}</div>
+          <div class="muted">${c.email || "—"}</div>
+        </div>
+        <div class="customer-stats">
+          <div class="customer-spend">$${lifetimeSpend.toFixed(2)}</div>
+          ${lastSpendDisplay}
+          <div class="star-rating manager-only">${stars}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
+
+let currentCustomerId = null;
+let userRole = null;
 
 async function openCustomer(customerId){
   const token = localStorage.getItem("sb_access_token");
   const c = customers.find(x => x.customer_id === customerId);
   if(!c) return;
 
+  currentCustomerId = customerId;
+
+  const lastSpend = c.last_work_order_spend || 0;
+  const lifetimeSpend = c.lifetime_spend || 0;
+  
+  let spendInfo = `
+    Lifetime Spend: <strong style="color:#4ade80;">$${lifetimeSpend.toFixed(2)}</strong><br>
+  `;
+  
+  if (lifetimeSpend === 0 && lastSpend === 0) {
+    spendInfo += `Last Work Order: <strong style="color:#9fb0c3;">New Customer</strong>`;
+  } else {
+    spendInfo += `Last Work Order: <strong style="color:#60a5fa;">$${lastSpend.toFixed(2)}</strong>`;
+  }
+
   modalTitle.textContent = `${c.first_name} ${c.last_name}`;
   modalCustomerInfo.innerHTML = `
     Phone: ${c.phone || "—"}<br>
-    Email: ${c.email || "—"}
+    Email: ${c.email || "—"}<br>
+    ${spendInfo}
   `;
 
-  const r = await fetch(
+  // Set up rating stars (only for managers/owners)
+  const rating = c.customer_rating || 0;
+  updateRatingDisplay(rating);
+  
+  // Only allow interaction if user is manager/owner
+  if (userRole === 'manager' || userRole === 'owner') {
+    setupRatingInteraction();
+  }
+
+  // Load work orders
+  const woResponse = await fetch(
+    `${REST_BASE}/work_orders?customer_id=eq.${customerId}&select=work_order_id,wo_number,status,scheduled_start,created_at&order=created_at.desc`,
+    { headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` } }
+  );
+
+  const workOrders = woResponse.ok ? await woResponse.json() : [];
+  
+  const workOrdersEl = document.getElementById('customerWorkOrders');
+  if(workOrders.length > 0) {
+    workOrdersEl.innerHTML = workOrders.map(wo => {
+      const woNum = wo.wo_number || wo.work_order_id.substring(0, 8);
+      const date = wo.scheduled_start || wo.created_at;
+      const dateStr = date ? new Date(date).toLocaleDateString('en-US', { 
+        month: 'short', day: 'numeric', year: 'numeric' 
+      }) : '—';
+      
+      return `
+        <a href="work-order-edit.html?id=${wo.work_order_id}" class="work-order-item" target="_blank">
+          <div>
+            <div class="work-order-number">WO-${woNum}</div>
+            <div class="work-order-date">${dateStr}</div>
+          </div>
+          <div class="work-order-status">${wo.status || 'draft'}</div>
+        </a>
+      `;
+    }).join('');
+  } else {
+    workOrdersEl.innerHTML = '<div class="muted">No work orders yet.</div>';
+  }
+
+  // Load vehicles
+  const vResponse = await fetch(
     `${REST_BASE}/vehicles?customer_id=eq.${customerId}&select=*`,
     { headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` } }
   );
 
-  const vehicles = r.ok ? await r.json() : [];
+  const vehicles = vResponse.ok ? await vResponse.json() : [];
 
   customerVehicles.innerHTML = vehicles.length
     ? vehicles.map(v => `
@@ -326,6 +547,72 @@ async function openCustomer(customerId){
   customerModal.classList.add("active");
 }
 
+function updateRatingDisplay(rating){
+  const stars = document.querySelectorAll('#ratingStars span');
+  stars.forEach((star, idx) => {
+    if(idx < rating) {
+      star.classList.add('filled');
+    } else {
+      star.classList.remove('filled');
+    }
+  });
+}
+
+function setupRatingInteraction(){
+  const stars = document.querySelectorAll('#ratingStars span');
+  
+  stars.forEach(star => {
+    star.onclick = async function(){
+      const rating = parseInt(this.dataset.rating);
+      await saveCustomerRating(currentCustomerId, rating);
+      updateRatingDisplay(rating);
+    };
+    
+    star.onmouseenter = function(){
+      const rating = parseInt(this.dataset.rating);
+      stars.forEach((s, idx) => {
+        if(idx < rating) {
+          s.style.color = '#fbbf24';
+        } else {
+          s.style.color = '#374151';
+        }
+      });
+    };
+  });
+  
+  document.getElementById('ratingStars').onmouseleave = function(){
+    const c = customers.find(x => x.customer_id === currentCustomerId);
+    const rating = c?.customer_rating || 0;
+    updateRatingDisplay(rating);
+  };
+}
+
+async function saveCustomerRating(customerId, rating){
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const response = await fetch(`${REST_BASE}/customers?customer_id=eq.${customerId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': ANON_KEY
+      },
+      body: JSON.stringify({ customer_rating: rating })
+    });
+    
+    if(response.ok) {
+      // Update local data
+      const c = customers.find(x => x.customer_id === customerId);
+      if(c) c.customer_rating = rating;
+      render(); // Update card display
+    }
+  } catch(err) {
+    console.error('Error saving rating:', err);
+  }
+}
+
 function closeModal(){
   customerModal.classList.remove("active");
 }
@@ -333,6 +620,38 @@ function closeModal(){
 async function load(){
   const token = await validateAuth();
   if(!token) return location.replace("login.html");
+
+  // Get user role from employees table
+  try {
+    const userResponse = await fetch(`${API_BASE}/auth/v1/user`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` }
+    });
+    
+    if (userResponse.ok) {
+      const user = await userResponse.json();
+      const userEmail = user.email;
+      
+      // Fetch employee record to get role
+      const empResponse = await fetch(
+        `${REST_BASE}/employees?email=eq.${userEmail}&select=role`,
+        { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+      
+      if (empResponse.ok) {
+        const employees = await empResponse.json();
+        if (employees.length > 0) {
+          userRole = employees[0].role;
+          
+          // Add class to body for CSS-based role visibility
+          if (userRole === 'manager' || userRole === 'owner') {
+            document.body.classList.add('is-' + userRole);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error checking user role:', err);
+  }
 
   customers = await fetchTable("customers", token);
   totalCustomers.textContent = customers.length;
