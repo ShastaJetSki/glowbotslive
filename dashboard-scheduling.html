@@ -17,63 +17,6 @@
       background:#0b0f14; 
       color:#e8eef6; 
       min-height:100vh;
-      display:flex;
-      flex-direction:column;
-    }
-    
-    /* Header matching other pages */
-    .top-bar {
-      background:#0f1621;
-      border-bottom:1px solid #223044;
-      padding:12px 24px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      position:sticky;
-      top:0;
-      z-index:100;
-    }
-    
-    .top-left {
-      display:flex;
-      align-items:center;
-      gap:24px;
-    }
-    
-    .app-name {
-      font-size:18px;
-      font-weight:600;
-      color:#e8eef6;
-    }
-    
-    .nav-links {
-      display:flex;
-      gap:20px;
-    }
-    
-    .nav-link {
-      color:#9fb0c3;
-      text-decoration:none;
-      font-size:14px;
-      padding:8px 12px;
-      border-radius:6px;
-      transition:all 0.2s;
-    }
-    
-    .nav-link:hover {
-      color:#e8eef6;
-      background:#1a2535;
-    }
-    
-    .nav-link.active {
-      color:#3b82f6;
-      background:#1a2535;
-    }
-    
-    .top-right {
-      display:flex;
-      gap:12px;
-      align-items:center;
     }
     
     button {
@@ -85,6 +28,7 @@
       cursor:pointer;
       font-size:13px;
       transition:all 0.2s;
+      white-space:nowrap;
     }
     
     button:hover {
@@ -105,17 +49,10 @@
     
     /* Main content */
     .main-content {
-      flex:1;
       padding:24px;
       max-width:1800px;
       width:100%;
       margin:0 auto;
-    }
-    
-    h1 {
-      margin:0 0 24px;
-      font-size:32px;
-      font-weight:700;
     }
     
     .controls {
@@ -347,26 +284,31 @@
 
 <body>
   <!-- Top Bar -->
-  <div class="top-bar">
-    <div class="top-left">
-      <div class="app-name" id="tenantTitle">WorkLogicPro</div>
-      <nav class="nav-links">
-        <a href="dashboard-business.html" class="nav-link">Dashboard</a>
-        <a href="dashboard-customer-search.html" class="nav-link">Customers</a>
-        <a href="dashboard-vehicle-search.html" class="nav-link">Vehicles</a>
-        <a href="dashboard-scheduling.html" class="nav-link active">Scheduling</a>
-      </nav>
-    </div>
-    <div class="top-right">
-      <button onclick="goToSettings()">Settings</button>
-      <button onclick="logout()">Logout</button>
+  <div style="background:#0b0f14; padding:24px 24px 0; border-bottom:1px solid #1f2937;">
+    <div style="max-width:1800px; margin:0 auto;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:16px;">
+        <div style="flex:1; min-width:0;">
+          <h1 style="margin:0 0 16px; font-size:32px; font-weight:600;" id="tenantTitle">Scheduling</h1>
+          
+          <!-- Navigation with underline -->
+          <div style="display:flex; gap:24px; border-bottom:1px solid #1f2937; margin:0 -24px; padding:0 24px;">
+            <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Dashboard</a>
+            <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
+            <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
+            <a href="dashboard-scheduling.html" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Scheduling</a>
+          </div>
+        </div>
+        
+        <div style="display:flex; gap:8px; align-items:flex-start;">
+          <button onclick="goToSettings()">Settings</button>
+          <button onclick="logout()">Logout</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- Main Content -->
   <div class="main-content">
-    <h1>Scheduling</h1>
-
     <div class="controls">
       <div class="view-tabs">
         <div class="view-tab active" id="tabToday" onclick="setView('today')">Today</div>
@@ -517,9 +459,24 @@ function getWeekStart(date){
 function getWorkOrdersForDate(date){
   const dateStr = date.toISOString().split('T')[0];
   return workOrders.filter(wo => {
-    if(!wo.scheduled_start) return false;
-    const woDate = new Date(wo.scheduled_start).toISOString().split('T')[0];
-    return woDate === dateStr;
+    // Check scheduled_start first
+    if(wo.scheduled_start) {
+      const woDate = new Date(wo.scheduled_start).toISOString().split('T')[0];
+      return woDate === dateStr;
+    }
+    // Fall back to scheduled_end
+    if(wo.scheduled_end) {
+      const woDate = new Date(wo.scheduled_end).toISOString().split('T')[0];
+      return woDate === dateStr;
+    }
+    // Fall back to created_at for today's view
+    if(wo.created_at) {
+      const woDate = new Date(wo.created_at).toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      // Only show created_at matches for today
+      return woDate === dateStr && dateStr === today;
+    }
+    return false;
   });
 }
 
@@ -529,7 +486,15 @@ function createWOStrip(wo){
   const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
   const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
   
-  const time = wo.scheduled_start ? new Date(wo.scheduled_start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+  // Try to get time from scheduled_start, scheduled_end, or show status
+  let timeDisplay = '';
+  if(wo.scheduled_start) {
+    timeDisplay = new Date(wo.scheduled_start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  } else if(wo.scheduled_end) {
+    timeDisplay = 'Due: ' + new Date(wo.scheduled_end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  } else {
+    timeDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'UNSCHEDULED';
+  }
   
   const strip = document.createElement('div');
   strip.className = `wo-strip ${wo.status || 'scheduled'}`;
@@ -539,7 +504,7 @@ function createWOStrip(wo){
   strip.innerHTML = `
     <div class="wo-customer">${customerName}</div>
     ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
-    ${time ? `<div class="wo-time">${time}</div>` : ''}
+    <div class="wo-time">${timeDisplay}</div>
   `;
   
   strip.addEventListener('dragstart', handleDragStart);
