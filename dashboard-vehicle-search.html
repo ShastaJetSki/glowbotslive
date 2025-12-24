@@ -137,6 +137,35 @@
       flex:1;
       min-width:0;
     }
+    
+    .vehicle-wo-info {
+      margin-top:6px;
+      padding-top:6px;
+      border-top:1px solid #223044;
+      font-size:11px;
+    }
+    
+    .vehicle-wo-number {
+      color:#3b82f6;
+      font-weight:600;
+      margin-bottom:2px;
+    }
+    
+    .vehicle-wo-tech {
+      color:#9fb0c3;
+      margin-bottom:2px;
+    }
+    
+    .vehicle-wo-status {
+      display:inline-block;
+      padding:2px 6px;
+      border-radius:4px;
+      background:#1a2535;
+      color:#60a5fa;
+      text-transform:uppercase;
+      font-size:10px;
+      font-weight:600;
+    }
 
     .muted { font-size:12px; color:#9fb0c3; margin-top:4px; }
 
@@ -218,7 +247,7 @@
   </div>
 
   <div class="autocomplete-container">
-    <input id="search" placeholder="Search by make, model, plate, or VIN…" autocomplete="off" />
+    <input id="search" placeholder="Search by license plate, make, model, or VIN…" autocomplete="off" />
     <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
   </div>
   
@@ -274,7 +303,29 @@ async function fetchTable(table, token, query = ""){
 
 let vehicles = [];
 let customers = [];
+let workOrders = [];
+let employees = [];
 let selectedIndex = -1;
+
+// Track vehicle views in localStorage
+function recordVehicleView(vehicleId) {
+  const views = JSON.parse(localStorage.getItem('wl_vehicle_views') || '{}');
+  views[vehicleId] = new Date().toISOString();
+  localStorage.setItem('wl_vehicle_views', JSON.stringify(views));
+}
+
+function getVehicleViews() {
+  return JSON.parse(localStorage.getItem('wl_vehicle_views') || '{}');
+}
+
+function sortVehiclesByRecentView(vehicleList) {
+  const views = getVehicleViews();
+  return vehicleList.sort((a, b) => {
+    const aTime = views[a.vehicle_id] ? new Date(views[a.vehicle_id]).getTime() : 0;
+    const bTime = views[b.vehicle_id] ? new Date(views[b.vehicle_id]).getTime() : 0;
+    return bTime - aTime; // Most recent first
+  });
+}
 
 function norm(v){ return String(v||"").toLowerCase(); }
 
@@ -282,13 +333,30 @@ function getFilteredVehicles(){
   const q = norm(search.value);
   if(!q) return [];
   
-  return vehicles.filter(v =>
+  // Filter vehicles
+  const matches = vehicles.filter(v =>
+    norm(v.license_plate).includes(q) ||
     norm(v.make).includes(q) ||
     norm(v.model).includes(q) ||
     norm(v.year).includes(q) ||
-    norm(v.license_plate).includes(q) ||
     norm(v.vin_or_cf_number).includes(q)
-  ).slice(0, 10); // Limit to 10 results
+  );
+  
+  // Sort by license plate match first, then by recent views
+  const views = getVehicleViews();
+  return matches.sort((a, b) => {
+    // Prioritize exact license plate matches
+    const aLicenseMatch = norm(a.license_plate).startsWith(q);
+    const bLicenseMatch = norm(b.license_plate).startsWith(q);
+    
+    if (aLicenseMatch && !bLicenseMatch) return -1;
+    if (!aLicenseMatch && bLicenseMatch) return 1;
+    
+    // Then sort by most recently viewed
+    const aTime = views[a.vehicle_id] ? new Date(views[a.vehicle_id]).getTime() : 0;
+    const bTime = views[b.vehicle_id] ? new Date(views[b.vehicle_id]).getTime() : 0;
+    return bTime - aTime;
+  }).slice(0, 10); // Limit to 10 results
 }
 
 function showAutocomplete(){
@@ -318,7 +386,7 @@ function showAutocomplete(){
         </div>
         <div class="vehicle-info">
           <strong>${v.year || ""} ${v.make || ""} ${v.model || ""}</strong>
-          <div class="muted">Plate: ${v.license_plate || "—"}</div>
+          <div class="muted" style="color:#3b82f6; font-weight:600;">Plate: ${v.license_plate || "—"}</div>
         </div>
       </div>
     `;
@@ -332,6 +400,7 @@ function selectVehicle(vehicleId){
   dropdown.classList.remove('active');
   search.value = '';
   selectedIndex = -1;
+  recordVehicleView(vehicleId);
   openVehicle(vehicleId);
 }
 
@@ -340,13 +409,16 @@ function norm(v){ return String(v||"").toLowerCase(); }
 function render(){
   const q = norm(search.value);
 
-  const filtered = !q ? vehicles : vehicles.filter(v =>
+  let filtered = !q ? vehicles : vehicles.filter(v =>
+    norm(v.license_plate).includes(q) ||
     norm(v.make).includes(q) ||
     norm(v.model).includes(q) ||
     norm(v.year).includes(q) ||
-    norm(v.license_plate).includes(q) ||
     norm(v.vin_or_cf_number).includes(q)
   );
+  
+  // Sort by most recently viewed
+  filtered = sortVehiclesByRecentView(filtered);
 
   results.innerHTML = filtered.map(v => {
     const imageUrl = v.vehicle_image_url 
@@ -355,12 +427,32 @@ function render(){
          : `${API_BASE}/storage/v1/object/public/vehicle-images/${v.vehicle_image_url}`)
       : null;
     
+    // Find active work order for this vehicle
+    const activeWO = workOrders.find(wo => wo.vehicle_id === v.vehicle_id);
+    let woInfoHtml = '';
+    
+    if (activeWO) {
+      const woNum = activeWO.wo_number || activeWO.work_order_id.substring(0, 8);
+      const tech = employees.find(e => e.employee_id === activeWO.assigned_tech_id);
+      const techName = tech ? `${tech.first_name} ${tech.last_name}` : 'Unassigned';
+      const status = activeWO.status || 'draft';
+      
+      woInfoHtml = `
+        <div class="vehicle-wo-info">
+          <div class="vehicle-wo-number">WO-${woNum}</div>
+          <div class="vehicle-wo-tech">Tech: ${techName}</div>
+          <div class="vehicle-wo-status">${status}</div>
+        </div>
+      `;
+    }
+    
     return `
-      <div class="card" onclick="openVehicle('${v.vehicle_id}')">
+      <div class="card" onclick="recordVehicleView('${v.vehicle_id}'); openVehicle('${v.vehicle_id}');">
         <div class="vehicle-info">
           <strong>${v.year || ""} ${v.make || ""} ${v.model || ""}</strong>
           <div class="muted">Plate: ${v.license_plate || "—"}</div>
           <div class="muted">VIN/CF: ${v.vin_or_cf_number || "—"}</div>
+          ${woInfoHtml}
         </div>
         <div class="vehicle-image">
           ${imageUrl 
@@ -410,6 +502,16 @@ async function load(){
 
   vehicles = await fetchTable("vehicles", token);
   customers = await fetchTable("customers", token);
+  
+  // Load work orders with status not completed/closed
+  const woResponse = await fetch(
+    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_tech_id&status=not.in.(completed,closed)`,
+    { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } }
+  );
+  workOrders = woResponse.ok ? await woResponse.json() : [];
+  
+  // Load employees to get tech names
+  employees = await fetchTable("employees", token);
   
   totalVehicles.textContent = vehicles.length;
   
