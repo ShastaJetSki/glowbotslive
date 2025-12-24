@@ -817,6 +817,7 @@
     // Get pay period settings from localStorage
     const payPeriodType = localStorage.getItem('wl_pay_period_type') || 'weekly'; // daily, weekly, biweekly, monthly
     const payPeriodStart = parseInt(localStorage.getItem('wl_pay_period_start_day')) || 1; // Day of week (0-6) or day of month (1-31)
+    const payPeriodStartDateStr = localStorage.getItem('wl_pay_period_start_date'); // For biweekly
     
     // Calculate pay period start date
     function getPayPeriodStart() {
@@ -832,18 +833,33 @@
         periodStart.setDate(now.getDate() - daysToSubtract);
         periodStart.setHours(0, 0, 0, 0);
       } else if (payPeriodType === 'biweekly') {
-        // Same as weekly but check if we need to go back 2 weeks
-        const currentDay = now.getDay();
-        const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
-        periodStart.setDate(now.getDate() - daysToSubtract);
-        
-        // Calculate weeks since epoch and determine if odd/even
-        const epochStart = new Date(2024, 0, 1); // Jan 1, 2024 as reference
-        const weeksSinceEpoch = Math.floor((periodStart - epochStart) / (7 * 24 * 60 * 60 * 1000));
-        if (weeksSinceEpoch % 2 !== 0) {
-          periodStart.setDate(periodStart.getDate() - 7);
+        // Use the date picker date as reference
+        if (payPeriodStartDateStr) {
+          const referenceDate = new Date(payPeriodStartDateStr);
+          referenceDate.setHours(0, 0, 0, 0);
+          
+          // Calculate how many days since reference date
+          const daysSince = Math.floor((now - referenceDate) / (24 * 60 * 60 * 1000));
+          
+          // Calculate which 2-week period we're in
+          const periodsSince = Math.floor(daysSince / 14);
+          
+          // Set to start of current period
+          periodStart = new Date(referenceDate);
+          periodStart.setDate(referenceDate.getDate() + (periodsSince * 14));
+        } else {
+          // Fallback to old method if no date set
+          const currentDay = now.getDay();
+          const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
+          periodStart.setDate(now.getDate() - daysToSubtract);
+          
+          const epochStart = new Date(2024, 0, 1);
+          const weeksSinceEpoch = Math.floor((periodStart - epochStart) / (7 * 24 * 60 * 60 * 1000));
+          if (weeksSinceEpoch % 2 !== 0) {
+            periodStart.setDate(periodStart.getDate() - 7);
+          }
+          periodStart.setHours(0, 0, 0, 0);
         }
-        periodStart.setHours(0, 0, 0, 0);
       } else if (payPeriodType === 'monthly') {
         // payPeriodStart is day of month (1-31)
         if (now.getDate() >= payPeriodStart) {
