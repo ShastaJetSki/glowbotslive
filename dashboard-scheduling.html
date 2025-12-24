@@ -535,7 +535,7 @@ function handleDragLeave(e){
   e.currentTarget.classList.remove('drop-zone');
 }
 
-async function handleDrop(e, newDate){
+async function handleDrop(e, newDate, newHour = null){
   e.preventDefault();
   e.currentTarget.classList.remove('drop-zone');
   
@@ -549,9 +549,25 @@ async function handleDrop(e, newDate){
     const wo = workOrders.find(w => w.work_order_id === draggedWO);
     if(!wo) return;
     
-    const currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
+    // Use the current time from scheduled_start, or default to 9 AM
+    let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
+    if(!wo.scheduled_start) {
+      currentTime.setHours(9, 0, 0, 0);
+    }
+    
+    // Create new date/time
     const newDateTime = new Date(newDate);
-    newDateTime.setHours(currentTime.getHours(), currentTime.getMinutes());
+    
+    // If a specific hour was provided (from Today/Week view), use it
+    if(newHour !== null) {
+      newDateTime.setHours(newHour, currentTime.getMinutes(), 0, 0);
+    } else {
+      // Otherwise preserve the current time
+      newDateTime.setHours(currentTime.getHours(), currentTime.getMinutes(), 0, 0);
+    }
+    
+    console.log('Dropping WO:', draggedWO);
+    console.log('New date/time:', newDateTime.toISOString());
     
     await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
       method: 'PATCH',
@@ -596,6 +612,9 @@ function renderToday(){
   // Get all work orders for today
   const todayOrders = getWorkOrdersForDate(currentDate);
   
+  console.log('Rendering Today view for:', currentDate.toISOString().split('T')[0]);
+  console.log('Work orders for this day:', todayOrders.length);
+  
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
     timeSlot.className = 'time-slot';
@@ -604,7 +623,12 @@ function renderToday(){
     
     const slotContent = document.createElement('div');
     slotContent.className = 'slot-content';
-    slotContent.dataset.date = currentDate.toISOString().split('T')[0];
+    
+    // Important: Use currentDate, not a date string
+    const slotDate = new Date(currentDate);
+    slotDate.setHours(0, 0, 0, 0);
+    
+    slotContent.dataset.date = slotDate.toISOString().split('T')[0];
     slotContent.dataset.hour = hour;
     
     // Add work orders for this hour (or all if no scheduled time)
@@ -620,7 +644,11 @@ function renderToday(){
     
     slotContent.addEventListener('dragover', handleDragOver);
     slotContent.addEventListener('dragleave', handleDragLeave);
-    slotContent.addEventListener('drop', (e) => handleDrop(e, currentDate));
+    slotContent.addEventListener('drop', (e) => {
+      const dropDate = new Date(currentDate);
+      dropDate.setHours(0, 0, 0, 0);
+      handleDrop(e, dropDate, hour);
+    });
     
     view.appendChild(slotContent);
   });
@@ -645,6 +673,8 @@ function renderWeek(){
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   
+  console.log('Rendering Week view starting:', weekStart.toISOString().split('T')[0]);
+  
   // Empty corner cell
   const corner = document.createElement('div');
   corner.className = 'time-slot';
@@ -662,6 +692,10 @@ function renderWeek(){
     header.className = `week-day-header ${isToday ? 'today' : ''}`;
     header.innerHTML = `${days[i]}<br>${date.getDate()}`;
     view.appendChild(header);
+    
+    // Log work orders for this day
+    const dayOrders = getWorkOrdersForDate(date);
+    console.log(`${days[i]} ${date.getDate()}:`, dayOrders.length, 'work orders');
   }
   
   // Time slots
@@ -676,6 +710,7 @@ function renderWeek(){
     for(let i = 0; i < 7; i++){
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
+      date.setHours(0, 0, 0, 0);
       
       const slotContent = document.createElement('div');
       slotContent.className = 'slot-content';
@@ -694,7 +729,12 @@ function renderWeek(){
       
       slotContent.addEventListener('dragover', handleDragOver);
       slotContent.addEventListener('dragleave', handleDragLeave);
-      slotContent.addEventListener('drop', (e) => handleDrop(e, date));
+      slotContent.addEventListener('drop', (e) => {
+        const dropDate = new Date(weekStart);
+        dropDate.setDate(dropDate.getDate() + i);
+        dropDate.setHours(0, 0, 0, 0);
+        handleDrop(e, dropDate, hour);
+      });
       
       view.appendChild(slotContent);
     }
@@ -753,7 +793,12 @@ function renderMonth(){
 function createDayCell(day, date, otherMonth = false, isToday = false){
   const cell = document.createElement('div');
   cell.className = `day-cell ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
-  cell.dataset.date = date.toISOString().split('T')[0];
+  
+  // Create a clean date at midnight
+  const cleanDate = new Date(date);
+  cleanDate.setHours(0, 0, 0, 0);
+  
+  cell.dataset.date = cleanDate.toISOString().split('T')[0];
   
   const dayNum = document.createElement('div');
   dayNum.className = 'day-number';
@@ -767,7 +812,11 @@ function createDayCell(day, date, otherMonth = false, isToday = false){
   
   cell.addEventListener('dragover', handleDragOver);
   cell.addEventListener('dragleave', handleDragLeave);
-  cell.addEventListener('drop', (e) => handleDrop(e, date));
+  cell.addEventListener('drop', (e) => {
+    const dropDate = new Date(date);
+    dropDate.setHours(0, 0, 0, 0);
+    handleDrop(e, dropDate, null); // null = preserve current time
+  });
   
   return cell;
 }
