@@ -78,16 +78,19 @@
     }
 
     .stats {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-      gap:12px; margin-bottom:16px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
     }
-    .stat-card {
-      background:#0f1621;
-      border:1px solid #223044;
-      border-radius:14px;
-      padding:16px;
-    }
+    
+    /* KPI */
+    .kpi { min-width:260px; flex: 1 1 260px; cursor:pointer; }
+    .kpi:hover { border-color:#2f4461; }
+    .kpi.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+    .label { font-size:12px; color:#9fb0c3; }
+    .value { font-size:18px; font-weight:650; margin-top:6px; line-height:1.3; }
+    
     .stat-label { font-size:12px; color:#9fb0c3; }
     .stat-value { font-size:22px; font-weight:700; margin-top:6px; }
 
@@ -246,9 +249,34 @@
   <div style="padding:24px;">
 
   <div class="stats">
-    <div class="stat-card">
-      <div class="stat-label">Total Vehicles</div>
-      <div class="stat-value" id="totalVehicles">0</div>
+    <div class="card kpi" id="kpiAll" onclick="filterByStatus('all')" style="cursor:pointer;">
+      <div class="label">All Vehicles</div>
+      <div class="value" id="allVehiclesCount">0</div>
+      <div class="muted" id="allVehiclesMuted">vehicles</div>
+    </div>
+    
+    <div class="card kpi" id="kpiScheduled" onclick="filterByStatus('scheduled')" style="cursor:pointer;">
+      <div class="label">Scheduled Work</div>
+      <div class="value" id="scheduledCount">0</div>
+      <div class="muted" id="scheduledMuted">vehicles</div>
+    </div>
+    
+    <div class="card kpi" id="kpiParts" onclick="filterByStatus('awaiting_parts')" style="cursor:pointer;">
+      <div class="label">Waiting on Parts</div>
+      <div class="value" id="awaitingPartsCount">0</div>
+      <div class="muted" id="awaitingPartsMuted">vehicles</div>
+    </div>
+    
+    <div class="card kpi" id="kpiPastDue" onclick="filterByStatus('past_due')" style="cursor:pointer;">
+      <div class="label">⚠️ Past Due</div>
+      <div class="value" id="pastDueCount">0</div>
+      <div class="muted" id="pastDueMuted">vehicles</div>
+    </div>
+    
+    <div class="card kpi" id="kpiCompleted" onclick="filterByStatus('completed')" style="cursor:pointer;">
+      <div class="label">Completed</div>
+      <div class="value" id="completedCount">0</div>
+      <div class="muted" id="completedMuted">vehicles</div>
     </div>
   </div>
 
@@ -312,6 +340,7 @@ let customers = [];
 let workOrders = [];
 let employees = [];
 let selectedIndex = -1;
+let activeFilter = 'all';
 
 // Track vehicle views in localStorage
 function recordVehicleView(vehicleId) {
@@ -340,6 +369,68 @@ function sortVehiclesByRecentView(vehicleList) {
     return bTime - aTime;
   });
 }
+
+function updateKPIs() {
+  const now = new Date();
+  
+  // Count vehicles by status
+  const scheduledVehicles = workOrders.filter(wo => 
+    wo.status === 'scheduled' || wo.status === 'in_progress'
+  );
+  const awaitingPartsVehicles = workOrders.filter(wo => 
+    wo.status === 'awaiting_parts'
+  );
+  const pastDueVehicles = workOrders.filter(wo => {
+    if (!wo.scheduled_end) return false;
+    return new Date(wo.scheduled_end) < now && wo.status !== 'completed' && wo.status !== 'closed';
+  });
+  const completedVehicles = workOrders.filter(wo => 
+    wo.status === 'completed' || wo.status === 'closed'
+  );
+  
+  // Update counts
+  document.getElementById('allVehiclesCount').textContent = vehicles.length;
+  document.getElementById('allVehiclesMuted').textContent = `vehicles`;
+  
+  document.getElementById('scheduledCount').textContent = scheduledVehicles.length;
+  document.getElementById('scheduledMuted').textContent = `Vehicles: ${scheduledVehicles.length}`;
+  
+  document.getElementById('awaitingPartsCount').textContent = awaitingPartsVehicles.length;
+  document.getElementById('awaitingPartsMuted').textContent = `Vehicles: ${awaitingPartsVehicles.length}`;
+  
+  document.getElementById('pastDueCount').textContent = pastDueVehicles.length;
+  document.getElementById('pastDueMuted').textContent = `Vehicles: ${pastDueVehicles.length}`;
+  
+  document.getElementById('completedCount').textContent = completedVehicles.length;
+  document.getElementById('completedMuted').textContent = `Vehicles: ${completedVehicles.length}`;
+  
+  // Style past due card if there are any
+  const pastDueCard = document.getElementById('kpiPastDue');
+  if (pastDueVehicles.length > 0) {
+    pastDueCard.style.borderColor = '#ef4444';
+    pastDueCard.style.boxShadow = '0 0 0 1px rgba(239,68,68,.35) inset';
+    pastDueCard.querySelector('.label').style.color = '#ef4444';
+    pastDueCard.querySelector('.value').style.color = '#ef4444';
+  } else {
+    pastDueCard.style.borderColor = '#223044';
+    pastDueCard.style.boxShadow = 'none';
+    pastDueCard.querySelector('.label').style.color = '#9fb0c3';
+    pastDueCard.querySelector('.value').style.color = '#e8eef6';
+  }
+  
+  // Update active state
+  document.querySelectorAll('.kpi').forEach(kpi => kpi.classList.remove('active'));
+  const activeCard = document.getElementById(`kpi${activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1).replace('_', '')}`);
+  if (activeCard) activeCard.classList.add('active');
+}
+
+function filterByStatus(status) {
+  activeFilter = status;
+  updateKPIs();
+  render();
+}
+
+window.filterByStatus = filterByStatus;
 
 function norm(v){ return String(v||"").toLowerCase(); }
 
@@ -431,6 +522,26 @@ function render(){
     norm(v.vin_or_cf_number).includes(q)
   );
   
+  // Apply status filter
+  if (activeFilter !== 'all') {
+    const now = new Date();
+    filtered = filtered.filter(v => {
+      const wo = workOrders.find(wo => wo.vehicle_id === v.vehicle_id);
+      if (!wo) return activeFilter === 'completed'; // No WO means it could be in completed historical view
+      
+      if (activeFilter === 'scheduled') {
+        return wo.status === 'scheduled' || wo.status === 'in_progress';
+      } else if (activeFilter === 'awaiting_parts') {
+        return wo.status === 'awaiting_parts';
+      } else if (activeFilter === 'past_due') {
+        return wo.scheduled_end && new Date(wo.scheduled_end) < now && wo.status !== 'completed' && wo.status !== 'closed';
+      } else if (activeFilter === 'completed') {
+        return wo.status === 'completed' || wo.status === 'closed';
+      }
+      return true;
+    });
+  }
+  
   // Sort by most recently viewed
   filtered = sortVehiclesByRecentView(filtered);
 
@@ -521,7 +632,7 @@ async function load(){
   
   // Load ALL work orders first to see what we have
   const allWOResponse = await fetch(
-    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_employee_id`,
+    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_employee_id,scheduled_end`,
     { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } }
   );
   const allWorkOrders = allWOResponse.ok ? await allWOResponse.json() : [];
@@ -565,6 +676,7 @@ async function load(){
     document.title = vehicles[0].tenant_name + " - Vehicles";
   }
   
+  updateKPIs();
   render();
 }
 
