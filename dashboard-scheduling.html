@@ -628,6 +628,9 @@ function renderToday(){
   
   const hours = Array.from({length: 13}, (_, i) => i + 7); // 7 AM to 7 PM
   
+  // Get all work orders for today
+  const todayOrders = getWorkOrdersForDate(currentDate);
+  
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
     timeSlot.className = 'time-slot';
@@ -639,10 +642,11 @@ function renderToday(){
     slotContent.dataset.date = currentDate.toISOString().split('T')[0];
     slotContent.dataset.hour = hour;
     
-    // Add work orders for this hour
-    const orders = getWorkOrdersForDate(currentDate).filter(wo => {
-      if(!wo.scheduled_start) return false;
-      return new Date(wo.scheduled_start).getHours() === hour;
+    // Add work orders for this hour (or all if no scheduled time)
+    const orders = todayOrders.filter(wo => {
+      if(!wo.scheduled_start) return hour === 9; // Show unscheduled at 9 AM
+      const woHour = new Date(wo.scheduled_start).getHours();
+      return woHour === hour;
     });
     
     orders.forEach(wo => {
@@ -655,6 +659,17 @@ function renderToday(){
     
     view.appendChild(slotContent);
   });
+  
+  // If no orders shown, display message
+  if(todayOrders.length === 0){
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.padding = '20px';
+    emptyMsg.style.textAlign = 'center';
+    emptyMsg.style.color = '#9fb0c3';
+    emptyMsg.textContent = 'No work orders scheduled for this day';
+    view.appendChild(emptyMsg);
+  }
 }
 
 function renderWeek(){
@@ -703,8 +718,9 @@ function renderWeek(){
       slotContent.dataset.hour = hour;
       
       const orders = getWorkOrdersForDate(date).filter(wo => {
-        if(!wo.scheduled_start) return false;
-        return new Date(wo.scheduled_start).getHours() === hour;
+        if(!wo.scheduled_start) return hour === 9; // Show unscheduled at 9 AM
+        const woHour = new Date(wo.scheduled_start).getHours();
+        return woHour === hour;
       });
       
       orders.forEach(wo => {
@@ -808,6 +824,18 @@ async function load(){
     customers = await fetchTable("customers", token);
     vehicles = await fetchTable("vehicles", token);
     employees = await fetchTable("employees", token);
+    
+    console.log('=== SCHEDULING DATA LOADED ===');
+    console.log('Work Orders:', workOrders.length);
+    console.log('Sample WO:', workOrders[0]);
+    console.log('Customers:', customers.length);
+    console.log('Vehicles:', vehicles.length);
+    console.log('Employees:', employees.length);
+    
+    // Log work orders with scheduled dates
+    const scheduled = workOrders.filter(wo => wo.scheduled_start);
+    console.log('Work orders with scheduled_start:', scheduled.length);
+    console.log('Sample scheduled WO:', scheduled[0]);
     
     // Set tenant title
     if(workOrders.length > 0 && workOrders[0].tenant_name){
