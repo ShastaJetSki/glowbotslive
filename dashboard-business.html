@@ -814,7 +814,17 @@
     const sNext7 = startOfNext7Days();
     const eNext7 = endOfNext7Days();
 
-    techEl.innerHTML = (Array.isArray(technicians) ? technicians : []).map(t=>{
+    // Filter to only show techs that have work orders in the current range
+    const techsWithWork = (Array.isArray(technicians) ? technicians : []).filter(t => {
+      const mine = (Array.isArray(orders) ? orders : []).filter(w =>
+        w.assigned_employee_id === t.employee_id &&
+        inRange(w) &&
+        (!activeKpi || (activeKpi === "pastdue" ? isPastDue(w) : statusIn(activeKpi, w.status)))
+      );
+      return mine.length > 0; // Only show if tech has work orders
+    });
+
+    techEl.innerHTML = techsWithWork.map(t=>{
       const name = techDisplayName(t);
       const initials = initialsFromName(name);
       const avatarUrl = getAvatarUrl(t);
@@ -822,7 +832,7 @@
       const mine = (Array.isArray(orders) ? orders : []).filter(w =>
         w.assigned_employee_id === t.employee_id &&
         inRange(w) &&
-        (!activeKpi || statusIn(activeKpi, w.status))
+        (!activeKpi || (activeKpi === "pastdue" ? isPastDue(w) : statusIn(activeKpi, w.status)))
       );
 
       const hasOverdue = (Array.isArray(orders) ? orders : []).some(w =>
@@ -871,6 +881,11 @@
         </div>
       `;
     }).join("");
+    
+    // If no techs with work, show message
+    if (techsWithWork.length === 0) {
+      techEl.innerHTML = `<div class="muted">No technicians with scheduled work in this view.</div>`;
+    }
   }
 
   window.selectTech = function(id){
@@ -928,6 +943,12 @@
       const bPastDue = isPastDue(b);
       if (aPastDue && !bPastDue) return -1;
       if (!aPastDue && bPastDue) return 1;
+      
+      // Within "Waiting on Approval" bucket: customer_approval before diagnosis_required
+      if (activeKpi === "complications") {
+        if (a.status === "customer_approval" && b.status === "diagnosis_required") return -1;
+        if (a.status === "diagnosis_required" && b.status === "customer_approval") return 1;
+      }
       
       if (activeSort === "priority") {
         const pr = priorityRank(a.priority) - priorityRank(b.priority);
