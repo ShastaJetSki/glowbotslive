@@ -814,6 +814,52 @@
     const sNext7 = startOfNext7Days();
     const eNext7 = endOfNext7Days();
 
+    // Get pay period settings from localStorage
+    const payPeriodType = localStorage.getItem('wl_pay_period_type') || 'weekly'; // daily, weekly, biweekly, monthly
+    const payPeriodStart = parseInt(localStorage.getItem('wl_pay_period_start_day')) || 1; // Day of week (0-6) or day of month (1-31)
+    
+    // Calculate pay period start date
+    function getPayPeriodStart() {
+      const now = new Date();
+      let periodStart = new Date(now);
+      
+      if (payPeriodType === 'daily') {
+        periodStart.setHours(0, 0, 0, 0);
+      } else if (payPeriodType === 'weekly') {
+        // payPeriodStart is day of week (0=Sunday, 1=Monday, etc)
+        const currentDay = now.getDay();
+        const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
+        periodStart.setDate(now.getDate() - daysToSubtract);
+        periodStart.setHours(0, 0, 0, 0);
+      } else if (payPeriodType === 'biweekly') {
+        // Same as weekly but check if we need to go back 2 weeks
+        const currentDay = now.getDay();
+        const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
+        periodStart.setDate(now.getDate() - daysToSubtract);
+        
+        // Calculate weeks since epoch and determine if odd/even
+        const epochStart = new Date(2024, 0, 1); // Jan 1, 2024 as reference
+        const weeksSinceEpoch = Math.floor((periodStart - epochStart) / (7 * 24 * 60 * 60 * 1000));
+        if (weeksSinceEpoch % 2 !== 0) {
+          periodStart.setDate(periodStart.getDate() - 7);
+        }
+        periodStart.setHours(0, 0, 0, 0);
+      } else if (payPeriodType === 'monthly') {
+        // payPeriodStart is day of month (1-31)
+        if (now.getDate() >= payPeriodStart) {
+          periodStart.setDate(payPeriodStart);
+        } else {
+          periodStart.setMonth(now.getMonth() - 1);
+          periodStart.setDate(payPeriodStart);
+        }
+        periodStart.setHours(0, 0, 0, 0);
+      }
+      
+      return periodStart;
+    }
+    
+    const payPeriodStartDate = getPayPeriodStart();
+
     // Filter to only show techs that have work orders in the current range
     const techsWithWork = (Array.isArray(technicians) ? technicians : []).filter(t => {
       const mine = (Array.isArray(orders) ? orders : []).filter(w =>
@@ -840,17 +886,25 @@
       );
 
       let todayH = 0;
-      let next7H = 0;
+      let completedH = 0;
 
       mine.forEach(w=>{
         const hrs = jobHours(w);
         const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
 
+        // Calculate today's hours
         if (d && d >= sToday && d <= eToday) todayH += hrs;
-        if (d && d >= sNext7 && d <= eNext7) next7H += hrs;
+        
+        // Calculate completed hours in current pay period
+        if ((w.status === 'completed' || w.status === 'closed') && w.scheduled_start) {
+          const completedDate = new Date(w.scheduled_start);
+          if (completedDate >= payPeriodStartDate) {
+            completedH += hrs;
+          }
+        }
       });
 
-      const pct = next7H / 40;
+      const pct = todayH / 8; // Use today's hours for load calculation
       let cls="light", lbl="LIGHT";
       if (pct >= 0.5) { cls="normal"; lbl="NORMAL"; }
       if (pct >= 0.8) { cls="heavy"; lbl="HEAVY"; }
@@ -861,15 +915,22 @@
       const avatarStyle = avatarUrl 
         ? `background-image: url('${avatarUrl}'); background-size: cover; background-position: center;` 
         : '';
+      
+      // Format pay period label
+      let payPeriodLabel = "This Period";
+      if (payPeriodType === 'daily') payPeriodLabel = "Today";
+      else if (payPeriodType === 'weekly') payPeriodLabel = "This Week";
+      else if (payPeriodType === 'biweekly') payPeriodLabel = "This Pay Period";
+      else if (payPeriodType === 'monthly') payPeriodLabel = "This Month";
 
       return `
         <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
           <div class="techLeft">
             <div class="metric">${formatHrsRev(todayH)}</div>
-            <div class="sub">Booked Today</div>
+            <div class="sub">Today</div>
 
-            <div class="metric">${formatHrsRev(next7H)}</div>
-            <div class="sub">Booked Next 7 Days</div>
+            <div class="metric">${formatHrsRev(completedH)}</div>
+            <div class="sub">Hours Completed (${payPeriodLabel})</div>
 
             <div class="load ${cls}">${hasOverdue ? '<span class="dot"></span>' : ''}${lbl}</div>
           </div>
