@@ -321,9 +321,17 @@ function getVehicleViews() {
 function sortVehiclesByRecentView(vehicleList) {
   const views = getVehicleViews();
   return vehicleList.sort((a, b) => {
+    // First priority: vehicles with active work orders
+    const aHasWO = workOrders.some(wo => wo.vehicle_id === a.vehicle_id);
+    const bHasWO = workOrders.some(wo => wo.vehicle_id === b.vehicle_id);
+    
+    if (aHasWO && !bHasWO) return -1;
+    if (!aHasWO && bHasWO) return 1;
+    
+    // Second priority: most recently viewed
     const aTime = views[a.vehicle_id] ? new Date(views[a.vehicle_id]).getTime() : 0;
     const bTime = views[b.vehicle_id] ? new Date(views[b.vehicle_id]).getTime() : 0;
-    return bTime - aTime; // Most recent first
+    return bTime - aTime;
   });
 }
 
@@ -510,10 +518,23 @@ async function load(){
   );
   workOrders = woResponse.ok ? await woResponse.json() : [];
   
+  console.log('Loaded work orders:', workOrders.length);
+  console.log('Work orders by vehicle:', workOrders.map(wo => ({
+    vehicle_id: wo.vehicle_id,
+    wo_number: wo.wo_number,
+    status: wo.status
+  })));
+  
   // Load employees to get tech names
   employees = await fetchTable("employees", token);
   
   totalVehicles.textContent = vehicles.length;
+  
+  // Count vehicles with active work orders
+  const vehiclesWithWO = vehicles.filter(v => 
+    workOrders.some(wo => wo.vehicle_id === v.vehicle_id)
+  ).length;
+  console.log(`Vehicles with active work orders: ${vehiclesWithWO} of ${vehicles.length}`);
   
   // Set tenant title if available
   const tenantEl = document.getElementById("tenantTitle");
