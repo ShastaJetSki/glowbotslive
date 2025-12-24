@@ -66,10 +66,34 @@
     }
 
     .stats {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-      gap:12px; margin-bottom:16px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
     }
+    
+    /* KPI */
+    .kpi { 
+      min-width:200px; 
+      flex: 1 1 200px; 
+      cursor:pointer;
+      padding:12px 14px;
+    }
+    .kpi:hover { border-color:#2f4461; }
+    .kpi.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+    .kpi.hidden { display: none; }
+    .label { 
+      font-size:12px; 
+      color:#9fb0c3;
+      margin-bottom:4px;
+    }
+    .value { 
+      font-size:42px; 
+      font-weight:700; 
+      line-height:1.1;
+      text-align:right;
+    }
+    
     .stat-card {
       background:#0f1621;
       border:1px solid #223044;
@@ -387,9 +411,39 @@
   <div style="padding:24px;">
 
   <div class="stats">
-    <div class="stat-card">
-      <div class="stat-label">Total Customers</div>
-      <div class="stat-value" id="totalCustomers">0</div>
+    <div class="card kpi" id="kpiTotal" onclick="filterCustomers('all')" style="cursor:pointer;">
+      <div class="label">Total Customers</div>
+      <div class="value" id="totalCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiActive" onclick="filterCustomers('active')" style="cursor:pointer;">
+      <div class="label">Active (30 days)</div>
+      <div class="value" id="activeCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiNew" onclick="filterCustomers('new')" style="cursor:pointer;">
+      <div class="label">New (30 days)</div>
+      <div class="value" id="newCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiMultiVehicle" onclick="filterCustomers('multi_vehicle')" style="cursor:pointer;">
+      <div class="label">Multi-Vehicle</div>
+      <div class="value" id="multiVehicleCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiRepeat" onclick="filterCustomers('repeat')" style="cursor:pointer;">
+      <div class="label">Repeat Customers</div>
+      <div class="value" id="repeatCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiHighValue" onclick="filterCustomers('high_value')" style="cursor:pointer;">
+      <div class="label">High-Value ($5k+)</div>
+      <div class="value" id="highValueCustomers">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiAvgValue" style="cursor:default;">
+      <div class="label">Avg Lifetime Value</div>
+      <div class="value" id="avgLifetimeValue">$0</div>
     </div>
   </div>
 
@@ -466,7 +520,10 @@ async function fetchTable(table, token){
 }
 
 let customers = [];
+let workOrders = [];
+let vehicles = [];
 let selectedIndex = -1;
+let activeCustomerFilter = 'all';
 
 function norm(v){ return String(v||"").toLowerCase(); }
 
@@ -516,12 +573,42 @@ function selectCustomer(customerId){
 
 function render(){
   const q = norm(search.value);
-  const filtered = !q ? customers : customers.filter(c =>
+  let filtered = !q ? customers : customers.filter(c =>
     norm(c.first_name).includes(q) ||
     norm(c.last_name).includes(q) ||
     norm(c.email).includes(q) ||
     norm(c.phone).includes(q)
   );
+  
+  // Apply customer filter
+  if (activeCustomerFilter !== 'all') {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    
+    filtered = filtered.filter(c => {
+      if (activeCustomerFilter === 'active') {
+        const recentWOs = workOrders.filter(wo => 
+          wo.customer_id === c.customer_id && 
+          new Date(wo.created_at) >= thirtyDaysAgo
+        );
+        return recentWOs.length > 0;
+      } else if (activeCustomerFilter === 'new') {
+        return new Date(c.created_at) >= thirtyDaysAgo;
+      } else if (activeCustomerFilter === 'multi_vehicle') {
+        const vehicleCount = vehicles.filter(v => v.customer_id === c.customer_id).length;
+        return vehicleCount >= 2;
+      } else if (activeCustomerFilter === 'repeat') {
+        const completedWOs = workOrders.filter(wo => 
+          wo.customer_id === c.customer_id && 
+          (wo.status === 'completed' || wo.status === 'closed')
+        );
+        return completedWOs.length >= 2;
+      } else if (activeCustomerFilter === 'high_value') {
+        return (c.lifetime_spend || 0) >= 5000;
+      }
+      return true;
+    });
+  }
 
   results.innerHTML = filtered.map(c => {
     const lifetimeSpend = c.lifetime_spend || 0;
@@ -726,6 +813,74 @@ function closeModal(){
   customerModal.classList.remove("active");
 }
 
+function updateCustomerKPIs() {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+  
+  // Total customers
+  const totalCount = customers.length;
+  
+  // Active customers (had work order in last 30 days)
+  const activeCustomers = customers.filter(c => {
+    const recentWOs = workOrders.filter(wo => 
+      wo.customer_id === c.customer_id && 
+      new Date(wo.created_at) >= thirtyDaysAgo
+    );
+    return recentWOs.length > 0;
+  });
+  
+  // New customers (created in last 30 days)
+  const newCustomers = customers.filter(c => 
+    new Date(c.created_at) >= thirtyDaysAgo
+  );
+  
+  // Multi-vehicle customers (2+ vehicles)
+  const multiVehicleCustomers = customers.filter(c => {
+    const vehicleCount = vehicles.filter(v => v.customer_id === c.customer_id).length;
+    return vehicleCount >= 2;
+  });
+  
+  // Repeat customers (2+ completed work orders)
+  const repeatCustomers = customers.filter(c => {
+    const completedWOs = workOrders.filter(wo => 
+      wo.customer_id === c.customer_id && 
+      (wo.status === 'completed' || wo.status === 'closed')
+    );
+    return completedWOs.length >= 2;
+  });
+  
+  // High-value customers (lifetime spend >= $5000)
+  const highValueCustomers = customers.filter(c => 
+    (c.lifetime_spend || 0) >= 5000
+  );
+  
+  // Average lifetime value
+  const totalLifetimeSpend = customers.reduce((sum, c) => sum + (c.lifetime_spend || 0), 0);
+  const avgLifetimeValue = totalCount > 0 ? totalLifetimeSpend / totalCount : 0;
+  
+  // Update UI
+  document.getElementById('totalCustomers').textContent = totalCount;
+  document.getElementById('activeCustomers').textContent = activeCustomers.length;
+  document.getElementById('newCustomers').textContent = newCustomers.length;
+  document.getElementById('multiVehicleCustomers').textContent = multiVehicleCustomers.length;
+  document.getElementById('repeatCustomers').textContent = repeatCustomers.length;
+  document.getElementById('highValueCustomers').textContent = highValueCustomers.length;
+  document.getElementById('avgLifetimeValue').textContent = `$${Math.round(avgLifetimeValue).toLocaleString()}`;
+  
+  // Update active state
+  document.querySelectorAll('.kpi').forEach(kpi => kpi.classList.remove('active'));
+  const activeCard = document.getElementById(`kpi${activeCustomerFilter.charAt(0).toUpperCase() + activeCustomerFilter.slice(1).replace('_', '')}`);
+  if (activeCard) activeCard.classList.add('active');
+}
+
+function filterCustomers(filter) {
+  activeCustomerFilter = filter;
+  updateCustomerKPIs();
+  render();
+}
+
+window.filterCustomers = filterCustomers;
+
 async function load(){
   const token = await validateAuth();
   if(!token) return location.replace("login.html");
@@ -775,7 +930,12 @@ async function load(){
   }
 
   customers = await fetchTable("customers", token);
-  totalCustomers.textContent = customers.length;
+  
+  // Load work orders to calculate metrics
+  workOrders = await fetchTable("work_orders", token);
+  
+  // Load vehicles to count multi-vehicle customers
+  vehicles = await fetchTable("vehicles", token);
   
   // Set tenant title if available
   const tenantEl = document.getElementById("tenantTitle");
@@ -784,6 +944,7 @@ async function load(){
     document.title = customers[0].tenant_name + " - Customers";
   }
   
+  updateCustomerKPIs();
   render();
 }
 
