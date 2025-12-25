@@ -198,6 +198,13 @@
           <option value="high">High</option>
         </select>
       </div>
+      <div class="col">
+        <label>Assigned To</label>
+        <select id="assigned_employee_id">
+          <option value="">Unassigned</option>
+        </select>
+        <div class="muted" style="margin-top:4px;">Primary technician (auto-syncs from labor lines)</div>
+      </div>
     </div>
 
     <div class="row" style="margin-top:12px;">
@@ -659,6 +666,26 @@ function hideLaborCodeDropdown(inputEl){
   dropdown.style.display = 'none';
 }
 
+async function loadAssignedEmployeeOptions(){
+  const r = await sbFetch(`${REST_BASE}/employees?select=employee_id,first_name,last_name,role&order=first_name.asc`, { token: AUTH.token });
+  if(!r.ok) {
+    console.error('Failed to load employees:', await r.text());
+    return;
+  }
+  const employees = await r.json();
+  
+  const sel = document.getElementById("assigned_employee_id");
+  sel.innerHTML = '<option value="">Unassigned</option>';
+  
+  employees.forEach(emp => {
+    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || `Employee ${emp.employee_id}`;
+    const opt = document.createElement('option');
+    opt.value = emp.employee_id;
+    opt.textContent = `${name}${emp.role ? ` (${emp.role})` : ''}`;
+    sel.appendChild(opt);
+  });
+}
+
 async function loadWorkOrder(){
   // Load work order with tenant info
   const r = await sbFetch(`${REST_BASE}/work_orders?select=*,tenants(name)&work_order_id=eq.${WORK_ORDER_ID}`, { token: AUTH.token });
@@ -674,6 +701,11 @@ async function loadWorkOrder(){
   document.getElementById("customer_id").value = workOrder.customer_id || "";
   await loadVehicles();
   document.getElementById("vehicle_id").value = workOrder.vehicle_id || "";
+  
+  // Load and populate assigned employee dropdown
+  await loadAssignedEmployeeOptions();
+  document.getElementById("assigned_employee_id").value = workOrder.assigned_employee_id || "";
+  
   document.getElementById("status").value = workOrder.status || "draft";
   document.getElementById("priority").value = workOrder.priority || "medium";
   document.getElementById("scheduled_start").value = toLocalInputValue(workOrder.scheduled_start);
@@ -700,6 +732,7 @@ async function saveWorkOrder(){
       vehicle_id: document.getElementById("vehicle_id").value || null,
       status: document.getElementById("status").value,
       priority: priorityValue || null,  // Convert empty string to null
+      assigned_employee_id: document.getElementById("assigned_employee_id").value || null,
       scheduled_start: fromLocalInputValue(document.getElementById("scheduled_start").value),
       scheduled_end: fromLocalInputValue(document.getElementById("scheduled_end").value),
       vehicle_arrived_at: fromLocalInputValue(document.getElementById("vehicle_arrived_at").value),
@@ -1048,6 +1081,9 @@ async function saveAllLines(){
     
     console.log(`Saved: ${savedCount}, Failed: ${failedCount}`);
     
+    // Auto-sync work order assigned_employee_id from first assigned labor line
+    await syncWorkOrderAssignment();
+    
     await reloadAllLines();
     recalculate(); // Update invoice totals
     
@@ -1059,6 +1095,40 @@ async function saveAllLines(){
   }catch(err){
     console.error('saveAllLines error:', err);
     setMsg("Error: " + err.message, "error");
+  }
+}
+
+async function syncWorkOrderAssignment(){
+  try{
+    // Get all labor lines for this work order
+    const allRows = document.querySelectorAll('#linesTbody tr[data-line-id]');
+    
+    // Find first assigned tech from labor lines
+    let firstAssignedTechId = null;
+    for(const tr of allRows){
+      const techSelect = tr.querySelector('select[data-k="assigned_tech_id"]');
+      if(techSelect && techSelect.value){
+        firstAssignedTechId = techSelect.value;
+        break; // Use first assigned tech
+      }
+    }
+    
+    console.log('Syncing work order assignment:', firstAssignedTechId);
+    
+    // Update work order's assigned_employee_id
+    const r = await sbFetch(`${REST_BASE}/work_orders?work_order_id=eq.${WORK_ORDER_ID}`, {
+      token: AUTH.token,
+      method: 'PATCH',
+      body: { assigned_employee_id: firstAssignedTechId }
+    });
+    
+    if(r.ok){
+      console.log('✅ Work order assignment synced');
+    } else {
+      console.error('Failed to sync work order assignment:', await r.text());
+    }
+  }catch(err){
+    console.error('syncWorkOrderAssignment error:', err);
   }
 }
 
