@@ -462,7 +462,10 @@ function getWorkOrdersForDate(date){
   const day = String(date.getDate()).padStart(2, '0');
   const dateStr = `${year}-${month}-${day}`;
   
-  return workOrders.filter(wo => {
+  console.log('getWorkOrdersForDate called for:', dateStr);
+  console.log('Total work orders to check:', workOrders.length);
+  
+  const matches = workOrders.filter(wo => {
     // Check scheduled_start first
     if(wo.scheduled_start) {
       const woDate = new Date(wo.scheduled_start);
@@ -470,7 +473,13 @@ function getWorkOrdersForDate(date){
       const woMonth = String(woDate.getMonth() + 1).padStart(2, '0');
       const woDay = String(woDate.getDate()).padStart(2, '0');
       const woDateStr = `${woYear}-${woMonth}-${woDay}`;
-      return woDateStr === dateStr;
+      const matches = woDateStr === dateStr;
+      
+      if(matches) {
+        console.log('MATCH on scheduled_start:', woDateStr, wo.work_order_id.substring(0, 8));
+      }
+      
+      return matches;
     }
     // Fall back to scheduled_end
     if(wo.scheduled_end) {
@@ -479,7 +488,13 @@ function getWorkOrdersForDate(date){
       const woMonth = String(woDate.getMonth() + 1).padStart(2, '0');
       const woDay = String(woDate.getDate()).padStart(2, '0');
       const woDateStr = `${woYear}-${woMonth}-${woDay}`;
-      return woDateStr === dateStr;
+      const matches = woDateStr === dateStr;
+      
+      if(matches) {
+        console.log('MATCH on scheduled_end:', woDateStr, wo.work_order_id.substring(0, 8));
+      }
+      
+      return matches;
     }
     // Fall back to created_at for today's view
     if(wo.created_at) {
@@ -494,10 +509,20 @@ function getWorkOrdersForDate(date){
       const todayDay = String(today.getDate()).padStart(2, '0');
       const todayStr = `${todayYear}-${todayMonth}-${todayDay}`;
       // Only show created_at matches for today
-      return woDateStr === dateStr && dateStr === todayStr;
+      const matches = woDateStr === dateStr && dateStr === todayStr;
+      
+      if(matches) {
+        console.log('MATCH on created_at (today):', woDateStr, wo.work_order_id.substring(0, 8));
+      }
+      
+      return matches;
     }
     return false;
   });
+  
+  console.log('Found', matches.length, 'work orders for', dateStr);
+  
+  return matches;
 }
 
 function createWOStrip(wo){
@@ -643,6 +668,15 @@ function renderToday(){
   console.log('Rendering Today view for:', currentDate.toISOString().split('T')[0]);
   console.log('Work orders for this day:', todayOrders.length);
   
+  if(todayOrders.length > 0) {
+    console.log('Sample today order:', todayOrders[0]);
+    console.log('Sample scheduled_start:', todayOrders[0].scheduled_start);
+    if(todayOrders[0].scheduled_start) {
+      const d = new Date(todayOrders[0].scheduled_start);
+      console.log('Sample hour:', d.getHours());
+    }
+  }
+  
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
     timeSlot.className = 'time-slot';
@@ -661,13 +695,24 @@ function renderToday(){
     
     // Add work orders for this hour (or all if no scheduled time)
     const orders = todayOrders.filter(wo => {
-      if(!wo.scheduled_start) return hour === 9; // Show unscheduled at 9 AM
+      if(!wo.scheduled_start) {
+        console.log('Work order has no scheduled_start, showing at 9 AM');
+        return hour === 9; // Show unscheduled at 9 AM
+      }
       const woHour = new Date(wo.scheduled_start).getHours();
-      return woHour === hour;
+      const matches = woHour === hour;
+      if(matches) {
+        console.log(`Work order hour ${woHour} matches slot hour ${hour}`);
+      }
+      return matches;
     });
     
+    console.log(`Hour ${hour}: ${orders.length} orders to display`);
+    
     orders.forEach(wo => {
-      slotContent.appendChild(createWOStrip(wo));
+      const strip = createWOStrip(wo);
+      console.log('Appending strip to hour', hour);
+      slotContent.appendChild(strip);
     });
     
     slotContent.addEventListener('dragover', handleDragOver);
@@ -680,6 +725,8 @@ function renderToday(){
     
     view.appendChild(slotContent);
   });
+  
+  console.log('Today view grid children:', view.children.length);
   
   // If no orders shown, display message
   if(todayOrders.length === 0){
@@ -877,13 +924,23 @@ async function load(){
     // Log work orders with scheduled dates
     const scheduled = workOrders.filter(wo => wo.scheduled_start);
     console.log('Work orders with scheduled_start:', scheduled.length);
-    console.log('Sample scheduled WO:', scheduled[0]);
+    if(scheduled.length > 0) {
+      console.log('Sample scheduled WO:', scheduled[0]);
+      console.log('Scheduled dates:');
+      scheduled.slice(0, 5).forEach(wo => {
+        const d = new Date(wo.scheduled_start);
+        console.log(`  - ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`);
+      });
+    }
     
     // Set tenant title
     if(workOrders.length > 0 && workOrders[0].tenant_name){
       document.getElementById('tenantTitle').textContent = workOrders[0].tenant_name;
       document.title = workOrders[0].tenant_name + ' - Scheduling';
     }
+    
+    console.log('Current view will be:', currentView);
+    console.log('Current date:', currentDate);
     
     updateTitle();
     renderView();
