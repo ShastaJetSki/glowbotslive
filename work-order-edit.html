@@ -635,11 +635,13 @@ async function loadWorkOrder(){
 
 async function saveWorkOrder(){
   try{
+    const priorityValue = document.getElementById("priority").value;
+    
     const payload = {
       customer_id: document.getElementById("customer_id").value || null,
       vehicle_id: document.getElementById("vehicle_id").value || null,
       status: document.getElementById("status").value,
-      priority: document.getElementById("priority").value,
+      priority: priorityValue || null,  // Convert empty string to null
       scheduled_start: fromLocalInputValue(document.getElementById("scheduled_start").value),
       scheduled_end: fromLocalInputValue(document.getElementById("scheduled_end").value),
       customer_notes: document.getElementById("customer_notes").value.trim() || null,
@@ -1021,6 +1023,26 @@ async function clockIn(laborEntryId){
     if(!r.ok) {
       const errorText = await r.text();
       console.error('Clock in failed:', errorText);
+      
+      // Check for overlapping clock-in constraint
+      if(errorText.includes('idx_no_overlapping_clockins') || errorText.includes('23505')) {
+        // Show user-friendly alert
+        const shouldClockOut = confirm(
+          "⚠️ You're already clocked in on another work order!\n\n" +
+          "You can only be clocked in to one job at a time.\n\n" +
+          "Click OK to automatically clock out from all other jobs and clock in here.\n" +
+          "Click Cancel to leave your current clock-in active."
+        );
+        
+        if(shouldClockOut) {
+          await clockOutFromAllOtherJobs(empId);
+          // Try clocking in again
+          return clockIn(laborEntryId);
+        } else {
+          return setMsg("Clock-in cancelled. You're still clocked in elsewhere.", "error");
+        }
+      }
+      
       throw new Error("Clock in failed: " + errorText);
     }
     
@@ -1032,6 +1054,32 @@ async function clockIn(laborEntryId){
   }catch(err){
     console.error('clockIn error:', err);
     setMsg("Error: " + err.message, "error");
+  }
+}
+
+async function clockOutFromAllOtherJobs(empId){
+  try{
+    console.log('=== CLOCKING OUT FROM ALL OTHER JOBS ===');
+    
+    // Clock out all open entries for this employee
+    const payload = { clock_out: new Date().toISOString() };
+    const r = await sbFetch(
+      `${REST_BASE}/labor_time_entries?employee_id=eq.${empId}&clock_out=is.null`, 
+      { token: AUTH.token, method:"PATCH", body: payload }
+    );
+    
+    if(!r.ok) {
+      const errorText = await r.text();
+      console.error('Failed to clock out from other jobs:', errorText);
+      throw new Error("Failed to clock out from other jobs");
+    }
+    
+    console.log('Successfully clocked out from all other jobs');
+    setMsg("✅ Clocked out from other jobs. Now clocking in here...", "success");
+  }catch(err){
+    console.error('clockOutFromAllOtherJobs error:', err);
+    setMsg("Error clocking out from other jobs: " + err.message, "error");
+    throw err;
   }
 }
 
