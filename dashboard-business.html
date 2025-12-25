@@ -1020,16 +1020,34 @@
       if (aPastDue && !bPastDue) return -1;
       if (!aPastDue && bPastDue) return 1;
       
+      // When no KPI filter active, sort by status priority matching KPI card order
+      if (!activeKpi) {
+        // Status priority order: complications → waiting → pickup → everything else
+        const getStatusPriority = (w) => {
+          if (statusIn("complications", w.status)) return 1; // Waiting on Approval
+          if (statusIn("waiting", w.status)) return 2;        // Waiting on Parts
+          if (w.status === "ready_for_pickup") return 3;      // Ready for Pickup
+          return 4; // Everything else (scheduled, in_progress, etc.)
+        };
+        
+        const aPriority = getStatusPriority(a);
+        const bPriority = getStatusPriority(b);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+      }
+      
       // Within "Waiting on Approval" bucket: customer_approval before diagnosis_required
-      if (activeKpi === "complications") {
+      if (activeKpi === "complications" || statusIn("complications", a.status)) {
         if (a.status === "customer_approval" && b.status === "diagnosis_required") return -1;
         if (a.status === "diagnosis_required" && b.status === "customer_approval") return 1;
       }
       
+      // Priority sort if active
       if (activeSort === "priority") {
         const pr = priorityRank(a.priority) - priorityRank(b.priority);
         if (pr !== 0) return pr;
       }
+      
+      // Finally sort by scheduled date
       const da = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
       const db = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
       return da - db;
