@@ -332,12 +332,6 @@
       pointer-events:auto;
     }
     
-    .wo-strip.live.completed,
-    .wo-strip.live.closed {
-      border-left-color:#10b981;
-      border-color:#10b981;
-    }
-    
     .wo-strip.live:hover {
       background:#243648;
       box-shadow:0 2px 8px rgba(0,0,0,0.3);
@@ -353,8 +347,8 @@
     .wo-strip.scheduled_dropoff { border-left-color:#60a5fa; border-color:#60a5fa; }
     .wo-strip.diagnosis_required { border-left-color:#3b82f6; border-color:#3b82f6; }
     .wo-strip.customer_approval { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .wo-strip.completed { border-left-color:#10b981; border-color:#10b981; }
-    .wo-strip.closed { border-left-color:#10b981; border-color:#10b981; }
+    .wo-strip.completed { border-left-color:#3b82f6; border-color:#3b82f6; }
+    .wo-strip.closed { border-left-color:#3b82f6; border-color:#3b82f6; }
     .wo-strip.past-due { border-left-color:#ef4444; border-color:#ef4444; }
     
     .wo-customer {
@@ -386,6 +380,15 @@
     .drop-zone {
       border:2px dashed #3b82f6 !important;
       background:rgba(59,130,246,0.08) !important;
+    }
+    
+    /* Drop zone hover effects for pickup and completed */
+    div[data-status="ready_for_pickup"]:hover {
+      background:rgba(16,185,129,0.05);
+    }
+    
+    div[data-status="completed"]:hover {
+      background:rgba(59,130,246,0.05);
     }
     
     /* Mobile responsive */
@@ -1020,9 +1023,11 @@ function renderToday(){
   // Completed column header
   const completedHeader = document.createElement('div');
   completedHeader.style.background = '#1a2535';
-  completedHeader.style.color = '#10b981';
-  completedHeader.style.borderLeft = '2px solid #10b981';
-  completedHeader.style.fontSize = '11px';
+  completedHeader.style.border = '1px solid #3b82f6';
+  completedHeader.style.borderLeft = '3px solid #3b82f6';
+  completedHeader.style.borderRadius = '6px 6px 0 0';
+  completedHeader.style.color = '#e8eef6';
+  completedHeader.style.fontSize = '12px';
   completedHeader.style.fontWeight = '600';
   completedHeader.style.textTransform = 'uppercase';
   completedHeader.style.letterSpacing = '0.5px';
@@ -1062,7 +1067,7 @@ function renderToday(){
   const completedContainer = document.createElement('div');
   completedContainer.className = 'slot-content';
   completedContainer.style.background = '#0f1621';
-  completedContainer.style.borderLeft = '2px solid #10b981';
+  completedContainer.style.borderLeft = '1px solid #223044';
   completedContainer.style.gridColumn = `${numTechs + 2}`;
   completedContainer.style.gridRow = `2 / ${hours.length + 2}`;
   completedContainer.style.display = 'flex';
@@ -1255,6 +1260,7 @@ function renderWeek(){
   }
   
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
+  const completedOrdersAll = workOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed');
   
   view.style.gridTemplateColumns = '80px repeat(5, minmax(200px, 1fr)) 220px';
   
@@ -1269,26 +1275,65 @@ function renderWeek(){
     view.appendChild(header);
   });
   
-  const pickupHeader = document.createElement('div');
-  pickupHeader.className = 'week-day-header pickup-column';
-  pickupHeader.innerHTML = 'Ready for Pickup';
-  view.appendChild(pickupHeader);
+  // Combined pickup/completed header
+  const combinedHeader = document.createElement('div');
+  combinedHeader.className = 'week-day-header pickup-column';
+  combinedHeader.innerHTML = 'Pickup / Completed';
+  view.appendChild(combinedHeader);
   
   const hours = Array.from({length: 13}, (_, i) => i + 7);
   
-  const pickupContainer = document.createElement('div');
-  pickupContainer.className = 'slot-content pickup-column';
-  pickupContainer.style.gridColumn = '7';
-  pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
-  pickupContainer.dataset.status = 'ready_for_pickup';
+  // Create combined pickup + completed column container
+  const combinedContainer = document.createElement('div');
+  combinedContainer.className = 'slot-content';
+  combinedContainer.style.background = '#0f1621';
+  combinedContainer.style.borderLeft = '2px solid #10b981';
+  combinedContainer.style.gridColumn = '7';
+  combinedContainer.style.gridRow = `2 / ${hours.length + 2}`;
+  combinedContainer.style.display = 'flex';
+  combinedContainer.style.flexDirection = 'column';
+  combinedContainer.style.gap = '6px';
+  combinedContainer.style.padding = '8px';
+  combinedContainer.style.overflowY = 'auto';
   
-  pickupOrders.forEach(wo => {
-    pickupContainer.appendChild(createWOStrip(wo));
+  // Pickup section header
+  const pickupSectionHeader = document.createElement('div');
+  pickupSectionHeader.style.background = '#1a2535';
+  pickupSectionHeader.style.color = '#4ade80';
+  pickupSectionHeader.style.fontSize = '10px';
+  pickupSectionHeader.style.fontWeight = '700';
+  pickupSectionHeader.style.textTransform = 'uppercase';
+  pickupSectionHeader.style.letterSpacing = '0.5px';
+  pickupSectionHeader.style.padding = '6px 8px';
+  pickupSectionHeader.style.borderRadius = '4px';
+  pickupSectionHeader.style.textAlign = 'center';
+  pickupSectionHeader.style.marginBottom = '4px';
+  pickupSectionHeader.textContent = 'Ready for Pickup';
+  combinedContainer.appendChild(pickupSectionHeader);
+  
+  // Pickup drop zone
+  const pickupZone = document.createElement('div');
+  pickupZone.style.display = 'flex';
+  pickupZone.style.flexDirection = 'column';
+  pickupZone.style.gap = '6px';
+  pickupZone.style.marginBottom = '12px';
+  pickupZone.style.minHeight = '100px';
+  pickupZone.style.padding = '4px';
+  pickupZone.style.border = '1px dashed #10b981';
+  pickupZone.style.borderRadius = '6px';
+  pickupZone.dataset.status = 'ready_for_pickup';
+  
+  // Add up to 4 pickup orders
+  pickupOrders.slice(0, 4).forEach(wo => {
+    const strip = createWOStripLive(wo);
+    strip.style.maxWidth = 'none';
+    strip.style.width = '100%';
+    pickupZone.appendChild(strip);
   });
   
-  pickupContainer.addEventListener('dragover', handleDragOver);
-  pickupContainer.addEventListener('dragleave', handleDragLeave);
-  pickupContainer.addEventListener('drop', async (e) => {
+  pickupZone.addEventListener('dragover', handleDragOver);
+  pickupZone.addEventListener('dragleave', handleDragLeave);
+  pickupZone.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.currentTarget.classList.remove('drop-zone');
     
@@ -1317,6 +1362,76 @@ function renderWeek(){
     
     draggedWO = null;
   });
+  
+  combinedContainer.appendChild(pickupZone);
+  
+  // Completed section header
+  const completedSectionHeader = document.createElement('div');
+  completedSectionHeader.style.background = '#1a2535';
+  completedSectionHeader.style.color = '#e8eef6';
+  completedSectionHeader.style.fontSize = '10px';
+  completedSectionHeader.style.fontWeight = '700';
+  completedSectionHeader.style.textTransform = 'uppercase';
+  completedSectionHeader.style.letterSpacing = '0.5px';
+  completedSectionHeader.style.padding = '6px 8px';
+  completedSectionHeader.style.borderRadius = '4px';
+  completedSectionHeader.style.textAlign = 'center';
+  completedSectionHeader.style.marginBottom = '4px';
+  completedSectionHeader.textContent = 'Completed';
+  combinedContainer.appendChild(completedSectionHeader);
+  
+  // Completed drop zone
+  const completedZone = document.createElement('div');
+  completedZone.style.display = 'flex';
+  completedZone.style.flexDirection = 'column';
+  completedZone.style.gap = '6px';
+  completedZone.style.minHeight = '100px';
+  completedZone.style.padding = '4px';
+  completedZone.style.border = '1px dashed #3b82f6';
+  completedZone.style.borderRadius = '6px';
+  completedZone.dataset.status = 'completed';
+  
+  // Add all completed orders
+  completedOrdersAll.forEach(wo => {
+    const strip = createWOStripLive(wo);
+    strip.style.maxWidth = 'none';
+    strip.style.width = '100%';
+    completedZone.appendChild(strip);
+  });
+  
+  completedZone.addEventListener('dragover', handleDragOver);
+  completedZone.addEventListener('dragleave', handleDragLeave);
+  completedZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-zone');
+    
+    if(!draggedWO) return;
+    
+    const token = localStorage.getItem("sb_access_token");
+    if(!token) return;
+    
+    try {
+      await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: 'completed' })
+      });
+      
+      await loadWorkOrders(token);
+      renderView();
+    } catch(err){
+      console.error('Drop error:', err);
+      alert('Error updating work order status');
+    }
+    
+    draggedWO = null;
+  });
+  
+  combinedContainer.appendChild(completedZone);
   
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
@@ -1352,7 +1467,7 @@ function renderWeek(){
     });
   });
   
-  view.appendChild(pickupContainer);
+  view.appendChild(combinedContainer);
 }
 
 function renderMonth(){
@@ -1393,6 +1508,7 @@ function renderMonth(){
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
+  const completedOrdersAll = workOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed');
   
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   days.forEach(day => {
@@ -1402,10 +1518,11 @@ function renderMonth(){
     view.appendChild(header);
   });
   
-  const pickupHeader = document.createElement('div');
-  pickupHeader.className = 'day-header pickup-column';
-  pickupHeader.textContent = 'READY FOR PICKUP';
-  view.appendChild(pickupHeader);
+  // Combined pickup/completed header
+  const combinedHeader = document.createElement('div');
+  combinedHeader.className = 'day-header pickup-column';
+  combinedHeader.textContent = 'PICKUP / COMPLETED';
+  view.appendChild(combinedHeader);
   
   let totalDays = 0;
   const currentDateIter = new Date(startDate);
@@ -1414,19 +1531,57 @@ function renderMonth(){
     currentDateIter.setDate(currentDateIter.getDate() + 1);
   }
   
-  const pickupCell = document.createElement('div');
-  pickupCell.className = 'day-cell pickup-column';
-  pickupCell.style.gridColumn = '8';
-  pickupCell.style.gridRow = `2 / ${Math.ceil(totalDays / 7) + 2}`;
-  pickupCell.dataset.status = 'ready_for_pickup';
+  // Create combined pickup + completed column
+  const combinedCell = document.createElement('div');
+  combinedCell.className = 'day-cell';
+  combinedCell.style.background = '#0f1621';
+  combinedCell.style.borderLeft = '2px solid #10b981';
+  combinedCell.style.gridColumn = '8';
+  combinedCell.style.gridRow = `2 / ${Math.ceil(totalDays / 7) + 2}`;
+  combinedCell.style.display = 'flex';
+  combinedCell.style.flexDirection = 'column';
+  combinedCell.style.gap = '8px';
+  combinedCell.style.padding = '8px';
+  combinedCell.style.overflowY = 'auto';
   
-  pickupOrders.forEach(wo => {
-    pickupCell.appendChild(createWOStrip(wo));
+  // Pickup section header
+  const pickupSectionHeader = document.createElement('div');
+  pickupSectionHeader.style.background = '#1a2535';
+  pickupSectionHeader.style.color = '#4ade80';
+  pickupSectionHeader.style.fontSize = '10px';
+  pickupSectionHeader.style.fontWeight = '700';
+  pickupSectionHeader.style.textTransform = 'uppercase';
+  pickupSectionHeader.style.letterSpacing = '0.5px';
+  pickupSectionHeader.style.padding = '6px 8px';
+  pickupSectionHeader.style.borderRadius = '4px';
+  pickupSectionHeader.style.textAlign = 'center';
+  pickupSectionHeader.style.marginBottom = '4px';
+  pickupSectionHeader.textContent = 'Ready for Pickup';
+  combinedCell.appendChild(pickupSectionHeader);
+  
+  // Pickup drop zone
+  const pickupZone = document.createElement('div');
+  pickupZone.style.display = 'flex';
+  pickupZone.style.flexDirection = 'column';
+  pickupZone.style.gap = '6px';
+  pickupZone.style.marginBottom = '12px';
+  pickupZone.style.minHeight = '100px';
+  pickupZone.style.padding = '4px';
+  pickupZone.style.border = '1px dashed #10b981';
+  pickupZone.style.borderRadius = '6px';
+  pickupZone.dataset.status = 'ready_for_pickup';
+  
+  // Add up to 4 pickup orders
+  pickupOrders.slice(0, 4).forEach(wo => {
+    const strip = createWOStripLive(wo);
+    strip.style.maxWidth = 'none';
+    strip.style.width = '100%';
+    pickupZone.appendChild(strip);
   });
   
-  pickupCell.addEventListener('dragover', handleDragOver);
-  pickupCell.addEventListener('dragleave', handleDragLeave);
-  pickupCell.addEventListener('drop', async (e) => {
+  pickupZone.addEventListener('dragover', handleDragOver);
+  pickupZone.addEventListener('dragleave', handleDragLeave);
+  pickupZone.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.currentTarget.classList.remove('drop-zone');
     
@@ -1456,6 +1611,76 @@ function renderMonth(){
     draggedWO = null;
   });
   
+  combinedCell.appendChild(pickupZone);
+  
+  // Completed section header
+  const completedSectionHeader = document.createElement('div');
+  completedSectionHeader.style.background = '#1a2535';
+  completedSectionHeader.style.color = '#e8eef6';
+  completedSectionHeader.style.fontSize = '10px';
+  completedSectionHeader.style.fontWeight = '700';
+  completedSectionHeader.style.textTransform = 'uppercase';
+  completedSectionHeader.style.letterSpacing = '0.5px';
+  completedSectionHeader.style.padding = '6px 8px';
+  completedSectionHeader.style.borderRadius = '4px';
+  completedSectionHeader.style.textAlign = 'center';
+  completedSectionHeader.style.marginBottom = '4px';
+  completedSectionHeader.textContent = 'Completed';
+  combinedCell.appendChild(completedSectionHeader);
+  
+  // Completed drop zone
+  const completedZone = document.createElement('div');
+  completedZone.style.display = 'flex';
+  completedZone.style.flexDirection = 'column';
+  completedZone.style.gap = '6px';
+  completedZone.style.minHeight = '100px';
+  completedZone.style.padding = '4px';
+  completedZone.style.border = '1px dashed #3b82f6';
+  completedZone.style.borderRadius = '6px';
+  completedZone.dataset.status = 'completed';
+  
+  // Add all completed orders
+  completedOrdersAll.forEach(wo => {
+    const strip = createWOStripLive(wo);
+    strip.style.maxWidth = 'none';
+    strip.style.width = '100%';
+    completedZone.appendChild(strip);
+  });
+  
+  completedZone.addEventListener('dragover', handleDragOver);
+  completedZone.addEventListener('dragleave', handleDragLeave);
+  completedZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-zone');
+    
+    if(!draggedWO) return;
+    
+    const token = localStorage.getItem("sb_access_token");
+    if(!token) return;
+    
+    try {
+      await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: 'completed' })
+      });
+      
+      await loadWorkOrders(token);
+      renderView();
+    } catch(err){
+      console.error('Drop error:', err);
+      alert('Error updating work order status');
+    }
+    
+    draggedWO = null;
+  });
+  
+  combinedCell.appendChild(completedZone);
+  
   currentDateIter.setTime(startDate.getTime());
   while(currentDateIter <= endDate){
     const year = currentDateIter.getFullYear();
@@ -1472,7 +1697,7 @@ function renderMonth(){
     currentDateIter.setDate(currentDateIter.getDate() + 1);
   }
   
-  view.appendChild(pickupCell);
+  view.appendChild(combinedCell);
 }
 
 function createDayCell(day, date, otherMonth = false, isToday = false){
