@@ -139,6 +139,10 @@
       padding:8px;
       min-height:60px;
       position:relative;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      align-items:flex-start;
     }
     
     /* Week View */
@@ -215,11 +219,14 @@
       border-left:3px solid #3b82f6;
       border-radius:6px;
       padding:6px 8px;
-      margin-bottom:4px;
+      margin-bottom:0;
       cursor:move;
       font-size:11px;
       transition:all 0.2s;
       user-select:none;
+      flex:0 0 auto;
+      max-width:180px;
+      min-width:150px;
     }
     
     .wo-strip:hover {
@@ -666,10 +673,24 @@ async function handleDrop(e, newDate, newHour = null){
     // Build date string in local timezone
     const newDateTime = new Date(year, month, day, hour, minute, 0, 0);
     
+    // Calculate job duration based on status
+    let durationHours = 2.0; // default
+    if(wo.status === 'diagnosis_required') durationHours = 1.5;
+    if(wo.status === 'in_progress' || wo.status === 'repairing') durationHours = 3.0;
+    if(wo.status === 'ready_for_pickup') durationHours = 1.5;
+    if(wo.status === 'awaiting_parts' || wo.status === 'customer_approval') durationHours = 2.0;
+    
+    // Calculate scheduled_end
+    const newEndTime = new Date(newDateTime);
+    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
+    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+    
     console.log('Dropping WO:', draggedWO);
     console.log('Target date components:', {year, month: month+1, day, hour, minute});
     console.log('New date/time (local):', newDateTime.toString());
     console.log('New date/time (ISO):', newDateTime.toISOString());
+    console.log('Duration hours:', durationHours);
+    console.log('Scheduled end:', newEndTime.toISOString());
     
     await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
       method: 'PATCH',
@@ -679,7 +700,8 @@ async function handleDrop(e, newDate, newHour = null){
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        scheduled_start: newDateTime.toISOString()
+        scheduled_start: newDateTime.toISOString(),
+        scheduled_end: newEndTime.toISOString()
       })
     });
     
