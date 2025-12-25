@@ -188,11 +188,6 @@
       opacity:0.4;
     }
     
-    .vehicle-info {
-      flex:1;
-      min-width:0;
-    }
-    
     .vehicle-wo-info {
       border-top:1px solid #223044;
       padding-top:8px;
@@ -284,15 +279,19 @@
       <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
     </div>
     
-    <!-- Navigation Tabs and Buttons -->
-    <div style="padding:0 24px 12px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
-      <nav style="display:flex; gap:24px; overflow-x:auto; flex:1;">
+    <!-- Navigation Tabs -->
+    <div style="padding:0 24px 12px;">
+      <nav style="display:flex; gap:24px; overflow-x:auto;">
         <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Dashboard</a>
         <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
         <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Vehicles</a>
         <a href="dashboard-scheduling.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Scheduling</a>
       </nav>
-      <div style="display:flex; gap:12px; white-space:nowrap;">
+    </div>
+    
+    <!-- Settings/Logout buttons BELOW divider -->
+    <div style="padding:0 24px 12px; border-top:1px solid #223044; padding-top:12px;">
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
         <button onclick="goToSettings()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Settings</button>
         <button onclick="logout()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Logout</button>
       </div>
@@ -454,13 +453,6 @@ function updateKPIs() {
     wo.status === 'completed' || wo.status === 'closed'
   );
   
-  console.log('Ready for pickup vehicles:', readyForPickupVehicles.length);
-  console.log('Ready for pickup work orders:', readyForPickupVehicles.map(wo => ({
-    wo_number: wo.wo_number,
-    status: wo.status,
-    vehicle_id: wo.vehicle_id
-  })));
-  
   // Update values - First card shows TOTAL vehicles, not just onsite
   document.getElementById('allVehiclesValue').textContent = vehicles.length;
   document.getElementById('scheduledValue').textContent = scheduledVehicles.length;
@@ -589,8 +581,6 @@ function selectVehicle(vehicleId){
   openVehicle(vehicleId);
 }
 
-function norm(v){ return String(v||"").toLowerCase(); }
-
 function render(){
   const q = norm(search.value);
 
@@ -602,16 +592,12 @@ function render(){
     norm(v.vin_or_cf_number).includes(q)
   );
   
-  console.log('Render - Total vehicles:', vehicles.length);
-  console.log('Render - Active filter:', activeFilter);
-  console.log('Render - Filtered before status:', filtered.length);
-  
   // Apply status filter
   if (activeFilter !== 'all') {
     const now = new Date();
     filtered = filtered.filter(v => {
       const wo = workOrders.find(wo => wo.vehicle_id === v.vehicle_id);
-      if (!wo) return activeFilter === 'completed'; // No WO means it could be in completed historical view
+      if (!wo) return activeFilter === 'completed';
       
       if (activeFilter === 'scheduled') {
         return wo.status === 'scheduled' || wo.status === 'in_progress';
@@ -627,8 +613,6 @@ function render(){
       return true;
     });
   }
-  
-  console.log('Render - Filtered after status:', filtered.length);
   
   // Sort by most recently viewed
   filtered = sortVehiclesByRecentView(filtered);
@@ -738,12 +722,6 @@ async function load(){
   );
   const allWorkOrders = allWOResponse.ok ? await allWOResponse.json() : [];
   
-  console.log('All work orders:', allWorkOrders.length);
-  console.log('Status breakdown:', allWorkOrders.reduce((acc, wo) => {
-    acc[wo.status] = (acc[wo.status] || 0) + 1;
-    return acc;
-  }, {}));
-  
   // Filter to only non-completed/closed work orders
   workOrders = allWorkOrders.filter(wo => 
     wo.status !== 'completed' && 
@@ -751,24 +729,10 @@ async function load(){
     wo.vehicle_id // Must have a vehicle assigned
   );
   
-  console.log('Active work orders (not completed/closed):', workOrders.length);
-  console.log('Work orders by vehicle:', workOrders.map(wo => ({
-    vehicle_id: wo.vehicle_id,
-    wo_number: wo.wo_number,
-    status: wo.status,
-    assigned_employee_id: wo.assigned_employee_id
-  })));
-  
   // Load employees to get tech names
   employees = await fetchTable("employees", token);
   
   totalVehicles.textContent = vehicles.length;
-  
-  // Count vehicles with active work orders
-  const vehiclesWithWO = vehicles.filter(v => 
-    workOrders.some(wo => wo.vehicle_id === v.vehicle_id)
-  ).length;
-  console.log(`Vehicles with active work orders: ${vehiclesWithWO} of ${vehicles.length}`);
   
   // Set tenant title if available
   const tenantEl = document.getElementById("tenantTitle");
