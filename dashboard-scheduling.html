@@ -145,6 +145,12 @@
       align-items:flex-start;
     }
     
+    .slot-content .wo-strip {
+      width:100%;
+      max-width:none;
+      margin:0;
+    }
+    
     /* Week View */
     .week-grid {
       display:grid;
@@ -194,6 +200,11 @@
     }
     
     .slot-content.pickup-column .wo-strip {
+      max-width:none;
+      width:100%;
+    }
+    
+    .slot-content[data-status="completed"] .wo-strip {
       max-width:none;
       width:100%;
     }
@@ -648,6 +659,44 @@ function createWOStrip(wo){
   return strip;
 }
 
+function createWOStripLive(wo){
+  const customer = customers.find(c => c.customer_id === wo.customer_id);
+  const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
+  const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
+  
+  const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
+  const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
+  const techName = employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned';
+  
+  // Format status for display
+  const statusDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'DRAFT';
+  
+  // Check if past due
+  const now = new Date();
+  const isPastDue = wo.scheduled_end && new Date(wo.scheduled_end) < now && 
+                    wo.status !== 'completed' && wo.status !== 'closed';
+  
+  // Create LIVE card (not dimmed, always draggable and clickable)
+  const strip = document.createElement('div');
+  strip.className = `wo-strip ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
+  strip.draggable = true; // Always draggable in Completed column
+  strip.dataset.woId = wo.work_order_id;
+  
+  strip.innerHTML = `
+    <div class="wo-customer">${customerName}</div>
+    ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
+    <div class="wo-status-display">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
+    <div class="wo-tech">Tech: ${techName}</div>
+  `;
+  
+  // Always add drag events for live cards
+  strip.addEventListener('dragstart', handleDragStart);
+  strip.addEventListener('dragend', handleDragEnd);
+  strip.addEventListener('click', () => openWorkOrder(wo.work_order_id));
+  
+  return strip;
+}
+
 function handleDragStart(e){
   draggedWO = e.target.dataset.woId;
   e.target.classList.add('dragging');
@@ -899,9 +948,9 @@ function renderToday(){
     return aName.localeCompare(bName);
   });
   
-  // Update grid: time column + one column per tech + pickup column
+  // Update grid: time column + one column per tech + completed column + pickup column
   const numTechs = techsArray.length;
-  view.style.gridTemplateColumns = `80px repeat(${numTechs}, minmax(150px, 180px)) 220px`;
+  view.style.gridTemplateColumns = `80px repeat(${numTechs}, minmax(150px, 180px)) 220px 220px`;
   
   // Top-left corner: "TIME"
   const timeHeaderCorner = document.createElement('div');
@@ -946,6 +995,24 @@ function renderToday(){
     view.appendChild(techHeader);
   });
   
+  // Completed column header
+  const completedHeader = document.createElement('div');
+  completedHeader.style.background = '#1a2535';
+  completedHeader.style.color = '#10b981';
+  completedHeader.style.borderLeft = '2px solid #10b981';
+  completedHeader.style.fontSize = '11px';
+  completedHeader.style.fontWeight = '600';
+  completedHeader.style.textTransform = 'uppercase';
+  completedHeader.style.letterSpacing = '0.5px';
+  completedHeader.style.padding = '12px 8px';
+  completedHeader.style.display = 'flex';
+  completedHeader.style.alignItems = 'center';
+  completedHeader.style.justifyContent = 'center';
+  completedHeader.style.textAlign = 'center';
+  completedHeader.style.minHeight = '60px';
+  completedHeader.textContent = 'Completed';
+  view.appendChild(completedHeader);
+  
   // Pickup column header
   const pickupHeader = document.createElement('div');
   pickupHeader.style.background = '#1a2535';
@@ -964,10 +1031,66 @@ function renderToday(){
   pickupHeader.textContent = 'Ready for Pickup';
   view.appendChild(pickupHeader);
   
+  // Get completed orders (live editable copies)
+  const completedOrdersLive = workOrders.filter(wo => 
+    (wo.status === 'completed' || wo.status === 'closed')
+  );
+  
+  // Create completed column container
+  const completedContainer = document.createElement('div');
+  completedContainer.className = 'slot-content';
+  completedContainer.style.background = '#0f1621';
+  completedContainer.style.borderLeft = '2px solid #10b981';
+  completedContainer.style.gridColumn = `${numTechs + 2}`;
+  completedContainer.style.gridRow = `2 / ${hours.length + 2}`;
+  completedContainer.style.display = 'flex';
+  completedContainer.style.flexDirection = 'column';
+  completedContainer.style.gap = '6px';
+  completedContainer.style.padding = '8px';
+  completedContainer.dataset.status = 'completed';
+  
+  // Add completed orders as LIVE cards (not dimmed)
+  completedOrdersLive.forEach(wo => {
+    const strip = createWOStripLive(wo);  // Create live version
+    completedContainer.appendChild(strip);
+  });
+  
+  completedContainer.addEventListener('dragover', handleDragOver);
+  completedContainer.addEventListener('dragleave', handleDragLeave);
+  completedContainer.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-zone');
+    
+    if(!draggedWO) return;
+    
+    const token = localStorage.getItem("sb_access_token");
+    if(!token) return;
+    
+    try {
+      await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: 'completed' })
+      });
+      
+      await loadWorkOrders(token);
+      renderView();
+    } catch(err){
+      console.error('Drop error:', err);
+      alert('Error updating work order status');
+    }
+    
+    draggedWO = null;
+  });
+  
   // Create pickup column container
   const pickupContainer = document.createElement('div');
   pickupContainer.className = 'slot-content pickup-column';
-  pickupContainer.style.gridColumn = `${numTechs + 2}`;
+  pickupContainer.style.gridColumn = `${numTechs + 3}`;
   pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
   pickupContainer.dataset.status = 'ready_for_pickup';
   
@@ -1054,10 +1177,11 @@ function renderToday(){
     });
   });
   
-  // Add pickup container at the end
+  // Add completed and pickup containers at the end
+  view.appendChild(completedContainer);
   view.appendChild(pickupContainer);
   
-  if(todayOrders.length === 0 && pickupOrders.length === 0){
+  if(todayOrders.length === 0 && pickupOrders.length === 0 && completedOrdersLive.length === 0){
     const emptyMsg = document.createElement('div');
     emptyMsg.style.gridColumn = '1 / -1';
     emptyMsg.style.padding = '20px';
