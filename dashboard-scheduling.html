@@ -159,13 +159,6 @@
       min-width:100%;
     }
     
-    .week-scroll-container {
-      overflow-x:auto;
-      overflow-y:hidden;
-      margin:0 -20px;
-      padding:0 20px;
-    }
-    
     .week-day-header {
       background:#1a2535;
       padding:12px 8px;
@@ -286,6 +279,18 @@
       flex:0 0 auto;
       max-width:180px;
       min-width:150px;
+      position:relative;
+    }
+    
+    .wo-strip:hover {
+      background:#243648;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+      transform:translateY(-1px);
+    }
+    
+    .wo-strip.dragging {
+      opacity:0.5;
+      cursor:grabbing;
     }
     
     /* Dimmed completed cards - historical artifacts */
@@ -307,17 +312,6 @@
       font-weight:700;
       color:#10b981;
       opacity:0.7;
-    }
-    
-    .wo-strip:hover {
-      background:#243648;
-      box-shadow:0 2px 8px rgba(0,0,0,0.3);
-      transform:translateY(-1px);
-    }
-    
-    .wo-strip.dragging {
-      opacity:0.5;
-      cursor:grabbing;
     }
     
     .wo-strip.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
@@ -369,7 +363,7 @@
       .controls { flex-direction:column; align-items:stretch; }
       .calendar-nav { justify-content:space-between; width:100%; }
       .calendar-title { min-width:150px; }
-      .week-grid { grid-template-columns:60px repeat(7, 1fr); }
+      .week-grid { grid-template-columns:60px repeat(5, 1fr) 180px; }
       .month-grid { gap:0; }
       .day-cell { min-height:80px; padding:4px; }
       .wo-strip { font-size:10px; padding:4px 6px; }
@@ -568,12 +562,9 @@ function getWorkOrdersForDate(date){
   const day = String(date.getDate()).padStart(2, '0');
   const dateStr = `${year}-${month}-${day}`;
   
-  console.log('getWorkOrdersForDate called for:', dateStr);
-  console.log('Total work orders to check:', workOrders.length);
-  
   const matches = workOrders.filter(wo => {
-    // IMPORTANT: Exclude ready_for_pickup from day columns
-    if(wo.status === 'ready_for_pickup') {
+    // IMPORTANT: Exclude ready_for_pickup and completed/closed from day columns
+    if(wo.status === 'ready_for_pickup' || wo.status === 'completed' || wo.status === 'closed') {
       return false;
     }
     
@@ -584,13 +575,7 @@ function getWorkOrdersForDate(date){
       const woMonth = String(woDate.getMonth() + 1).padStart(2, '0');
       const woDay = String(woDate.getDate()).padStart(2, '0');
       const woDateStr = `${woYear}-${woMonth}-${woDay}`;
-      const matches = woDateStr === dateStr;
-      
-      if(matches) {
-        console.log('MATCH on scheduled_start:', woDateStr, wo.work_order_id.substring(0, 8));
-      }
-      
-      return matches;
+      return woDateStr === dateStr;
     }
     // Fall back to scheduled_end
     if(wo.scheduled_end) {
@@ -599,13 +584,7 @@ function getWorkOrdersForDate(date){
       const woMonth = String(woDate.getMonth() + 1).padStart(2, '0');
       const woDay = String(woDate.getDate()).padStart(2, '0');
       const woDateStr = `${woYear}-${woMonth}-${woDay}`;
-      const matches = woDateStr === dateStr;
-      
-      if(matches) {
-        console.log('MATCH on scheduled_end:', woDateStr, wo.work_order_id.substring(0, 8));
-      }
-      
-      return matches;
+      return woDateStr === dateStr;
     }
     // Fall back to created_at for today's view
     if(wo.created_at) {
@@ -619,19 +598,10 @@ function getWorkOrdersForDate(date){
       const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
       const todayDay = String(today.getDate()).padStart(2, '0');
       const todayStr = `${todayYear}-${todayMonth}-${todayDay}`;
-      // Only show created_at matches for today
-      const matches = woDateStr === dateStr && dateStr === todayStr;
-      
-      if(matches) {
-        console.log('MATCH on created_at (today):', woDateStr, wo.work_order_id.substring(0, 8));
-      }
-      
-      return matches;
+      return woDateStr === dateStr && dateStr === todayStr;
     }
     return false;
   });
-  
-  console.log('Found', matches.length, 'work orders for', dateStr);
   
   return matches;
 }
@@ -689,26 +659,22 @@ function handleDragStart(e){
 }
 
 function autoScrollOnDrag(e){
-  const scrollThreshold = 100; // pixels from edge to trigger scroll
-  const scrollSpeed = 10; // pixels per interval
+  const scrollThreshold = 100;
+  const scrollSpeed = 10;
   
   const viewportHeight = window.innerHeight;
   const mouseY = e.clientY;
   
-  // Clear existing interval
   if(autoScrollInterval){
     clearInterval(autoScrollInterval);
     autoScrollInterval = null;
   }
   
-  // Check if near top
   if(mouseY < scrollThreshold){
     autoScrollInterval = setInterval(() => {
       window.scrollBy(0, -scrollSpeed);
     }, 20);
-  }
-  // Check if near bottom
-  else if(mouseY > viewportHeight - scrollThreshold){
+  } else if(mouseY > viewportHeight - scrollThreshold){
     autoScrollInterval = setInterval(() => {
       window.scrollBy(0, scrollSpeed);
     }, 20);
@@ -719,7 +685,6 @@ function handleDragEnd(e){
   e.target.classList.remove('dragging');
   document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
   
-  // Cleanup auto-scroll
   if(autoScrollInterval){
     clearInterval(autoScrollInterval);
     autoScrollInterval = null;
@@ -747,17 +712,14 @@ async function handleDrop(e, newDate, newHour = null){
   if(!token) return;
   
   try {
-    // Update work order date
     const wo = workOrders.find(w => w.work_order_id === draggedWO);
     if(!wo) return;
     
-    // Use the current time from scheduled_start, or default to 9 AM
     let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
     if(!wo.scheduled_start) {
       currentTime.setHours(9, 0, 0, 0);
     }
     
-    // Create new date/time using local timezone values
     const year = newDate.getFullYear();
     const month = newDate.getMonth();
     const day = newDate.getDate();
@@ -771,39 +733,26 @@ async function handleDrop(e, newDate, newHour = null){
       minute = currentTime.getMinutes();
     }
     
-    // Build date string in local timezone
     const newDateTime = new Date(year, month, day, hour, minute, 0, 0);
     
-    // Calculate job duration based on status
-    let durationHours = 2.0; // default
+    let durationHours = 2.0;
     if(wo.status === 'diagnosis_required') durationHours = 1.5;
     if(wo.status === 'in_progress' || wo.status === 'repairing') durationHours = 3.0;
     if(wo.status === 'ready_for_pickup') durationHours = 1.5;
     if(wo.status === 'awaiting_parts' || wo.status === 'customer_approval') durationHours = 2.0;
     
-    // Calculate scheduled_end
     const newEndTime = new Date(newDateTime);
     newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
     newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
     
-    console.log('Dropping WO:', draggedWO);
-    console.log('Target date components:', {year, month: month+1, day, hour, minute});
-    console.log('New date/time (local):', newDateTime.toString());
-    console.log('New date/time (ISO):', newDateTime.toISOString());
-    console.log('Duration hours:', durationHours);
-    console.log('Scheduled end:', newEndTime.toISOString());
-    
-    // Prepare update object
     const updateData = {
       scheduled_start: newDateTime.toISOString(),
       scheduled_end: newEndTime.toISOString()
     };
     
-    // If moving FROM pickup column (ready_for_pickup) to a day slot,
-    // change status back to scheduled or in_progress
+    // If moving FROM pickup column to a day slot, change status
     if(wo.status === 'ready_for_pickup') {
       updateData.status = 'scheduled';
-      console.log('Moving from pickup column - changing status to scheduled');
     }
     
     await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
@@ -816,7 +765,6 @@ async function handleDrop(e, newDate, newHour = null){
       body: JSON.stringify(updateData)
     });
     
-    // Reload data
     await loadWorkOrders(token);
     renderView();
     
@@ -842,39 +790,107 @@ function renderToday(){
   const view = document.getElementById('todayView');
   view.innerHTML = '';
   
-  // Update grid for Today view: time column + day column + pickup column
   view.style.gridTemplateColumns = '80px 1fr 220px';
   
-  const hours = Array.from({length: 13}, (_, i) => i + 7); // 7 AM to 7 PM
+  const hours = Array.from({length: 13}, (_, i) => i + 7);
   
-  // Get all work orders for today (excluding ready_for_pickup and including completed)
-  const todayOrders = workOrders.filter(wo => {
-    // Always show completed orders as historical artifacts
-    if(wo.status === 'completed' || wo.status === 'closed') {
-      const date = new Date(wo.scheduled_start || wo.scheduled_end || wo.created_at);
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-      const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
-      return dateStr === currentDateStr;
-    }
-    // Otherwise use normal filtering (excludes ready_for_pickup)
-    return getWorkOrdersForDate(currentDate).includes(wo);
+  // Get active orders (excludes ready_for_pickup)
+  const activeOrders = getWorkOrdersForDate(currentDate);
+  
+  // Get completed orders for today as historical artifacts
+  const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+  const completedOrders = workOrders.filter(wo => {
+    if(wo.status !== 'completed' && wo.status !== 'closed') return false;
+    const date = new Date(wo.scheduled_start || wo.scheduled_end || wo.created_at);
+    if(!date) return false;
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    return dateStr === currentDateStr;
   });
+  
+  const todayOrders = [...activeOrders, ...completedOrders];
   
   // Get pickup orders
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
   
-  console.log('Rendering Today view for:', currentDate.toISOString().split('T')[0]);
-  console.log('Work orders for this day:', todayOrders.length);
-  console.log('Pickup orders:', pickupOrders.length);
+  // Get unique techs for today
+  const allTechsToday = new Set();
+  todayOrders.forEach(wo => {
+    if(wo.assigned_employee_id) {
+      allTechsToday.add(wo.assigned_employee_id);
+    }
+  });
   
-  // Create pickup column container that spans all hours
+  // Tech avatar header row
+  const techHeaderCorner = document.createElement('div');
+  techHeaderCorner.className = 'time-slot';
+  techHeaderCorner.style.fontSize = '10px';
+  techHeaderCorner.style.color = '#60a5fa';
+  techHeaderCorner.style.fontWeight = '600';
+  techHeaderCorner.textContent = 'TECH';
+  view.appendChild(techHeaderCorner);
+  
+  const techHeaderContent = document.createElement('div');
+  techHeaderContent.style.background = '#0f1621';
+  techHeaderContent.style.padding = '8px';
+  techHeaderContent.style.display = 'flex';
+  techHeaderContent.style.gap = '8px';
+  techHeaderContent.style.flexWrap = 'wrap';
+  techHeaderContent.style.alignItems = 'center';
+  techHeaderContent.style.minHeight = '60px';
+  
+  // Add tech avatars
+  allTechsToday.forEach(techId => {
+    const tech = employees.find(e => e.employee_id === techId);
+    if(tech) {
+      const avatar = document.createElement('div');
+      avatar.style.width = '48px';
+      avatar.style.height = '48px';
+      avatar.style.borderRadius = '8px';
+      avatar.style.overflow = 'hidden';
+      avatar.style.border = '2px solid #3b82f6';
+      avatar.style.flexShrink = '0';
+      avatar.style.position = 'relative';
+      avatar.title = `${tech.first_name} ${tech.last_name}`;
+      
+      if(tech.avatar_url) {
+        const img = document.createElement('img');
+        img.src = tech.avatar_url.startsWith('http') 
+          ? tech.avatar_url 
+          : `${API_BASE}/storage/v1/object/public/avatars/${tech.avatar_url}`;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        avatar.appendChild(img);
+      } else {
+        avatar.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+        avatar.style.display = 'flex';
+        avatar.style.alignItems = 'center';
+        avatar.style.justifyContent = 'center';
+        avatar.style.color = '#fff';
+        avatar.style.fontWeight = '700';
+        avatar.style.fontSize = '16px';
+        const initials = `${tech.first_name?.charAt(0) || ''}${tech.last_name?.charAt(0) || ''}`;
+        avatar.textContent = initials;
+      }
+      
+      techHeaderContent.appendChild(avatar);
+    }
+  });
+  
+  view.appendChild(techHeaderContent);
+  
+  // Empty cell for pickup column header
+  const pickupHeaderSpacer = document.createElement('div');
+  pickupHeaderSpacer.style.background = '#0f1621';
+  view.appendChild(pickupHeaderSpacer);
+  
+  // Create pickup column
   const pickupContainer = document.createElement('div');
   pickupContainer.className = 'slot-content pickup-column';
   pickupContainer.style.gridColumn = '3';
-  pickupContainer.style.gridRow = `1 / ${hours.length + 1}`;
+  pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
   pickupContainer.dataset.status = 'ready_for_pickup';
   
-  // Add all pickup orders
   pickupOrders.forEach(wo => {
     pickupContainer.appendChild(createWOStrip(wo));
   });
@@ -926,7 +942,6 @@ function renderToday(){
     slotContent.dataset.date = slotDate.toISOString().split('T')[0];
     slotContent.dataset.hour = hour;
     
-    // Add work orders for this hour
     const orders = todayOrders.filter(wo => {
       if(!wo.scheduled_start) return hour === 9;
       const woHour = new Date(wo.scheduled_start).getHours();
@@ -948,10 +963,8 @@ function renderToday(){
     view.appendChild(slotContent);
   });
   
-  // Add pickup container at the end
   view.appendChild(pickupContainer);
   
-  // If no orders shown, display message
   if(todayOrders.length === 0 && pickupOrders.length === 0){
     const emptyMsg = document.createElement('div');
     emptyMsg.style.gridColumn = '1 / -1';
@@ -971,9 +984,6 @@ function renderWeek(){
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
   
-  console.log('Rendering Week view starting from today:', today.toISOString().split('T')[0]);
-  
-  // Build array of 5 days starting from currentDate
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const daysData = [];
   
@@ -984,10 +994,17 @@ function renderWeek(){
     const dateStr = date.toISOString().split('T')[0];
     const isToday = dateStr === todayStr;
     
-    // Get work orders for this day
     const dayOrders = getWorkOrdersForDate(date);
     
-    console.log(`Day ${i} (${days[date.getDay()]} ${date.getDate()}):`, dayOrders.length, 'work orders');
+    // Get completed orders for this date
+    const completedOrders = workOrders.filter(wo => {
+      if(wo.status !== 'completed' && wo.status !== 'closed') return false;
+      const woDate = wo.scheduled_start || wo.scheduled_end || wo.created_at;
+      if(!woDate) return false;
+      const d = new Date(woDate);
+      const woDateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      return woDateStr === dateStr;
+    });
     
     daysData.push({
       dayName: days[date.getDay()],
@@ -995,23 +1012,18 @@ function renderWeek(){
       date: new Date(date),
       dateStr: dateStr,
       isToday: isToday,
-      orders: dayOrders
+      orders: [...dayOrders, ...completedOrders]
     });
   }
   
-  // Get all ready for pickup orders (regardless of date)
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
-  console.log('Ready for pickup orders:', pickupOrders.length);
   
-  // Fixed grid: 80px time column + 5 day columns + 1 pickup column (220px)
   view.style.gridTemplateColumns = '80px repeat(5, minmax(200px, 1fr)) 220px';
   
-  // Empty corner cell
   const corner = document.createElement('div');
   corner.className = 'time-slot';
   view.appendChild(corner);
   
-  // Day headers - 5 days
   daysData.forEach(day => {
     const header = document.createElement('div');
     header.className = `week-day-header ${day.isToday ? 'today' : ''}`;
@@ -1019,23 +1031,19 @@ function renderWeek(){
     view.appendChild(header);
   });
   
-  // Pickup column header
   const pickupHeader = document.createElement('div');
   pickupHeader.className = 'week-day-header pickup-column';
   pickupHeader.innerHTML = 'Ready for Pickup';
   view.appendChild(pickupHeader);
   
-  // Time slots
   const hours = Array.from({length: 13}, (_, i) => i + 7);
   
-  // First, create a single pickup column container that spans all hours
   const pickupContainer = document.createElement('div');
   pickupContainer.className = 'slot-content pickup-column';
   pickupContainer.style.gridColumn = '7';
   pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
   pickupContainer.dataset.status = 'ready_for_pickup';
   
-  // Add all pickup orders to the container
   pickupOrders.forEach(wo => {
     pickupContainer.appendChild(createWOStrip(wo));
   });
@@ -1052,7 +1060,6 @@ function renderWeek(){
     if(!token) return;
     
     try {
-      // Update work order to ready_for_pickup status
       await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
         method: 'PATCH',
         headers: {
@@ -1060,15 +1067,11 @@ function renderWeek(){
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          status: 'ready_for_pickup'
-        })
+        body: JSON.stringify({ status: 'ready_for_pickup' })
       });
       
-      // Reload data
       await loadWorkOrders(token);
       renderView();
-      
     } catch(err){
       console.error('Drop error:', err);
       alert('Error updating work order status');
@@ -1083,7 +1086,6 @@ function renderWeek(){
     timeSlot.textContent = `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
     view.appendChild(timeSlot);
     
-    // Create slots for 5 days
     daysData.forEach(day => {
       const slotContent = document.createElement('div');
       slotContent.className = 'slot-content';
@@ -1091,10 +1093,7 @@ function renderWeek(){
       slotContent.dataset.hour = hour;
       
       const orders = day.orders.filter(wo => {
-        // Don't show ready_for_pickup orders in day columns
-        if(wo.status === 'ready_for_pickup') return false;
-        
-        if(!wo.scheduled_start) return hour === 9; // Show unscheduled at 9 AM
+        if(!wo.scheduled_start) return hour === 9;
         const woHour = new Date(wo.scheduled_start).getHours();
         return woHour === hour;
       });
@@ -1115,7 +1114,6 @@ function renderWeek(){
     });
   });
   
-  // Add the pickup container at the end
   view.appendChild(pickupContainer);
 }
 
@@ -1123,10 +1121,8 @@ function renderMonth(){
   const view = document.getElementById('monthView');
   view.innerHTML = '';
   
-  // Update grid: 7 day columns + 1 pickup column
   view.style.gridTemplateColumns = 'repeat(7, 1fr) 220px';
   
-  // Find the earliest scheduled work order
   const scheduledWOs = workOrders.filter(wo => wo.scheduled_start || wo.scheduled_end);
   
   if(scheduledWOs.length === 0){
@@ -1140,7 +1136,6 @@ function renderMonth(){
     return;
   }
   
-  // Find earliest date
   let earliestDate = new Date();
   scheduledWOs.forEach(wo => {
     const date = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date(wo.scheduled_end);
@@ -1149,24 +1144,18 @@ function renderMonth(){
     }
   });
   
-  // Start from Sunday of the week containing the earliest date
   const startDate = new Date(earliestDate);
-  startDate.setDate(startDate.getDate() - startDate.getDay()); // Go to Sunday
+  startDate.setDate(startDate.getDate() - startDate.getDay());
   startDate.setHours(0, 0, 0, 0);
   
-  // End date is 60 days from start
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 60);
-  
-  console.log('Rolling 60-day view:', startDate.toDateString(), 'to', endDate.toDateString());
   
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   
-  // Get pickup orders
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
   
-  // Day headers
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   days.forEach(day => {
     const header = document.createElement('div');
@@ -1175,13 +1164,11 @@ function renderMonth(){
     view.appendChild(header);
   });
   
-  // Pickup column header
   const pickupHeader = document.createElement('div');
   pickupHeader.className = 'day-header pickup-column';
   pickupHeader.textContent = 'READY FOR PICKUP';
   view.appendChild(pickupHeader);
   
-  // Count total days to render
   let totalDays = 0;
   const currentDateIter = new Date(startDate);
   while(currentDateIter <= endDate){
@@ -1189,7 +1176,6 @@ function renderMonth(){
     currentDateIter.setDate(currentDateIter.getDate() + 1);
   }
   
-  // Create pickup column cell that spans all day rows
   const pickupCell = document.createElement('div');
   pickupCell.className = 'day-cell pickup-column';
   pickupCell.style.gridColumn = '8';
@@ -1232,7 +1218,6 @@ function renderMonth(){
     draggedWO = null;
   });
   
-  // Render all days from start to end (60 days = ~8-9 weeks)
   currentDateIter.setTime(startDate.getTime());
   while(currentDateIter <= endDate){
     const year = currentDateIter.getFullYear();
@@ -1241,17 +1226,14 @@ function renderMonth(){
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const isToday = dateStr === todayStr;
     
-    // Check if this date is in the current month being viewed
     const isCurrentMonth = currentDateIter.getMonth() === currentDate.getMonth() && 
                           currentDateIter.getFullYear() === currentDate.getFullYear();
     
     view.appendChild(createDayCell(day, new Date(currentDateIter), !isCurrentMonth, isToday));
     
-    // Move to next day
     currentDateIter.setDate(currentDateIter.getDate() + 1);
   }
   
-  // Add pickup cell at the end
   view.appendChild(pickupCell);
 }
 
@@ -1259,7 +1241,6 @@ function createDayCell(day, date, otherMonth = false, isToday = false){
   const cell = document.createElement('div');
   cell.className = `day-cell ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
   
-  // Create a clean date at midnight
   const cleanDate = new Date(date);
   cleanDate.setHours(0, 0, 0, 0);
   
@@ -1270,10 +1251,8 @@ function createDayCell(day, date, otherMonth = false, isToday = false){
   dayNum.textContent = day;
   cell.appendChild(dayNum);
   
-  // Get active orders (excludes ready_for_pickup)
   const orders = getWorkOrdersForDate(date);
   
-  // Also get completed orders for this date as historical artifacts
   const dateStr = cleanDate.toISOString().split('T')[0];
   const completedOrders = workOrders.filter(wo => {
     if(wo.status !== 'completed' && wo.status !== 'closed') return false;
@@ -1286,12 +1265,10 @@ function createDayCell(day, date, otherMonth = false, isToday = false){
     return woDateStr === dateStr;
   });
   
-  // Add active orders
   orders.forEach(wo => {
     cell.appendChild(createWOStrip(wo));
   });
   
-  // Add completed orders (dimmed)
   completedOrders.forEach(wo => {
     cell.appendChild(createWOStrip(wo));
   });
@@ -1301,7 +1278,7 @@ function createDayCell(day, date, otherMonth = false, isToday = false){
   cell.addEventListener('drop', (e) => {
     const dropDate = new Date(date);
     dropDate.setHours(0, 0, 0, 0);
-    handleDrop(e, dropDate, null); // null = preserve current time
+    handleDrop(e, dropDate, null);
   });
   
   return cell;
@@ -1325,33 +1302,10 @@ async function load(){
     vehicles = await fetchTable("vehicles", token);
     employees = await fetchTable("employees", token);
     
-    console.log('=== SCHEDULING DATA LOADED ===');
-    console.log('Work Orders:', workOrders.length);
-    console.log('Sample WO:', workOrders[0]);
-    console.log('Customers:', customers.length);
-    console.log('Vehicles:', vehicles.length);
-    console.log('Employees:', employees.length);
-    
-    // Log work orders with scheduled dates
-    const scheduled = workOrders.filter(wo => wo.scheduled_start);
-    console.log('Work orders with scheduled_start:', scheduled.length);
-    if(scheduled.length > 0) {
-      console.log('Sample scheduled WO:', scheduled[0]);
-      console.log('Scheduled dates:');
-      scheduled.slice(0, 5).forEach(wo => {
-        const d = new Date(wo.scheduled_start);
-        console.log(`  - ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`);
-      });
-    }
-    
-    // Set tenant title
     if(workOrders.length > 0 && workOrders[0].tenant_name){
       document.getElementById('tenantTitle').textContent = workOrders[0].tenant_name;
       document.title = workOrders[0].tenant_name + ' - Scheduling';
     }
-    
-    console.log('Current view will be:', currentView);
-    console.log('Current date:', currentDate);
     
     updateTitle();
     renderView();
