@@ -843,21 +843,19 @@ function renderMonth(){
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   
+  // Build all cells first to determine which weeks have work orders
+  const allCells = [];
+  
   // Day headers
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  days.forEach(day => {
-    const header = document.createElement('div');
-    header.className = 'day-header';
-    header.textContent = day;
-    view.appendChild(header);
-  });
   
   // Previous month trailing days
   const prevMonthDays = new Date(year, month, 0).getDate();
   for(let i = startingDayOfWeek - 1; i >= 0; i--){
     const day = prevMonthDays - i;
     const date = new Date(year, month - 1, day);
-    view.appendChild(createDayCell(day, date, true));
+    const orders = getWorkOrdersForDate(date);
+    allCells.push({ day, date, otherMonth: true, isToday: false, orders });
   }
   
   // Current month days
@@ -865,15 +863,67 @@ function renderMonth(){
     const date = new Date(year, month, day);
     const dateStr = date.toISOString().split('T')[0];
     const isToday = dateStr === todayStr;
-    view.appendChild(createDayCell(day, date, false, isToday));
+    const orders = getWorkOrdersForDate(date);
+    allCells.push({ day, date, otherMonth: false, isToday, orders });
   }
   
-  // Next month leading days
-  const totalCells = view.children.length - 7;
-  const remainingCells = 42 - totalCells;
+  // Next month leading days (to complete the grid)
+  const totalCells = allCells.length;
+  const remainingCells = Math.ceil(totalCells / 7) * 7 - totalCells;
   for(let day = 1; day <= remainingCells; day++){
     const date = new Date(year, month + 1, day);
-    view.appendChild(createDayCell(day, date, true));
+    const orders = getWorkOrdersForDate(date);
+    allCells.push({ day, date, otherMonth: true, isToday: false, orders });
+  }
+  
+  // Determine which weeks have work orders
+  const weeksWithOrders = new Set();
+  for(let i = 0; i < allCells.length; i++){
+    if(allCells[i].orders.length > 0){
+      const weekIndex = Math.floor(i / 7);
+      weeksWithOrders.add(weekIndex);
+    }
+  }
+  
+  console.log('Weeks with orders:', Array.from(weeksWithOrders));
+  
+  // If no weeks have orders, show a message
+  if(weeksWithOrders.size === 0){
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.padding = '40px';
+    emptyMsg.style.textAlign = 'center';
+    emptyMsg.style.color = '#9fb0c3';
+    emptyMsg.textContent = 'No work orders scheduled this month';
+    view.appendChild(emptyMsg);
+    return;
+  }
+  
+  // Add day headers
+  days.forEach(day => {
+    const header = document.createElement('div');
+    header.className = 'day-header';
+    header.textContent = day;
+    view.appendChild(header);
+  });
+  
+  // Render only weeks with work orders
+  let currentWeek = 0;
+  for(let i = 0; i < allCells.length; i++){
+    const weekIndex = Math.floor(i / 7);
+    
+    // Skip weeks without work orders
+    if(!weeksWithOrders.has(weekIndex)){
+      continue;
+    }
+    
+    // Add week separator if we're starting a new week
+    if(weekIndex !== currentWeek && i % 7 === 0){
+      currentWeek = weekIndex;
+    }
+    
+    const cell = allCells[i];
+    view.appendChild(createDayCell(cell.day, cell.date, cell.otherMonth, cell.isToday));
   }
 }
 
