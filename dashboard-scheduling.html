@@ -117,7 +117,6 @@
     /* Today View */
     .today-grid {
       display:grid;
-      grid-template-columns:80px 1fr 220px;
       gap:1px;
       background:#223044;
       border:1px solid #223044;
@@ -776,6 +775,81 @@ async function handleDrop(e, newDate, newHour = null){
   draggedWO = null;
 }
 
+async function handleDropWithTech(e, newDate, newHour, techId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-zone');
+  
+  if(!draggedWO) return;
+  
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === draggedWO);
+    if(!wo) return;
+    
+    let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
+    if(!wo.scheduled_start) {
+      currentTime.setHours(9, 0, 0, 0);
+    }
+    
+    const year = newDate.getFullYear();
+    const month = newDate.getMonth();
+    const day = newDate.getDate();
+    
+    let hour, minute;
+    if(newHour !== null) {
+      hour = newHour;
+      minute = currentTime.getMinutes();
+    } else {
+      hour = currentTime.getHours();
+      minute = currentTime.getMinutes();
+    }
+    
+    const newDateTime = new Date(year, month, day, hour, minute, 0, 0);
+    
+    let durationHours = 2.0;
+    if(wo.status === 'diagnosis_required') durationHours = 1.5;
+    if(wo.status === 'in_progress' || wo.status === 'repairing') durationHours = 3.0;
+    if(wo.status === 'ready_for_pickup') durationHours = 1.5;
+    if(wo.status === 'awaiting_parts' || wo.status === 'customer_approval') durationHours = 2.0;
+    
+    const newEndTime = new Date(newDateTime);
+    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
+    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+    
+    const updateData = {
+      scheduled_start: newDateTime.toISOString(),
+      scheduled_end: newEndTime.toISOString(),
+      assigned_employee_id: techId  // Assign to the tech whose column this is
+    };
+    
+    // If moving FROM pickup column to a day slot, change status
+    if(wo.status === 'ready_for_pickup') {
+      updateData.status = 'scheduled';
+    }
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updateData)
+    });
+    
+    await loadWorkOrders(token);
+    renderView();
+    
+  } catch(err){
+    console.error('Drop error:', err);
+    alert('Error moving work order');
+  }
+  
+  draggedWO = null;
+}
+
 function renderView(){
   if(currentView === 'today'){
     renderToday();
@@ -789,8 +863,6 @@ function renderView(){
 function renderToday(){
   const view = document.getElementById('todayView');
   view.innerHTML = '';
-  
-  view.style.gridTemplateColumns = '80px 1fr 220px';
   
   const hours = Array.from({length: 13}, (_, i) => i + 7);
   
@@ -812,109 +884,90 @@ function renderToday(){
   // Get pickup orders
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
   
-  // Get unique techs for today
-  const allTechsToday = new Set();
+  // Get unique techs for today and sort by name
+  const techIds = new Set();
   todayOrders.forEach(wo => {
     if(wo.assigned_employee_id) {
-      allTechsToday.add(wo.assigned_employee_id);
+      techIds.add(wo.assigned_employee_id);
     }
   });
   
-  // Tech avatar header row
-  const techHeaderCorner = document.createElement('div');
-  techHeaderCorner.className = 'time-slot';
-  techHeaderCorner.style.fontSize = '10px';
-  techHeaderCorner.style.color = '#60a5fa';
-  techHeaderCorner.style.fontWeight = '600';
-  techHeaderCorner.textContent = 'TECH';
-  view.appendChild(techHeaderCorner);
-  
-  const techHeaderContent = document.createElement('div');
-  techHeaderContent.style.background = '#0f1621';
-  techHeaderContent.style.padding = '8px';
-  techHeaderContent.style.display = 'flex';
-  techHeaderContent.style.gap = '8px';
-  techHeaderContent.style.flexWrap = 'wrap';
-  techHeaderContent.style.alignItems = 'center';
-  techHeaderContent.style.minHeight = '60px';
-  
-  // Add tech avatars
-  allTechsToday.forEach(techId => {
-    const tech = employees.find(e => e.employee_id === techId);
-    if(tech) {
-      const avatarBlock = document.createElement('div');
-      avatarBlock.style.minWidth = '150px';
-      avatarBlock.style.maxWidth = '180px';
-      avatarBlock.style.background = '#1a2535';
-      avatarBlock.style.border = '1px solid #3b82f6';
-      avatarBlock.style.borderLeft = '3px solid #3b82f6';
-      avatarBlock.style.borderRadius = '6px';
-      avatarBlock.style.padding = '6px 8px';
-      avatarBlock.style.display = 'flex';
-      avatarBlock.style.alignItems = 'center';
-      avatarBlock.style.gap = '8px';
-      avatarBlock.style.flexShrink = '0';
-      avatarBlock.title = `${tech.first_name} ${tech.last_name}`;
-      
-      // Tech first name
-      const nameLabel = document.createElement('div');
-      nameLabel.style.color = '#e8eef6';
-      nameLabel.style.fontSize = '12px';
-      nameLabel.style.fontWeight = '600';
-      nameLabel.style.flex = '1';
-      nameLabel.style.overflow = 'hidden';
-      nameLabel.style.textOverflow = 'ellipsis';
-      nameLabel.style.whiteSpace = 'nowrap';
-      nameLabel.textContent = tech.first_name;
-      avatarBlock.appendChild(nameLabel);
-      
-      // Avatar image
-      const avatar = document.createElement('div');
-      avatar.style.width = '40px';
-      avatar.style.height = '40px';
-      avatar.style.borderRadius = '6px';
-      avatar.style.overflow = 'hidden';
-      avatar.style.border = '2px solid #3b82f6';
-      avatar.style.flexShrink = '0';
-      avatar.style.position = 'relative';
-      
-      if(tech.avatar_url) {
-        const img = document.createElement('img');
-        img.src = tech.avatar_url.startsWith('http') 
-          ? tech.avatar_url 
-          : `${API_BASE}/storage/v1/object/public/avatars/${tech.avatar_url}`;
-        img.style.width = '100%';
-        img.style.height = '100%';
-        img.style.objectFit = 'cover';
-        avatar.appendChild(img);
-      } else {
-        avatar.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
-        avatar.style.display = 'flex';
-        avatar.style.alignItems = 'center';
-        avatar.style.justifyContent = 'center';
-        avatar.style.color = '#fff';
-        avatar.style.fontWeight = '700';
-        avatar.style.fontSize = '14px';
-        const initials = `${tech.first_name?.charAt(0) || ''}${tech.last_name?.charAt(0) || ''}`;
-        avatar.textContent = initials;
-      }
-      
-      avatarBlock.appendChild(avatar);
-      techHeaderContent.appendChild(avatarBlock);
-    }
+  const techsArray = Array.from(techIds).map(id => employees.find(e => e.employee_id === id)).filter(t => t);
+  techsArray.sort((a, b) => {
+    const aName = `${a.first_name} ${a.last_name}`;
+    const bName = `${b.first_name} ${b.last_name}`;
+    return aName.localeCompare(bName);
   });
   
-  view.appendChild(techHeaderContent);
+  // Update grid: time column + one column per tech + pickup column
+  const numTechs = techsArray.length;
+  view.style.gridTemplateColumns = `80px repeat(${numTechs}, minmax(150px, 180px)) 220px`;
   
-  // Empty cell for pickup column header
-  const pickupHeaderSpacer = document.createElement('div');
-  pickupHeaderSpacer.style.background = '#0f1621';
-  view.appendChild(pickupHeaderSpacer);
+  // Top-left corner: "TIME"
+  const timeHeaderCorner = document.createElement('div');
+  timeHeaderCorner.className = 'time-slot';
+  timeHeaderCorner.style.fontSize = '10px';
+  timeHeaderCorner.style.color = '#60a5fa';
+  timeHeaderCorner.style.fontWeight = '600';
+  timeHeaderCorner.textContent = 'TIME';
+  view.appendChild(timeHeaderCorner);
   
-  // Create pickup column
+  // Tech header columns
+  techsArray.forEach(tech => {
+    const techHeader = document.createElement('div');
+    techHeader.style.background = '#1a2535';
+    techHeader.style.border = '1px solid #3b82f6';
+    techHeader.style.borderLeft = '3px solid #3b82f6';
+    techHeader.style.borderRadius = '6px 6px 0 0';
+    techHeader.style.padding = '12px 8px';
+    techHeader.style.display = 'flex';
+    techHeader.style.flexDirection = 'column';
+    techHeader.style.alignItems = 'center';
+    techHeader.style.justifyContent = 'center';
+    techHeader.style.minHeight = '60px';
+    techHeader.style.textAlign = 'center';
+    
+    const firstName = document.createElement('div');
+    firstName.style.color = '#e8eef6';
+    firstName.style.fontSize = '14px';
+    firstName.style.fontWeight = '700';
+    firstName.style.marginBottom = '2px';
+    firstName.textContent = tech.first_name;
+    
+    const lastName = document.createElement('div');
+    lastName.style.color = '#9fb0c3';
+    lastName.style.fontSize = '12px';
+    lastName.style.fontWeight = '600';
+    lastName.textContent = tech.last_name;
+    
+    techHeader.appendChild(firstName);
+    techHeader.appendChild(lastName);
+    
+    view.appendChild(techHeader);
+  });
+  
+  // Pickup column header
+  const pickupHeader = document.createElement('div');
+  pickupHeader.style.background = '#1a2535';
+  pickupHeader.style.color = '#4ade80';
+  pickupHeader.style.borderLeft = '2px solid #10b981';
+  pickupHeader.style.fontSize = '11px';
+  pickupHeader.style.fontWeight = '600';
+  pickupHeader.style.textTransform = 'uppercase';
+  pickupHeader.style.letterSpacing = '0.5px';
+  pickupHeader.style.padding = '12px 8px';
+  pickupHeader.style.display = 'flex';
+  pickupHeader.style.alignItems = 'center';
+  pickupHeader.style.justifyContent = 'center';
+  pickupHeader.style.textAlign = 'center';
+  pickupHeader.style.minHeight = '60px';
+  pickupHeader.textContent = 'Ready for Pickup';
+  view.appendChild(pickupHeader);
+  
+  // Create pickup column container
   const pickupContainer = document.createElement('div');
   pickupContainer.className = 'slot-content pickup-column';
-  pickupContainer.style.gridColumn = '3';
+  pickupContainer.style.gridColumn = `${numTechs + 2}`;
   pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
   pickupContainer.dataset.status = 'ready_for_pickup';
   
@@ -954,42 +1007,54 @@ function renderToday(){
     draggedWO = null;
   });
   
+  // Render time slots with tech columns
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
     timeSlot.className = 'time-slot';
     timeSlot.textContent = `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
     view.appendChild(timeSlot);
     
-    const slotContent = document.createElement('div');
-    slotContent.className = 'slot-content';
-    
-    const slotDate = new Date(currentDate);
-    slotDate.setHours(0, 0, 0, 0);
-    
-    slotContent.dataset.date = slotDate.toISOString().split('T')[0];
-    slotContent.dataset.hour = hour;
-    
-    const orders = todayOrders.filter(wo => {
-      if(!wo.scheduled_start) return hour === 9;
-      const woHour = new Date(wo.scheduled_start).getHours();
-      return woHour === hour;
+    // Create a slot for each tech
+    techsArray.forEach(tech => {
+      const slotContent = document.createElement('div');
+      slotContent.className = 'slot-content';
+      slotContent.style.borderLeft = '1px solid #223044';
+      
+      const slotDate = new Date(currentDate);
+      slotDate.setHours(0, 0, 0, 0);
+      
+      slotContent.dataset.date = slotDate.toISOString().split('T')[0];
+      slotContent.dataset.hour = hour;
+      slotContent.dataset.techId = tech.employee_id;
+      
+      // Filter orders for THIS tech at THIS hour
+      const orders = todayOrders.filter(wo => {
+        // Must be assigned to this tech
+        if(wo.assigned_employee_id !== tech.employee_id) return false;
+        
+        // Must be at this hour
+        if(!wo.scheduled_start) return hour === 9;
+        const woHour = new Date(wo.scheduled_start).getHours();
+        return woHour === hour;
+      });
+      
+      orders.forEach(wo => {
+        slotContent.appendChild(createWOStrip(wo));
+      });
+      
+      slotContent.addEventListener('dragover', handleDragOver);
+      slotContent.addEventListener('dragleave', handleDragLeave);
+      slotContent.addEventListener('drop', (e) => {
+        const dropDate = new Date(currentDate);
+        dropDate.setHours(0, 0, 0, 0);
+        handleDropWithTech(e, dropDate, hour, tech.employee_id);
+      });
+      
+      view.appendChild(slotContent);
     });
-    
-    orders.forEach(wo => {
-      slotContent.appendChild(createWOStrip(wo));
-    });
-    
-    slotContent.addEventListener('dragover', handleDragOver);
-    slotContent.addEventListener('dragleave', handleDragLeave);
-    slotContent.addEventListener('drop', (e) => {
-      const dropDate = new Date(currentDate);
-      dropDate.setHours(0, 0, 0, 0);
-      handleDrop(e, dropDate, hour);
-    });
-    
-    view.appendChild(slotContent);
   });
   
+  // Add pickup container at the end
   view.appendChild(pickupContainer);
   
   if(todayOrders.length === 0 && pickupOrders.length === 0){
