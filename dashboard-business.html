@@ -16,6 +16,15 @@
     h2 { margin:18px 0 10px; font-size:18px; display:flex; align-items:center; gap:10px; }
 
     .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+    
+    /* Tech cards grid - balanced rows */
+    #techCards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
     .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:14px 16px; }
 
     button {
@@ -80,6 +89,22 @@
     }
 
     .techName { font-size:12px; text-align:center; line-height:1.2; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    
+    .role-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    
+    .role-badge.manager {
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
 
     /* UPDATED WORK ORDER CARD STYLES */
     .wo {
@@ -448,8 +473,8 @@
   </div>
 
   <!-- Tech cards -->
-  <h2>Technicians</h2>
-  <div class="row" id="techCards"></div>
+  <h2>Managers & Technicians</h2>
+  <div id="techCards"></div>
 
   <!-- Additional filters -->
   <div class="filters">
@@ -959,6 +984,10 @@
       else if (payPeriodType === 'biweekly') payPeriodLabel = "This Pay Period";
       else if (payPeriodType === 'monthly') payPeriodLabel = "This Month";
 
+      const roleBadge = t.role === 'manager' 
+        ? '<div class="role-badge manager">MANAGER</div>' 
+        : '';
+
       return `
         <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
           <div class="techLeft">
@@ -972,6 +1001,7 @@
           </div>
 
           <div class="techRight">
+            ${roleBadge}
             <div class="avatar" style="${avatarStyle}">${avatarUrl ? '' : initials}</div>
             <div class="techName">${name}</div>
           </div>
@@ -981,7 +1011,7 @@
     
     // If no techs with work, show message
     if (techsWithWork.length === 0) {
-      techEl.innerHTML = `<div class="muted">No technicians with scheduled work in this view.</div>`;
+      techEl.innerHTML = `<div class="muted">No managers or technicians with scheduled work in this view.</div>`;
     }
   }
 
@@ -1365,7 +1395,17 @@
       employees = employees.map(e => ({ ...e, name: techDisplayName(e) }));
       employeesById = {};
       employees.forEach(e => { if (e && e.employee_id) employeesById[e.employee_id] = e; });
-      technicians = employees.filter(e => e.role === "technician");
+      
+      // Include both technicians and managers, sorted with managers first
+      technicians = employees
+        .filter(e => e.role === "technician" || e.role === "manager")
+        .sort((a, b) => {
+          // Managers first, then technicians
+          if (a.role === "manager" && b.role !== "manager") return -1;
+          if (a.role !== "manager" && b.role === "manager") return 1;
+          // Within same role, sort alphabetically by name
+          return (a.name || '').localeCompare(b.name || '');
+        });
 
       customers = Array.isArray(cust) ? cust : [];
       customersById = {};
