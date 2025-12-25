@@ -148,7 +148,7 @@
     /* Week View */
     .week-grid {
       display:grid;
-      grid-template-columns:80px repeat(5, minmax(200px, 1fr)) minmax(200px, 1fr);
+      grid-template-columns:80px repeat(5, minmax(200px, 1fr)) 220px;
       gap:1px;
       background:#223044;
       border:1px solid #223044;
@@ -180,8 +180,28 @@
     }
     
     .week-day-header.pickup-column {
-      background:#10b981;
-      color:#fff;
+      background:#1a2535;
+      color:#4ade80;
+      border-left:2px solid #10b981;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    
+    .slot-content.pickup-column {
+      background:#0f1621;
+      border-left:2px solid #10b981;
+      min-height:60px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:stretch;
+      padding:8px;
+    }
+    
+    .slot-content.pickup-column .wo-strip {
+      max-width:none;
+      width:100%;
     }
     
     /* Month View */
@@ -506,6 +526,11 @@ function getWorkOrdersForDate(date){
   console.log('Total work orders to check:', workOrders.length);
   
   const matches = workOrders.filter(wo => {
+    // IMPORTANT: Exclude ready_for_pickup from day columns
+    if(wo.status === 'ready_for_pickup') {
+      return false;
+    }
+    
     // Check scheduled_start first
     if(wo.scheduled_start) {
       const woDate = new Date(wo.scheduled_start);
@@ -715,6 +740,19 @@ async function handleDrop(e, newDate, newHour = null){
     console.log('Duration hours:', durationHours);
     console.log('Scheduled end:', newEndTime.toISOString());
     
+    // Prepare update object
+    const updateData = {
+      scheduled_start: newDateTime.toISOString(),
+      scheduled_end: newEndTime.toISOString()
+    };
+    
+    // If moving FROM pickup column (ready_for_pickup) to a day slot,
+    // change status back to scheduled or in_progress
+    if(wo.status === 'ready_for_pickup') {
+      updateData.status = 'scheduled';
+      console.log('Moving from pickup column - changing status to scheduled');
+    }
+    
     await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
       method: 'PATCH',
       headers: {
@@ -722,10 +760,7 @@ async function handleDrop(e, newDate, newHour = null){
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        scheduled_start: newDateTime.toISOString(),
-        scheduled_end: newEndTime.toISOString()
-      })
+      body: JSON.stringify(updateData)
     });
     
     // Reload data
@@ -756,7 +791,7 @@ function renderToday(){
   
   const hours = Array.from({length: 13}, (_, i) => i + 7); // 7 AM to 7 PM
   
-  // Get all work orders for today
+  // Get all work orders for today (excluding ready_for_pickup)
   const todayOrders = getWorkOrdersForDate(currentDate);
   
   console.log('Rendering Today view for:', currentDate.toISOString().split('T')[0]);
@@ -788,6 +823,7 @@ function renderToday(){
     slotContent.dataset.hour = hour;
     
     // Add work orders for this hour (or all if no scheduled time)
+    // Note: todayOrders already excludes ready_for_pickup
     const orders = todayOrders.filter(wo => {
       if(!wo.scheduled_start) {
         console.log('Work order has no scheduled_start, showing at 9 AM');
@@ -844,16 +880,16 @@ function renderWeek(){
   
   console.log('Rendering Week view starting from today:', today.toISOString().split('T')[0]);
   
-  // Build array of 5 days starting from today
+  // Build array of 5 days starting from currentDate
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const daysData = [];
   
   for(let i = 0; i < 5; i++){
-    const date = new Date(today);
+    const date = new Date(currentDate);
     date.setDate(date.getDate() + i);
     date.setHours(0, 0, 0, 0);
     const dateStr = date.toISOString().split('T')[0];
-    const isToday = i === 0; // First day is always today
+    const isToday = dateStr === todayStr;
     
     // Get work orders for this day
     const dayOrders = getWorkOrdersForDate(date);
@@ -874,8 +910,8 @@ function renderWeek(){
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
   console.log('Ready for pickup orders:', pickupOrders.length);
   
-  // Fixed grid: 80px time column + 5 day columns + 1 pickup column
-  view.style.gridTemplateColumns = '80px repeat(5, minmax(200px, 1fr)) minmax(200px, 1fr)';
+  // Fixed grid: 80px time column + 5 day columns + 1 pickup column (220px)
+  view.style.gridTemplateColumns = '80px repeat(5, minmax(200px, 1fr)) 220px';
   
   // Empty corner cell
   const corner = document.createElement('div');
@@ -893,11 +929,60 @@ function renderWeek(){
   // Pickup column header
   const pickupHeader = document.createElement('div');
   pickupHeader.className = 'week-day-header pickup-column';
-  pickupHeader.innerHTML = 'Ready for<br>Pickup';
+  pickupHeader.innerHTML = 'Ready for Pickup';
   view.appendChild(pickupHeader);
   
   // Time slots
   const hours = Array.from({length: 13}, (_, i) => i + 7);
+  
+  // First, create a single pickup column container that spans all hours
+  const pickupContainer = document.createElement('div');
+  pickupContainer.className = 'slot-content pickup-column';
+  pickupContainer.style.gridColumn = '7';
+  pickupContainer.style.gridRow = `2 / ${hours.length + 2}`;
+  pickupContainer.dataset.status = 'ready_for_pickup';
+  
+  // Add all pickup orders to the container
+  pickupOrders.forEach(wo => {
+    pickupContainer.appendChild(createWOStrip(wo));
+  });
+  
+  pickupContainer.addEventListener('dragover', handleDragOver);
+  pickupContainer.addEventListener('dragleave', handleDragLeave);
+  pickupContainer.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-zone');
+    
+    if(!draggedWO) return;
+    
+    const token = localStorage.getItem("sb_access_token");
+    if(!token) return;
+    
+    try {
+      // Update work order to ready_for_pickup status
+      await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'ready_for_pickup'
+        })
+      });
+      
+      // Reload data
+      await loadWorkOrders(token);
+      renderView();
+      
+    } catch(err){
+      console.error('Drop error:', err);
+      alert('Error updating work order status');
+    }
+    
+    draggedWO = null;
+  });
   
   hours.forEach(hour => {
     const timeSlot = document.createElement('div');
@@ -935,59 +1020,10 @@ function renderWeek(){
       
       view.appendChild(slotContent);
     });
-    
-    // Pickup column slot
-    const pickupSlot = document.createElement('div');
-    pickupSlot.className = 'slot-content';
-    pickupSlot.dataset.status = 'ready_for_pickup';
-    pickupSlot.dataset.hour = hour;
-    
-    // Only show pickup orders in the 9 AM slot to avoid duplication
-    if(hour === 9) {
-      pickupOrders.forEach(wo => {
-        pickupSlot.appendChild(createWOStrip(wo));
-      });
-    }
-    
-    pickupSlot.addEventListener('dragover', handleDragOver);
-    pickupSlot.addEventListener('dragleave', handleDragLeave);
-    pickupSlot.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.currentTarget.classList.remove('drop-zone');
-      
-      if(!draggedWO) return;
-      
-      const token = localStorage.getItem("sb_access_token");
-      if(!token) return;
-      
-      try {
-        // Update work order to ready_for_pickup status
-        await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
-          method: 'PATCH',
-          headers: {
-            'apikey': ANON_KEY,
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            status: 'ready_for_pickup'
-          })
-        });
-        
-        // Reload data
-        await loadWorkOrders(token);
-        renderView();
-        
-      } catch(err){
-        console.error('Drop error:', err);
-        alert('Error updating work order status');
-      }
-      
-      draggedWO = null;
-    });
-    
-    view.appendChild(pickupSlot);
   });
+  
+  // Add the pickup container at the end
+  view.appendChild(pickupContainer);
 }
 
 function renderMonth(){
