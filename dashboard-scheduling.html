@@ -306,15 +306,19 @@
       <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
     </div>
     
-    <!-- Navigation Tabs and Buttons -->
-    <div style="padding:0 24px 12px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
-      <nav style="display:flex; gap:24px; overflow-x:auto; flex:1;">
+    <!-- Navigation Tabs -->
+    <div style="padding:0 24px 12px;">
+      <nav style="display:flex; gap:24px; overflow-x:auto;">
         <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Dashboard</a>
         <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
         <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
         <a href="dashboard-scheduling.html" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Scheduling</a>
       </nav>
-      <div style="display:flex; gap:12px; white-space:nowrap;">
+    </div>
+    
+    <!-- Settings/Logout buttons BELOW divider -->
+    <div style="padding:0 24px 12px; border-top:1px solid #223044; padding-top:12px;">
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
         <button onclick="goToSettings()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Settings</button>
         <button onclick="logout()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Logout</button>
       </div>
@@ -817,32 +821,72 @@ function renderWeek(){
   
   const weekStart = getWeekStart(currentDate);
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
   
   console.log('Rendering Week view starting:', weekStart.toISOString().split('T')[0]);
+  
+  // Build array of days with their data
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const daysData = [];
+  
+  for(let i = 0; i < 7; i++){
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + i);
+    date.setHours(0, 0, 0, 0);
+    const dateStr = date.toISOString().split('T')[0];
+    const isToday = dateStr === todayStr;
+    const isPast = date < today;
+    
+    // Get work orders for this day
+    const dayOrders = getWorkOrdersForDate(date);
+    
+    console.log(`${days[i]} ${date.getDate()}:`, dayOrders.length, 'work orders', isPast ? '(PAST)' : '');
+    
+    daysData.push({
+      dayName: days[i],
+      dayNum: date.getDate(),
+      date: new Date(date),
+      dateStr: dateStr,
+      isToday: isToday,
+      isPast: isPast,
+      orders: dayOrders,
+      hasOrders: dayOrders.length > 0
+    });
+  }
+  
+  // Filter: Hide days that are in the past OR have no work orders
+  const visibleDays = daysData.filter(day => !day.isPast && day.hasOrders);
+  
+  console.log('Visible days:', visibleDays.length, 'of', daysData.length);
+  
+  // If no visible days, show message
+  if(visibleDays.length === 0){
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.padding = '40px';
+    emptyMsg.style.textAlign = 'center';
+    emptyMsg.style.color = '#9fb0c3';
+    emptyMsg.textContent = 'No work orders scheduled for upcoming days';
+    view.appendChild(emptyMsg);
+    return;
+  }
+  
+  // Update grid template columns based on visible days
+  view.style.gridTemplateColumns = `80px repeat(${visibleDays.length}, 1fr)`;
   
   // Empty corner cell
   const corner = document.createElement('div');
   corner.className = 'time-slot';
   view.appendChild(corner);
   
-  // Day headers
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  for(let i = 0; i < 7; i++){
-    const date = new Date(weekStart);
-    date.setDate(date.getDate() + i);
-    const dateStr = date.toISOString().split('T')[0];
-    const isToday = dateStr === todayStr;
-    
+  // Day headers - only for visible days
+  visibleDays.forEach(day => {
     const header = document.createElement('div');
-    header.className = `week-day-header ${isToday ? 'today' : ''}`;
-    header.innerHTML = `${days[i]}<br>${date.getDate()}`;
+    header.className = `week-day-header ${day.isToday ? 'today' : ''}`;
+    header.innerHTML = `${day.dayName}<br>${day.dayNum}`;
     view.appendChild(header);
-    
-    // Log work orders for this day
-    const dayOrders = getWorkOrdersForDate(date);
-    console.log(`${days[i]} ${date.getDate()}:`, dayOrders.length, 'work orders');
-  }
+  });
   
   // Time slots
   const hours = Array.from({length: 13}, (_, i) => i + 7);
@@ -853,17 +897,14 @@ function renderWeek(){
     timeSlot.textContent = `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
     view.appendChild(timeSlot);
     
-    for(let i = 0; i < 7; i++){
-      const date = new Date(weekStart);
-      date.setDate(date.getDate() + i);
-      date.setHours(0, 0, 0, 0);
-      
+    // Only create slots for visible days
+    visibleDays.forEach(day => {
       const slotContent = document.createElement('div');
       slotContent.className = 'slot-content';
-      slotContent.dataset.date = date.toISOString().split('T')[0];
+      slotContent.dataset.date = day.dateStr;
       slotContent.dataset.hour = hour;
       
-      const orders = getWorkOrdersForDate(date).filter(wo => {
+      const orders = day.orders.filter(wo => {
         if(!wo.scheduled_start) return hour === 9; // Show unscheduled at 9 AM
         const woHour = new Date(wo.scheduled_start).getHours();
         return woHour === hour;
@@ -876,14 +917,13 @@ function renderWeek(){
       slotContent.addEventListener('dragover', handleDragOver);
       slotContent.addEventListener('dragleave', handleDragLeave);
       slotContent.addEventListener('drop', (e) => {
-        const dropDate = new Date(weekStart);
-        dropDate.setDate(dropDate.getDate() + i);
+        const dropDate = new Date(day.date);
         dropDate.setHours(0, 0, 0, 0);
         handleDrop(e, dropDate, hour);
       });
       
       view.appendChild(slotContent);
-    }
+    });
   });
 }
 
