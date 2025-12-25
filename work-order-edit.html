@@ -19,6 +19,24 @@
       h1 { font-size:24px; }
       nav { font-size:13px !important; }
       button { font-size:13px; padding:6px 12px; }
+      
+      /* Stack nav and buttons on mobile */
+      .nav-container {
+        flex-direction: column !important;
+        align-items: stretch !important;
+      }
+      
+      .nav-container nav {
+        order: 1;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #223044;
+      }
+      
+      .nav-container > div {
+        order: 2;
+        padding-top: 12px;
+        justify-content: center;
+      }
     }
     .row { display:flex; gap:12px; flex-wrap:wrap; }
     .card { background:#0f1621; border:1px solid #223044; border-radius:14px; padding:20px; margin-bottom:16px; }
@@ -103,22 +121,41 @@
   <!-- Sticky Header -->
   <div style="position:sticky; top:0; z-index:100; background:#0b0f14; border-bottom:1px solid #223044;">
     <!-- Title and Logo Bar -->
-    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
       <h1 style="margin:0; font-size:32px; font-weight:600;" id="title">Edit Work Order</h1>
       <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
     </div>
     
     <!-- Navigation Tabs and Buttons -->
-    <div style="padding:0 24px 12px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
-      <nav style="display:flex; gap:24px; overflow-x:auto; flex:1;">
+    <div class="nav-container" style="padding:0 24px 12px; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;">
+      <nav style="display:flex; gap:24px; overflow-x:auto; flex:1; min-width:0;">
         <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Dashboard</a>
         <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
         <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
-        <a href="#" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Work Order</a>
+        <a href="dashboard-scheduling.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Scheduling</a>
       </nav>
       <div style="display:flex; gap:12px; white-space:nowrap;">
         <button onclick="location.href='dashboard-settings.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Settings</button>
         <button onclick="logout()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Logout</button>
+      </div>
+    </div>
+    
+    <!-- Work Order Search Bar -->
+    <div style="padding:0 24px 16px;">
+      <div style="position:relative; max-width:600px;">
+        <input 
+          type="text" 
+          id="woSearch" 
+          placeholder="Search work orders by customer name, vehicle, or WO number..." 
+          style="width:100%; padding:10px 40px 10px 12px; border-radius:8px; border:1px solid #223044; background:#1a2535; color:#e8eef6; font-size:14px;"
+          onkeyup="searchWorkOrders(event)"
+        />
+        <svg style="position:absolute; right:12px; top:50%; transform:translateY(-50%); width:20px; height:20px; opacity:0.5;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+      </div>
+      <!-- Search Results Dropdown -->
+      <div id="woSearchResults" style="display:none; position:absolute; background:#1a2535; border:1px solid #223044; border-radius:8px; margin-top:4px; max-width:600px; max-height:400px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:1000;">
       </div>
     </div>
   </div>
@@ -1255,6 +1292,95 @@ async function reloadAll(){
   }
 }
 
+let searchTimeout;
+let allWorkOrders = [];
+
+async function loadAllWorkOrders() {
+  try {
+    const r = await sbFetch(`${REST_BASE}/work_orders?select=*,customers(first_name,last_name),vehicles(year,make,model)&order=created_at.desc&limit=100`, { 
+      token: AUTH.token 
+    });
+    if (!r.ok) throw new Error('Failed to load work orders');
+    allWorkOrders = await r.json();
+  } catch(err) {
+    console.error('Error loading work orders:', err);
+  }
+}
+
+function searchWorkOrders(event) {
+  const query = event.target.value.trim().toLowerCase();
+  const resultsDiv = document.getElementById('woSearchResults');
+  
+  // Clear previous timeout
+  clearTimeout(searchTimeout);
+  
+  if (query.length < 2) {
+    resultsDiv.style.display = 'none';
+    return;
+  }
+  
+  // Debounce search
+  searchTimeout = setTimeout(() => {
+    const results = allWorkOrders.filter(wo => {
+      const customerName = wo.customers ? `${wo.customers.first_name} ${wo.customers.last_name}`.toLowerCase() : '';
+      const vehicleInfo = wo.vehicles ? `${wo.vehicles.year} ${wo.vehicles.make} ${wo.vehicles.model}`.toLowerCase() : '';
+      const woId = wo.work_order_id.toLowerCase();
+      const summary = (wo.summary || '').toLowerCase();
+      
+      return customerName.includes(query) || 
+             vehicleInfo.includes(query) || 
+             woId.includes(query) ||
+             summary.includes(query);
+    }).slice(0, 10); // Limit to 10 results
+    
+    if (results.length === 0) {
+      resultsDiv.innerHTML = '<div style="padding:12px; color:#9fb0c3; font-size:13px;">No work orders found</div>';
+      resultsDiv.style.display = 'block';
+    } else {
+      resultsDiv.innerHTML = results.map(wo => {
+        const customerName = wo.customers ? `${wo.customers.first_name} ${wo.customers.last_name}` : 'Unknown';
+        const vehicleInfo = wo.vehicles ? `${wo.vehicles.year} ${wo.vehicles.make} ${wo.vehicles.model}` : 'No vehicle';
+        const statusBadge = wo.status || 'draft';
+        const statusColor = {
+          'completed': '#10b981',
+          'in_progress': '#3b82f6',
+          'scheduled': '#3b82f6',
+          'awaiting_parts': '#f59e0b',
+          'ready_for_pickup': '#10b981'
+        }[statusBadge] || '#9fb0c3';
+        
+        return `
+          <div 
+            onclick="location.href='work-order-edit.html?id=${wo.work_order_id}'" 
+            style="padding:12px; border-bottom:1px solid #223044; cursor:pointer; transition:background 0.2s;"
+            onmouseover="this.style.background='#243648'"
+            onmouseout="this.style.background='transparent'"
+          >
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
+              <div style="font-weight:600; color:#e8eef6;">${customerName}</div>
+              <div style="font-size:11px; padding:2px 6px; border-radius:4px; background:${statusColor}20; color:${statusColor}; text-transform:uppercase;">
+                ${statusBadge.replace(/_/g, ' ')}
+              </div>
+            </div>
+            <div style="font-size:12px; color:#9fb0c3;">${vehicleInfo}</div>
+            ${wo.summary ? `<div style="font-size:12px; color:#60a5fa; margin-top:4px;">${wo.summary}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+      resultsDiv.style.display = 'block';
+    }
+  }, 300);
+}
+
+// Close search results when clicking outside
+document.addEventListener('click', function(event) {
+  const searchInput = document.getElementById('woSearch');
+  const resultsDiv = document.getElementById('woSearchResults');
+  if (searchInput && resultsDiv && !searchInput.contains(event.target) && !resultsDiv.contains(event.target)) {
+    resultsDiv.style.display = 'none';
+  }
+});
+
 async function load(){
   try {
     WORK_ORDER_ID = qs("id");
@@ -1278,6 +1404,7 @@ async function load(){
     await loadWorkOrder(); // This now sets the WO and tenant displays
     await reloadAllLines();
     await loadParts();
+    await loadAllWorkOrders(); // Load work orders for search
     recalculate();
     
     // Hide loading message
