@@ -729,9 +729,12 @@
     const scheduled = inView.filter(w => statusIn("scheduled", w.status));
     const complications = inView.filter(w => statusIn("complications", w.status));
     const waiting = inView.filter(w => statusIn("waiting", w.status));
-    const pickup = inView.filter(w => statusIn("pickup", w.status));
     const pastdue = inView.filter(w => isPastDue(w)); // Calculate dynamically
-    const completed = inView.filter(w => statusIn("completed", w.status));
+    
+    // Combine completed and ready_for_pickup
+    const completedAndPickup = inView.filter(w => 
+      statusIn("completed", w.status) || statusIn("pickup", w.status)
+    );
 
     function sumH(arr){ return arr.reduce((s,w)=> s + jobHours(w), 0); }
 
@@ -748,8 +751,7 @@
       kpiCard("complications", "Waiting on Approval", complications) +
       kpiCard("waiting", "Waiting on Parts", waiting) +
       kpiCard("pastdue", "⚠️ Past Due", pastdue, true) +
-      kpiCard("pickup", "Ready for Pickup", pickup) +
-      kpiCard("completed", "Completed", completed);
+      kpiCard("completedandpickup", "Completed & Ready for Pickup", completedAndPickup);
   }
 
   window.toggleKpi = function(key){
@@ -992,13 +994,24 @@
   }
 
   function workOrdersFiltered(){
-    let arr = (Array.isArray(orders) ? orders : []).filter(w => inRange(w));
+    // Don't filter by date range for work orders - show ALL work
+    // (Date range filters only apply to KPI cards at top)
+    let arr = Array.isArray(orders) ? orders : [];
 
-    if (!activeKpi) arr = arr.filter(w => !statusIn("completed", w.status));
+    // Default view: exclude completed/closed and ready_for_pickup
+    if (!activeKpi) {
+      arr = arr.filter(w => 
+        !statusIn("completed", w.status) && 
+        !statusIn("pickup", w.status)
+      );
+    }
 
     if (activeKpi === "pastdue") {
       // Special handling for pastdue - it's calculated, not a status
       arr = arr.filter(w => isPastDue(w));
+    } else if (activeKpi === "completedandpickup") {
+      // Combined filter for completed + ready for pickup
+      arr = arr.filter(w => statusIn("completed", w.status) || statusIn("pickup", w.status));
     } else if (activeKpi) {
       arr = arr.filter(w => statusIn(activeKpi, w.status));
     }
