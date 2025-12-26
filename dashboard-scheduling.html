@@ -554,17 +554,9 @@
         margin-bottom: 12px;
       }
       
+      /* Hide view tabs on mobile */
       .view-tabs {
-        width: 100%;
-        justify-content: space-around;
-        padding: 3px;
-      }
-      
-      .view-tab {
-        flex: 1;
-        text-align: center;
-        padding: 8px 6px;
-        font-size: 12px;
+        display: none !important;
       }
       
       .calendar-nav {
@@ -657,11 +649,10 @@
       }
       
       .wo-strip.dragging-mobile {
-        opacity: 0.8;
-        transform: scale(1.02);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        opacity: 0.95;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
         z-index: 1000;
-        position: relative;
+        cursor: grabbing;
       }
       
       /* Drag handle */
@@ -728,7 +719,9 @@
         border-radius: 4px;
         cursor: pointer;
         transition: all 0.2s;
-        font-size: 16px;
+        font-size: 20px;
+        font-weight: bold;
+        color: #10b981;
       }
       
       .wo-pickup-btn:active {
@@ -938,6 +931,9 @@ let touchStartY = 0;
 let touchCurrentY = 0;
 let draggedElement = null;
 let draggedWOData = null;
+let originalParent = null;
+let placeholder = null;
+let dragOffsetY = 0;
 
 // Show/hide appropriate header
 function updateHeaderDisplay() {
@@ -1139,7 +1135,7 @@ function createWOStrip(wo){
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
           </svg>
         </div>
-        ${!isPickup && !isCompleted ? `<div class="wo-pickup-btn" data-wo-id="${wo.work_order_id}">✓</div>` : ''}
+        ${!isPickup && !isCompleted ? `<div class="wo-pickup-btn" data-wo-id="${wo.work_order_id}">↓</div>` : ''}
       </div>
     `;
     
@@ -1217,24 +1213,86 @@ function handleTouchStart(e) {
   if(!e.target.closest('.wo-drag-handle')) return;
   
   e.preventDefault();
+  e.stopPropagation();
   
   const card = e.currentTarget;
   draggedElement = card;
   draggedWO = card.dataset.woId;
   draggedWOData = workOrders.find(wo => wo.work_order_id === draggedWO);
   
+  // Store original position
+  const rect = card.getBoundingClientRect();
   touchStartY = e.touches[0].clientY;
+  dragOffsetY = touchStartY - rect.top;
+  
+  // Store original parent
+  originalParent = card.parentElement;
+  
+  // Create placeholder
+  placeholder = document.createElement('div');
+  placeholder.style.height = rect.height + 'px';
+  placeholder.style.background = 'rgba(59,130,246,0.1)';
+  placeholder.style.border = '2px dashed #3b82f6';
+  placeholder.style.borderRadius = '6px';
+  placeholder.style.marginBottom = '6px';
+  
+  // Insert placeholder
+  card.parentElement.insertBefore(placeholder, card);
+  
+  // Make card position fixed and follow touch
+  card.style.position = 'fixed';
+  card.style.left = '8px';
+  card.style.right = '8px';
+  card.style.width = 'calc(100% - 16px)';
+  card.style.top = (touchStartY - dragOffsetY) + 'px';
+  card.style.zIndex = '1000';
   card.classList.add('dragging-mobile');
   
-  document.addEventListener('touchmove', autoScrollOnTouch);
+  // Append to body so it's above everything
+  document.body.appendChild(card);
 }
 
 function handleTouchMove(e) {
   if(!draggedElement) return;
   e.preventDefault();
+  e.stopPropagation();
   
   touchCurrentY = e.touches[0].clientY;
   
+  // Move the card to follow touch
+  draggedElement.style.top = (touchCurrentY - dragOffsetY) + 'px';
+  
+  // Auto-scroll
+  const scrollThreshold = 120;
+  const scrollSpeed = 5;
+  const viewportHeight = window.innerHeight;
+  
+  if(autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+  
+  if(touchCurrentY < scrollThreshold) {
+    autoScrollInterval = setInterval(() => {
+      window.scrollBy(0, -scrollSpeed);
+      // Update card position while scrolling
+      if(draggedElement) {
+        const currentTop = parseFloat(draggedElement.style.top);
+        draggedElement.style.top = (currentTop - scrollSpeed) + 'px';
+      }
+    }, 30);
+  } else if(touchCurrentY > viewportHeight - scrollThreshold) {
+    autoScrollInterval = setInterval(() => {
+      window.scrollBy(0, scrollSpeed);
+      // Update card position while scrolling
+      if(draggedElement) {
+        const currentTop = parseFloat(draggedElement.style.top);
+        draggedElement.style.top = (currentTop + scrollSpeed) + 'px';
+      }
+    }, 30);
+  }
+  
+  // Highlight drop zones
   const dropZones = document.querySelectorAll('.date-drop-zone');
   dropZones.forEach(zone => {
     const rect = zone.getBoundingClientRect();
@@ -1249,60 +1307,70 @@ function handleTouchMove(e) {
 function handleTouchEnd(e) {
   if(!draggedElement) return;
   
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Stop auto-scroll
+  if(autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+  
+  // Reset card styling
+  draggedElement.style.position = '';
+  draggedElement.style.left = '';
+  draggedElement.style.right = '';
+  draggedElement.style.width = '';
+  draggedElement.style.top = '';
+  draggedElement.style.zIndex = '';
   draggedElement.classList.remove('dragging-mobile');
   
+  // Find target drop zone
   const dropZones = document.querySelectorAll('.date-drop-zone');
   let targetDate = null;
+  let targetZone = null;
   
   dropZones.forEach(zone => {
     if(zone.classList.contains('drop-zone-active')) {
       targetDate = zone.dataset.date;
+      targetZone = zone;
       zone.classList.remove('drop-zone-active');
     }
   });
   
+  // Remove placeholder
+  if(placeholder && placeholder.parentElement) {
+    placeholder.remove();
+  }
+  
+  // Return card to original parent or new target
+  if(targetZone) {
+    targetZone.appendChild(draggedElement);
+  } else if(originalParent) {
+    originalParent.appendChild(draggedElement);
+  }
+  
+  // Process the move
   if(targetDate && draggedWO) {
     if(targetDate === 'pickup') {
       markAsReadyForPickup(draggedWO);
+    } else if(targetDate === 'completed') {
+      // Don't allow moving to completed via drag
+      renderView();
     } else {
       moveWorkOrderToDate(draggedWO, targetDate);
     }
   }
   
+  // Cleanup
   draggedElement = null;
   draggedWO = null;
   draggedWOData = null;
-  document.removeEventListener('touchmove', autoScrollOnTouch);
-  
-  if(autoScrollInterval) {
-    clearInterval(autoScrollInterval);
-    autoScrollInterval = null;
-  }
-}
-
-function autoScrollOnTouch(e) {
-  if(!e.touches[0]) return;
-  
-  const scrollThreshold = 120;
-  const scrollSpeed = 5; // Slower scroll
-  
-  const viewportHeight = window.innerHeight;
-  const touchY = e.touches[0].clientY;
-  
-  if(autoScrollInterval) {
-    clearInterval(autoScrollInterval);
-    autoScrollInterval = null;
-  }
-  
-  if(touchY < scrollThreshold) {
-    autoScrollInterval = setInterval(() => {
-      window.scrollBy(0, -scrollSpeed);
-    }, 30);
-  } else if(touchY > viewportHeight - scrollThreshold) {
-    autoScrollInterval = setInterval(() => {
-      window.scrollBy(0, scrollSpeed);
-    }, 30);
-  }
+  originalParent = null;
+  placeholder = null;
+  dragOffsetY = 0;
+  touchStartY = 0;
+  touchCurrentY = 0;
 }
 
 async function moveWorkOrderToDate(woId, dateStr) {
