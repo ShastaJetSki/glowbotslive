@@ -807,19 +807,69 @@ function closePickupView() {
 }
 
 async function validateAuth(){
-  // Try both common token storage keys
-  let token = localStorage.getItem("sb_access_token") || localStorage.getItem("sb-access-token");
+  // Check all possible Supabase token locations
+  let token = localStorage.getItem("sb_access_token") 
+           || localStorage.getItem("sb-access-token")
+           || localStorage.getItem("supabase.auth.token")
+           || sessionStorage.getItem("sb_access_token")
+           || sessionStorage.getItem("sb-access-token");
   
+  // Check for Supabase's native storage format
   if(!token) {
-    console.log('No token found in localStorage');
-    // Check if there's a token in sessionStorage as fallback
-    token = sessionStorage.getItem("sb_access_token") || sessionStorage.getItem("sb-access-token");
+    try {
+      const authData = localStorage.getItem('supabase.auth.token');
+      if(authData) {
+        const parsed = JSON.parse(authData);
+        token = parsed?.currentSession?.access_token || parsed?.access_token;
+      }
+    } catch(e) {
+      console.log('No JSON auth data found');
+    }
+  }
+  
+  // Check all localStorage keys for anything with "token" or "auth"
+  if(!token) {
+    console.log('Checking all localStorage keys...');
+    for(let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      console.log(`Found key: ${key}`);
+      if(key && (key.includes('token') || key.includes('auth') || key.includes('supabase'))) {
+        const value = localStorage.getItem(key);
+        console.log(`  Value preview: ${value?.substring(0, 50)}...`);
+        
+        // Try to parse if it looks like JSON
+        if(value && value.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(value);
+            if(parsed.access_token) {
+              token = parsed.access_token;
+              console.log('Found token in:', key);
+              break;
+            }
+            if(parsed.currentSession?.access_token) {
+              token = parsed.currentSession.access_token;
+              console.log('Found token in:', key);
+              break;
+            }
+          } catch(e) {
+            // Not JSON, skip
+          }
+        } else if(value && value.length > 100 && !value.includes(' ')) {
+          // Looks like a raw token
+          token = value;
+          console.log('Found raw token in:', key);
+          break;
+        }
+      }
+    }
   }
   
   if(!token) {
-    console.log('No authentication token found');
+    console.error('CANNOT FIND TOKEN - Please check what your login.html saves');
     return null;
   }
+  
+  console.log('Token found, length:', token.length);
   
   try {
     const r = await fetch(`${API_BASE}/auth/v1/user`, {
@@ -827,15 +877,15 @@ async function validateAuth(){
     });
     
     if(r.ok) {
-      console.log('Auth valid');
+      console.log('✓ Auth valid');
       return token;
     } else {
-      console.log('Auth failed:', r.status);
+      console.error('✗ Auth failed:', r.status, await r.text());
       return null;
     }
   } catch(err) {
-    console.error('Auth error:', err);
-    // Don't fail on network errors, allow offline work
+    console.error('✗ Auth request error:', err);
+    // On network error, still allow use with token
     return token;
   }
 }
@@ -918,9 +968,123 @@ function renderView(){
   if(isMobile) {
     renderMobileDay();
   } else {
-    // Desktop rendering (simplified)
-    document.getElementById('todayView').innerHTML = '<div style="padding:40px;text-align:center;color:#9fb0c3;">Desktop view</div>';
+    renderDesktopDay();
   }
+}
+
+function renderDesktopDay() {
+  const view = document.getElementById('todayView');
+  view.innerHTML = '';
+  
+  const orders = getWorkOrdersForDate(currentDate);
+  const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
+  const completedOrders = workOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed');
+  
+  // Simple list view for desktop
+  const container = document.createElement('div');
+  container.style.padding = '20px';
+  
+  const title = document.createElement('h2');
+  title.style.marginBottom = '20px';
+  title.textContent = currentDate.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    month: 'long', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+  container.appendChild(title);
+  
+  if(orders.length === 0 && pickupOrders.length === 0 && completedOrders.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.padding = '40px';
+    empty.style.textAlign = 'center';
+    empty.style.color = '#9fb0c3';
+    empty.textContent = 'No work orders scheduled';
+    container.appendChild(empty);
+  } else {
+    // Scheduled orders
+    if(orders.length > 0) {
+      const section = document.createElement('div');
+      section.style.marginBottom = '30px';
+      
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.style.color = '#3b82f6';
+      sectionTitle.style.marginBottom = '10px';
+      sectionTitle.textContent = `Scheduled (${orders.length})`;
+      section.appendChild(sectionTitle);
+      
+      orders.forEach(wo => {
+        section.appendChild(createDesktopCard(wo));
+      });
+      
+      container.appendChild(section);
+    }
+    
+    // Pickup orders
+    if(pickupOrders.length > 0) {
+      const section = document.createElement('div');
+      section.style.marginBottom = '30px';
+      
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.style.color = '#10b981';
+      sectionTitle.style.marginBottom = '10px';
+      sectionTitle.textContent = `Ready for Pickup (${pickupOrders.length})`;
+      section.appendChild(sectionTitle);
+      
+      pickupOrders.forEach(wo => {
+        section.appendChild(createDesktopCard(wo));
+      });
+      
+      container.appendChild(section);
+    }
+    
+    // Completed orders
+    if(completedOrders.length > 0) {
+      const section = document.createElement('div');
+      
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.style.color = '#9fb0c3';
+      sectionTitle.style.marginBottom = '10px';
+      sectionTitle.textContent = `Completed (${completedOrders.length})`;
+      section.appendChild(sectionTitle);
+      
+      completedOrders.slice(0, 10).forEach(wo => {
+        section.appendChild(createDesktopCard(wo));
+      });
+      
+      container.appendChild(section);
+    }
+  }
+  
+  view.appendChild(container);
+}
+
+function createDesktopCard(wo) {
+  const customer = customers.find(c => c.customer_id === wo.customer_id);
+  const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
+  const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
+  
+  const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
+  const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
+  const techName = employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned';
+  const statusDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'DRAFT';
+  
+  const card = document.createElement('div');
+  card.className = `wo-strip ${wo.status || 'scheduled'}`;
+  card.style.maxWidth = 'none';
+  card.style.marginBottom = '10px';
+  card.style.cursor = 'pointer';
+  
+  card.innerHTML = `
+    <div class="wo-customer">${customerName}</div>
+    ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
+    <div class="wo-status-display">${statusDisplay}</div>
+    <div class="wo-tech">Tech: ${techName}</div>
+  `;
+  
+  card.addEventListener('click', () => openWorkOrder(wo.work_order_id));
+  
+  return card;
 }
 
 // MOBILE DAY VIEW
@@ -1266,23 +1430,41 @@ async function loadWorkOrders(token){
 }
 
 async function load(){
-  console.log('Starting load...');
+  console.log('=== STARTING LOAD ===');
+  console.log('Current URL:', window.location.href);
   
   const token = await validateAuth();
+  
   if(!token) {
-    console.log('No valid token, redirecting to login');
-    alert('Session expired. Please log in again.');
-    return location.replace("login.html");
+    console.error('=== NO TOKEN FOUND ===');
+    console.log('Please check your login.html - what key does it use to save the token?');
+    console.log('Common locations checked:');
+    console.log('  - localStorage.sb_access_token');
+    console.log('  - localStorage.sb-access-token');
+    console.log('  - localStorage.supabase.auth.token');
+    
+    // Give user a chance to see the console before redirecting
+    setTimeout(() => {
+      alert('Session expired. Please log in again.\n\nCheck browser console (F12) for details.');
+      location.replace("login.html");
+    }, 1000);
+    return;
   }
   
   try {
-    console.log('Loading data...');
-    await loadWorkOrders(token);
-    customers = await fetchTable("customers", token);
-    vehicles = await fetchTable("vehicles", token);
-    employees = await fetchTable("employees", token);
+    console.log('=== LOADING DATA ===');
     
-    console.log(`Loaded ${workOrders.length} work orders, ${customers.length} customers`);
+    await loadWorkOrders(token);
+    console.log(`✓ Loaded ${workOrders.length} work orders`);
+    
+    customers = await fetchTable("customers", token);
+    console.log(`✓ Loaded ${customers.length} customers`);
+    
+    vehicles = await fetchTable("vehicles", token);
+    console.log(`✓ Loaded ${vehicles.length} vehicles`);
+    
+    employees = await fetchTable("employees", token);
+    console.log(`✓ Loaded ${employees.length} employees`);
     
     if(workOrders.length > 0 && workOrders[0].tenant_name){
       document.getElementById('tenantTitle').textContent = workOrders[0].tenant_name;
@@ -1291,12 +1473,16 @@ async function load(){
     }
     
     renderView();
-    console.log('Load complete');
+    console.log('=== LOAD COMPLETE ===');
     
   } catch(err){
-    console.error('Load error:', err);
-    alert('Error loading scheduling data: ' + err.message);
-    // Don't redirect to login on data load errors
+    console.error('=== LOAD ERROR ===');
+    console.error('Error:', err);
+    console.error('Stack:', err.stack);
+    
+    alert('Error loading scheduling data:\n\n' + err.message + '\n\nCheck browser console (F12) for details.');
+    
+    // Don't redirect to login on data load errors - might be network issue
   }
 }
 
