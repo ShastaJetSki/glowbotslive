@@ -769,12 +769,7 @@ function toggleMobileMenu() {
 }
 
 function logout(){
-  // Clear all possible token locations
   localStorage.removeItem("sb_access_token");
-  localStorage.removeItem("sb-access-token");
-  sessionStorage.removeItem("sb_access_token");
-  sessionStorage.removeItem("sb-access-token");
-  console.log('Logged out, redirecting to login');
   location.replace("login.html");
 }
 
@@ -807,103 +802,20 @@ function closePickupView() {
 }
 
 async function validateAuth(){
-  // Check all possible Supabase token locations
-  let token = localStorage.getItem("sb_access_token") 
-           || localStorage.getItem("sb-access-token")
-           || localStorage.getItem("supabase.auth.token")
-           || sessionStorage.getItem("sb_access_token")
-           || sessionStorage.getItem("sb-access-token");
-  
-  // Check for Supabase's native storage format
-  if(!token) {
-    try {
-      const authData = localStorage.getItem('supabase.auth.token');
-      if(authData) {
-        const parsed = JSON.parse(authData);
-        token = parsed?.currentSession?.access_token || parsed?.access_token;
-      }
-    } catch(e) {
-      console.log('No JSON auth data found');
-    }
-  }
-  
-  // Check all localStorage keys for anything with "token" or "auth"
-  if(!token) {
-    console.log('Checking all localStorage keys...');
-    for(let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      console.log(`Found key: ${key}`);
-      if(key && (key.includes('token') || key.includes('auth') || key.includes('supabase'))) {
-        const value = localStorage.getItem(key);
-        console.log(`  Value preview: ${value?.substring(0, 50)}...`);
-        
-        // Try to parse if it looks like JSON
-        if(value && value.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(value);
-            if(parsed.access_token) {
-              token = parsed.access_token;
-              console.log('Found token in:', key);
-              break;
-            }
-            if(parsed.currentSession?.access_token) {
-              token = parsed.currentSession.access_token;
-              console.log('Found token in:', key);
-              break;
-            }
-          } catch(e) {
-            // Not JSON, skip
-          }
-        } else if(value && value.length > 100 && !value.includes(' ')) {
-          // Looks like a raw token
-          token = value;
-          console.log('Found raw token in:', key);
-          break;
-        }
-      }
-    }
-  }
-  
-  if(!token) {
-    console.error('CANNOT FIND TOKEN - Please check what your login.html saves');
-    return null;
-  }
-  
-  console.log('Token found, length:', token.length);
-  
-  try {
-    const r = await fetch(`${API_BASE}/auth/v1/user`, {
-      headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
-    });
-    
-    if(r.ok) {
-      console.log('✓ Auth valid');
-      return token;
-    } else {
-      console.error('✗ Auth failed:', r.status, await r.text());
-      return null;
-    }
-  } catch(err) {
-    console.error('✗ Auth request error:', err);
-    // On network error, still allow use with token
-    return token;
-  }
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return null;
+  const r = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  return r.ok ? token : null;
 }
 
 async function fetchTable(table, token){
-  try {
-    const r = await fetch(`${REST_BASE}/${table}?select=*`, {
-      headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
-    });
-    if(!r.ok) {
-      console.error(`Failed to fetch ${table}:`, r.status);
-      throw new Error(`Failed to fetch ${table}: ${r.status}`);
-    }
-    return r.json();
-  } catch(err) {
-    console.error(`Error fetching ${table}:`, err);
-    throw err;
-  }
+  const r = await fetch(`${REST_BASE}/${table}?select=*`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
 function setView(view){
@@ -1430,41 +1342,14 @@ async function loadWorkOrders(token){
 }
 
 async function load(){
-  console.log('=== STARTING LOAD ===');
-  console.log('Current URL:', window.location.href);
-  
   const token = await validateAuth();
-  
-  if(!token) {
-    console.error('=== NO TOKEN FOUND ===');
-    console.log('Please check your login.html - what key does it use to save the token?');
-    console.log('Common locations checked:');
-    console.log('  - localStorage.sb_access_token');
-    console.log('  - localStorage.sb-access-token');
-    console.log('  - localStorage.supabase.auth.token');
-    
-    // Give user a chance to see the console before redirecting
-    setTimeout(() => {
-      alert('Session expired. Please log in again.\n\nCheck browser console (F12) for details.');
-      location.replace("login.html");
-    }, 1000);
-    return;
-  }
+  if(!token) return location.replace("login.html");
   
   try {
-    console.log('=== LOADING DATA ===');
-    
     await loadWorkOrders(token);
-    console.log(`✓ Loaded ${workOrders.length} work orders`);
-    
     customers = await fetchTable("customers", token);
-    console.log(`✓ Loaded ${customers.length} customers`);
-    
     vehicles = await fetchTable("vehicles", token);
-    console.log(`✓ Loaded ${vehicles.length} vehicles`);
-    
     employees = await fetchTable("employees", token);
-    console.log(`✓ Loaded ${employees.length} employees`);
     
     if(workOrders.length > 0 && workOrders[0].tenant_name){
       document.getElementById('tenantTitle').textContent = workOrders[0].tenant_name;
@@ -1473,16 +1358,10 @@ async function load(){
     }
     
     renderView();
-    console.log('=== LOAD COMPLETE ===');
     
   } catch(err){
-    console.error('=== LOAD ERROR ===');
-    console.error('Error:', err);
-    console.error('Stack:', err.stack);
-    
-    alert('Error loading scheduling data:\n\n' + err.message + '\n\nCheck browser console (F12) for details.');
-    
-    // Don't redirect to login on data load errors - might be network issue
+    console.error('Load error:', err);
+    alert('Error loading scheduling data');
   }
 }
 
