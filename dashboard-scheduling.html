@@ -522,7 +522,7 @@
         -webkit-overflow-scrolling: touch;
         background: #0b0f14;
         padding: 12px;
-        padding-bottom: 20px;
+        padding-bottom: 30px;
       }
       
       .mobile-card {
@@ -572,6 +572,12 @@
         margin-top: 2px;
       }
       
+      .mobile-card-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      
       .mobile-card-action {
         width: 36px;
         height: 36px;
@@ -586,12 +592,19 @@
         cursor: pointer;
       }
       
+      .mobile-card-action.calendar {
+        background: rgba(59,130,246,0.1);
+        border-color: #3b82f6;
+        color: #3b82f6;
+        font-size: 18px;
+      }
+      
       .mobile-bottom-nav {
         flex-shrink: 0;
         background: #0f1621;
         border-top: 1px solid #223044;
         padding: 12px;
-        padding-bottom: max(12px, env(safe-area-inset-bottom));
+        padding-bottom: max(24px, env(safe-area-inset-bottom));
         display: flex;
         gap: 12px;
       }
@@ -676,6 +689,79 @@
         padding: 0;
         width: 36px;
         height: 36px;
+      }
+      
+      .mobile-date-picker {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      
+      .mobile-date-picker.active {
+        display: flex;
+      }
+      
+      .mobile-date-picker-content {
+        background: #0f1621;
+        border: 1px solid #223044;
+        border-radius: 12px;
+        padding: 20px;
+        max-width: 320px;
+        width: 100%;
+      }
+      
+      .mobile-date-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      
+      .mobile-date-picker-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #e8eef6;
+      }
+      
+      .mobile-date-picker-close {
+        background: transparent;
+        border: none;
+        color: #9fb0c3;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+      }
+      
+      .mobile-date-picker input[type="date"] {
+        width: 100%;
+        padding: 12px;
+        background: #1a2535;
+        border: 1px solid #223044;
+        border-radius: 8px;
+        color: #e8eef6;
+        font-size: 16px;
+        margin-bottom: 16px;
+      }
+      
+      .mobile-date-picker-actions {
+        display: flex;
+        gap: 12px;
+      }
+      
+      .mobile-date-picker-actions button {
+        flex: 1;
+        padding: 12px;
+        font-size: 14px;
       }
       
       .top-left { flex-direction:column; align-items:flex-start; gap:8px; }
@@ -793,6 +879,21 @@
         <span class="count" id="mobilePickupCount">0</span>
       </div>
       <div class="mobile-nav-btn" onclick="mobileNextDay()">→</div>
+    </div>
+    
+    <!-- Date Picker Modal -->
+    <div class="mobile-date-picker" id="mobileDatePicker">
+      <div class="mobile-date-picker-content">
+        <div class="mobile-date-picker-header">
+          <div class="mobile-date-picker-title">Reschedule Work Order</div>
+          <button class="mobile-date-picker-close" onclick="closeMobileDatePicker()">×</button>
+        </div>
+        <input type="date" id="mobileNewDate">
+        <div class="mobile-date-picker-actions">
+          <button onclick="closeMobileDatePicker()">Cancel</button>
+          <button class="primary" onclick="saveMobileReschedule()">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2201,11 +2302,22 @@ function createMobileCard(wo, isPickupView = false) {
       <div class="mobile-card-tech">Tech: ${techName}</div>
     </div>
     ${!isPickup && !isCompleted && !isPickupView ? `
-      <div class="mobile-card-action" data-wo-id="${wo.work_order_id}">↓</div>
+      <div class="mobile-card-actions">
+        <div class="mobile-card-action calendar" data-wo-id="${wo.work_order_id}">📅</div>
+        <div class="mobile-card-action" data-wo-id="${wo.work_order_id}">↓</div>
+      </div>
     ` : ''}
   `;
   
-  const pickupBtn = card.querySelector('.mobile-card-action');
+  const calendarBtn = card.querySelector('.mobile-card-action.calendar');
+  if(calendarBtn) {
+    calendarBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showMobileDatePicker(wo.work_order_id, wo.scheduled_start);
+    });
+  }
+  
+  const pickupBtn = card.querySelector('.mobile-card-action:not(.calendar)');
   if(pickupBtn) {
     pickupBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2238,6 +2350,102 @@ async function markMobileReadyForPickup(woId) {
   } catch(err) {
     console.error('Pickup error:', err);
     alert('Error marking as ready for pickup');
+  }
+}
+
+let currentRescheduleWoId = null;
+
+function showMobileDatePicker(woId, currentDate) {
+  currentRescheduleWoId = woId;
+  const datePicker = document.getElementById('mobileDatePicker');
+  const dateInput = document.getElementById('mobileNewDate');
+  
+  // Set current date as default
+  if(currentDate) {
+    const date = new Date(currentDate);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    dateInput.value = `${year}-${month}-${day}`;
+  } else {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    dateInput.value = `${year}-${month}-${day}`;
+  }
+  
+  datePicker.classList.add('active');
+  
+  // Close on background click
+  setTimeout(() => {
+    datePicker.addEventListener('click', function closeOnOutside(e) {
+      if(e.target === datePicker) {
+        closeMobileDatePicker();
+        datePicker.removeEventListener('click', closeOnOutside);
+      }
+    });
+  }, 100);
+}
+
+function closeMobileDatePicker() {
+  document.getElementById('mobileDatePicker').classList.remove('active');
+  currentRescheduleWoId = null;
+}
+
+async function saveMobileReschedule() {
+  if(!currentRescheduleWoId) return;
+  
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  const newDateStr = document.getElementById('mobileNewDate').value;
+  if(!newDateStr) {
+    alert('Please select a date');
+    return;
+  }
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === currentRescheduleWoId);
+    if(!wo) return;
+    
+    // Parse new date
+    const [year, month, day] = newDateStr.split('-').map(Number);
+    
+    // Keep existing time or use 9 AM
+    let hour = 9;
+    let minute = 0;
+    if(wo.scheduled_start) {
+      const currentTime = new Date(wo.scheduled_start);
+      hour = currentTime.getHours();
+      minute = currentTime.getMinutes();
+    }
+    
+    const newDateTime = new Date(year, month - 1, day, hour, minute, 0, 0);
+    
+    // Calculate end time (2 hours later by default)
+    const newEndTime = new Date(newDateTime);
+    newEndTime.setHours(newEndTime.getHours() + 2);
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${currentRescheduleWoId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        scheduled_start: newDateTime.toISOString(),
+        scheduled_end: newEndTime.toISOString()
+      })
+    });
+    
+    await loadWorkOrders(token);
+    closeMobileDatePicker();
+    renderMobileDay();
+  } catch(err) {
+    console.error('Reschedule error:', err);
+    alert('Error rescheduling work order');
   }
 }
 
