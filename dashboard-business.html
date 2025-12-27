@@ -816,17 +816,20 @@
     <div class="pill active" id="btnToday" onclick="setRange('today')">Today</div>
     <div class="pill" id="btnNext7" onclick="setRange('next7')">Next 7 Days</div>
     <div class="pill" id="btnNext30" onclick="setRange('next30')">Next 30 Days</div>
+    <div class="pill" id="btnNext90" onclick="setRange('next90')">Next 90 Days</div>
   </div>
 
   <!-- Tech cards -->
   <h2>Managers & Technicians</h2>
   <div id="techCards"></div>
 
-  <!-- Additional filters -->
+  <!-- Work order navigation filters -->
+  <!-- Order: All, Unassigned, Value, Past Due, Fleet 1, Fleet 2, ..., Clear Filters (always last) -->
   <div class="filters">
     <div class="pill" id="btnAll" onclick="showAll()">All</div>
     <div class="pill" id="btnUnassigned" onclick="filterUnassigned()">Unassigned</div>
     <div class="pill" id="sortValue" onclick="setSort('value')">Value</div>
+    <div class="pill" id="btnPastDue" onclick="filterPastDue()">Past Due</div>
     <div class="pill" id="btnFleet1" onclick="filterFleet('fleet1')">Fleet 1</div>
     <div class="pill" id="btnFleet2" onclick="filterFleet('fleet2')">Fleet 2</div>
     <div class="pill" onclick="clearFilters()">Clear Filters</div>
@@ -948,6 +951,8 @@
   function endOfNext7Days(){ const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(23,59,59,999); return d; }
   function startOfNext30Days(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
   function endOfNext30Days(){ const d = new Date(); d.setDate(d.getDate() + 30); d.setHours(23,59,59,999); return d; }
+  function startOfNext90Days(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function endOfNext90Days(){ const d = new Date(); d.setDate(d.getDate() + 90); d.setHours(23,59,59,999); return d; }
 
   function money(n){ return `$${Number(n || 0).toFixed(0)}`; }
   function formatHrsRev(hours){
@@ -1035,6 +1040,8 @@
     const eNext7 = endOfNext7Days();
     const sNext30 = startOfNext30Days();
     const eNext30 = endOfNext30Days();
+    const sNext90 = startOfNext90Days();
+    const eNext90 = endOfNext90Days();
 
     if (activeRange === "today") {
       // ALWAYS show past due items in today's view
@@ -1063,6 +1070,13 @@
       
       if (!d && w.status === "scheduled") return true;
       return d && d >= sNext30 && d <= eNext30;
+    }
+    if (activeRange === "next90") {
+      // Also show past due in next 90 days view
+      if (isPastDue(w)) return true;
+      
+      if (!d && w.status === "scheduled") return true;
+      return d && d >= sNext90 && d <= eNext90;
     }
     return true;
   }
@@ -1174,11 +1188,13 @@
     const btnToday  = document.getElementById("btnToday");
     const btnNext7  = document.getElementById("btnNext7");
     const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
     const btnAll    = document.getElementById("btnAll");
 
     if (btnToday)  btnToday.classList.toggle("active", r==="today");
     if (btnNext7)  btnNext7.classList.toggle("active", r==="next7");
     if (btnNext30) btnNext30.classList.toggle("active", r==="next30");
+    if (btnNext90) btnNext90.classList.toggle("active", r==="next90");
     if (btnAll)    btnAll.classList.toggle("active", r==="all");
 
     renderKPIs();
@@ -1193,13 +1209,42 @@
     const btnToday  = document.getElementById("btnToday");
     const btnNext7  = document.getElementById("btnNext7");
     const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
     const btnAll    = document.getElementById("btnAll");
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnUnassigned = document.getElementById("btnUnassigned");
+    const sortValue = document.getElementById("sortValue");
 
     if (btnToday)  btnToday.classList.remove("active");
     if (btnNext7)  btnNext7.classList.remove("active");
     if (btnNext30) btnNext30.classList.remove("active");
+    if (btnNext90) btnNext90.classList.remove("active");
     if (btnAll)    btnAll.classList.add("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnUnassigned) btnUnassigned.classList.remove("active");
+    if (sortValue) sortValue.classList.remove("active");
 
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
+
+  window.filterPastDue = function(){
+    // Toggle past due filter
+    if (activeKpi === "pastdue") {
+      activeKpi = null;
+      document.getElementById("btnPastDue")?.classList.remove("active");
+    } else {
+      activeKpi = "pastdue";
+      document.getElementById("btnPastDue")?.classList.add("active");
+      // Clear other work order filters when activating past due
+      const btnAll = document.getElementById("btnAll");
+      const btnUnassigned = document.getElementById("btnUnassigned");
+      const sortValue = document.getElementById("sortValue");
+      if (btnAll) btnAll.classList.remove("active");
+      if (btnUnassigned) btnUnassigned.classList.remove("active");
+      if (sortValue) sortValue.classList.remove("active");
+    }
     renderKPIs();
     renderTechCards();
     renderWorkOrders();
@@ -1209,12 +1254,30 @@
     activeSort = s;
     const p = document.getElementById("sortValue");
     if (p) p.classList.toggle("active", s === "value");
+    
+    // Clear other work order filters when activating value sort
+    if (s === "value") {
+      const btnPastDue = document.getElementById("btnPastDue");
+      const btnAll = document.getElementById("btnAll");
+      const btnUnassigned = document.getElementById("btnUnassigned");
+      if (btnPastDue) btnPastDue.classList.remove("active");
+      if (btnAll) btnAll.classList.remove("active");
+      if (btnUnassigned) btnUnassigned.classList.remove("active");
+    }
+    
     renderWorkOrders();
   };
 
   window.filterUnassigned = function(){
     activeTechId = "__unassigned__";
     document.getElementById("btnUnassigned")?.classList.add("active");
+    // Clear other work order filters
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnAll = document.getElementById("btnAll");
+    const sortValue = document.getElementById("sortValue");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnAll) btnAll.classList.remove("active");
+    if (sortValue) sortValue.classList.remove("active");
     renderTechCards();
     renderWorkOrders();
   };
@@ -1238,18 +1301,22 @@
     const btnToday  = document.getElementById("btnToday");
     const btnNext7  = document.getElementById("btnNext7");
     const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
     const btnAll    = document.getElementById("btnAll");
     const sortValue = document.getElementById("sortValue");
     const btnUnassigned = document.getElementById("btnUnassigned");
+    const btnPastDue = document.getElementById("btnPastDue");
     const btnFleet1 = document.getElementById("btnFleet1");
     const btnFleet2 = document.getElementById("btnFleet2");
 
     if (btnToday)  btnToday.classList.add("active");
     if (btnNext7)  btnNext7.classList.remove("active");
     if (btnNext30) btnNext30.classList.remove("active");
+    if (btnNext90) btnNext90.classList.remove("active");
     if (btnAll)    btnAll.classList.remove("active");
     if (sortValue) sortValue.classList.remove("active");
     if (btnUnassigned) btnUnassigned.classList.remove("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
     if (btnFleet1) btnFleet1.classList.remove("active");
     if (btnFleet2) btnFleet2.classList.remove("active");
 
@@ -1411,6 +1478,7 @@
       let rangeLabel = "Today";
       if (activeRange === "next7") rangeLabel = "Next 7 Days";
       else if (activeRange === "next30") rangeLabel = "Next 30 Days";
+      else if (activeRange === "next90") rangeLabel = "Next 90 Days";
       else if (activeRange === "all") rangeLabel = "All Scheduled";
 
       const roleBadge = t.role === 'manager' 
@@ -1475,7 +1543,18 @@
     if (activeKpi === "totalopen") {
       arr = arr.filter(w => !statusIn("completed", w.status) && w.status !== "closed");
     } else if (activeKpi === "pastdue") {
-      arr = arr.filter(w => isPastDue(w));
+      // Show work orders that are past deadline OR scheduled in the past
+      arr = arr.filter(w => {
+        if (w.status === "completed" || w.status === "closed") return false;
+        
+        // Past deadline (scheduled_end in past)
+        if (w.scheduled_end && new Date(w.scheduled_end) < new Date()) return true;
+        
+        // Scheduled in the past (scheduled_start in past)
+        if (w.scheduled_start && new Date(w.scheduled_start) < new Date()) return true;
+        
+        return false;
+      });
     } else if (activeKpi === "completedandpickup") {
       arr = arr.filter(w => statusIn("completed", w.status) || statusIn("pickup", w.status));
     } else if (activeKpi) {
