@@ -334,6 +334,90 @@
       font-size:14px;
     }
 
+    /* Pickup Overlay Modal */
+    .pickup-overlay {
+      display:none;
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      bottom:0;
+      background:rgba(0,0,0,0.8);
+      z-index:1000;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    }
+
+    .pickup-overlay.active {
+      display:flex;
+    }
+
+    .pickup-overlay-content {
+      background:#0f1621;
+      border:1px solid #3b82f6;
+      border-left:3px solid #3b82f6;
+      border-radius:12px;
+      padding:24px;
+      max-width:900px;
+      width:100%;
+      max-height:80vh;
+      overflow-y:auto;
+      position:relative;
+    }
+
+    .pickup-overlay-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      padding-bottom:16px;
+      border-bottom:1px solid #223044;
+    }
+
+    .pickup-overlay-title {
+      font-size:20px;
+      font-weight:700;
+      color:#e8eef6;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .pickup-overlay-count {
+      background:rgba(52,211,153,0.2);
+      padding:4px 12px;
+      border-radius:12px;
+      font-size:14px;
+      color:#34d399;
+      font-weight:700;
+      margin-left:12px;
+    }
+
+    .pickup-overlay-close {
+      background:transparent;
+      border:1px solid #223044;
+      color:#9fb0c3;
+      font-size:28px;
+      cursor:pointer;
+      padding:0;
+      width:40px;
+      height:40px;
+      border-radius:8px;
+      transition:all 0.2s;
+    }
+
+    .pickup-overlay-close:hover {
+      background:#1a2535;
+      border-color:#3b82f6;
+      color:#3b82f6;
+    }
+
+    .pickup-overlay-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+      gap:12px;
+    }
+
     /* Desktop Header */
     .desktop-header {
       position:sticky;
@@ -436,6 +520,10 @@
       flex-shrink:0;
       display:flex;
       flex-direction:column;
+    }
+
+    .side-panel.hidden {
+      display:none;
     }
 
     .side-column {
@@ -962,6 +1050,9 @@
       /* Hide ALL desktop controls on mobile */
       .controls { display:none !important; }
       
+      /* Hide side panel on mobile - use overlay instead */
+      .side-panel { display:none !important; }
+      
       .main-container {
         flex-direction:column;
         padding:12px;
@@ -971,16 +1062,7 @@
       
       .schedule-panel {
         order:1;
-      }
-      
-      .side-panel {
         width:100%;
-        order:2;
-        margin-top:12px;
-      }
-      
-      .side-column {
-        max-height:400px;
       }
 
       .wo-card {
@@ -1049,6 +1131,20 @@
         <button onclick="closeDatePicker()">Cancel</button>
         <button class="primary" onclick="saveReschedule()">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Pickup Overlay Modal -->
+  <div class="pickup-overlay" id="pickupOverlay">
+    <div class="pickup-overlay-content">
+      <div class="pickup-overlay-header">
+        <div>
+          <span class="pickup-overlay-title">Ready for Pickup</span>
+          <span class="pickup-overlay-count" id="pickupOverlayCount">0</span>
+        </div>
+        <button class="pickup-overlay-close" onclick="closePickupOverlay()">×</button>
+      </div>
+      <div class="pickup-overlay-grid" id="pickupOverlayGrid"></div>
     </div>
   </div>
 
@@ -1197,6 +1293,16 @@ function setView(view){
     } else {
       leftArrow.classList.add('hidden');
       rightArrow.classList.add('hidden');
+    }
+  }
+  
+  // Show/hide pickup side panel - only visible in today view
+  const sidePanel = document.querySelector('.side-panel');
+  if(sidePanel) {
+    if(view === 'today') {
+      sidePanel.classList.remove('hidden');
+    } else {
+      sidePanel.classList.add('hidden');
     }
   }
   
@@ -1823,16 +1929,16 @@ function render30DayCalendar(){
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Start from first day of current month
-  const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  // Start from today, not first of month
+  const startDate = new Date(today);
   
-  // Get days in month
-  const year = startDate.getFullYear();
-  const month = startDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // Calculate 30 days from today
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + 30);
   
-  // Get first day of month (0 = Sunday)
-  const firstDayOfWeek = startDate.getDay();
+  // Find the Sunday before today (start of week)
+  const weekStart = new Date(startDate);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
   
   // Create calendar grid
   const calendarGrid = document.createElement('div');
@@ -1847,75 +1953,98 @@ function render30DayCalendar(){
     calendarGrid.appendChild(header);
   });
   
-  // Empty cells before first day
-  for(let i = 0; i < firstDayOfWeek; i++){
-    const emptyCell = document.createElement('div');
-    emptyCell.className = 'calendar-day-cell other-month';
-    calendarGrid.appendChild(emptyCell);
-  }
+  // Iterate through weeks and days
+  const currentWeekDate = new Date(weekStart);
+  let hasAnyOrders = false;
+  let weekCells = [];
   
-  // Days of month
-  for(let day = 1; day <= daysInMonth; day++){
-    const date = new Date(year, month, day);
-    date.setHours(0, 0, 0, 0);
+  while(currentWeekDate <= endDate) {
+    // Collect cells for this week
+    const weekHasOrders = [];
+    const tempWeekCells = [];
     
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const isToday = dateStr === todayStr;
-    
-    const dayOrders = getWorkOrdersForDate(date);
-    
-    // Calculate total hours for all techs
-    let totalHours = 0;
-    dayOrders.forEach(wo => {
-      if(wo.scheduled_start && wo.scheduled_end){
-        const start = new Date(wo.scheduled_start);
-        const end = new Date(wo.scheduled_end);
-        const hours = (end - start) / (1000 * 60 * 60);
-        totalHours += hours;
+    for(let i = 0; i < 7; i++) {
+      const date = new Date(currentWeekDate);
+      date.setHours(0, 0, 0, 0);
+      
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const isToday = dateStr === todayStr;
+      const isBeforeToday = date < today;
+      const isAfterRange = date > endDate;
+      
+      const dayOrders = getWorkOrdersForDate(date);
+      
+      if(dayOrders.length > 0) {
+        weekHasOrders.push(true);
+        hasAnyOrders = true;
       }
-    });
+      
+      // Calculate total hours for all techs
+      let totalHours = 0;
+      dayOrders.forEach(wo => {
+        if(wo.scheduled_start && wo.scheduled_end){
+          const start = new Date(wo.scheduled_start);
+          const end = new Date(wo.scheduled_end);
+          const hours = (end - start) / (1000 * 60 * 60);
+          totalHours += hours;
+        }
+      });
+      
+      const cell = document.createElement('div');
+      cell.className = `calendar-day-cell ${isToday ? 'today' : ''} ${(isBeforeToday || isAfterRange) ? 'other-month' : ''}`;
+      cell.dataset.date = dateStr;
+      
+      const dayNumber = document.createElement('div');
+      dayNumber.className = 'calendar-day-number';
+      dayNumber.textContent = date.getDate();
+      
+      const hoursDisplay = document.createElement('div');
+      hoursDisplay.className = 'calendar-day-hours';
+      hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
+      
+      const orderDots = document.createElement('div');
+      orderDots.className = 'calendar-day-orders';
+      
+      dayOrders.slice(0, 6).forEach(wo => {
+        const dot = document.createElement('div');
+        dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
+        orderDots.appendChild(dot);
+      });
+      
+      cell.appendChild(dayNumber);
+      cell.appendChild(hoursDisplay);
+      cell.appendChild(orderDots);
+      
+      // Click to view day details
+      cell.onclick = () => {
+        currentDate = new Date(date);
+        setView('today');
+      };
+      
+      // Make droppable
+      cell.addEventListener('dragover', handleDragOver);
+      cell.addEventListener('dragleave', handleDragLeave);
+      cell.addEventListener('drop', (e) => handleDrop(e, date, null));
+      
+      tempWeekCells.push(cell);
+      currentWeekDate.setDate(currentWeekDate.getDate() + 1);
+    }
     
-    const cell = document.createElement('div');
-    cell.className = `calendar-day-cell ${isToday ? 'today' : ''}`;
-    cell.dataset.date = dateStr;
-    
-    const dayNumber = document.createElement('div');
-    dayNumber.className = 'calendar-day-number';
-    dayNumber.textContent = day;
-    
-    const hoursDisplay = document.createElement('div');
-    hoursDisplay.className = 'calendar-day-hours';
-    hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
-    
-    const orderDots = document.createElement('div');
-    orderDots.className = 'calendar-day-orders';
-    
-    dayOrders.slice(0, 6).forEach(wo => {
-      const dot = document.createElement('div');
-      dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
-      orderDots.appendChild(dot);
-    });
-    
-    cell.appendChild(dayNumber);
-    cell.appendChild(hoursDisplay);
-    cell.appendChild(orderDots);
-    
-    // Click to view day details
-    cell.onclick = () => {
-      currentDate = new Date(date);
-      setView('today');
-    };
-    
-    // Make droppable
-    cell.addEventListener('dragover', handleDragOver);
-    cell.addEventListener('dragleave', handleDragLeave);
-    cell.addEventListener('drop', (e) => handleDrop(e, date, null));
-    
-    calendarGrid.appendChild(cell);
+    // Only add week if it has orders OR contains today
+    const weekHasToday = tempWeekCells.some(cell => cell.classList.contains('today'));
+    if(weekHasOrders.length > 0 || weekHasToday) {
+      tempWeekCells.forEach(cell => {
+        calendarGrid.appendChild(cell);
+      });
+    }
   }
   
   view.appendChild(calendarGrid);
+  
+  if(!hasAnyOrders) {
+    view.innerHTML = '<div class="empty-state">No work orders scheduled in the next 30 days</div>';
+  }
 }
 
 function toggleDay(daySection){
@@ -1957,10 +2086,58 @@ function renderSideColumns(){
 }
 
 function scrollToPickup(){
-  const pickupColumn = document.getElementById('pickupColumn');
-  if(pickupColumn){
-    pickupColumn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // On mobile, always show overlay
+  if(isMobile) {
+    showPickupOverlay();
+    return;
   }
+  
+  // On desktop: In today view, scroll to pickup column
+  if(currentView === 'today') {
+    const pickupColumn = document.getElementById('pickupColumn');
+    if(pickupColumn){
+      pickupColumn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } else {
+    // In other views, show pickup overlay
+    showPickupOverlay();
+  }
+}
+
+function showPickupOverlay(){
+  const overlay = document.getElementById('pickupOverlay');
+  const grid = document.getElementById('pickupOverlayGrid');
+  const countBadge = document.getElementById('pickupOverlayCount');
+  
+  const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
+  
+  countBadge.textContent = pickupOrders.length;
+  grid.innerHTML = '';
+  
+  if(pickupOrders.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No orders ready for pickup</div>';
+  } else {
+    pickupOrders.forEach(wo => {
+      const card = createFullCard(wo);
+      grid.appendChild(card);
+    });
+  }
+  
+  overlay.classList.add('active');
+  
+  // Close on background click
+  setTimeout(() => {
+    overlay.addEventListener('click', function closeOnOutside(e) {
+      if(e.target === overlay) {
+        closePickupOverlay();
+        overlay.removeEventListener('click', closeOnOutside);
+      }
+    });
+  }, 100);
+}
+
+function closePickupOverlay(){
+  document.getElementById('pickupOverlay').classList.remove('active');
 }
 
 function renderTechFilter(){
