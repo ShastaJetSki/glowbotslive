@@ -17,17 +17,17 @@
 
     .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
     
-    /* KPI cards - ensure all 6 fit on one row on larger screens */
+    /* KPI cards - ensure all 5 fit on one row on larger screens */
     #kpis {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
     
-    @media (min-width: 1500px) {
+    @media (min-width: 1400px) {
       #kpis {
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(5, 1fr);
       }
     }
     
@@ -107,8 +107,8 @@
 
     /* KPI */
     .kpi { 
-      min-width:220px; 
-      flex: 1 1 220px; 
+      min-width:240px; 
+      flex: 1 1 240px; 
       cursor:pointer;
       border-left: 4px solid #3b82f6;
     }
@@ -801,11 +801,11 @@
   <div style="padding:24px;">
 
   <!-- KPI row with accordion -->
-  <button class="accordion-header" onclick="toggleAccordion(this)">
+  <button class="accordion-header active" onclick="toggleAccordion(this)">
     <h2>Key Performance Indicators</h2>
     <span class="accordion-icon">▼</span>
   </button>
-  <div class="accordion-content">
+  <div class="accordion-content active">
     <div class="accordion-inner">
       <div class="row" id="kpis"></div>
     </div>
@@ -884,6 +884,19 @@
     const content = button.nextElementSibling;
     button.classList.toggle('active');
     content.classList.toggle('active');
+  }
+
+  // Initialize mobile-specific defaults
+  function initMobileDefaults() {
+    // Collapse KPI accordion on mobile
+    if (window.innerWidth <= 768) {
+      const kpiAccordionHeader = document.querySelector('.accordion-header');
+      const kpiAccordionContent = document.querySelector('.accordion-content');
+      if (kpiAccordionHeader && kpiAccordionContent) {
+        kpiAccordionHeader.classList.remove('active');
+        kpiAccordionContent.classList.remove('active');
+      }
+    }
   }
 
   // SSOT status buckets (matches DB constraint vocabulary)
@@ -1115,15 +1128,6 @@
     if (!kpisEl) return;
 
     const inView = (Array.isArray(orders) ? orders : []).filter(w => inRange(w));
-
-    const todayScheduled = inView.filter(w => {
-      if (!w.scheduled_start) return false;
-      const workDate = new Date(w.scheduled_start);
-      workDate.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return workDate.getTime() === today.getTime() && statusIn("scheduled", w.status);
-    });
     
     const complications = inView.filter(w => statusIn("complications", w.status));
     const waiting = inView.filter(w => statusIn("waiting", w.status));
@@ -1150,7 +1154,6 @@
 
     kpisEl.innerHTML =
       kpiCard("totalopen", "Total Open Work", totalOpen) +
-      kpiCard("todayscheduled", "Today's Scheduled Work", todayScheduled) +
       kpiCard("complications", "Waiting on Approval or Diagnosis", complications) +
       kpiCard("waiting", "Waiting on Parts or Services", waiting) +
       kpiCard("pastdue", "⚠️ Past Deadline", pastdue, true) +
@@ -1471,15 +1474,6 @@
 
     if (activeKpi === "totalopen") {
       arr = arr.filter(w => !statusIn("completed", w.status) && w.status !== "closed");
-    } else if (activeKpi === "todayscheduled") {
-      arr = arr.filter(w => {
-        if (!w.scheduled_start) return false;
-        const workDate = new Date(w.scheduled_start);
-        workDate.setHours(0, 0, 0, 0);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return workDate.getTime() === today.getTime() && statusIn("scheduled", w.status);
-      });
     } else if (activeKpi === "pastdue") {
       arr = arr.filter(w => isPastDue(w));
     } else if (activeKpi === "completedandpickup") {
@@ -1794,6 +1788,9 @@
     }
 
     document.body.classList.add('auth-verified');
+
+    // Initialize mobile-specific defaults
+    initMobileDefaults();
 
     try {
       const [emp, rawOrders, cust, veh] = await Promise.all([
