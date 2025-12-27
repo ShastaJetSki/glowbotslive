@@ -356,13 +356,12 @@
       padding:20px;
     }
 
-    /* Right Panel - Pickup & Completed */
+    /* Right Panel - Pickup */
     .side-panel {
       width:300px;
       flex-shrink:0;
       display:flex;
       flex-direction:column;
-      gap:16px;
     }
 
     .side-column {
@@ -372,7 +371,11 @@
       border-radius:12px;
       padding:16px;
       overflow-y:auto;
-      max-height:calc(50vh - 120px);
+      flex:1;
+    }
+
+    .side-column.pickup-only {
+      max-height:none;
     }
 
     .side-column-header {
@@ -584,7 +587,7 @@
       overflow:hidden;
       transition:max-height 0.3s ease;
       display:flex;
-      flex-direction:column;
+      flex-wrap:wrap;
       gap:8px;
       margin-top:8px;
     }
@@ -604,6 +607,7 @@
       cursor:move;
       transition:all 0.2s;
       user-select:none;
+      min-width:220px;
     }
 
     .wo-card:hover {
@@ -623,32 +627,48 @@
     .wo-card.completed { border-left-color:#60a5fa; border-color:#60a5fa; }
     .wo-card.past-due { border-left-color:#ef4444; border-color:#ef4444; }
 
-    .wo-card-header {
+    .wo-card-main {
       display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      margin-bottom:8px;
+      flex-direction:column;
+      gap:4px;
     }
 
     .wo-customer {
-      font-size:14px;
-      font-weight:600;
+      font-size:15px;
+      font-weight:700;
       color:#e8eef6;
-      flex:1;
-    }
-
-    .wo-time {
-      font-size:12px;
-      color:#60a5fa;
-      font-weight:600;
-      flex-shrink:0;
-      margin-left:8px;
+      line-height:1.3;
     }
 
     .wo-vehicle {
-      font-size:12px;
+      font-size:13px;
       color:#9fb0c3;
-      margin-bottom:4px;
+      line-height:1.3;
+    }
+
+    .wo-card-details {
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      margin-top:8px;
+      padding-top:8px;
+      border-top:1px solid rgba(255,255,255,0.1);
+    }
+
+    .wo-card.collapsed .wo-card-details {
+      display:none;
+    }
+
+    .wo-tech {
+      font-size:11px;
+      color:#60a5fa;
+      font-weight:600;
+    }
+
+    .wo-time {
+      font-size:11px;
+      color:#9fb0c3;
+      font-weight:600;
     }
 
     .wo-status {
@@ -695,14 +715,15 @@
       .side-panel {
         width:100%;
         order:2;
-        flex-direction:row;
-        gap:12px;
         margin-top:12px;
       }
       
       .side-column {
-        flex:1;
-        max-height:300px;
+        max-height:400px;
+      }
+
+      .wo-card {
+        min-width:100%;
       }
     }
   </style>
@@ -806,22 +827,14 @@
       <div id="scheduleView"></div>
     </div>
 
-    <!-- Right Panel - Pickup & Completed -->
+    <!-- Right Panel - Pickup -->
     <div class="side-panel">
-      <div class="side-column">
+      <div class="side-column pickup-only">
         <div class="side-column-header">
           <span>Ready for Pickup</span>
           <span class="side-column-count" id="pickupCount">0</span>
         </div>
         <div id="pickupColumn"></div>
-      </div>
-
-      <div class="side-column">
-        <div class="side-column-header">
-          <span>Completed</span>
-          <span class="side-column-count" id="completedCount">0</span>
-        </div>
-        <div id="completedColumn"></div>
       </div>
     </div>
   </div>
@@ -987,6 +1000,7 @@ function getWorkOrdersForDate(date){
   const dateStr = `${year}-${month}-${day}`;
   
   return workOrders.filter(wo => {
+    // Exclude ready_for_pickup, completed, and closed from day columns
     if(wo.status === 'ready_for_pickup' || wo.status === 'completed' || wo.status === 'closed') {
       return false;
     }
@@ -1004,9 +1018,11 @@ function getWorkOrdersForDate(date){
 function createWOCard(wo){
   const customer = customers.find(c => c.customer_id === wo.customer_id);
   const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
+  const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
   
   const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
   const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
+  const techName = employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned';
   
   let timeDisplay = '';
   if(wo.scheduled_start) {
@@ -1026,22 +1042,37 @@ function createWOCard(wo){
                     wo.status !== 'completed' && wo.status !== 'closed';
   
   const card = document.createElement('div');
-  card.className = `wo-card ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
+  card.className = `wo-card collapsed ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
   card.draggable = true;
   card.dataset.woId = wo.work_order_id;
   
   card.innerHTML = `
-    <div class="wo-card-header">
+    <div class="wo-card-main">
       <div class="wo-customer">${customerName}</div>
-      ${timeDisplay ? `<div class="wo-time">${timeDisplay}</div>` : ''}
+      ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
     </div>
-    ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
-    <div class="wo-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
+    <div class="wo-card-details">
+      <div class="wo-tech">Tech: ${techName}</div>
+      ${timeDisplay ? `<div class="wo-time">Time: ${timeDisplay}</div>` : ''}
+      <div class="wo-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
+    </div>
   `;
+  
+  // Toggle collapse on click
+  card.addEventListener('click', (e) => {
+    if(e.target === card || e.target.closest('.wo-card-main')) {
+      card.classList.toggle('collapsed');
+      e.stopPropagation();
+    }
+  });
+  
+  // Double click to open
+  card.addEventListener('dblclick', () => {
+    location.href = `work-order-edit.html?id=${wo.work_order_id}`;
+  });
   
   card.addEventListener('dragstart', handleDragStart);
   card.addEventListener('dragend', handleDragEnd);
-  card.addEventListener('click', () => location.href = `work-order-edit.html?id=${wo.work_order_id}`);
   
   return card;
 }
@@ -1299,10 +1330,8 @@ function toggleTech(techGroup){
 
 function renderSideColumns(){
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
-  const completedOrders = workOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed');
   
   document.getElementById('pickupCount').textContent = pickupOrders.length;
-  document.getElementById('completedCount').textContent = completedOrders.length;
   
   // Update mobile pickup count
   const mobilePickupCount = document.getElementById('mobilePickupCount');
@@ -1310,6 +1339,9 @@ function renderSideColumns(){
   
   const pickupColumn = document.getElementById('pickupColumn');
   pickupColumn.innerHTML = '';
+  pickupColumn.style.display = 'flex';
+  pickupColumn.style.flexWrap = 'wrap';
+  pickupColumn.style.gap = '8px';
   
   pickupOrders.forEach(wo => {
     const card = createWOCard(wo);
@@ -1317,28 +1349,13 @@ function renderSideColumns(){
   });
   
   if(pickupOrders.length === 0){
+    pickupColumn.style.display = 'block';
     pickupColumn.innerHTML = '<div class="empty-state">No orders ready</div>';
   }
   
   pickupColumn.addEventListener('dragover', handleDragOver);
   pickupColumn.addEventListener('dragleave', handleDragLeave);
   pickupColumn.addEventListener('drop', (e) => handleDrop(e, null, 'ready_for_pickup'));
-  
-  const completedColumn = document.getElementById('completedColumn');
-  completedColumn.innerHTML = '';
-  
-  completedOrders.forEach(wo => {
-    const card = createWOCard(wo);
-    completedColumn.appendChild(card);
-  });
-  
-  if(completedOrders.length === 0){
-    completedColumn.innerHTML = '<div class="empty-state">No completed orders</div>';
-  }
-  
-  completedColumn.addEventListener('dragover', handleDragOver);
-  completedColumn.addEventListener('dragleave', handleDragLeave);
-  completedColumn.addEventListener('drop', (e) => handleDrop(e, null, 'completed'));
 }
 
 function scrollToPickup(){
