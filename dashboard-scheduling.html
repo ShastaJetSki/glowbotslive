@@ -2033,56 +2033,65 @@ async function handleDrop7Day(e, targetDate){
 }
 
 let autoScrollInterval = null;
+let currentDragY = null;
 
 function setup7DayAutoScroll(){
-  const schedulePanel = document.querySelector('.schedule-panel');
-  if(!schedulePanel) return;
-  
-  schedulePanel.addEventListener('dragover', (e) => {
+  document.addEventListener('dragover', (e) => {
     if(!draggedWO || currentView !== '7day') return;
     
-    const rect = schedulePanel.getBoundingClientRect();
     const scrollThreshold = 100; // pixels from top/bottom to trigger scroll
     const scrollSpeed = 10; // pixels per interval
     
-    const distanceFromTop = e.clientY - rect.top;
-    const distanceFromBottom = rect.bottom - e.clientY;
+    // Use viewport for mobile compatibility
+    const viewportHeight = window.innerHeight;
+    const mouseY = e.clientY;
     
-    if(distanceFromTop < scrollThreshold) {
+    const distanceFromTop = mouseY;
+    const distanceFromBottom = viewportHeight - mouseY;
+    
+    // Get the scrollable container
+    const schedulePanel = document.querySelector('.schedule-panel');
+    const mainContainer = document.querySelector('.main-container');
+    const scrollContainer = schedulePanel || mainContainer;
+    
+    if(distanceFromTop < scrollThreshold && distanceFromTop > 0) {
       // Scroll up
-      startAutoScroll('up', scrollSpeed);
-    } else if(distanceFromBottom < scrollThreshold) {
+      startAutoScroll('up', scrollSpeed, scrollContainer);
+    } else if(distanceFromBottom < scrollThreshold && distanceFromBottom > 0) {
       // Scroll down
-      startAutoScroll('down', scrollSpeed);
+      startAutoScroll('down', scrollSpeed, scrollContainer);
     } else {
       stopAutoScroll();
     }
   });
   
-  schedulePanel.addEventListener('dragleave', (e) => {
-    if(e.target === schedulePanel) {
-      stopAutoScroll();
-    }
+  document.addEventListener('drop', () => {
+    stopAutoScroll();
   });
   
-  schedulePanel.addEventListener('drop', () => {
+  document.addEventListener('dragend', () => {
     stopAutoScroll();
   });
 }
 
-function startAutoScroll(direction, speed){
+function startAutoScroll(direction, speed, element){
   if(autoScrollInterval) return; // Already scrolling
   
-  const schedulePanel = document.querySelector('.schedule-panel');
-  if(!schedulePanel) return;
+  if(!element) {
+    // Fallback to window scroll
+    autoScrollInterval = setInterval(() => {
+      window.scrollBy(0, direction === 'up' ? -speed : speed);
+    }, 30);
+    return;
+  }
   
   autoScrollInterval = setInterval(() => {
     if(direction === 'up') {
-      schedulePanel.scrollTop -= speed;
+      element.scrollTop -= speed;
     } else {
-      schedulePanel.scrollTop += speed;
+      element.scrollTop += speed;
     }
-  }, 50);
+  }, 30); // Faster interval for smoother scroll
 }
 
 function stopAutoScroll(){
@@ -2293,6 +2302,8 @@ function render30DayCalendar(){
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
+  const isMobile = window.innerWidth <= 768;
+  
   // Get the month from currentDate
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -2321,7 +2332,7 @@ function render30DayCalendar(){
   
   let hasAnyOrders = false;
   
-  // Track weeks to hide empty ones
+  // Track weeks to hide empty ones (desktop only)
   let weekCells = [];
   let currentWeekHasOrders = false;
   let currentWeekHasToday = false;
@@ -2406,16 +2417,22 @@ function render30DayCalendar(){
     
     // End of week (Saturday) or end of month
     if(weekCells.length === 7 || day === daysInMonth) {
-      // Only render week if it has orders OR contains today OR is after today
-      // Hide empty weeks at the TOP (before today)
-      const shouldRenderWeek = currentWeekHasOrders || currentWeekHasToday || !firstWeekWithContent || weekCells.some(c => {
-        const cellDate = c.dataset.date ? new Date(c.dataset.date) : null;
-        return cellDate && cellDate >= today;
-      });
-      
-      if(shouldRenderWeek) {
+      // MOBILE: Always show complete month (all weeks)
+      // DESKTOP: Can hide empty weeks at top for cleaner view
+      if(isMobile) {
+        // Always render all weeks on mobile
         weekCells.forEach(c => calendarGrid.appendChild(c));
-        firstWeekWithContent = false;
+      } else {
+        // Desktop: hide empty weeks at top
+        const shouldRenderWeek = currentWeekHasOrders || currentWeekHasToday || !firstWeekWithContent || weekCells.some(c => {
+          const cellDate = c.dataset.date ? new Date(c.dataset.date) : null;
+          return cellDate && cellDate >= today;
+        });
+        
+        if(shouldRenderWeek) {
+          weekCells.forEach(c => calendarGrid.appendChild(c));
+          firstWeekWithContent = false;
+        }
       }
       
       // Reset for next week
@@ -2434,8 +2451,10 @@ function render30DayCalendar(){
     view.appendChild(emptyState);
   }
   
-  // Add scroll detection for endless scroll
-  setupEndlessScroll();
+  // Add scroll detection for endless scroll (mobile only)
+  if(isMobile) {
+    setupEndlessScroll();
+  }
 }
 
 function setupEndlessScroll() {
@@ -2453,12 +2472,15 @@ function setupEndlessScroll() {
   mainContainer._scrollHandler = function() {
     if(currentView !== '30day') return;
     
+    const isMobile = window.innerWidth <= 768;
+    if(!isMobile) return; // Only on mobile
+    
     const scrollTop = mainContainer.scrollTop;
     const scrollHeight = mainContainer.scrollHeight;
     const clientHeight = mainContainer.clientHeight;
     
-    // If scrolled to bottom (within 100px), load next month
-    if(scrollTop + clientHeight >= scrollHeight - 100) {
+    // If scrolled to bottom (within 200px), load next month
+    if(scrollTop + clientHeight >= scrollHeight - 200) {
       loadNextMonthCalendar();
     }
   };
@@ -2466,13 +2488,21 @@ function setupEndlessScroll() {
   mainContainer.addEventListener('scroll', mainContainer._scrollHandler);
 }
 
+let isLoadingNextMonth = false;
+
 function loadNextMonthCalendar() {
+  if(isLoadingNextMonth) return; // Prevent multiple simultaneous loads
+  
   const view = document.getElementById('scheduleView');
   const existingGrid = view.querySelector('.calendar-grid');
   if(!existingGrid) return;
   
+  isLoadingNextMonth = true;
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  
+  const isMobile = window.innerWidth <= 768;
   
   // Calculate next month
   const nextMonth = new Date(currentDate);
@@ -2480,6 +2510,20 @@ function loadNextMonthCalendar() {
   
   const year = nextMonth.getFullYear();
   const month = nextMonth.getMonth();
+  
+  // Add month separator header
+  const monthHeader = document.createElement('div');
+  monthHeader.className = 'calendar-month-separator';
+  monthHeader.style.gridColumn = '1 / -1';
+  monthHeader.style.padding = '16px';
+  monthHeader.style.textAlign = 'center';
+  monthHeader.style.fontSize = '18px';
+  monthHeader.style.fontWeight = '700';
+  monthHeader.style.color = '#60a5fa';
+  monthHeader.style.borderTop = '2px solid #223044';
+  monthHeader.style.marginTop = '12px';
+  monthHeader.textContent = nextMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  existingGrid.appendChild(monthHeader);
   
   // Get days in next month
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -2489,6 +2533,7 @@ function loadNextMonthCalendar() {
   
   let weekCells = [];
   let hasOrders = false;
+  let currentWeekHasOrders = false;
   
   // Empty cells before first day
   for(let i = 0; i < firstDayOfWeek; i++){
@@ -2507,7 +2552,10 @@ function loadNextMonthCalendar() {
     const isToday = dateStr === todayStr;
     
     const dayOrders = getWorkOrdersForDate(date);
-    if(dayOrders.length > 0) hasOrders = true;
+    if(dayOrders.length > 0) {
+      hasOrders = true;
+      currentWeekHasOrders = true;
+    }
     
     let totalHours = 0;
     dayOrders.forEach(wo => {
@@ -2556,10 +2604,17 @@ function loadNextMonthCalendar() {
     weekCells.push(cell);
     
     if(weekCells.length === 7 || day === daysInMonth) {
+      // On mobile, always show all weeks for complete month view
       weekCells.forEach(c => existingGrid.appendChild(c));
       weekCells = [];
+      currentWeekHasOrders = false;
     }
   }
+  
+  // Allow loading next month again after a delay
+  setTimeout(() => {
+    isLoadingNextMonth = false;
+  }, 1000);
 }
 
 function toggleDay(daySection){
