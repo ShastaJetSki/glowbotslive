@@ -763,11 +763,16 @@
     .day-cards-container {
       display:flex;
       flex-direction:column;
-      gap:8px;
+      gap:12px;
       margin-top:12px;
     }
 
     .day-cards-container .wo-card {
+      max-width:100%;
+      width:100%;
+    }
+
+    .day-cards-container .wo-card-full {
       max-width:100%;
       width:100%;
     }
@@ -1003,11 +1008,14 @@
 
     .calendar-day-cell {
       background:#0f1621;
-      padding:8px;
-      min-height:100px;
+      padding:10px;
+      min-height:110px;
       position:relative;
       cursor:pointer;
       transition:all 0.2s;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
     }
 
     .calendar-day-cell:hover {
@@ -1023,28 +1031,32 @@
     }
 
     .calendar-day-number {
-      font-size:14px;
-      font-weight:600;
-      margin-bottom:4px;
+      font-size:18px;
+      font-weight:700;
       color:#e8eef6;
-    }
-
-    .calendar-day-hours {
-      font-size:11px;
-      color:#60a5fa;
-      font-weight:600;
+      text-align:left;
     }
 
     .calendar-day-orders {
-      margin-top:4px;
       display:flex;
       flex-wrap:wrap;
-      gap:2px;
+      gap:4px;
+      margin:10px 0;
+      min-height:24px;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .calendar-day-hours {
+      font-size:12px;
+      color:#60a5fa;
+      font-weight:700;
+      text-align:center;
     }
 
     .calendar-order-dot {
-      width:6px;
-      height:6px;
+      width:8px;
+      height:8px;
       border-radius:50%;
       background:#3b82f6;
     }
@@ -1132,6 +1144,31 @@
 
       .today-date-sub {
         font-size:16px;
+      }
+
+      /* Calendar cells on mobile */
+      .calendar-day-cell {
+        min-height:90px;
+        padding:8px;
+      }
+
+      .calendar-day-number {
+        font-size:16px;
+      }
+
+      .calendar-day-orders {
+        margin:6px 0;
+        min-height:20px;
+        gap:3px;
+      }
+
+      .calendar-order-dot {
+        width:7px;
+        height:7px;
+      }
+
+      .calendar-day-hours {
+        font-size:11px;
       }
     }
   </style>
@@ -1996,34 +2033,8 @@ function render7DayView(){
       cardsContainer.className = 'day-cards-container';
       
       dayOrders.forEach(wo => {
-        const card = createWOCard(wo);
-        
-        // Add date picker button to each card in 7-day view
-        const actions = document.createElement('div');
-        actions.className = 'wo-card-full-actions';
-        actions.style.display = 'flex';
-        actions.style.gap = '4px';
-        actions.style.marginTop = '8px';
-        
-        const datePickerBtn = document.createElement('button');
-        datePickerBtn.className = 'wo-card-action-btn';
-        datePickerBtn.title = 'Reschedule';
-        datePickerBtn.innerHTML = `
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-        `;
-        datePickerBtn.onclick = (e) => {
-          e.stopPropagation();
-          showDatePicker(wo.work_order_id, wo.scheduled_start);
-        };
-        
-        actions.appendChild(datePickerBtn);
-        card.appendChild(actions);
-        
+        // Use createFullCard instead of createWOCard for full 5-line display
+        const card = createFullCard(wo);
         cardsContainer.appendChild(card);
       });
       
@@ -2089,6 +2100,7 @@ function render30DayCalendar(){
   let weekCells = [];
   let currentWeekHasOrders = false;
   let currentWeekHasToday = false;
+  let firstWeekWithContent = true;
   
   // Empty cells before first day
   for(let i = 0; i < firstDayOfWeek; i++){
@@ -2105,6 +2117,7 @@ function render30DayCalendar(){
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const isToday = dateStr === todayStr;
+    const isPastDate = date < today;
     
     const dayOrders = getWorkOrdersForDate(date);
     
@@ -2136,22 +2149,22 @@ function render30DayCalendar(){
     dayNumber.className = 'calendar-day-number';
     dayNumber.textContent = day;
     
-    const hoursDisplay = document.createElement('div');
-    hoursDisplay.className = 'calendar-day-hours';
-    hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
-    
     const orderDots = document.createElement('div');
     orderDots.className = 'calendar-day-orders';
     
-    dayOrders.slice(0, 6).forEach(wo => {
+    dayOrders.slice(0, 8).forEach(wo => {
       const dot = document.createElement('div');
       dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
       orderDots.appendChild(dot);
     });
     
+    const hoursDisplay = document.createElement('div');
+    hoursDisplay.className = 'calendar-day-hours';
+    hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
+    
     cell.appendChild(dayNumber);
-    cell.appendChild(hoursDisplay);
     cell.appendChild(orderDots);
+    cell.appendChild(hoursDisplay);
     
     // Click to view day details
     cell.onclick = () => {
@@ -2168,9 +2181,16 @@ function render30DayCalendar(){
     
     // End of week (Saturday) or end of month
     if(weekCells.length === 7 || day === daysInMonth) {
-      // Only render week if it has orders OR contains today
-      if(currentWeekHasOrders || currentWeekHasToday) {
+      // Only render week if it has orders OR contains today OR is after today
+      // Hide empty weeks at the TOP (before today)
+      const shouldRenderWeek = currentWeekHasOrders || currentWeekHasToday || !firstWeekWithContent || weekCells.some(c => {
+        const cellDate = c.dataset.date ? new Date(c.dataset.date) : null;
+        return cellDate && cellDate >= today;
+      });
+      
+      if(shouldRenderWeek) {
         weekCells.forEach(c => calendarGrid.appendChild(c));
+        firstWeekWithContent = false;
       }
       
       // Reset for next week
@@ -2183,7 +2203,137 @@ function render30DayCalendar(){
   view.appendChild(calendarGrid);
   
   if(!hasAnyOrders) {
-    view.innerHTML = '<div class="empty-state">No work orders scheduled this month</div>';
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = 'No work orders scheduled this month';
+    view.appendChild(emptyState);
+  }
+  
+  // Add scroll detection for endless scroll
+  setupEndlessScroll();
+}
+
+function setupEndlessScroll() {
+  const scheduleView = document.getElementById('scheduleView');
+  const mainContainer = scheduleView.closest('.schedule-panel');
+  
+  if(!mainContainer) return;
+  
+  // Remove old listener if exists
+  if(mainContainer._scrollHandler) {
+    mainContainer.removeEventListener('scroll', mainContainer._scrollHandler);
+  }
+  
+  // Add new listener
+  mainContainer._scrollHandler = function() {
+    if(currentView !== '30day') return;
+    
+    const scrollTop = mainContainer.scrollTop;
+    const scrollHeight = mainContainer.scrollHeight;
+    const clientHeight = mainContainer.clientHeight;
+    
+    // If scrolled to bottom (within 100px), load next month
+    if(scrollTop + clientHeight >= scrollHeight - 100) {
+      loadNextMonthCalendar();
+    }
+  };
+  
+  mainContainer.addEventListener('scroll', mainContainer._scrollHandler);
+}
+
+function loadNextMonthCalendar() {
+  const view = document.getElementById('scheduleView');
+  const existingGrid = view.querySelector('.calendar-grid');
+  if(!existingGrid) return;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Calculate next month
+  const nextMonth = new Date(currentDate);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  
+  const year = nextMonth.getFullYear();
+  const month = nextMonth.getMonth();
+  
+  // Get days in next month
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  // Get first day of month
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  
+  let weekCells = [];
+  let hasOrders = false;
+  
+  // Empty cells before first day
+  for(let i = 0; i < firstDayOfWeek; i++){
+    const emptyCell = document.createElement('div');
+    emptyCell.className = 'calendar-day-cell other-month';
+    weekCells.push(emptyCell);
+  }
+  
+  // Days of next month
+  for(let day = 1; day <= daysInMonth; day++){
+    const date = new Date(year, month, day);
+    date.setHours(0, 0, 0, 0);
+    
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const isToday = dateStr === todayStr;
+    
+    const dayOrders = getWorkOrdersForDate(date);
+    if(dayOrders.length > 0) hasOrders = true;
+    
+    let totalHours = 0;
+    dayOrders.forEach(wo => {
+      if(wo.scheduled_start && wo.scheduled_end){
+        const start = new Date(wo.scheduled_start);
+        const end = new Date(wo.scheduled_end);
+        const hours = (end - start) / (1000 * 60 * 60);
+        totalHours += hours;
+      }
+    });
+    
+    const cell = document.createElement('div');
+    cell.className = `calendar-day-cell ${isToday ? 'today' : ''}`;
+    cell.dataset.date = dateStr;
+    
+    const dayNumber = document.createElement('div');
+    dayNumber.className = 'calendar-day-number';
+    dayNumber.textContent = day;
+    
+    const orderDots = document.createElement('div');
+    orderDots.className = 'calendar-day-orders';
+    
+    dayOrders.slice(0, 8).forEach(wo => {
+      const dot = document.createElement('div');
+      dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
+      orderDots.appendChild(dot);
+    });
+    
+    const hoursDisplay = document.createElement('div');
+    hoursDisplay.className = 'calendar-day-hours';
+    hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
+    
+    cell.appendChild(dayNumber);
+    cell.appendChild(orderDots);
+    cell.appendChild(hoursDisplay);
+    
+    cell.onclick = () => {
+      currentDate = new Date(date);
+      setView('today');
+    };
+    
+    cell.addEventListener('dragover', handleDragOver);
+    cell.addEventListener('dragleave', handleDragLeave);
+    cell.addEventListener('drop', (e) => handleDrop(e, date, null));
+    
+    weekCells.push(cell);
+    
+    if(weekCells.length === 7 || day === daysInMonth) {
+      weekCells.forEach(c => existingGrid.appendChild(c));
+      weekCells = [];
+    }
   }
 }
 
