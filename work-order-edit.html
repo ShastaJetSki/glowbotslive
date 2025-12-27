@@ -14,6 +14,41 @@
     h2 { margin:0; font-size:18px; }
     .muted { font-size:12px; color:#9fb0c3; }
     
+    /* Hamburger menu */
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 6px;
+      transition: background 0.2s ease;
+    }
+    
+    .hamburger:hover {
+      background: rgba(59, 130, 246, 0.1);
+    }
+    
+    .hamburger-line {
+      width: 24px;
+      height: 2px;
+      background: #9fb0c3;
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+    
+    .hamburger.active .hamburger-line:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+    
+    .hamburger.active .hamburger-line:nth-child(2) {
+      opacity: 0;
+    }
+    
+    .hamburger.active .hamburger-line:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -7px);
+    }
+    
     .row { display:flex; gap:12px; flex-wrap:wrap; }
     
     /* Card styling with 3D elevated effect */
@@ -101,6 +136,51 @@
       padding-top: 0;
     }
     
+    /* Desktop view - remove accordion borders, make them plain headings */
+    @media (min-width: 769px) {
+      .accordion-header {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        margin-bottom: 12px;
+        box-shadow: none;
+        cursor: default;
+        pointer-events: none;
+      }
+      
+      .accordion-header:hover {
+        transform: none;
+        border: none;
+        box-shadow: none;
+      }
+      
+      .accordion-header.active {
+        border: none;
+        box-shadow: none;
+      }
+      
+      .accordion-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #e8eef6;
+      }
+      
+      .accordion-subtitle {
+        font-size: 12px;
+        color: #9fb0c3;
+      }
+      
+      .accordion-icon {
+        display: none;
+      }
+      
+      .accordion-content {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+    }
+    
     label { display:block; font-size:12px; color:#9fb0c3; margin-bottom:6px; font-weight:500; }
     input, select, textarea {
       width:100%;
@@ -176,6 +256,12 @@
       nav { font-size:13px !important; }
       button { font-size:13px; padding:6px 12px; }
       
+      /* Show hamburger on mobile */
+      .hamburger {
+        display: flex;
+      }
+      
+      /* Mobile navigation */
       .nav-container {
         flex-direction: column !important;
         align-items: stretch !important;
@@ -183,6 +269,15 @@
       
       .nav-container nav {
         order: 1;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+      
+      .nav-container nav.show {
+        max-height: 300px;
         padding-bottom: 12px;
         border-bottom: 1px solid #223044;
       }
@@ -317,13 +412,21 @@
   <div style="position:sticky; top:0; z-index:100; background:#0b0f14; border-bottom:1px solid #223044;">
     <!-- Title and Logo Bar -->
     <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-      <h1 style="margin:0; font-size:32px; font-weight:600;" id="title">Edit Work Order</h1>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <!-- Hamburger Menu -->
+        <div class="hamburger" onclick="toggleMobileNav()">
+          <div class="hamburger-line"></div>
+          <div class="hamburger-line"></div>
+          <div class="hamburger-line"></div>
+        </div>
+        <h1 style="margin:0; font-size:32px; font-weight:600;" id="title">Edit Work Order</h1>
+      </div>
       <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
     </div>
     
     <!-- Navigation Tabs and Buttons -->
     <div class="nav-container" style="padding:0 24px 12px; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;">
-      <nav style="display:flex; gap:24px; overflow-x:auto; flex:1; min-width:0;">
+      <nav id="mainNav" style="display:flex; gap:24px; overflow-x:auto; flex:1; min-width:0;">
         <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Dashboard</a>
         <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
         <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
@@ -364,11 +467,11 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
       <div>
         <h2 style="font-size:20px; font-weight:700; color:#60a5fa;">Invoice Summary</h2>
-        <div class="muted">Calculated from business settings</div>
       </div>
       <div style="text-align:right;">
         <div class="muted" style="margin-bottom:4px;"><span id="woIdDisplay">WO: …</span></div>
-        <div class="muted"><span id="tenantDisplay">Tenant: …</span></div>
+        <div class="muted" style="margin-bottom:4px;"><span id="customerDisplay">Customer: …</span></div>
+        <div class="muted"><span id="vehicleDisplay">Vehicle: …</span></div>
       </div>
     </div>
     
@@ -588,7 +691,9 @@ let WORK_ORDER_ID = null;
 let employees = [];
 let laborCodes = [];
 let customers = [];
+let customersById = {};
 let vehicles = [];
+let vehiclesById = {};
 let workOrder = null;
 let businessSettings = null;
 
@@ -602,6 +707,14 @@ function toggleAccordion(button) {
   const content = button.nextElementSibling;
   button.classList.toggle('active');
   content.classList.toggle('active');
+}
+
+// Mobile navigation toggle
+function toggleMobileNav() {
+  const nav = document.getElementById('mainNav');
+  const hamburger = document.querySelector('.hamburger');
+  nav.classList.toggle('show');
+  hamburger.classList.toggle('active');
 }
 
 // Initialize mobile-specific defaults
@@ -823,6 +936,8 @@ async function loadCustomers(){
     return; 
   }
   customers = await r.json();
+  customersById = {};
+  customers.forEach(c => customersById[c.customer_id] = c);
   sel.innerHTML = `<option value="">Select customer…</option>` + customers.map(c=>{
     const name = (`${c.first_name||""} ${c.last_name||""}`.trim() || "Customer");
     return `<option value="${c.customer_id}">${name}</option>`;
@@ -841,6 +956,8 @@ async function loadVehicles(){
     return; 
   }
   vehicles = await r.json();
+  vehiclesById = {};
+  vehicles.forEach(v => vehiclesById[v.vehicle_id] = v);
   sel.innerHTML = `<option value="">Select vehicle…</option>` + vehicles.map(v=>{
     const label = `${v.year||""} ${v.make||""} ${v.model||""}`.trim();
     const plate = v.license_plate ? ` - ${v.license_plate}` : "";
@@ -977,8 +1094,22 @@ async function loadWorkOrder(){
   
   const businessName = workOrder.tenants?.name || "Shop";
   const woNumber = workOrder.wo_number ? `WO-${workOrder.wo_number}` : `WO-${String(workOrder.work_order_id).slice(0,8)}`;
+  
+  // Get customer name
+  const customer = customersById[workOrder.customer_id];
+  const customerName = customer 
+    ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown Customer'
+    : 'No Customer';
+  
+  // Get vehicle info
+  const vehicle = vehiclesById[workOrder.vehicle_id];
+  const vehicleInfo = vehicle
+    ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown Vehicle'
+    : 'No Vehicle';
+  
   document.getElementById("woIdDisplay").textContent = woNumber;
-  document.getElementById("tenantDisplay").textContent = businessName;
+  document.getElementById("customerDisplay").textContent = customerName;
+  document.getElementById("vehicleDisplay").textContent = vehicleInfo;
 }
 
 async function saveWorkOrder(){
