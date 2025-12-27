@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Scheduling</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { 
+      font-family:system-ui,-apple-system,sans-serif;
+      background:#0b0f14;
+      color:#e8eef6;
+      min-height:100vh;
+    }
+
+    /* Desktop Header */
+    .desktop-header {
+      position:sticky;
+      top:0;
+      z-index:100;
+      background:#0b0f14;
+      border-bottom:1px solid #223044;
+    }
+
+    .header-top {
+      padding:16px 24px 8px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    h1 { font-size:32px; font-weight:600; }
+
+    .header-nav {
+      padding:0 24px 12px;
+      display:flex;
+      gap:24px;
+      overflow-x:auto;
+    }
+
+    .header-nav a {
+      padding:12px 0;
+      color:#9fb0c3;
+      text-decoration:none;
+      font-size:14px;
+      white-space:nowrap;
+      border-bottom:2px solid transparent;
+      transition:all 0.2s;
+    }
+
+    .header-nav a.active {
+      color:#3b82f6;
+      border-bottom-color:#3b82f6;
+    }
+
+    .header-actions {
+      padding:0 24px 12px;
+      border-top:1px solid #223044;
+      padding-top:12px;
+      display:flex;
+      gap:12px;
+      justify-content:flex-end;
+    }
+
+    button {
+      padding:8px 16px;
+      border-radius:8px;
+      border:1px solid #223044;
+      background:#1a2535;
+      color:#e8eef6;
+      cursor:pointer;
+      font-size:13px;
+      transition:all 0.2s;
+      white-space:nowrap;
+    }
+
+    button:hover {
+      background:#243648;
+      border-color:#2f4461;
+    }
+
+    button.primary {
+      background:#3b82f6;
+      border-color:#3b82f6;
+      color:#fff;
+    }
+
+    button.primary:hover {
+      background:#2563eb;
+    }
+
+    /* Main Container */
+    .main-container {
+      display:flex;
+      max-width:1800px;
+      margin:0 auto;
+      gap:16px;
+      padding:24px;
+      height:calc(100vh - 200px);
+    }
+
+    /* Left Panel - Schedule */
+    .schedule-panel {
+      flex:1;
+      overflow-y:auto;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:12px;
+      padding:20px;
+    }
+
+    /* Right Panel - Pickup & Completed */
+    .side-panel {
+      width:300px;
+      flex-shrink:0;
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+    }
+
+    .side-column {
+      background:#0f1621;
+      border:1px solid #3b82f6;
+      border-left:3px solid #3b82f6;
+      border-radius:12px;
+      padding:16px;
+      overflow-y:auto;
+      max-height:calc(50vh - 120px);
+    }
+
+    .side-column-header {
+      font-size:12px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      color:#e8eef6;
+      margin-bottom:12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .side-column-count {
+      background:rgba(59,130,246,0.2);
+      padding:2px 8px;
+      border-radius:12px;
+      font-size:11px;
+    }
+
+    /* Controls */
+    .controls {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:20px;
+      gap:16px;
+      flex-wrap:wrap;
+    }
+
+    .view-tabs {
+      display:flex;
+      gap:8px;
+      background:#1a2535;
+      padding:4px;
+      border-radius:10px;
+      border:1px solid #223044;
+    }
+
+    .view-tab {
+      padding:8px 16px;
+      border-radius:6px;
+      cursor:pointer;
+      font-size:13px;
+      color:#9fb0c3;
+      transition:all 0.2s;
+      user-select:none;
+    }
+
+    .view-tab:hover {
+      color:#e8eef6;
+      background:rgba(59,130,246,0.1);
+    }
+
+    .view-tab.active {
+      background:#3b82f6;
+      color:#fff;
+    }
+
+    .calendar-nav {
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .calendar-title {
+      font-size:16px;
+      font-weight:600;
+      min-width:180px;
+      text-align:center;
+    }
+
+    .tech-filter {
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .tech-filter select {
+      padding:8px 12px;
+      background:#1a2535;
+      border:1px solid #223044;
+      border-radius:8px;
+      color:#e8eef6;
+      font-size:13px;
+      cursor:pointer;
+    }
+
+    /* Day Section */
+    .day-section {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:12px;
+      margin-bottom:12px;
+      overflow:hidden;
+    }
+
+    .day-header {
+      padding:14px 16px;
+      background:#1a2535;
+      cursor:pointer;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      transition:all 0.2s;
+      user-select:none;
+    }
+
+    .day-header:hover {
+      background:#243648;
+    }
+
+    .day-header.today {
+      background:#3b82f6;
+      color:#fff;
+    }
+
+    .day-title {
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .day-date {
+      font-size:16px;
+      font-weight:600;
+    }
+
+    .day-count {
+      background:rgba(255,255,255,0.2);
+      padding:2px 10px;
+      border-radius:12px;
+      font-size:11px;
+      font-weight:600;
+    }
+
+    .day-chevron {
+      font-size:18px;
+      transition:transform 0.2s;
+      color:#9fb0c3;
+    }
+
+    .day-section.collapsed .day-chevron {
+      transform:rotate(-90deg);
+    }
+
+    .day-content {
+      max-height:2000px;
+      overflow:hidden;
+      transition:max-height 0.3s ease;
+    }
+
+    .day-section.collapsed .day-content {
+      max-height:0;
+    }
+
+    /* Tech Group */
+    .tech-group {
+      border-top:1px solid #223044;
+      padding:12px 16px;
+    }
+
+    .tech-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:8px;
+      cursor:pointer;
+      user-select:none;
+      padding:8px 12px;
+      background:#1a2535;
+      border-radius:8px;
+      transition:all 0.2s;
+    }
+
+    .tech-header:hover {
+      background:#243648;
+    }
+
+    .tech-name {
+      font-size:14px;
+      font-weight:600;
+      color:#60a5fa;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .tech-count {
+      background:rgba(96,165,250,0.2);
+      padding:2px 8px;
+      border-radius:12px;
+      font-size:10px;
+    }
+
+    .tech-chevron {
+      font-size:14px;
+      transition:transform 0.2s;
+      color:#9fb0c3;
+    }
+
+    .tech-group.collapsed .tech-chevron {
+      transform:rotate(-90deg);
+    }
+
+    .tech-cards {
+      max-height:1000px;
+      overflow:hidden;
+      transition:max-height 0.3s ease;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-top:8px;
+    }
+
+    .tech-group.collapsed .tech-cards {
+      max-height:0;
+      margin-top:0;
+    }
+
+    /* Work Order Card */
+    .wo-card {
+      background:#1a2535;
+      border:1px solid #3b82f6;
+      border-left:3px solid #3b82f6;
+      border-radius:8px;
+      padding:12px;
+      cursor:move;
+      transition:all 0.2s;
+      user-select:none;
+    }
+
+    .wo-card:hover {
+      background:#243648;
+      box-shadow:0 4px 12px rgba(0,0,0,0.3);
+      transform:translateY(-2px);
+    }
+
+    .wo-card.dragging {
+      opacity:0.5;
+    }
+
+    .wo-card.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
+    .wo-card.in_progress { border-left-color:#3b82f6; border-color:#3b82f6; }
+    .wo-card.awaiting_parts { border-left-color:#f59e0b; border-color:#f59e0b; }
+    .wo-card.ready_for_pickup { border-left-color:#34d399; border-color:#34d399; }
+    .wo-card.completed { border-left-color:#60a5fa; border-color:#60a5fa; }
+    .wo-card.past-due { border-left-color:#ef4444; border-color:#ef4444; }
+
+    .wo-card-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      margin-bottom:8px;
+    }
+
+    .wo-customer {
+      font-size:14px;
+      font-weight:600;
+      color:#e8eef6;
+      flex:1;
+    }
+
+    .wo-time {
+      font-size:12px;
+      color:#60a5fa;
+      font-weight:600;
+      flex-shrink:0;
+      margin-left:8px;
+    }
+
+    .wo-vehicle {
+      font-size:12px;
+      color:#9fb0c3;
+      margin-bottom:4px;
+    }
+
+    .wo-status {
+      font-size:10px;
+      font-weight:600;
+      color:#60a5fa;
+      text-transform:uppercase;
+      letter-spacing:0.3px;
+    }
+
+    .drop-zone {
+      border:2px dashed #3b82f6 !important;
+      background:rgba(59,130,246,0.08) !important;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align:center;
+      padding:40px 20px;
+      color:#9fb0c3;
+      font-size:14px;
+    }
+
+    /* Mobile Styles */
+    @media (max-width: 768px) {
+      .desktop-header { display:none !important; }
+      
+      .main-container {
+        flex-direction:column;
+        padding:12px;
+        height:auto;
+      }
+      
+      .schedule-panel {
+        order:1;
+      }
+      
+      .side-panel {
+        width:100%;
+        order:2;
+        flex-direction:row;
+        gap:12px;
+      }
+      
+      .side-column {
+        flex:1;
+        max-height:300px;
+      }
+      
+      .controls {
+        flex-direction:column;
+        align-items:stretch;
+      }
+      
+      .calendar-nav {
+        justify-content:space-between;
+      }
+      
+      .calendar-title {
+        min-width:120px;
+        font-size:14px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Desktop Header -->
+  <div class="desktop-header">
+    <div class="header-top">
+      <h1 id="pageTitle">Scheduling</h1>
+      <div style="font-size:14px; color:#9fb0c3;">WorkLogicPro</div>
+    </div>
+    
+    <div class="header-nav">
+      <a href="dashboard-business.html">Dashboard</a>
+      <a href="dashboard-customer-search.html">Customers</a>
+      <a href="dashboard-vehicle-search.html">Vehicles</a>
+      <a href="dashboard-scheduling.html" class="active">Scheduling</a>
+    </div>
+    
+    <div class="header-actions">
+      <button onclick="goToSettings()">Settings</button>
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Panel - Schedule -->
+    <div class="schedule-panel">
+      <div class="controls">
+        <div class="view-tabs">
+          <div class="view-tab active" id="tab7Day" onclick="setView('7day')">7 Days</div>
+          <div class="view-tab" id="tab30Day" onclick="setView('30day')">30 Days</div>
+        </div>
+        
+        <div class="calendar-nav">
+          <button onclick="previousPeriod()">←</button>
+          <div class="calendar-title" id="calendarTitle">Next 7 Days</div>
+          <button onclick="todayView()">Today</button>
+          <button onclick="nextPeriod()">→</button>
+        </div>
+        
+        <div class="tech-filter">
+          <label style="color:#9fb0c3; font-size:12px;">Tech:</label>
+          <select id="techFilter" onchange="applyTechFilter()">
+            <option value="">All Techs</option>
+          </select>
+        </div>
+        
+        <button class="primary" onclick="createWorkOrder()">+ New Work Order</button>
+      </div>
+
+      <div id="scheduleView"></div>
+    </div>
+
+    <!-- Right Panel - Pickup & Completed -->
+    <div class="side-panel">
+      <div class="side-column">
+        <div class="side-column-header">
+          <span>Ready for Pickup</span>
+          <span class="side-column-count" id="pickupCount">0</span>
+        </div>
+        <div id="pickupColumn"></div>
+      </div>
+
+      <div class="side-column">
+        <div class="side-column-header">
+          <span>Completed</span>
+          <span class="side-column-count" id="completedCount">0</span>
+        </div>
+        <div id="completedColumn"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const REST_BASE = `${API_BASE}/rest/v1`;
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+
+let currentDate = new Date();
+let workOrders = [];
+let customers = [];
+let vehicles = [];
+let employees = [];
+let currentView = '7day';
+let selectedTechId = '';
+let draggedWO = null;
+
+function logout(){
+  localStorage.removeItem("sb_access_token");
+  location.replace("login.html");
+}
+
+function goToSettings(){
+  location.href = "dashboard-settings.html";
+}
+
+function createWorkOrder(){
+  location.href = "work-order-new.html";
+}
+
+async function validateAuth(){
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return null;
+  const r = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  return r.ok ? token : null;
+}
+
+async function fetchTable(table, token){
+  const r = await fetch(`${REST_BASE}/${table}?select=*`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function setView(view){
+  currentView = view;
+  document.getElementById('tab7Day').classList.toggle('active', view === '7day');
+  document.getElementById('tab30Day').classList.toggle('active', view === '30day');
+  updateTitle();
+  renderSchedule();
+}
+
+function updateTitle(){
+  const title = document.getElementById('calendarTitle');
+  if(currentView === '7day'){
+    title.textContent = 'Next 7 Days';
+  } else {
+    title.textContent = 'Next 30 Days';
+  }
+}
+
+function previousPeriod(){
+  const days = currentView === '7day' ? 7 : 30;
+  currentDate.setDate(currentDate.getDate() - days);
+  renderSchedule();
+}
+
+function nextPeriod(){
+  const days = currentView === '7day' ? 7 : 30;
+  currentDate.setDate(currentDate.getDate() + days);
+  renderSchedule();
+}
+
+function todayView(){
+  currentDate = new Date();
+  renderSchedule();
+}
+
+function applyTechFilter(){
+  selectedTechId = document.getElementById('techFilter').value;
+  renderSchedule();
+}
+
+function getWorkOrdersForDate(date){
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+  
+  return workOrders.filter(wo => {
+    if(wo.status === 'ready_for_pickup' || wo.status === 'completed' || wo.status === 'closed') {
+      return false;
+    }
+    
+    if(wo.scheduled_start) {
+      const woDate = new Date(wo.scheduled_start);
+      const woDateStr = `${woDate.getFullYear()}-${String(woDate.getMonth() + 1).padStart(2, '0')}-${String(woDate.getDate()).padStart(2, '0')}`;
+      return woDateStr === dateStr;
+    }
+    
+    return false;
+  });
+}
+
+function createWOCard(wo){
+  const customer = customers.find(c => c.customer_id === wo.customer_id);
+  const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
+  
+  const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
+  const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
+  
+  let timeDisplay = '';
+  if(wo.scheduled_start) {
+    const time = new Date(wo.scheduled_start);
+    const hours = time.getHours();
+    const minutes = time.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    const displayMinutes = minutes.toString().padStart(2, '0');
+    timeDisplay = `${displayHours}:${displayMinutes}${ampm}`;
+  }
+  
+  const statusDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'DRAFT';
+  
+  const now = new Date();
+  const isPastDue = wo.scheduled_end && new Date(wo.scheduled_end) < now && 
+                    wo.status !== 'completed' && wo.status !== 'closed';
+  
+  const card = document.createElement('div');
+  card.className = `wo-card ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
+  card.draggable = true;
+  card.dataset.woId = wo.work_order_id;
+  
+  card.innerHTML = `
+    <div class="wo-card-header">
+      <div class="wo-customer">${customerName}</div>
+      ${timeDisplay ? `<div class="wo-time">${timeDisplay}</div>` : ''}
+    </div>
+    ${vehicleInfo ? `<div class="wo-vehicle">${vehicleInfo}</div>` : ''}
+    <div class="wo-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
+  `;
+  
+  card.addEventListener('dragstart', handleDragStart);
+  card.addEventListener('dragend', handleDragEnd);
+  card.addEventListener('click', () => location.href = `work-order-edit.html?id=${wo.work_order_id}`);
+  
+  return card;
+}
+
+function handleDragStart(e){
+  draggedWO = e.target.dataset.woId;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragEnd(e){
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
+}
+
+function handleDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drop-zone');
+}
+
+function handleDragLeave(e){
+  e.currentTarget.classList.remove('drop-zone');
+}
+
+async function handleDrop(e, newDate, newStatus = null){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-zone');
+  
+  if(!draggedWO) return;
+  
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === draggedWO);
+    if(!wo) return;
+    
+    const updateData = {};
+    
+    if(newStatus){
+      updateData.status = newStatus;
+    }
+    
+    if(newDate){
+      let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
+      if(!wo.scheduled_start) {
+        currentTime.setHours(9, 0, 0, 0);
+      }
+      
+      const year = newDate.getFullYear();
+      const month = newDate.getMonth();
+      const day = newDate.getDate();
+      const hour = currentTime.getHours();
+      const minute = currentTime.getMinutes();
+      
+      const newDateTime = new Date(year, month, day, hour, minute, 0, 0);
+      
+      const newEndTime = new Date(newDateTime);
+      newEndTime.setHours(newEndTime.getHours() + 2);
+      
+      updateData.scheduled_start = newDateTime.toISOString();
+      updateData.scheduled_end = newEndTime.toISOString();
+      
+      if(wo.status === 'ready_for_pickup') {
+        updateData.status = 'scheduled';
+      }
+    }
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updateData)
+    });
+    
+    await loadWorkOrders(token);
+    renderAll();
+    
+  } catch(err){
+    console.error('Drop error:', err);
+    alert('Error moving work order');
+  }
+  
+  draggedWO = null;
+}
+
+function renderSchedule(){
+  const view = document.getElementById('scheduleView');
+  view.innerHTML = '';
+  
+  const days = currentView === '7day' ? 7 : 30;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let hasAnyOrders = false;
+  
+  for(let i = 0; i < days; i++){
+    const date = new Date();
+    date.setDate(date.getDate() + i);
+    date.setHours(0, 0, 0, 0);
+    
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    const dayOrders = getWorkOrdersForDate(date);
+    
+    if(dayOrders.length > 0) hasAnyOrders = true;
+    
+    // Group by tech
+    const techGroups = {};
+    dayOrders.forEach(wo => {
+      const techId = wo.assigned_employee_id || 'unassigned';
+      if(!techGroups[techId]) techGroups[techId] = [];
+      techGroups[techId].push(wo);
+    });
+    
+    // Filter by selected tech
+    if(selectedTechId){
+      const filteredGroups = {};
+      if(techGroups[selectedTechId]){
+        filteredGroups[selectedTechId] = techGroups[selectedTechId];
+      }
+      Object.assign(techGroups, filteredGroups);
+    }
+    
+    const daySection = document.createElement('div');
+    daySection.className = 'day-section';
+    
+    const dayHeader = document.createElement('div');
+    dayHeader.className = `day-header ${isToday ? 'today' : ''}`;
+    dayHeader.onclick = () => toggleDay(daySection);
+    
+    const dayTitle = document.createElement('div');
+    dayTitle.className = 'day-title';
+    
+    const dayDate = document.createElement('div');
+    dayDate.className = 'day-date';
+    dayDate.textContent = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    
+    const dayCount = document.createElement('div');
+    dayCount.className = 'day-count';
+    dayCount.textContent = `${dayOrders.length} orders`;
+    
+    dayTitle.appendChild(dayDate);
+    dayTitle.appendChild(dayCount);
+    
+    const dayChevron = document.createElement('div');
+    dayChevron.className = 'day-chevron';
+    dayChevron.textContent = '▼';
+    
+    dayHeader.appendChild(dayTitle);
+    dayHeader.appendChild(dayChevron);
+    
+    const dayContent = document.createElement('div');
+    dayContent.className = 'day-content';
+    
+    // Render tech groups
+    const techIds = Object.keys(techGroups).sort((a, b) => {
+      if(a === 'unassigned') return 1;
+      if(b === 'unassigned') return -1;
+      const techA = employees.find(e => e.employee_id === a);
+      const techB = employees.find(e => e.employee_id === b);
+      const nameA = techA ? `${techA.first_name} ${techA.last_name}` : '';
+      const nameB = techB ? `${techB.first_name} ${techB.last_name}` : '';
+      return nameA.localeCompare(nameB);
+    });
+    
+    techIds.forEach(techId => {
+      const techGroup = document.createElement('div');
+      techGroup.className = 'tech-group';
+      
+      const tech = employees.find(e => e.employee_id === techId);
+      const techName = tech ? `${tech.first_name} ${tech.last_name}` : 'Unassigned';
+      const techOrders = techGroups[techId];
+      
+      const techHeader = document.createElement('div');
+      techHeader.className = 'tech-header';
+      techHeader.onclick = () => toggleTech(techGroup);
+      
+      const techNameEl = document.createElement('div');
+      techNameEl.className = 'tech-name';
+      techNameEl.innerHTML = `
+        <span>${techName}</span>
+        <span class="tech-count">${techOrders.length}</span>
+      `;
+      
+      const techChevron = document.createElement('div');
+      techChevron.className = 'tech-chevron';
+      techChevron.textContent = '▼';
+      
+      techHeader.appendChild(techNameEl);
+      techHeader.appendChild(techChevron);
+      
+      const techCards = document.createElement('div');
+      techCards.className = 'tech-cards';
+      
+      // Sort orders by time
+      techOrders.sort((a, b) => {
+        const timeA = a.scheduled_start ? new Date(a.scheduled_start).getTime() : 0;
+        const timeB = b.scheduled_start ? new Date(b.scheduled_start).getTime() : 0;
+        return timeA - timeB;
+      });
+      
+      techOrders.forEach(wo => {
+        techCards.appendChild(createWOCard(wo));
+      });
+      
+      // Make tech cards droppable
+      techCards.addEventListener('dragover', handleDragOver);
+      techCards.addEventListener('dragleave', handleDragLeave);
+      techCards.addEventListener('drop', (e) => handleDrop(e, date, null));
+      
+      techGroup.appendChild(techHeader);
+      techGroup.appendChild(techCards);
+      dayContent.appendChild(techGroup);
+    });
+    
+    if(Object.keys(techGroups).length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No orders scheduled';
+      dayContent.appendChild(empty);
+    }
+    
+    daySection.appendChild(dayHeader);
+    daySection.appendChild(dayContent);
+    view.appendChild(daySection);
+  }
+  
+  if(!hasAnyOrders){
+    view.innerHTML = '<div class="empty-state">No work orders scheduled in this period</div>';
+  }
+}
+
+function toggleDay(daySection){
+  daySection.classList.toggle('collapsed');
+}
+
+function toggleTech(techGroup){
+  techGroup.classList.toggle('collapsed');
+}
+
+function renderSideColumns(){
+  const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
+  const completedOrders = workOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed');
+  
+  document.getElementById('pickupCount').textContent = pickupOrders.length;
+  document.getElementById('completedCount').textContent = completedOrders.length;
+  
+  const pickupColumn = document.getElementById('pickupColumn');
+  pickupColumn.innerHTML = '';
+  
+  pickupOrders.forEach(wo => {
+    const card = createWOCard(wo);
+    pickupColumn.appendChild(card);
+  });
+  
+  if(pickupOrders.length === 0){
+    pickupColumn.innerHTML = '<div class="empty-state">No orders ready</div>';
+  }
+  
+  pickupColumn.addEventListener('dragover', handleDragOver);
+  pickupColumn.addEventListener('dragleave', handleDragLeave);
+  pickupColumn.addEventListener('drop', (e) => handleDrop(e, null, 'ready_for_pickup'));
+  
+  const completedColumn = document.getElementById('completedColumn');
+  completedColumn.innerHTML = '';
+  
+  completedOrders.forEach(wo => {
+    const card = createWOCard(wo);
+    completedColumn.appendChild(card);
+  });
+  
+  if(completedOrders.length === 0){
+    completedColumn.innerHTML = '<div class="empty-state">No completed orders</div>';
+  }
+  
+  completedColumn.addEventListener('dragover', handleDragOver);
+  completedColumn.addEventListener('dragleave', handleDragLeave);
+  completedColumn.addEventListener('drop', (e) => handleDrop(e, null, 'completed'));
+}
+
+function renderTechFilter(){
+  const select = document.getElementById('techFilter');
+  select.innerHTML = '<option value="">All Techs</option>';
+  
+  employees.sort((a, b) => {
+    const nameA = `${a.first_name} ${a.last_name}`;
+    const nameB = `${b.first_name} ${b.last_name}`;
+    return nameA.localeCompare(nameB);
+  });
+  
+  employees.forEach(emp => {
+    const option = document.createElement('option');
+    option.value = emp.employee_id;
+    option.textContent = `${emp.first_name} ${emp.last_name}`;
+    select.appendChild(option);
+  });
+}
+
+function renderAll(){
+  renderSchedule();
+  renderSideColumns();
+}
+
+async function loadWorkOrders(token){
+  workOrders = await fetchTable("work_orders", token);
+}
+
+async function load(){
+  const token = await validateAuth();
+  if(!token) return location.replace("login.html");
+  
+  try {
+    await loadWorkOrders(token);
+    customers = await fetchTable("customers", token);
+    vehicles = await fetchTable("vehicles", token);
+    employees = await fetchTable("employees", token);
+    
+    renderTechFilter();
+    renderAll();
+    
+  } catch(err){
+    console.error('Load error:', err);
+    alert('Error loading scheduling data');
+  }
+}
+
+load();
+</script>
+</body>
+</html>
