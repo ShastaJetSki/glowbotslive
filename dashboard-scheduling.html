@@ -875,6 +875,14 @@
       min-width:0;
     }
 
+    .wo-card-full-top {
+      /* Top section - always visible */
+    }
+
+    .wo-card-full-bottom {
+      /* Bottom section - hidden when collapsed on mobile */
+    }
+
     .wo-card-full-customer {
       font-weight:600;
       color:#e8eef6;
@@ -1169,6 +1177,19 @@
 
       .calendar-day-hours {
         font-size:11px;
+      }
+
+      /* Collapsible cards on mobile (7-day view only) */
+      .wo-card-full.collapsible-card.collapsed .wo-card-full-bottom {
+        display:none;
+      }
+
+      .wo-card-full.collapsible-card.collapsed .collapsible-action {
+        display:none !important;
+      }
+
+      .wo-card-full.collapsible-card {
+        cursor:pointer;
       }
     }
   </style>
@@ -1567,7 +1588,7 @@ function createWOCard(wo){
   return card;
 }
 
-function createFullCard(wo){
+function createFullCard(wo, options = {}){
   const customer = customers.find(c => c.customer_id === wo.customer_id);
   const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
   const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
@@ -1596,15 +1617,20 @@ function createFullCard(wo){
   }
   
   const card = document.createElement('div');
-  card.className = `wo-card-full ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
+  const collapsibleClass = options.collapsible ? 'collapsible-card collapsed' : '';
+  card.className = `wo-card-full ${collapsibleClass} ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
   
   card.innerHTML = `
     <div class="wo-card-full-content">
-      <div class="wo-card-full-customer">${customerName}</div>
-      ${vehicleInfo ? `<div class="wo-card-full-vehicle">${vehicleInfo}</div>` : ''}
-      <div class="wo-card-full-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
-      <div class="wo-card-full-tech">Tech: ${techName}</div>
-      ${timeDisplay ? `<div class="wo-card-full-time">Job Time: ${timeDisplay}</div>` : ''}
+      <div class="wo-card-full-top">
+        <div class="wo-card-full-customer">${customerName}</div>
+        ${vehicleInfo ? `<div class="wo-card-full-vehicle">${vehicleInfo}</div>` : ''}
+      </div>
+      <div class="wo-card-full-bottom">
+        <div class="wo-card-full-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
+        <div class="wo-card-full-tech">Tech: ${techName}</div>
+        ${timeDisplay ? `<div class="wo-card-full-time">Job Time: ${timeDisplay}</div>` : ''}
+      </div>
     </div>
     ${!isCompleted ? `
       <div class="wo-card-full-actions">
@@ -1616,7 +1642,7 @@ function createFullCard(wo){
             <line x1="3" y1="10" x2="21" y2="10"></line>
           </svg>
         </button>
-        <button class="wo-card-action-btn mobile-only" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Move to Tomorrow">
+        <button class="wo-card-action-btn mobile-only ${options.collapsible ? 'collapsible-action' : ''}" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Move to Tomorrow">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <polyline points="7 13 12 18 17 13"></polyline>
             <polyline points="7 6 12 11 17 6"></polyline>
@@ -1642,7 +1668,16 @@ function createFullCard(wo){
     });
   }
   
-  card.addEventListener('click', () => location.href = `work-order-edit.html?id=${wo.work_order_id}`);
+  // Add toggle functionality for collapsible cards
+  if(options.collapsible) {
+    card.addEventListener('click', (e) => {
+      // Don't toggle if clicking buttons
+      if(e.target.closest('button')) return;
+      card.classList.toggle('collapsed');
+    });
+  } else {
+    card.addEventListener('click', () => location.href = `work-order-edit.html?id=${wo.work_order_id}`);
+  }
   
   return card;
 }
@@ -2033,8 +2068,8 @@ function render7DayView(){
       cardsContainer.className = 'day-cards-container';
       
       dayOrders.forEach(wo => {
-        // Use createFullCard instead of createWOCard for full 5-line display
-        const card = createFullCard(wo);
+        // Use createFullCard with collapsible option for 7-day view
+        const card = createFullCard(wo, { collapsible: true });
         cardsContainer.appendChild(card);
       });
       
