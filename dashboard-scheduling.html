@@ -936,6 +936,38 @@
       transform:scale(0.95);
     }
 
+    .wo-card-action-btn.mobile-only {
+      display:none;
+    }
+
+    /* Today View Date Header */
+    .today-date-header {
+      background:#1a2535;
+      border:2px solid #3b82f6;
+      border-left:4px solid #3b82f6;
+      border-radius:12px;
+      padding:24px 28px;
+      margin-bottom:24px;
+      text-align:center;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .today-date-main {
+      font-size:42px;
+      font-weight:800;
+      color:#e8eef6;
+      margin-bottom:8px;
+      line-height:1.1;
+      letter-spacing:-0.5px;
+    }
+
+    .today-date-sub {
+      font-size:18px;
+      color:#9fb0c3;
+      font-weight:600;
+      letter-spacing:0.3px;
+    }
+
     /* Calendar Grid (30 Day View) */
     .calendar-grid {
       display:grid;
@@ -1053,6 +1085,11 @@
       /* Hide side panel on mobile - use overlay instead */
       .side-panel { display:none !important; }
       
+      /* Show down arrow button on mobile */
+      .wo-card-action-btn.mobile-only {
+        display:flex !important;
+      }
+      
       .main-container {
         flex-direction:column;
         padding:12px;
@@ -1067,6 +1104,21 @@
 
       .wo-card {
         min-width:100%;
+      }
+
+      /* Larger date header on mobile */
+      .today-date-header {
+        padding:28px 20px;
+        margin-bottom:20px;
+      }
+
+      .today-date-main {
+        font-size:36px;
+        font-weight:800;
+      }
+
+      .today-date-sub {
+        font-size:16px;
       }
     }
   </style>
@@ -1500,7 +1552,7 @@ function createFullCard(wo){
     </div>
     ${!isCompleted ? `
       <div class="wo-card-full-actions">
-        <button class="wo-card-action-btn" data-wo-id="${wo.work_order_id}" title="Reschedule">
+        <button class="wo-card-action-btn" data-wo-id="${wo.work_order_id}" data-action="date-picker" title="Pick Date">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -1508,15 +1560,29 @@ function createFullCard(wo){
             <line x1="3" y1="10" x2="21" y2="10"></line>
           </svg>
         </button>
+        <button class="wo-card-action-btn mobile-only" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Move to Tomorrow">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="7 13 12 18 17 13"></polyline>
+            <polyline points="7 6 12 11 17 6"></polyline>
+          </svg>
+        </button>
       </div>
     ` : ''}
   `;
   
-  const calendarBtn = card.querySelector('.wo-card-action-btn');
-  if(calendarBtn) {
-    calendarBtn.addEventListener('click', (e) => {
+  const datePickerBtn = card.querySelector('[data-action="date-picker"]');
+  if(datePickerBtn) {
+    datePickerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       showDatePicker(wo.work_order_id, wo.scheduled_start);
+    });
+  }
+  
+  const tomorrowBtn = card.querySelector('[data-action="tomorrow"]');
+  if(tomorrowBtn) {
+    tomorrowBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rescheduleToTomorrow(wo.work_order_id, wo.scheduled_start, wo.scheduled_end);
     });
   }
   
@@ -1617,6 +1683,65 @@ async function saveReschedule() {
     renderAll();
   } catch(err) {
     console.error('Reschedule error:', err);
+    alert('Error rescheduling work order');
+  }
+}
+
+async function rescheduleToTomorrow(woId, currentStart, currentEnd) {
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === woId);
+    if(!wo) return;
+    
+    // Get current date being viewed
+    const tomorrow = new Date(currentDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    // Keep existing time or use 9 AM
+    let hour = 9;
+    let minute = 0;
+    if(currentStart) {
+      const currentTime = new Date(currentStart);
+      hour = currentTime.getHours();
+      minute = currentTime.getMinutes();
+    }
+    
+    // Set new date with same time
+    tomorrow.setHours(hour, minute, 0, 0);
+    
+    // Calculate duration
+    let durationHours = 2;
+    if(currentStart && currentEnd) {
+      const start = new Date(currentStart);
+      const end = new Date(currentEnd);
+      durationHours = (end - start) / (1000 * 60 * 60);
+    }
+    
+    // Calculate new end time
+    const newEndTime = new Date(tomorrow);
+    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
+    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${woId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        scheduled_start: tomorrow.toISOString(),
+        scheduled_end: newEndTime.toISOString()
+      })
+    });
+    
+    await loadWorkOrders(token);
+    renderAll();
+  } catch(err) {
+    console.error('Reschedule to tomorrow error:', err);
     alert('Error rescheduling work order');
   }
 }
@@ -1724,10 +1849,45 @@ function renderTodayView(){
   const view = document.getElementById('scheduleView');
   view.innerHTML = '';
   
+  // Create date header
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const current = new Date(currentDate);
+  current.setHours(0, 0, 0, 0);
+  const isToday = current.getTime() === today.getTime();
+  
+  const dateHeader = document.createElement('div');
+  dateHeader.className = 'today-date-header';
+  
+  const dateMain = document.createElement('div');
+  dateMain.className = 'today-date-main';
+  if(isToday) {
+    dateMain.textContent = 'TODAY';
+  } else {
+    dateMain.textContent = currentDate.toLocaleDateString('en-US', { 
+      weekday: 'long'
+    }).toUpperCase();
+  }
+  
+  const dateSub = document.createElement('div');
+  dateSub.className = 'today-date-sub';
+  dateSub.textContent = currentDate.toLocaleDateString('en-US', { 
+    month: 'long', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+  
+  dateHeader.appendChild(dateMain);
+  dateHeader.appendChild(dateSub);
+  view.appendChild(dateHeader);
+  
   const dayOrders = getWorkOrdersForDate(currentDate);
   
   if(dayOrders.length === 0){
-    view.innerHTML = '<div class="empty-state">No work orders scheduled for this day</div>';
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = 'No work orders scheduled for this day';
+    view.appendChild(emptyState);
     return;
   }
   
