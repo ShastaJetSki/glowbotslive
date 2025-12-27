@@ -1074,7 +1074,7 @@ function searchCustomers(){
     const name = `${c.first_name||''} ${c.last_name||''}`.trim() || 'Unknown';
     const subtitle = [c.phone, c.email].filter(Boolean).join(' • ');
     return `
-      <div class="autocomplete-item" onclick="selectCustomer('${c.id}')">
+      <div class="autocomplete-item" onclick="selectCustomer('${c.customer_id}')">
         <div class="autocomplete-item-title">${name}</div>
         ${subtitle ? `<div class="autocomplete-item-subtitle">${subtitle}</div>` : ''}
       </div>
@@ -1133,7 +1133,7 @@ function searchVehicles(){
   // Filter vehicles by selected customer
   let customerVehicles = vehicles;
   if(selectedCustomerId){
-    customerVehicles = vehicles.filter(v => v.contact_id === selectedCustomerId);
+    customerVehicles = vehicles.filter(v => v.customer_id === selectedCustomerId);
   }
   
   if(query.length < 1){
@@ -1148,7 +1148,7 @@ function searchVehicles(){
       const desc = `${v.year||''} ${v.make||''} ${v.model||''}`.trim() || 'Unknown Vehicle';
       const subtitle = [v.license_plate, v.vin_or_cf_number].filter(Boolean).join(' • ');
       return `
-        <div class="autocomplete-item" onclick="selectVehicle('${v.id}')">
+        <div class="autocomplete-item" onclick="selectVehicle('${v.vehicle_id}')">
           <div class="autocomplete-item-title">${desc}</div>
           ${subtitle ? `<div class="autocomplete-item-subtitle">${subtitle}</div>` : ''}
         </div>
@@ -1175,7 +1175,7 @@ function searchVehicles(){
     const desc = `${v.year||''} ${v.make||''} ${v.model||''}`.trim() || 'Unknown Vehicle';
     const subtitle = [v.license_plate, v.vin_or_cf_number].filter(Boolean).join(' • ');
     return `
-      <div class="autocomplete-item" onclick="selectVehicle('${v.id}')">
+      <div class="autocomplete-item" onclick="selectVehicle('${v.vehicle_id}')">
         <div class="autocomplete-item-title">${desc}</div>
         ${subtitle ? `<div class="autocomplete-item-subtitle">${subtitle}</div>` : ''}
       </div>
@@ -1293,15 +1293,15 @@ async function createWorkOrder(){
     if(customerType === 'new'){
       msg.textContent = 'Creating new customer...';
       
-      // Create customer (contact)
+      // Create customer
       const customerData = {
-        account_id: TENANT_ID,
+        tenant_id: TENANT_ID,
         first_name: document.getElementById('new_customer_first_name').value.trim(),
         last_name: document.getElementById('new_customer_last_name').value.trim(),
         phone: document.getElementById('new_customer_phone').value.trim(),
         email: document.getElementById('new_customer_email').value.trim() || null,
         company_name: document.getElementById('new_customer_company').value.trim() || null,
-        contact_type: document.getElementById('new_customer_type').value || 'individual',
+        customer_type: document.getElementById('new_customer_type').value || 'individual',
         address: document.getElementById('new_customer_address').value.trim() || null,
         city: document.getElementById('new_customer_city').value.trim() || null,
         state: document.getElementById('new_customer_state').value.trim() || null,
@@ -1309,7 +1309,7 @@ async function createWorkOrder(){
         notes: document.getElementById('new_customer_notes').value.trim() || null
       };
       
-      const custRes = await fetch(`${REST_BASE}/contacts`, {
+      const custRes = await fetch(`${REST_BASE}/customers`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${AUTH}`,
@@ -1326,7 +1326,7 @@ async function createWorkOrder(){
       }
       
       const createdCustomer = await custRes.json();
-      customerId = createdCustomer[0]?.id;
+      customerId = createdCustomer[0]?.customer_id;
       
       if(!customerId){
         throw new Error('Customer created but no ID returned');
@@ -1336,8 +1336,8 @@ async function createWorkOrder(){
       
       // Create vehicle
       const vehicleData = {
-        account_id: TENANT_ID,
-        contact_id: customerId,
+        tenant_id: TENANT_ID,
+        customer_id: customerId,
         year: parseInt(document.getElementById('new_vehicle_year').value),
         make: document.getElementById('new_vehicle_make').value.trim(),
         model: document.getElementById('new_vehicle_model').value.trim(),
@@ -1368,7 +1368,7 @@ async function createWorkOrder(){
       }
       
       const createdVehicle = await vehRes.json();
-      vehicleId = createdVehicle[0]?.id;
+      vehicleId = createdVehicle[0]?.vehicle_id;
       
       if(!vehicleId){
         throw new Error('Vehicle created but no ID returned');
@@ -1379,8 +1379,8 @@ async function createWorkOrder(){
       msg.textContent = 'Adding new vehicle to customer...';
       
       const vehicleData = {
-        account_id: TENANT_ID,
-        contact_id: customerId,
+        tenant_id: TENANT_ID,
+        customer_id: customerId,
         year: parseInt(document.getElementById('existing_customer_new_vehicle_year').value),
         make: document.getElementById('existing_customer_new_vehicle_make').value.trim(),
         model: document.getElementById('existing_customer_new_vehicle_model').value.trim(),
@@ -1406,7 +1406,7 @@ async function createWorkOrder(){
       }
       
       const createdVehicle = await vehRes.json();
-      vehicleId = createdVehicle[0]?.id;
+      vehicleId = createdVehicle[0]?.vehicle_id;
       
       if(!vehicleId){
         throw new Error('Vehicle created but no ID returned');
@@ -1415,49 +1415,25 @@ async function createWorkOrder(){
     
     msg.textContent = 'Creating work order...';
     
-    // Parse scheduled_start datetime-local into separate date and time
-    const scheduledStartValue = scheduled_start;
-    let scheduledDate = null;
-    let scheduledStartTime = null;
-    let scheduledEndTime = null;
-    
-    if(scheduledStartValue){
-      const startDate = new Date(scheduledStartValue);
-      scheduledDate = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      scheduledStartTime = startDate.toTimeString().split(' ')[0]; // HH:MM:SS
-    }
-    
-    // Parse scheduled_end if provided
-    const scheduledEndValue = document.getElementById('scheduled_end').value;
-    if(scheduledEndValue){
-      const endDate = new Date(scheduledEndValue);
-      scheduledEndTime = endDate.toTimeString().split(' ')[0]; // HH:MM:SS
-    }
-    
-    // Parse other datetime fields
-    const arrivedAt = document.getElementById('vehicle_arrived_at').value || null;
-    const customerDeadline = document.getElementById('customer_deadline').value || null;
-    
-    // Create repair order with customer and vehicle IDs
+    // Create work order with customer and vehicle IDs
     const data = {
-      account_id: TENANT_ID,
-      contact_id: customerId,
+      tenant_id: TENANT_ID,
+      customer_id: customerId,
       vehicle_id: vehicleId,
       status: document.getElementById('status').value || 'scheduled',
       priority: document.getElementById('priority').value || 'medium',
-      assigned_to: document.getElementById('assigned_employee_id').value || null,
-      scheduled_date: scheduledDate,
-      scheduled_start_time: scheduledStartTime,
-      scheduled_end_time: scheduledEndTime,
-      arrived_at: arrivedAt,
-      customer_deadline: customerDeadline,
-      mileage_in: parseInt(document.getElementById('odometer').value) || null,
-      reference_number: document.getElementById('reference').value || null,
-      problem_description: document.getElementById('customer_notes').value || null,
+      assigned_employee_id: document.getElementById('assigned_employee_id').value || null,
+      scheduled_start: scheduled_start,
+      scheduled_end: document.getElementById('scheduled_end').value || null,
+      vehicle_arrived_at: document.getElementById('vehicle_arrived_at').value || null,
+      customer_deadline: document.getElementById('customer_deadline').value || null,
+      odometer: parseInt(document.getElementById('odometer').value) || null,
+      reference: document.getElementById('reference').value || null,
+      customer_notes: document.getElementById('customer_notes').value || null,
       internal_notes: document.getElementById('internal_notes').value || null
     };
     
-    const res = await fetch(`${REST_BASE}/repair_orders`, {
+    const res = await fetch(`${REST_BASE}/work_orders`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${AUTH}`,
@@ -1474,7 +1450,7 @@ async function createWorkOrder(){
     }
     
     const created = await res.json();
-    const woId = created[0]?.id;
+    const woId = created[0]?.work_order_id || created[0]?.id;
     
     msg.textContent = '✓ Work order created successfully! Redirecting...';
     msg.className = 'success';
@@ -1507,18 +1483,18 @@ async function load(){
     hint.textContent = 'Loading customers, vehicles, and employees...';
     
     const [cust, veh, emp] = await Promise.all([
-      fetchTable('contacts', token),
+      fetchTable('customers', token),
       fetchTable('vehicles', token),
       fetchJson(`${FUNCTIONS_BASE}/employees`, token)
     ]);
     
     customers = Array.isArray(cust) ? cust : [];
     customersById = {};
-    customers.forEach(c => { if(c?.id) customersById[c.id] = c; });
+    customers.forEach(c => { if(c?.customer_id) customersById[c.customer_id] = c; });
     
     vehicles = Array.isArray(veh) ? veh : [];
     vehiclesById = {};
-    vehicles.forEach(v => { if(v?.id) vehiclesById[v.id] = v; });
+    vehicles.forEach(v => { if(v?.vehicle_id) vehiclesById[v.vehicle_id] = v; });
     
     employees = Array.isArray(emp) ? emp : [];
     
