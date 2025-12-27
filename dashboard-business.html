@@ -116,6 +116,26 @@
         0 2px 6px rgba(59, 130, 246, 0.3),
         0 0 0 1px rgba(59,130,246,.35) inset; 
     }
+    
+    /* Value button - sort modifier styling */
+    .pill-sort {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      border-color: #3b82f6;
+      color: #e8eef6;
+    }
+    .pill-sort:hover {
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+      border-color: #60a5fa;
+      box-shadow: 
+        0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+    .pill-sort.active {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      border-color: #60a5fa;
+      box-shadow:
+        0 3px 8px rgba(59, 130, 246, 0.5),
+        0 0 0 2px rgba(96, 165, 250, 0.5) inset;
+    }
 
     /* KPI */
     .kpi { 
@@ -885,14 +905,14 @@
   <div id="techCards"></div>
 
   <!-- Work order navigation filters -->
-  <!-- Order: All, Unassigned, Value, Past Due, Fleet 1, Fleet 2, ..., Clear Filters (always last) -->
+  <!-- Order: All, Unassigned, Past Due, Fleet 1, Fleet 2, Value (sort modifier), Clear Filters (always last) -->
   <div class="filters">
     <div class="pill" id="btnAll" onclick="showAll()">All</div>
     <div class="pill" id="btnUnassigned" onclick="filterUnassigned()">Unassigned</div>
-    <div class="pill" id="sortValue" onclick="setSort('value')">Value</div>
     <div class="pill" id="btnPastDue" onclick="filterPastDue()">Past Due</div>
     <div class="pill" id="btnFleet1" onclick="filterFleet('fleet1')">Fleet 1</div>
     <div class="pill" id="btnFleet2" onclick="filterFleet('fleet2')">Fleet 2</div>
+    <div class="pill pill-sort" id="sortValue" onclick="setSort('value')">Value</div>
     <div class="pill" onclick="clearFilters()">Clear Filters</div>
   </div>
 
@@ -1265,7 +1285,9 @@
 
   window.showAll = function(){
     activeRange = "all";
-    activeKpi = null; // Clear KPI filter to show all open work
+    activeKpi = null;
+    activeTechId = null;
+    activeFleet = null;
     
     const btnToday  = document.getElementById("btnToday");
     const btnNext7  = document.getElementById("btnNext7");
@@ -1274,8 +1296,10 @@
     const btnAll    = document.getElementById("btnAll");
     const btnPastDue = document.getElementById("btnPastDue");
     const btnUnassigned = document.getElementById("btnUnassigned");
-    const sortValue = document.getElementById("sortValue");
+    const btnFleet1 = document.getElementById("btnFleet1");
+    const btnFleet2 = document.getElementById("btnFleet2");
 
+    // Clear date range and category filters, preserve Value sort
     if (btnToday)  btnToday.classList.remove("active");
     if (btnNext7)  btnNext7.classList.remove("active");
     if (btnNext30) btnNext30.classList.remove("active");
@@ -1283,7 +1307,8 @@
     if (btnAll)    btnAll.classList.add("active");
     if (btnPastDue) btnPastDue.classList.remove("active");
     if (btnUnassigned) btnUnassigned.classList.remove("active");
-    if (sortValue) sortValue.classList.remove("active");
+    if (btnFleet1) btnFleet1.classList.remove("active");
+    if (btnFleet2) btnFleet2.classList.remove("active");
 
     renderKPIs();
     renderTechCards();
@@ -1297,14 +1322,20 @@
       document.getElementById("btnPastDue")?.classList.remove("active");
     } else {
       activeKpi = "pastdue";
+      activeTechId = null;
+      activeFleet = null;
+      
       document.getElementById("btnPastDue")?.classList.add("active");
-      // Clear other work order filters when activating past due
+      
+      // Clear other category filters but preserve Value sort
       const btnAll = document.getElementById("btnAll");
       const btnUnassigned = document.getElementById("btnUnassigned");
-      const sortValue = document.getElementById("sortValue");
+      const btnFleet1 = document.getElementById("btnFleet1");
+      const btnFleet2 = document.getElementById("btnFleet2");
       if (btnAll) btnAll.classList.remove("active");
       if (btnUnassigned) btnUnassigned.classList.remove("active");
-      if (sortValue) sortValue.classList.remove("active");
+      if (btnFleet1) btnFleet1.classList.remove("active");
+      if (btnFleet2) btnFleet2.classList.remove("active");
     }
     renderKPIs();
     renderTechCards();
@@ -1312,43 +1343,62 @@
   };
 
   window.setSort = function(s){
-    activeSort = s;
-    const p = document.getElementById("sortValue");
-    if (p) p.classList.toggle("active", s === "value");
-    
-    // Clear other work order filters when activating value sort
-    if (s === "value") {
-      const btnPastDue = document.getElementById("btnPastDue");
-      const btnAll = document.getElementById("btnAll");
-      const btnUnassigned = document.getElementById("btnUnassigned");
-      if (btnPastDue) btnPastDue.classList.remove("active");
-      if (btnAll) btnAll.classList.remove("active");
-      if (btnUnassigned) btnUnassigned.classList.remove("active");
+    // Toggle value sort on/off - works with any active filter
+    if (activeSort === s) {
+      activeSort = null;
+    } else {
+      activeSort = s;
     }
+    
+    const sortValueBtn = document.getElementById("sortValue");
+    if (sortValueBtn) sortValueBtn.classList.toggle("active", activeSort === "value");
     
     renderWorkOrders();
   };
 
   window.filterUnassigned = function(){
     activeTechId = "__unassigned__";
-    document.getElementById("btnUnassigned")?.classList.add("active");
-    // Clear other work order filters
-    const btnPastDue = document.getElementById("btnPastDue");
+    activeKpi = null;
+    activeFleet = null;
+    
     const btnAll = document.getElementById("btnAll");
-    const sortValue = document.getElementById("sortValue");
-    if (btnPastDue) btnPastDue.classList.remove("active");
+    const btnUnassigned = document.getElementById("btnUnassigned");
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnFleet1 = document.getElementById("btnFleet1");
+    const btnFleet2 = document.getElementById("btnFleet2");
+    
+    // Clear category filters but preserve Value sort
     if (btnAll) btnAll.classList.remove("active");
-    if (sortValue) sortValue.classList.remove("active");
+    if (btnUnassigned) btnUnassigned.classList.add("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnFleet1) btnFleet1.classList.remove("active");
+    if (btnFleet2) btnFleet2.classList.remove("active");
+    
     renderTechCards();
     renderWorkOrders();
   };
 
   window.filterFleet = function(fleet){
     activeFleet = (activeFleet === fleet) ? null : fleet;
+    
+    // When activating a fleet filter, clear other category filters
+    if (activeFleet) {
+      activeTechId = null;
+      activeKpi = null;
+      
+      const btnAll = document.getElementById("btnAll");
+      const btnUnassigned = document.getElementById("btnUnassigned");
+      const btnPastDue = document.getElementById("btnPastDue");
+      if (btnAll) btnAll.classList.remove("active");
+      if (btnUnassigned) btnUnassigned.classList.remove("active");
+      if (btnPastDue) btnPastDue.classList.remove("active");
+    }
+    
     const fleet1Btn = document.getElementById("btnFleet1");
     const fleet2Btn = document.getElementById("btnFleet2");
     if (fleet1Btn) fleet1Btn.classList.toggle("active", activeFleet === "fleet1");
     if (fleet2Btn) fleet2Btn.classList.toggle("active", activeFleet === "fleet2");
+    
     renderWorkOrders();
   };
 
@@ -1662,11 +1712,11 @@
       if (aPastDue && !bPastDue) return -1;
       if (!aPastDue && bPastDue) return 1;
       
-      // Value sort if active (highest value first)
+      // Value sort modifier (applies to any active filter)
       if (activeSort === "value") {
         const aValue = jobHours(a) * getLaborRate();
         const bValue = jobHours(b) * getLaborRate();
-        const valueDiff = bValue - aValue; // Descending (highest first)
+        const valueDiff = bValue - aValue; // Descending (highest value first)
         if (valueDiff !== 0) return valueDiff;
       }
       
@@ -1706,7 +1756,8 @@
         if (a.status === "diagnosis_required" && b.status === "customer_approval") return 1;
       }
       
-      // Finally sort by scheduled date
+      // Default sort: by scheduled date (oldest first - ascending)
+      // This makes "Past Due" show oldest items first when Value sort is not active
       const da = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
       const db = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
       return da - db;
