@@ -1093,6 +1093,27 @@
       letter-spacing:0.3px;
     }
 
+    .wo-card-full.dragging {
+      opacity:0.5;
+      cursor:move;
+    }
+
+    .day-cards-container.drag-over,
+    .droppable-empty.drag-over {
+      background:rgba(59, 130, 246, 0.2);
+      border:2px dashed #3b82f6;
+    }
+
+    .droppable-empty {
+      min-height:60px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px dashed transparent;
+      transition:all 0.2s;
+      margin:12px 0;
+    }
+
     .drop-zone {
       border:2px dashed #3b82f6 !important;
       background:rgba(59,130,246,0.08) !important;
@@ -1392,6 +1413,12 @@ async function fetchTable(table, token){
 function setView(view){
   currentView = view;
   
+  // If switching to today view, always reset to actual today
+  if(view === 'today') {
+    currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+  }
+  
   // Desktop tabs
   document.getElementById('tabToday').classList.toggle('active', view === 'today');
   document.getElementById('tab7Day').classList.toggle('active', view === '7day');
@@ -1620,6 +1647,12 @@ function createFullCard(wo, options = {}){
   const collapsibleClass = options.collapsible ? 'collapsible-card collapsed' : '';
   card.className = `wo-card-full ${collapsibleClass} ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
   
+  // Make draggable in 7-day view
+  if(options.collapsible) {
+    card.draggable = true;
+    card.dataset.woId = wo.work_order_id;
+  }
+  
   card.innerHTML = `
     <div class="wo-card-full-content">
       <div class="wo-card-full-top">
@@ -1670,9 +1703,15 @@ function createFullCard(wo, options = {}){
   
   // Add toggle functionality for collapsible cards
   if(options.collapsible) {
+    // Add drag handlers
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+    
     card.addEventListener('click', (e) => {
       // Don't toggle if clicking buttons
       if(e.target.closest('button')) return;
+      // Don't toggle if currently dragging
+      if(card.classList.contains('dragging')) return;
       card.classList.toggle('collapsed');
     });
   } else {
@@ -1846,6 +1885,8 @@ function handleDragStart(e){
 function handleDragEnd(e){
   e.target.classList.remove('dragging');
   document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  stopAutoScroll();
 }
 
 function handleDragOver(e){
@@ -1921,6 +1962,134 @@ async function handleDrop(e, newDate, newStatus = null){
   }
   
   draggedWO = null;
+}
+
+async function handleDrop7Day(e, targetDate){
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Remove all drag-over classes
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
+  
+  if(!draggedWO) return;
+  
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === draggedWO);
+    if(!wo) return;
+    
+    // Keep the same time, just change the date
+    let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
+    if(!wo.scheduled_start) {
+      currentTime.setHours(9, 0, 0, 0);
+    }
+    
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth();
+    const day = targetDate.getDate();
+    const hour = currentTime.getHours();
+    const minute = currentTime.getMinutes();
+    
+    const newDateTime = new Date(year, month, day, hour, minute, 0, 0);
+    
+    // Calculate duration
+    let durationHours = 2;
+    if(wo.scheduled_start && wo.scheduled_end) {
+      const start = new Date(wo.scheduled_start);
+      const end = new Date(wo.scheduled_end);
+      durationHours = (end - start) / (1000 * 60 * 60);
+    }
+    
+    const newEndTime = new Date(newDateTime);
+    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
+    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        scheduled_start: newDateTime.toISOString(),
+        scheduled_end: newEndTime.toISOString()
+      })
+    });
+    
+    await loadWorkOrders(token);
+    renderAll();
+    
+  } catch(err){
+    console.error('Drop error:', err);
+    alert('Error moving work order');
+  }
+  
+  draggedWO = null;
+  stopAutoScroll();
+}
+
+let autoScrollInterval = null;
+
+function setup7DayAutoScroll(){
+  const schedulePanel = document.querySelector('.schedule-panel');
+  if(!schedulePanel) return;
+  
+  schedulePanel.addEventListener('dragover', (e) => {
+    if(!draggedWO || currentView !== '7day') return;
+    
+    const rect = schedulePanel.getBoundingClientRect();
+    const scrollThreshold = 100; // pixels from top/bottom to trigger scroll
+    const scrollSpeed = 10; // pixels per interval
+    
+    const distanceFromTop = e.clientY - rect.top;
+    const distanceFromBottom = rect.bottom - e.clientY;
+    
+    if(distanceFromTop < scrollThreshold) {
+      // Scroll up
+      startAutoScroll('up', scrollSpeed);
+    } else if(distanceFromBottom < scrollThreshold) {
+      // Scroll down
+      startAutoScroll('down', scrollSpeed);
+    } else {
+      stopAutoScroll();
+    }
+  });
+  
+  schedulePanel.addEventListener('dragleave', (e) => {
+    if(e.target === schedulePanel) {
+      stopAutoScroll();
+    }
+  });
+  
+  schedulePanel.addEventListener('drop', () => {
+    stopAutoScroll();
+  });
+}
+
+function startAutoScroll(direction, speed){
+  if(autoScrollInterval) return; // Already scrolling
+  
+  const schedulePanel = document.querySelector('.schedule-panel');
+  if(!schedulePanel) return;
+  
+  autoScrollInterval = setInterval(() => {
+    if(direction === 'up') {
+      schedulePanel.scrollTop -= speed;
+    } else {
+      schedulePanel.scrollTop += speed;
+    }
+  }, 50);
+}
+
+function stopAutoScroll(){
+  if(autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
 }
 
 function renderSchedule(){
@@ -2026,6 +2195,7 @@ function render7DayView(){
     
     const daySection = document.createElement('div');
     daySection.className = 'day-section';
+    daySection.dataset.date = dateStr;
     
     const dayHeader = document.createElement('div');
     dayHeader.className = `day-header ${isToday ? 'today' : ''}`;
@@ -2054,6 +2224,7 @@ function render7DayView(){
     
     const dayContent = document.createElement('div');
     dayContent.className = 'day-content';
+    dayContent.dataset.date = dateStr;
     
     if(dayOrders.length > 0) {
       // Sort orders by time
@@ -2066,6 +2237,7 @@ function render7DayView(){
       // Create cards container
       const cardsContainer = document.createElement('div');
       cardsContainer.className = 'day-cards-container';
+      cardsContainer.dataset.date = dateStr;
       
       dayOrders.forEach(wo => {
         // Use createFullCard with collapsible option for 7-day view
@@ -2076,13 +2248,28 @@ function render7DayView(){
       // Make droppable
       cardsContainer.addEventListener('dragover', handleDragOver);
       cardsContainer.addEventListener('dragleave', handleDragLeave);
-      cardsContainer.addEventListener('drop', (e) => handleDrop(e, date, null));
+      cardsContainer.addEventListener('drop', (e) => handleDrop7Day(e, date));
+      cardsContainer.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        cardsContainer.classList.add('drag-over');
+      });
       
       dayContent.appendChild(cardsContainer);
     } else {
       const empty = document.createElement('div');
-      empty.className = 'empty-state';
+      empty.className = 'empty-state droppable-empty';
       empty.textContent = 'No orders scheduled';
+      empty.dataset.date = dateStr;
+      
+      // Make empty state droppable too
+      empty.addEventListener('dragover', handleDragOver);
+      empty.addEventListener('dragleave', handleDragLeave);
+      empty.addEventListener('drop', (e) => handleDrop7Day(e, date));
+      empty.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        empty.classList.add('drag-over');
+      });
+      
       dayContent.appendChild(empty);
     }
     
@@ -2094,6 +2281,9 @@ function render7DayView(){
   if(!hasAnyOrders){
     view.innerHTML = '<div class="empty-state">No work orders scheduled in this period</div>';
   }
+  
+  // Setup auto-scroll for 7-day view
+  setup7DayAutoScroll();
 }
 
 function render30DayCalendar(){
