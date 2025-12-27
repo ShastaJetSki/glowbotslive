@@ -1057,7 +1057,7 @@
 
     .calendar-day-hours {
       font-size:12px;
-      color:#60a5fa;
+      color:#e8eef6;
       font-weight:700;
       text-align:center;
     }
@@ -1112,6 +1112,35 @@
       border:2px dashed transparent;
       transition:all 0.2s;
       margin:12px 0;
+    }
+
+    /* Auto-scroll indicators */
+    .scroll-indicator {
+      position:fixed;
+      left:0;
+      right:0;
+      height:120px;
+      pointer-events:none;
+      z-index:9999;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      font-size:24px;
+      color:#3b82f6;
+      background:rgba(59, 130, 246, 0.1);
+      backdrop-filter:blur(2px);
+    }
+
+    .scroll-indicator.active {
+      display:flex;
+    }
+
+    .scroll-indicator.top {
+      top:0;
+    }
+
+    .scroll-indicator.bottom {
+      bottom:0;
     }
 
     .drop-zone {
@@ -1197,7 +1226,8 @@
       }
 
       .calendar-day-hours {
-        font-size:11px;
+        font-size:14px;
+        color:#e8eef6;
       }
 
       /* Collapsible cards on mobile (7-day view only) */
@@ -1217,6 +1247,10 @@
 </head>
 
 <body>
+  <!-- Auto-scroll indicators -->
+  <div class="scroll-indicator top" id="scrollIndicatorTop">▲ Scrolling Up ▲</div>
+  <div class="scroll-indicator bottom" id="scrollIndicatorBottom">▼ Scrolling Down ▼</div>
+
   <!-- Mobile Header -->
   <div class="mobile-header">
     <div class="mobile-header-bar">
@@ -2039,27 +2073,26 @@ function setup7DayAutoScroll(){
   document.addEventListener('dragover', (e) => {
     if(!draggedWO || currentView !== '7day') return;
     
-    const scrollThreshold = 100; // pixels from top/bottom to trigger scroll
-    const scrollSpeed = 10; // pixels per interval
+    const scrollThreshold = 120; // pixels from top/bottom to trigger scroll
+    const scrollSpeed = 15; // pixels per interval
     
     // Use viewport for mobile compatibility
     const viewportHeight = window.innerHeight;
     const mouseY = e.clientY;
     
-    const distanceFromTop = mouseY;
-    const distanceFromBottom = viewportHeight - mouseY;
+    // Account for mobile bottom nav (120px)
+    const isMobile = window.innerWidth <= 768;
+    const bottomNavHeight = isMobile ? 120 : 0;
     
-    // Get the scrollable container
-    const schedulePanel = document.querySelector('.schedule-panel');
-    const mainContainer = document.querySelector('.main-container');
-    const scrollContainer = schedulePanel || mainContainer;
+    const distanceFromTop = mouseY;
+    const distanceFromBottom = (viewportHeight - bottomNavHeight) - mouseY;
     
     if(distanceFromTop < scrollThreshold && distanceFromTop > 0) {
       // Scroll up
-      startAutoScroll('up', scrollSpeed, scrollContainer);
+      startAutoScroll('up', scrollSpeed);
     } else if(distanceFromBottom < scrollThreshold && distanceFromBottom > 0) {
       // Scroll down
-      startAutoScroll('down', scrollSpeed, scrollContainer);
+      startAutoScroll('down', scrollSpeed);
     } else {
       stopAutoScroll();
     }
@@ -2074,24 +2107,22 @@ function setup7DayAutoScroll(){
   });
 }
 
-function startAutoScroll(direction, speed, element){
+function startAutoScroll(direction, speed){
   if(autoScrollInterval) return; // Already scrolling
   
-  if(!element) {
-    // Fallback to window scroll
-    autoScrollInterval = setInterval(() => {
-      window.scrollBy(0, direction === 'up' ? -speed : speed);
-    }, 30);
-    return;
+  // Show visual indicator
+  if(direction === 'up') {
+    document.getElementById('scrollIndicatorTop')?.classList.add('active');
+    document.getElementById('scrollIndicatorBottom')?.classList.remove('active');
+  } else {
+    document.getElementById('scrollIndicatorBottom')?.classList.add('active');
+    document.getElementById('scrollIndicatorTop')?.classList.remove('active');
   }
   
+  // Always use window scroll for consistent behavior on mobile and desktop
   autoScrollInterval = setInterval(() => {
-    if(direction === 'up') {
-      element.scrollTop -= speed;
-    } else {
-      element.scrollTop += speed;
-    }
-  }, 30); // Faster interval for smoother scroll
+    window.scrollBy(0, direction === 'up' ? -speed : speed);
+  }, 30);
 }
 
 function stopAutoScroll(){
@@ -2099,6 +2130,10 @@ function stopAutoScroll(){
     clearInterval(autoScrollInterval);
     autoScrollInterval = null;
   }
+  
+  // Hide visual indicators
+  document.getElementById('scrollIndicatorTop')?.classList.remove('active');
+  document.getElementById('scrollIndicatorBottom')?.classList.remove('active');
 }
 
 function renderSchedule(){
