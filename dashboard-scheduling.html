@@ -759,6 +759,19 @@
       margin-top:0;
     }
 
+    /* Day Cards Container (7 Day View) */
+    .day-cards-container {
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-top:12px;
+    }
+
+    .day-cards-container .wo-card {
+      max-width:100%;
+      width:100%;
+    }
+
     /* Work Order Card */
     .wo-card {
       background:#1a2535;
@@ -1337,9 +1350,9 @@ function setView(view){
   if(mobile7Day) mobile7Day.classList.toggle('active', view === '7day');
   if(mobile30Day) mobile30Day.classList.toggle('active', view === '30day');
   
-  // Show arrows only in today view
+  // Show arrows in today and 30day views, hide in 7day
   if(leftArrow && rightArrow) {
-    if(view === 'today') {
+    if(view === 'today' || view === '30day') {
       leftArrow.classList.remove('hidden');
       rightArrow.classList.remove('hidden');
     } else {
@@ -1386,7 +1399,11 @@ function updateTitle(){
   } else if(currentView === '7day'){
     titleText = 'Next 7 Days';
   } else {
-    titleText = 'Next 30 Days';
+    // Show month and year for 30-day view
+    titleText = currentDate.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    });
   }
   
   title.textContent = titleText;
@@ -1399,7 +1416,8 @@ function previousPeriod(){
   } else if(currentView === '7day'){
     currentDate.setDate(currentDate.getDate() - 7);
   } else {
-    currentDate.setDate(currentDate.getDate() - 30);
+    // 30day view - go back one month
+    currentDate.setMonth(currentDate.getMonth() - 1);
   }
   updateTitle();
   renderSchedule();
@@ -1411,7 +1429,8 @@ function nextPeriod(){
   } else if(currentView === '7day'){
     currentDate.setDate(currentDate.getDate() + 7);
   } else {
-    currentDate.setDate(currentDate.getDate() + 30);
+    // 30day view - go forward one month
+    currentDate.setMonth(currentDate.getMonth() + 1);
   }
   updateTitle();
   renderSchedule();
@@ -1924,26 +1943,14 @@ function render7DayView(){
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
-    const dayOrders = getWorkOrdersForDate(date);
+    let dayOrders = getWorkOrdersForDate(date);
+    
+    // Filter by selected tech if needed
+    if(selectedTechId){
+      dayOrders = dayOrders.filter(wo => wo.assigned_employee_id === selectedTechId);
+    }
     
     if(dayOrders.length > 0) hasAnyOrders = true;
-    
-    // Group by tech
-    const techGroups = {};
-    dayOrders.forEach(wo => {
-      const techId = wo.assigned_employee_id || 'unassigned';
-      if(!techGroups[techId]) techGroups[techId] = [];
-      techGroups[techId].push(wo);
-    });
-    
-    // Filter by selected tech
-    if(selectedTechId){
-      const filteredGroups = {};
-      if(techGroups[selectedTechId]){
-        filteredGroups[selectedTechId] = techGroups[selectedTechId];
-      }
-      Object.assign(techGroups, filteredGroups);
-    }
     
     const daySection = document.createElement('div');
     daySection.className = 'day-section';
@@ -1976,54 +1983,19 @@ function render7DayView(){
     const dayContent = document.createElement('div');
     dayContent.className = 'day-content';
     
-    // Render tech groups
-    const techIds = Object.keys(techGroups).sort((a, b) => {
-      if(a === 'unassigned') return 1;
-      if(b === 'unassigned') return -1;
-      const techA = employees.find(e => e.employee_id === a);
-      const techB = employees.find(e => e.employee_id === b);
-      const nameA = techA ? `${techA.first_name} ${techA.last_name}` : '';
-      const nameB = techB ? `${techB.first_name} ${techB.last_name}` : '';
-      return nameA.localeCompare(nameB);
-    });
-    
-    techIds.forEach(techId => {
-      const techGroup = document.createElement('div');
-      techGroup.className = 'tech-group';
-      
-      const tech = employees.find(e => e.employee_id === techId);
-      const techName = tech ? `${tech.first_name} ${tech.last_name}` : 'Unassigned';
-      const techOrders = techGroups[techId];
-      
-      const techHeader = document.createElement('div');
-      techHeader.className = 'tech-header';
-      techHeader.onclick = () => toggleTech(techGroup);
-      
-      const techNameEl = document.createElement('div');
-      techNameEl.className = 'tech-name';
-      techNameEl.innerHTML = `
-        <span>${techName}</span>
-        <span class="tech-count">${techOrders.length}</span>
-      `;
-      
-      const techChevron = document.createElement('div');
-      techChevron.className = 'tech-chevron';
-      techChevron.textContent = '▼';
-      
-      techHeader.appendChild(techNameEl);
-      techHeader.appendChild(techChevron);
-      
-      const techCards = document.createElement('div');
-      techCards.className = 'tech-cards';
-      
+    if(dayOrders.length > 0) {
       // Sort orders by time
-      techOrders.sort((a, b) => {
+      dayOrders.sort((a, b) => {
         const timeA = a.scheduled_start ? new Date(a.scheduled_start).getTime() : 0;
         const timeB = b.scheduled_start ? new Date(b.scheduled_start).getTime() : 0;
         return timeA - timeB;
       });
       
-      techOrders.forEach(wo => {
+      // Create cards container
+      const cardsContainer = document.createElement('div');
+      cardsContainer.className = 'day-cards-container';
+      
+      dayOrders.forEach(wo => {
         const card = createWOCard(wo);
         
         // Add date picker button to each card in 7-day view
@@ -2052,20 +2024,16 @@ function render7DayView(){
         actions.appendChild(datePickerBtn);
         card.appendChild(actions);
         
-        techCards.appendChild(card);
+        cardsContainer.appendChild(card);
       });
       
-      // Make tech cards droppable
-      techCards.addEventListener('dragover', handleDragOver);
-      techCards.addEventListener('dragleave', handleDragLeave);
-      techCards.addEventListener('drop', (e) => handleDrop(e, date, null));
+      // Make droppable
+      cardsContainer.addEventListener('dragover', handleDragOver);
+      cardsContainer.addEventListener('dragleave', handleDragLeave);
+      cardsContainer.addEventListener('drop', (e) => handleDrop(e, date, null));
       
-      techGroup.appendChild(techHeader);
-      techGroup.appendChild(techCards);
-      dayContent.appendChild(techGroup);
-    });
-    
-    if(Object.keys(techGroups).length === 0){
+      dayContent.appendChild(cardsContainer);
+    } else {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.textContent = 'No orders scheduled';
@@ -2089,16 +2057,18 @@ function render30DayCalendar(){
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Start from today, not first of month
-  const startDate = new Date(today);
+  // Get the month from currentDate
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
   
-  // Calculate 30 days from today
-  const endDate = new Date(today);
-  endDate.setDate(endDate.getDate() + 30);
+  // Start from first day of the month
+  const startDate = new Date(year, month, 1);
   
-  // Find the Sunday before today (start of week)
-  const weekStart = new Date(startDate);
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  // Get days in month
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  // Get first day of month (0 = Sunday)
+  const firstDayOfWeek = startDate.getDay();
   
   // Create calendar grid
   const calendarGrid = document.createElement('div');
@@ -2113,97 +2083,107 @@ function render30DayCalendar(){
     calendarGrid.appendChild(header);
   });
   
-  // Iterate through weeks and days
-  const currentWeekDate = new Date(weekStart);
   let hasAnyOrders = false;
-  let weekCells = [];
   
-  while(currentWeekDate <= endDate) {
-    // Collect cells for this week
-    const weekHasOrders = [];
-    const tempWeekCells = [];
+  // Track weeks to hide empty ones
+  let weekCells = [];
+  let currentWeekHasOrders = false;
+  let currentWeekHasToday = false;
+  
+  // Empty cells before first day
+  for(let i = 0; i < firstDayOfWeek; i++){
+    const emptyCell = document.createElement('div');
+    emptyCell.className = 'calendar-day-cell other-month';
+    weekCells.push(emptyCell);
+  }
+  
+  // Days of month
+  for(let day = 1; day <= daysInMonth; day++){
+    const date = new Date(year, month, day);
+    date.setHours(0, 0, 0, 0);
     
-    for(let i = 0; i < 7; i++) {
-      const date = new Date(currentWeekDate);
-      date.setHours(0, 0, 0, 0);
-      
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const isToday = dateStr === todayStr;
-      const isBeforeToday = date < today;
-      const isAfterRange = date > endDate;
-      
-      const dayOrders = getWorkOrdersForDate(date);
-      
-      if(dayOrders.length > 0) {
-        weekHasOrders.push(true);
-        hasAnyOrders = true;
-      }
-      
-      // Calculate total hours for all techs
-      let totalHours = 0;
-      dayOrders.forEach(wo => {
-        if(wo.scheduled_start && wo.scheduled_end){
-          const start = new Date(wo.scheduled_start);
-          const end = new Date(wo.scheduled_end);
-          const hours = (end - start) / (1000 * 60 * 60);
-          totalHours += hours;
-        }
-      });
-      
-      const cell = document.createElement('div');
-      cell.className = `calendar-day-cell ${isToday ? 'today' : ''} ${(isBeforeToday || isAfterRange) ? 'other-month' : ''}`;
-      cell.dataset.date = dateStr;
-      
-      const dayNumber = document.createElement('div');
-      dayNumber.className = 'calendar-day-number';
-      dayNumber.textContent = date.getDate();
-      
-      const hoursDisplay = document.createElement('div');
-      hoursDisplay.className = 'calendar-day-hours';
-      hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
-      
-      const orderDots = document.createElement('div');
-      orderDots.className = 'calendar-day-orders';
-      
-      dayOrders.slice(0, 6).forEach(wo => {
-        const dot = document.createElement('div');
-        dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
-        orderDots.appendChild(dot);
-      });
-      
-      cell.appendChild(dayNumber);
-      cell.appendChild(hoursDisplay);
-      cell.appendChild(orderDots);
-      
-      // Click to view day details
-      cell.onclick = () => {
-        currentDate = new Date(date);
-        setView('today');
-      };
-      
-      // Make droppable
-      cell.addEventListener('dragover', handleDragOver);
-      cell.addEventListener('dragleave', handleDragLeave);
-      cell.addEventListener('drop', (e) => handleDrop(e, date, null));
-      
-      tempWeekCells.push(cell);
-      currentWeekDate.setDate(currentWeekDate.getDate() + 1);
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const isToday = dateStr === todayStr;
+    
+    const dayOrders = getWorkOrdersForDate(date);
+    
+    if(dayOrders.length > 0) {
+      hasAnyOrders = true;
+      currentWeekHasOrders = true;
     }
     
-    // Only add week if it has orders OR contains today
-    const weekHasToday = tempWeekCells.some(cell => cell.classList.contains('today'));
-    if(weekHasOrders.length > 0 || weekHasToday) {
-      tempWeekCells.forEach(cell => {
-        calendarGrid.appendChild(cell);
-      });
+    if(isToday) {
+      currentWeekHasToday = true;
+    }
+    
+    // Calculate total hours for all techs
+    let totalHours = 0;
+    dayOrders.forEach(wo => {
+      if(wo.scheduled_start && wo.scheduled_end){
+        const start = new Date(wo.scheduled_start);
+        const end = new Date(wo.scheduled_end);
+        const hours = (end - start) / (1000 * 60 * 60);
+        totalHours += hours;
+      }
+    });
+    
+    const cell = document.createElement('div');
+    cell.className = `calendar-day-cell ${isToday ? 'today' : ''}`;
+    cell.dataset.date = dateStr;
+    
+    const dayNumber = document.createElement('div');
+    dayNumber.className = 'calendar-day-number';
+    dayNumber.textContent = day;
+    
+    const hoursDisplay = document.createElement('div');
+    hoursDisplay.className = 'calendar-day-hours';
+    hoursDisplay.textContent = totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '';
+    
+    const orderDots = document.createElement('div');
+    orderDots.className = 'calendar-day-orders';
+    
+    dayOrders.slice(0, 6).forEach(wo => {
+      const dot = document.createElement('div');
+      dot.className = `calendar-order-dot ${wo.status || 'scheduled'}`;
+      orderDots.appendChild(dot);
+    });
+    
+    cell.appendChild(dayNumber);
+    cell.appendChild(hoursDisplay);
+    cell.appendChild(orderDots);
+    
+    // Click to view day details
+    cell.onclick = () => {
+      currentDate = new Date(date);
+      setView('today');
+    };
+    
+    // Make droppable
+    cell.addEventListener('dragover', handleDragOver);
+    cell.addEventListener('dragleave', handleDragLeave);
+    cell.addEventListener('drop', (e) => handleDrop(e, date, null));
+    
+    weekCells.push(cell);
+    
+    // End of week (Saturday) or end of month
+    if(weekCells.length === 7 || day === daysInMonth) {
+      // Only render week if it has orders OR contains today
+      if(currentWeekHasOrders || currentWeekHasToday) {
+        weekCells.forEach(c => calendarGrid.appendChild(c));
+      }
+      
+      // Reset for next week
+      weekCells = [];
+      currentWeekHasOrders = false;
+      currentWeekHasToday = false;
     }
   }
   
   view.appendChild(calendarGrid);
   
   if(!hasAnyOrders) {
-    view.innerHTML = '<div class="empty-state">No work orders scheduled in the next 30 days</div>';
+    view.innerHTML = '<div class="empty-state">No work orders scheduled this month</div>';
   }
 }
 
