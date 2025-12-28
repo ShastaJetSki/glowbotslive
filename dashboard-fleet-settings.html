@@ -624,6 +624,21 @@
       background:#1e2a3d;
     }
     
+    .metric-card.metric-editable {
+      cursor:pointer;
+    }
+    
+    .metric-card.metric-editable:hover {
+      border-left-color:#fbbf24;
+      background:#1e2a3d;
+    }
+    
+    .edit-icon {
+      color:#fbbf24;
+      font-size:13px;
+      margin-left:4px;
+    }
+    
     .metric-label {
       color:#6b7280;
       font-size:11px;
@@ -1278,7 +1293,7 @@
             </div>
             
             <div class="chart-card">
-              <h3>▥ Top 5 Revenue Jobs</h3>
+              <h3>▥ Technician Performance</h3>
               <div class="chart-container">
                 <canvas id="topVehiclesChart"></canvas>
               </div>
@@ -1375,6 +1390,13 @@
           { name: '2018 GMC Sierra #A156', service: 'AC Repair', tech: 'Tom Rodriguez', completion: 'Today 5PM', charges: 1200 },
           { name: '2020 Ford Transit #A078', service: 'Preventive Maintenance', tech: 'Sarah Chen', completion: 'Tomorrow 2PM', charges: 320 }
         ],
+        techPerformance: [
+          { name: 'Mike Johnson', completionRate: 94, jobsCompleted: 47 },
+          { name: 'Sarah Chen', completionRate: 98, jobsCompleted: 52 },
+          { name: 'Tom Rodriguez', completionRate: 91, jobsCompleted: 38 },
+          { name: 'Lisa Martinez', completionRate: 96, jobsCompleted: 44 },
+          { name: 'James Wilson', completionRate: 89, jobsCompleted: 35 }
+        ],
         monthlyRevenue: [
           { month: 'Jul', revenue: 42100 },
           { month: 'Aug', revenue: 45800 },
@@ -1403,6 +1425,13 @@
           { name: '2021 Mazda CX-5 #R387', service: 'Brake Pads', tech: 'Sarah Chen', completion: 'Tomorrow 11AM', charges: 485 },
           { name: '2020 Honda Accord #R156', service: 'Full Service', tech: 'Tom Rodriguez', completion: 'Tomorrow 4PM', charges: 295 }
         ],
+        techPerformance: [
+          { name: 'Mike Johnson', completionRate: 97, jobsCompleted: 41 },
+          { name: 'Sarah Chen', completionRate: 99, jobsCompleted: 48 },
+          { name: 'Tom Rodriguez', completionRate: 95, jobsCompleted: 39 },
+          { name: 'Lisa Martinez', completionRate: 98, jobsCompleted: 42 },
+          { name: 'James Wilson', completionRate: 93, jobsCompleted: 36 }
+        ],
         monthlyRevenue: [
           { month: 'Jul', revenue: 32100 },
           { month: 'Aug', revenue: 34200 },
@@ -1430,6 +1459,13 @@
           { name: '2020 Peterbilt 579 #E089', service: 'DOT Inspection', tech: 'Sarah Chen', completion: 'Today 6PM', charges: 350 },
           { name: '2017 Volvo VNL #E201', service: 'Transmission Service', tech: 'Mike Johnson', completion: 'Dec 31 10AM', charges: 4500 },
           { name: '2021 Mack Anthem #E156', service: 'Preventive Maintenance', tech: 'Tom Rodriguez', completion: 'Tomorrow 1PM', charges: 890 }
+        ],
+        techPerformance: [
+          { name: 'Mike Johnson', completionRate: 92, jobsCompleted: 34 },
+          { name: 'Sarah Chen', completionRate: 96, jobsCompleted: 38 },
+          { name: 'Tom Rodriguez', completionRate: 88, jobsCompleted: 31 },
+          { name: 'Lisa Martinez', completionRate: 94, jobsCompleted: 35 },
+          { name: 'James Wilson', completionRate: 90, jobsCompleted: 29 }
         ],
         monthlyRevenue: [
           { month: 'Jul', revenue: 58200 },
@@ -1532,11 +1568,14 @@
       const data = fleetSpecificData[fleetId];
       if (!data) return;
 
+      // Calculate combined revenue across all fleets
+      const combinedRevenue = Object.values(fleetSpecificData).reduce((sum, fleet) => sum + fleet.totalRevenue, 0);
+
       const metricsHTML = `
         <div class="metric-card">
-          <div class="metric-label">Fleet Revenue (30d)</div>
-          <div class="metric-value">$${data.totalRevenue.toLocaleString()}</div>
-          <div class="metric-change up">+8.2% vs last month</div>
+          <div class="metric-label">Combined Fleet Revenue (30d)</div>
+          <div class="metric-value">$${combinedRevenue.toLocaleString()}</div>
+          <div class="metric-change up">All active fleets</div>
         </div>
         
         <div class="metric-card">
@@ -1557,10 +1596,10 @@
           <div class="metric-change up">Strong relationship</div>
         </div>
         
-        <div class="metric-card">
+        <div class="metric-card metric-editable" onclick="editPartsMarkup('${fleetId}')">
           <div class="metric-label">Parts Markup</div>
           <div class="metric-value">${data.partsMarkup}%</div>
-          <div class="metric-change">Fleet contract rate</div>
+          <div class="metric-change">Fleet contract rate <span class="edit-icon">✎</span></div>
         </div>
         
         <div class="metric-card">
@@ -1571,6 +1610,18 @@
       `;
 
       document.getElementById('fleetMetrics').innerHTML = metricsHTML;
+    }
+
+    // Edit parts markup
+    function editPartsMarkup(fleetId) {
+      const data = fleetSpecificData[fleetId];
+      const newMarkup = prompt(`Edit Parts Markup % for this fleet:\n\nCurrent: ${data.partsMarkup}%`, data.partsMarkup);
+      
+      if (newMarkup !== null && !isNaN(newMarkup)) {
+        data.partsMarkup = parseFloat(newMarkup);
+        updateFleetMetrics(fleetId);
+        alert(`✅ Parts markup updated to ${newMarkup}%`);
+      }
     }
 
     // Update vehicle list for selected fleet
@@ -1725,14 +1776,14 @@
         }
       });
 
-      // Top Revenue Jobs Chart
+      // Technician Performance Chart
       topVehiclesChart = new Chart(document.getElementById('topVehiclesChart'), {
         type: 'bar',
         data: {
-          labels: data.vehiclesInShop.slice(0, 5).map(v => v.name),
+          labels: data.techPerformance.map(t => t.name),
           datasets: [{
-            label: 'Charges',
-            data: data.vehiclesInShop.slice(0, 5).map(v => v.charges),
+            label: 'Completion Rate (%)',
+            data: data.techPerformance.map(t => t.completionRate),
             backgroundColor: (context) => {
               const colors = ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'];
               return colors[context.dataIndex] || '#60a5fa';
@@ -1754,15 +1805,23 @@
               padding: 12,
               displayColors: false,
               callbacks: {
-                label: (context) => '$' + context.parsed.x.toLocaleString()
+                label: (context) => {
+                  const tech = data.techPerformance[context.dataIndex];
+                  return [
+                    `Completion Rate: ${context.parsed.x}%`,
+                    `Jobs Completed: ${tech.jobsCompleted}`
+                  ];
+                }
               }
             }
           },
           scales: {
             x: {
+              min: 80,
+              max: 100,
               border: { display: false },
               ticks: {
-                callback: value => '$' + (value >= 1000 ? (value/1000) + 'k' : value),
+                callback: value => value + '%',
                 color: '#6b7280',
                 font: { size: 11 }
               },
