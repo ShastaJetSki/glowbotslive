@@ -2323,6 +2323,7 @@ let touchStartX = 0;
 let touchEndX = 0;
 let touchStartY = 0;
 let touchEndY = 0;
+let touchStartTime = 0;
 let isSwiping = false;
 
 function setupSwipeGestures() {
@@ -2335,44 +2336,46 @@ function setupSwipeGestures() {
   scheduleView.ontouchmove = null;
   
   scheduleView.addEventListener('touchstart', (e) => {
-    // Don't swipe if dragging a card
-    if(e.target.closest('.wo-card-full')) return;
-    
     touchStartX = e.changedTouches[0].clientX;
     touchStartY = e.changedTouches[0].clientY;
+    touchStartTime = Date.now();
     isSwiping = false;
   }, { passive: true });
   
   scheduleView.addEventListener('touchmove', (e) => {
-    if(e.target.closest('.wo-card-full')) return;
     isSwiping = true;
   }, { passive: true });
   
   scheduleView.addEventListener('touchend', (e) => {
-    // Don't swipe if dragging a card or didn't move
-    if(e.target.closest('.wo-card-full') || !isSwiping) return;
+    if(!isSwiping) return;
     
     touchEndX = e.changedTouches[0].clientX;
     touchEndY = e.changedTouches[0].clientY;
-    handleSwipe();
+    const touchEndTime = Date.now();
+    
+    handleSwipe(touchEndTime - touchStartTime);
     isSwiping = false;
   }, { passive: true });
 }
 
-function handleSwipe() {
-  const swipeThreshold = 80;
+function handleSwipe(duration) {
+  const swipeThreshold = 50;  // Lower threshold - easier to trigger
+  const maxSwipeTime = 300;    // Fast swipe = under 300ms
   const deltaX = touchEndX - touchStartX;
   const deltaY = touchEndY - touchStartY;
   
-  // Must be horizontal swipe (more horizontal than vertical)
+  // Must be horizontal swipe
   if(Math.abs(deltaX) <= Math.abs(deltaY)) return;
   if(Math.abs(deltaX) < swipeThreshold) return;
   
-  // Swipe left (finger moves right to left) = go forward
+  // Must be quick (swipes are fast, drags are slow)
+  if(duration > maxSwipeTime) return;
+  
+  // Swipe left (right to left) = go forward to next day
   if(deltaX < 0) {
     goToNextDay();
   }
-  // Swipe right (finger moves left to right) = go backward  
+  // Swipe right (left to right) = go back to previous day
   else {
     goToPreviousDay();
   }
