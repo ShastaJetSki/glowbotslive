@@ -2053,6 +2053,7 @@ function handleDragEnd(e){
   document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
   stopAutoScroll();
+  stopDayNav();
 }
 
 function handleDragOver(e){
@@ -2135,6 +2136,9 @@ async function handleDrop7Day(e, targetDate){
   e.preventDefault();
   e.stopPropagation();
   
+  // Stop any day navigation
+  stopDayNav();
+  
   // Remove all drag-over classes
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
   document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
@@ -2199,21 +2203,39 @@ async function handleDrop7Day(e, targetDate){
   stopAutoScroll();
 }
 
+let isDropping = false;
+
 async function handleTimelineDrop(e, targetHour){
   e.preventDefault();
   e.stopPropagation();
   
+  // Prevent multiple simultaneous drops
+  if(isDropping) return;
+  isDropping = true;
+  
+  // CRITICAL: Stop all navigation immediately
+  stopDayNav();
+  
   // Remove all drag-over classes
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
   
-  if(!draggedWO) return;
+  if(!draggedWO) {
+    isDropping = false;
+    return;
+  }
   
   const token = localStorage.getItem("sb_access_token");
-  if(!token) return;
+  if(!token) {
+    isDropping = false;
+    return;
+  }
   
   try {
     const wo = workOrders.find(w => w.work_order_id === draggedWO);
-    if(!wo) return;
+    if(!wo) {
+      isDropping = false;
+      return;
+    }
     
     // Calculate duration to preserve it
     let durationHours = 2;
@@ -2253,11 +2275,17 @@ async function handleTimelineDrop(e, targetHour){
     });
     
     await loadWorkOrders(token);
-    renderSchedule();
+    
+    // Delay to prevent flash, then render once
+    setTimeout(() => {
+      renderSchedule();
+      isDropping = false;
+    }, 150);
     
   } catch(err){
     console.error('Timeline drop error:', err);
     alert('Error moving work order');
+    isDropping = false;
   }
   
   draggedWO = null;
@@ -2351,14 +2379,14 @@ function startDayNav(direction){
     goToNextDay();
   }
   
-  // Then continue every 600ms if still at edge
+  // Then continue every 800ms if still at edge
   dayNavInterval = setInterval(() => {
     if(direction === 'prev') {
       goToPreviousDay();
     } else {
       goToNextDay();
     }
-  }, 600);
+  }, 800);
 }
 
 function stopDayNav(){
