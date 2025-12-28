@@ -1107,42 +1107,6 @@
       border-bottom:none;
     }
 
-    /* Day navigation drop zones */
-    .day-nav-zone {
-      padding:20px;
-      margin:12px 0;
-      background:rgba(59, 130, 246, 0.05);
-      border:2px dashed rgba(59, 130, 246, 0.3);
-      border-radius:8px;
-      text-align:center;
-      color:rgba(59, 130, 246, 0.6);
-      font-size:13px;
-      font-weight:600;
-      transition:all 0.2s;
-      cursor:pointer;
-    }
-
-    .day-nav-zone:hover {
-      background:rgba(59, 130, 246, 0.1);
-      border-color:rgba(59, 130, 246, 0.5);
-      color:rgba(59, 130, 246, 0.8);
-    }
-
-    .day-nav-zone.drag-over {
-      background:rgba(59, 130, 246, 0.2);
-      border-color:#3b82f6;
-      color:#3b82f6;
-      transform:scale(1.02);
-    }
-
-    .prev-day-zone {
-      margin-top:0;
-    }
-
-    .next-day-zone {
-      margin-bottom:0;
-    }
-
     /* Calendar Grid (30 Day View) */
     .calendar-grid {
       display:grid;
@@ -1292,35 +1256,6 @@
       bottom:0;
     }
 
-    /* Day navigation indicators */
-    .day-nav-indicator {
-      position:fixed;
-      top:0;
-      bottom:0;
-      width:100px;
-      pointer-events:none;
-      z-index:9999;
-      display:none;
-      align-items:center;
-      justify-content:center;
-      font-size:20px;
-      color:#3b82f6;
-      background:rgba(59, 130, 246, 0.1);
-      backdrop-filter:blur(2px);
-    }
-
-    .day-nav-indicator.active {
-      display:flex;
-    }
-
-    .day-nav-indicator.left {
-      left:0;
-    }
-
-    .day-nav-indicator.right {
-      right:0;
-    }
-
     .drop-zone {
       border:2px dashed #3b82f6 !important;
       background:rgba(59,130,246,0.08) !important;
@@ -1434,10 +1369,6 @@
   <!-- Auto-scroll indicators -->
   <div class="scroll-indicator top" id="scrollIndicatorTop">▲ Scrolling Up ▲</div>
   <div class="scroll-indicator bottom" id="scrollIndicatorBottom">▼ Scrolling Down ▼</div>
-
-  <!-- Day navigation indicators -->
-  <div class="day-nav-indicator left" id="dayNavLeft">◀ Previous Day</div>
-  <div class="day-nav-indicator right" id="dayNavRight">Next Day ▶</div>
 
   <!-- Mobile Header -->
   <div class="mobile-header">
@@ -2199,76 +2130,6 @@ async function handleDrop(e, newDate, newStatus = null){
   draggedWO = null;
 }
 
-async function handleDayNavDrop(e, dayOffset){
-  e.preventDefault();
-  e.stopPropagation();
-  
-  // Remove all drag-over classes
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-  
-  if(!draggedWO) return;
-  
-  const token = localStorage.getItem("sb_access_token");
-  if(!token) return;
-  
-  try {
-    const wo = workOrders.find(w => w.work_order_id === draggedWO);
-    if(!wo) return;
-    
-    // Calculate target date (current date + offset)
-    const targetDate = new Date(currentDate.getTime());
-    targetDate.setDate(targetDate.getDate() + dayOffset);
-    
-    // Keep same time, change date
-    let currentTime = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
-    if(!wo.scheduled_start) {
-      currentTime.setHours(9, 0, 0, 0);
-    }
-    
-    const newDateTime = new Date(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate(),
-      currentTime.getHours(),
-      currentTime.getMinutes(),
-      0, 0
-    );
-    
-    // Calculate duration to preserve it
-    let durationHours = 2;
-    if(wo.scheduled_start && wo.scheduled_end) {
-      const start = new Date(wo.scheduled_start);
-      const end = new Date(wo.scheduled_end);
-      durationHours = (end - start) / (1000 * 60 * 60);
-    }
-    
-    const newEndTime = new Date(newDateTime);
-    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
-    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
-    
-    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        scheduled_start: newDateTime.toISOString(),
-        scheduled_end: newEndTime.toISOString()
-      })
-    });
-    
-    await loadWorkOrders(token);
-    renderSchedule();
-    
-  } catch(err){
-    console.error('Day nav drop error:', err);
-    alert('Error moving work order');
-  }
-  
-  draggedWO = null;
-}
 
 async function handleDrop7Day(e, targetDate){
   e.preventDefault();
@@ -2444,12 +2305,13 @@ function setup7DayAutoScroll(){
 }
 
 let dayNavInterval = null;
+let dayNavDirection = null;
 
 function setupTodayViewDragNav(){
   document.addEventListener('dragover', (e) => {
     if(!draggedWO || currentView !== 'today') return;
     
-    const edgeThreshold = 100; // pixels from left/right edge
+    const edgeThreshold = 80; // pixels from left/right edge
     const viewportWidth = window.innerWidth;
     const mouseX = e.clientX;
     
@@ -2477,16 +2339,10 @@ function setupTodayViewDragNav(){
 }
 
 function startDayNav(direction){
-  if(dayNavInterval) return; // Already navigating
+  if(dayNavInterval && dayNavDirection === direction) return; // Already navigating in this direction
   
-  // Show visual indicator
-  if(direction === 'prev') {
-    document.getElementById('dayNavLeft')?.classList.add('active');
-    document.getElementById('dayNavRight')?.classList.remove('active');
-  } else {
-    document.getElementById('dayNavRight')?.classList.add('active');
-    document.getElementById('dayNavLeft')?.classList.remove('active');
-  }
+  stopDayNav(); // Stop any existing navigation
+  dayNavDirection = direction;
   
   // Immediate first navigation
   if(direction === 'prev') {
@@ -2495,25 +2351,22 @@ function startDayNav(direction){
     goToNextDay();
   }
   
-  // Then continue every 800ms if still at edge
+  // Then continue every 600ms if still at edge
   dayNavInterval = setInterval(() => {
     if(direction === 'prev') {
       goToPreviousDay();
     } else {
       goToNextDay();
     }
-  }, 800);
+  }, 600);
 }
 
 function stopDayNav(){
   if(dayNavInterval) {
     clearInterval(dayNavInterval);
     dayNavInterval = null;
+    dayNavDirection = null;
   }
-  
-  // Hide visual indicators
-  document.getElementById('dayNavLeft')?.classList.remove('active');
-  document.getElementById('dayNavRight')?.classList.remove('active');
 }
 
 function startAutoScroll(direction, speed){
@@ -2719,19 +2572,6 @@ function renderTimelineView(container, orders) {
   const timeline = document.createElement('div');
   timeline.className = 'timeline-container';
   
-  // Add "Previous Day" drop zone at top
-  const prevDayZone = document.createElement('div');
-  prevDayZone.className = 'day-nav-zone prev-day-zone';
-  prevDayZone.innerHTML = '<span>◀ Drop here for Previous Day</span>';
-  prevDayZone.addEventListener('dragover', handleDragOver);
-  prevDayZone.addEventListener('dragleave', handleDragLeave);
-  prevDayZone.addEventListener('drop', (e) => handleDayNavDrop(e, -1));
-  prevDayZone.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    prevDayZone.classList.add('drag-over');
-  });
-  timeline.appendChild(prevDayZone);
-  
   // Group orders by hour
   const beforeHours = [];
   const hourlyOrders = {};
@@ -2853,19 +2693,6 @@ function renderTimelineView(container, orders) {
     
     timeline.appendChild(afterSection);
   }
-  
-  // Add "Next Day" drop zone at bottom
-  const nextDayZone = document.createElement('div');
-  nextDayZone.className = 'day-nav-zone next-day-zone';
-  nextDayZone.innerHTML = '<span>Drop here for Next Day ▶</span>';
-  nextDayZone.addEventListener('dragover', handleDragOver);
-  nextDayZone.addEventListener('dragleave', handleDragLeave);
-  nextDayZone.addEventListener('drop', (e) => handleDayNavDrop(e, 1));
-  nextDayZone.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    nextDayZone.classList.add('drag-over');
-  });
-  timeline.appendChild(nextDayZone);
   
   container.appendChild(timeline);
 }
