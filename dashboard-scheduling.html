@@ -1023,7 +1023,22 @@
       position:relative;
       min-height:80px;
       border-bottom:1px solid rgba(107, 114, 128, 0.15);
-      transition:background 0.2s;
+      transition:all 0.3s ease;
+    }
+
+    .timeline-hour.collapsed-hour {
+      min-height:8px;
+      opacity:0.4;
+    }
+
+    .timeline-hour.collapsed-hour .timeline-time {
+      font-size:8px;
+    }
+
+    .timeline-hour.collapsed-hour.drag-over,
+    .timeline-hour.collapsed-hour.expanding {
+      min-height:80px;
+      opacity:1;
     }
 
     .timeline-hour.drag-over {
@@ -2709,15 +2724,17 @@ function renderTimelineView(container, orders) {
   
   // Render hourly timeline
   for(let hour = businessHours.start; hour <= businessHours.end; hour++) {
-    // On mobile, skip hours with no appointments
     const isMobile = window.innerWidth <= 768;
-    if(isMobile && (!hourlyOrders[hour] || hourlyOrders[hour].length === 0)) {
-      continue; // Skip this hour
-    }
+    const hasOrders = hourlyOrders[hour] && hourlyOrders[hour].length > 0;
     
     const hourSlot = document.createElement('div');
     hourSlot.className = 'timeline-hour';
     hourSlot.dataset.hour = hour;
+    
+    // Collapse empty hours on mobile
+    if(isMobile && !hasOrders) {
+      hourSlot.classList.add('collapsed-hour');
+    }
     
     // Time label
     const timeLabel = document.createElement('div');
@@ -2751,11 +2768,27 @@ function renderTimelineView(container, orders) {
     
     // Make hour slot droppable
     hourSlot.addEventListener('dragover', handleDragOver);
-    hourSlot.addEventListener('dragleave', handleDragLeave);
-    hourSlot.addEventListener('drop', (e) => handleTimelineDrop(e, hour));
+    hourSlot.addEventListener('dragleave', (e) => {
+      handleDragLeave(e);
+      // Collapse back if was collapsed and drag leaves
+      if(hourSlot.classList.contains('collapsed-hour')) {
+        hourSlot.classList.remove('expanding');
+      }
+    });
+    hourSlot.addEventListener('drop', (e) => {
+      handleTimelineDrop(e, hour);
+      // If was collapsed, keep it expanded after drop
+      if(hourSlot.classList.contains('collapsed-hour')) {
+        hourSlot.classList.remove('collapsed-hour');
+      }
+    });
     hourSlot.addEventListener('dragenter', (e) => {
       e.preventDefault();
       hourSlot.classList.add('drag-over');
+      // Expand if collapsed
+      if(hourSlot.classList.contains('collapsed-hour')) {
+        hourSlot.classList.add('expanding');
+      }
     });
     
     hourSlot.appendChild(cardsContainer);
