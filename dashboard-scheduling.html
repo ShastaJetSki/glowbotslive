@@ -2323,6 +2323,7 @@ let touchStartX = 0;
 let touchEndX = 0;
 let touchStartY = 0;
 let touchEndY = 0;
+let isSwiping = false;
 
 function setupSwipeGestures() {
   const scheduleView = document.getElementById('scheduleView');
@@ -2331,34 +2332,66 @@ function setupSwipeGestures() {
   // Remove old listeners if any
   scheduleView.ontouchstart = null;
   scheduleView.ontouchend = null;
+  scheduleView.ontouchmove = null;
   
   scheduleView.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
+    // Don't swipe if dragging a card
+    if(e.target.closest('.wo-card-full')) return;
+    
+    touchStartX = e.changedTouches[0].clientX;
+    touchStartY = e.changedTouches[0].clientY;
+    isSwiping = false;
+  }, { passive: true });
+  
+  scheduleView.addEventListener('touchmove', (e) => {
+    if(e.target.closest('.wo-card-full')) return;
+    isSwiping = true;
   }, { passive: true });
   
   scheduleView.addEventListener('touchend', (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    touchEndY = e.changedTouches[0].screenY;
+    // Don't swipe if dragging a card or didn't move
+    if(e.target.closest('.wo-card-full') || !isSwiping) return;
+    
+    touchEndX = e.changedTouches[0].clientX;
+    touchEndY = e.changedTouches[0].clientY;
     handleSwipe();
+    isSwiping = false;
   }, { passive: true });
 }
 
 function handleSwipe() {
-  const swipeThreshold = 50;
+  const swipeThreshold = 80;
   const deltaX = touchEndX - touchStartX;
   const deltaY = touchEndY - touchStartY;
   
-  // Check if horizontal swipe is dominant (more horizontal than vertical)
-  if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > swipeThreshold) {
-    if(deltaX > 0) {
-      // Swipe right - go to previous day
-      previousPeriod();
-    } else {
-      // Swipe left - go to next day
-      nextPeriod();
-    }
+  // Must be horizontal swipe (more horizontal than vertical)
+  if(Math.abs(deltaX) <= Math.abs(deltaY)) return;
+  if(Math.abs(deltaX) < swipeThreshold) return;
+  
+  // Swipe left (finger moves right to left) = go forward
+  if(deltaX < 0) {
+    goToNextDay();
   }
+  // Swipe right (finger moves left to right) = go backward  
+  else {
+    goToPreviousDay();
+  }
+}
+
+function goToPreviousDay() {
+  const newDate = new Date(currentDate.getTime());
+  newDate.setDate(newDate.getDate() - 1);
+  currentDate = newDate;
+  updateTitle();
+  renderSchedule();
+}
+
+function goToNextDay() {
+  const newDate = new Date(currentDate.getTime());
+  newDate.setDate(newDate.getDate() + 1);
+  currentDate = newDate;
+  updateTitle();
+  renderSchedule();
 }
 
 function renderTimelineView(container, orders) {
