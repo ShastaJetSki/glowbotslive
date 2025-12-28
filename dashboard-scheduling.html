@@ -1023,6 +1023,12 @@
       position:relative;
       min-height:80px;
       border-bottom:1px solid rgba(107, 114, 128, 0.15);
+      transition:background 0.2s;
+    }
+
+    .timeline-hour.drag-over {
+      background:rgba(59, 130, 246, 0.15);
+      border-left:3px solid #3b82f6;
     }
 
     .timeline-hour:last-child {
@@ -1059,6 +1065,11 @@
 
     .timeline-cards .wo-card-full {
       margin-bottom:0;
+      cursor:grab;
+    }
+
+    .timeline-cards .wo-card-full:active {
+      cursor:grabbing;
     }
 
     .timeline-before-hours,
@@ -2020,11 +2031,13 @@ async function rescheduleToTomorrow(woId, currentStart, currentEnd) {
 
 function handleDragStart(e){
   draggedWO = e.target.dataset.woId;
+  isDragging = true;
   e.target.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
 }
 
 function handleDragEnd(e){
+  isDragging = false;
   e.target.classList.remove('dragging');
   document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
@@ -2174,6 +2187,70 @@ async function handleDrop7Day(e, targetDate){
   stopAutoScroll();
 }
 
+async function handleTimelineDrop(e, targetHour){
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Remove all drag-over classes
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  
+  if(!draggedWO) return;
+  
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return;
+  
+  try {
+    const wo = workOrders.find(w => w.work_order_id === draggedWO);
+    if(!wo) return;
+    
+    // Calculate duration to preserve it
+    let durationHours = 2;
+    if(wo.scheduled_start && wo.scheduled_end) {
+      const start = new Date(wo.scheduled_start);
+      const end = new Date(wo.scheduled_end);
+      durationHours = (end - start) / (1000 * 60 * 60);
+    }
+    
+    // Create new datetime with currentDate and targetHour
+    const newDateTime = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+      targetHour,
+      0, // minutes
+      0, // seconds
+      0  // milliseconds
+    );
+    
+    // Calculate new end time based on duration
+    const newEndTime = new Date(newDateTime);
+    newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
+    newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+    
+    await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        scheduled_start: newDateTime.toISOString(),
+        scheduled_end: newEndTime.toISOString()
+      })
+    });
+    
+    await loadWorkOrders(token);
+    renderSchedule();
+    
+  } catch(err){
+    console.error('Timeline drop error:', err);
+    alert('Error moving work order');
+  }
+  
+  draggedWO = null;
+}
+
 let autoScrollInterval = null;
 let currentDragY = null;
 
@@ -2313,9 +2390,13 @@ function renderTodayView(){
   // Render with timeline on both mobile and desktop
   renderTimelineView(view, dayOrders);
   
-  // Setup swipe gestures for mobile
+  // Setup swipe gestures for mobile - use RAF to ensure DOM is ready
   if(isMobile) {
-    setupSwipeGestures();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setupSwipeGestures();
+      });
+    });
   }
 }
 
@@ -2325,6 +2406,7 @@ let touchStartY = 0;
 let touchEndY = 0;
 let touchStartTime = 0;
 let isSwiping = false;
+let isDragging = false;
 
 // Store handler references for removal
 let swipeHandlers = null;
@@ -2343,16 +2425,18 @@ function setupSwipeGestures() {
   // Create new handlers
   swipeHandlers = {
     start: (e) => {
+      if(isDragging) return;
       touchStartX = e.changedTouches[0].clientX;
       touchStartY = e.changedTouches[0].clientY;
       touchStartTime = Date.now();
       isSwiping = false;
     },
     move: (e) => {
+      if(isDragging) return;
       isSwiping = true;
     },
     end: (e) => {
-      if(!isSwiping) return;
+      if(isDragging || !isSwiping) return;
       
       touchEndX = e.changedTouches[0].clientX;
       touchEndY = e.changedTouches[0].clientY;
@@ -2462,6 +2546,7 @@ function renderTimelineView(container, orders) {
   for(let hour = businessHours.start; hour <= businessHours.end; hour++) {
     const hourSlot = document.createElement('div');
     hourSlot.className = 'timeline-hour';
+    hourSlot.dataset.hour = hour;
     
     // Time label
     const timeLabel = document.createElement('div');
@@ -2477,17 +2562,32 @@ function renderTimelineView(container, orders) {
     hourSlot.appendChild(line);
     
     // Cards for this hour
+    const cardsContainer = document.createElement('div');
+    cardsContainer.className = 'timeline-cards';
+    cardsContainer.dataset.hour = hour;
+    
     if(hourlyOrders[hour] && hourlyOrders[hour].length > 0) {
-      const cardsContainer = document.createElement('div');
-      cardsContainer.className = 'timeline-cards';
-      
       hourlyOrders[hour].forEach(wo => {
-        cardsContainer.appendChild(createFullCard(wo));
+        const card = createFullCard(wo);
+        // Make cards draggable in timeline
+        card.draggable = true;
+        card.dataset.woId = wo.work_order_id;
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragend', handleDragEnd);
+        cardsContainer.appendChild(card);
       });
-      
-      hourSlot.appendChild(cardsContainer);
     }
     
+    // Make hour slot droppable
+    hourSlot.addEventListener('dragover', handleDragOver);
+    hourSlot.addEventListener('dragleave', handleDragLeave);
+    hourSlot.addEventListener('drop', (e) => handleTimelineDrop(e, hour));
+    hourSlot.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      hourSlot.classList.add('drag-over');
+    });
+    
+    hourSlot.appendChild(cardsContainer);
     timeline.appendChild(hourSlot);
   }
   
