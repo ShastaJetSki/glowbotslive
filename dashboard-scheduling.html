@@ -615,6 +615,43 @@
     .detail-value.tech { color:#60a5fa; }
     .detail-value.total { color:#34d399; font-size:28px; font-weight:700; }
 
+    .detail-totals-row {
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:16px;
+      margin-top:24px;
+      padding-top:24px;
+      border-top:2px solid #223044;
+    }
+
+    .detail-total-item {
+      text-align:center;
+    }
+
+    .detail-total-item .detail-label {
+      margin-bottom:8px;
+    }
+
+    .detail-total-item .detail-value {
+      font-size:20px;
+      font-weight:700;
+    }
+
+    .detail-total-item:last-child .detail-value {
+      font-size:24px;
+    }
+
+    @media (max-width: 768px) {
+      .detail-totals-row {
+        grid-template-columns:1fr;
+        gap:12px;
+      }
+
+      .detail-total-item {
+        text-align:left;
+      }
+    }
+
     /* Desktop Header */
     .desktop-header {
       position:sticky;
@@ -3658,9 +3695,9 @@ function renderSchedulerView(){
       
       // Get work orders for this day
       const dayOrders = getWorkOrdersForDate(cellDate);
-      const filteredOrders = selectedTechId 
-        ? dayOrders.filter(wo => wo.assigned_employee_id === selectedTechId)
-        : dayOrders;
+      const filteredOrders = dayOrders
+        .filter(wo => wo.status !== 'ready_for_pickup') // Exclude ready for pickup from calendar
+        .filter(wo => selectedTechId ? wo.assigned_employee_id === selectedTechId : true);
       
       // Cards container
       const cardsContainer = document.createElement('div');
@@ -4028,6 +4065,22 @@ function showDetailsOverlay(woId) {
   const totalCost = calculateWorkOrderTotal(wo);
   const statusClass = isPastDue ? 'past-due' : (wo.status || 'scheduled');
 
+  // Calculate individual totals
+  const partsTotal = wo.parts_cost ? parseFloat(wo.parts_cost) : 0;
+  const laborTotal = wo.labor_cost ? parseFloat(wo.labor_cost) : 0;
+  const feesTotal = wo.fees ? parseFloat(wo.fees) : 0;
+  
+  // If labor_cost not set, calculate from hours
+  let laborCalc = laborTotal;
+  if(laborCalc === 0 && wo.scheduled_start && wo.scheduled_end) {
+    const start = new Date(wo.scheduled_start);
+    const end = new Date(wo.scheduled_end);
+    const hours = (end - start) / (1000 * 60 * 60);
+    laborCalc = hours * SHOP_LABOR_RATE;
+  }
+  
+  const completeTotal = partsTotal + laborCalc + feesTotal;
+
   const content = `
     <div class="detail-row">
       <div class="detail-label">Customer</div>
@@ -4054,16 +4107,27 @@ function showDetailsOverlay(woId) {
       <div class="detail-value">${timeDisplay}</div>
     </div>
 
-    ${wo.status === 'ready_for_pickup' || totalCost > 0 ? `
-      <div class="detail-row">
-        <div class="detail-label">Total</div>
-        <div class="detail-value total">$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    <div class="detail-totals-row">
+      <div class="detail-total-item">
+        <div class="detail-label">Parts Total</div>
+        <div class="detail-value">$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
       </div>
-    ` : ''}
+      <div class="detail-total-item">
+        <div class="detail-label">Labor Total</div>
+        <div class="detail-value">$${laborCalc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </div>
+      <div class="detail-total-item">
+        <div class="detail-label">Complete Total</div>
+        <div class="detail-value total">$${completeTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </div>
+    </div>
   `;
 
   document.getElementById('detailsContent').innerHTML = content;
-  document.getElementById('detailsTitle').textContent = `Work Order #${woId}`;
+  
+  // Use work order number if available, otherwise use a formatted version of ID
+  const woNumber = wo.wo_number || wo.work_order_number || `WO${woId.substring(0, 8)}`;
+  document.getElementById('detailsTitle').textContent = `Work Order #${woNumber}`;
   
   const overlayContent = document.querySelector('.details-overlay-content');
   overlayContent.className = `details-overlay-content ${statusClass}`;
