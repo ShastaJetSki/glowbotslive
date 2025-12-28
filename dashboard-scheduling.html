@@ -2326,36 +2326,47 @@ let touchEndY = 0;
 let touchStartTime = 0;
 let isSwiping = false;
 
+// Store handler references for removal
+let swipeHandlers = null;
+
 function setupSwipeGestures() {
   const scheduleView = document.getElementById('scheduleView');
   if(!scheduleView) return;
   
-  // Remove old listeners if any
-  scheduleView.ontouchstart = null;
-  scheduleView.ontouchend = null;
-  scheduleView.ontouchmove = null;
+  // Remove old handlers if they exist
+  if(swipeHandlers) {
+    scheduleView.removeEventListener('touchstart', swipeHandlers.start);
+    scheduleView.removeEventListener('touchmove', swipeHandlers.move);
+    scheduleView.removeEventListener('touchend', swipeHandlers.end);
+  }
   
-  scheduleView.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].clientX;
-    touchStartY = e.changedTouches[0].clientY;
-    touchStartTime = Date.now();
-    isSwiping = false;
-  }, { passive: true });
+  // Create new handlers
+  swipeHandlers = {
+    start: (e) => {
+      touchStartX = e.changedTouches[0].clientX;
+      touchStartY = e.changedTouches[0].clientY;
+      touchStartTime = Date.now();
+      isSwiping = false;
+    },
+    move: (e) => {
+      isSwiping = true;
+    },
+    end: (e) => {
+      if(!isSwiping) return;
+      
+      touchEndX = e.changedTouches[0].clientX;
+      touchEndY = e.changedTouches[0].clientY;
+      const touchEndTime = Date.now();
+      
+      handleSwipe(touchEndTime - touchStartTime);
+      isSwiping = false;
+    }
+  };
   
-  scheduleView.addEventListener('touchmove', (e) => {
-    isSwiping = true;
-  }, { passive: true });
-  
-  scheduleView.addEventListener('touchend', (e) => {
-    if(!isSwiping) return;
-    
-    touchEndX = e.changedTouches[0].clientX;
-    touchEndY = e.changedTouches[0].clientY;
-    const touchEndTime = Date.now();
-    
-    handleSwipe(touchEndTime - touchStartTime);
-    isSwiping = false;
-  }, { passive: true });
+  // Attach new handlers
+  scheduleView.addEventListener('touchstart', swipeHandlers.start, { passive: true });
+  scheduleView.addEventListener('touchmove', swipeHandlers.move, { passive: true });
+  scheduleView.addEventListener('touchend', swipeHandlers.end, { passive: true });
 }
 
 function handleSwipe(duration) {
