@@ -730,6 +730,65 @@
       display:flex;
       gap:12px;
       justify-content:flex-end;
+      align-items:center;
+    }
+    
+    .view-tabs-header {
+      display:flex;
+      gap:4px;
+      background:#0f1621;
+      border-radius:8px;
+      padding:4px;
+      margin-right:auto;
+    }
+    
+    .view-tabs-header .view-tab {
+      padding:6px 16px;
+      background:transparent;
+      border:1px solid transparent;
+      border-radius:6px;
+      color:#9fb0c3;
+      cursor:pointer;
+      font-size:13px;
+      transition:all 0.2s;
+      white-space:nowrap;
+    }
+    
+    .view-tabs-header .view-tab:hover {
+      background:#1a2535;
+      color:#e8eef6;
+    }
+    
+    .view-tabs-header .view-tab.active {
+      background:#3b82f6;
+      border-color:#3b82f6;
+      color:#fff;
+    }
+    
+    .header-filters {
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    
+    .tech-filter-header {
+      display:flex;
+      align-items:center;
+    }
+    
+    .tech-filter-header select {
+      padding:6px 12px;
+      background:#1a2535;
+      border:1px solid #223044;
+      border-radius:6px;
+      color:#e8eef6;
+      font-size:13px;
+      cursor:pointer;
+      min-width:120px;
+    }
+    
+    .tech-filter-header select:hover {
+      border-color:#3b82f6;
     }
 
     button {
@@ -1986,7 +2045,30 @@
     </div>
     
     <div class="header-actions">
-      <button onclick="location.href='dashboard-fleet-settings.html'" style="background:#3b82f6; border-color:#3b82f6;">⚙ Fleet Management</button>
+      <div class="view-tabs-header">
+        <div class="view-tab active" id="tabToday" onclick="goToToday()">Today</div>
+        <div class="view-tab" id="tab7Day" onclick="setView('list')">List</div>
+        <div class="view-tab" id="tab30Day" onclick="setView('30day')">30 Days</div>
+        <div class="view-tab" id="tabScheduler" onclick="setView('scheduler')">Scheduler</div>
+      </div>
+      
+      <div class="header-filters">
+        <div class="tech-filter-header">
+          <label style="color:#6b7280; font-size:11px; margin-right:6px;">Tech:</label>
+          <select id="techFilterHeader" onchange="applyTechFilterHeader()">
+            <option value="">All Techs</option>
+          </select>
+        </div>
+        
+        <div class="tech-filter-header">
+          <label style="color:#6b7280; font-size:11px; margin-right:6px;">Fleet:</label>
+          <select id="fleetFilterHeader" onchange="applyFleetFilterHeader()">
+            <option value="">All Fleets</option>
+          </select>
+        </div>
+      </div>
+      
+      <button onclick="location.href='dashboard-fleet-settings.html'" style="background:#3b82f6; border-color:#3b82f6; color:#fff;">⚙ Fleet Management</button>
       <button onclick="goToSettings()">Settings</button>
       <button onclick="logout()">Logout</button>
     </div>
@@ -1997,13 +2079,6 @@
     <!-- Left Panel - Schedule -->
     <div class="schedule-panel">
       <div class="controls">
-        <div class="view-tabs">
-          <div class="view-tab active" id="tabToday" onclick="goToToday()">Today</div>
-          <div class="view-tab" id="tab7Day" onclick="setView('list')">List</div>
-          <div class="view-tab" id="tab30Day" onclick="setView('30day')">30 Days</div>
-          <div class="view-tab desktop-only" id="tabScheduler" onclick="setView('scheduler')">Scheduler</div>
-        </div>
-        
         <div class="calendar-nav">
           <div class="calendar-title" id="calendarTitle"></div>
           <div class="nav-buttons-group">
@@ -2011,20 +2086,6 @@
             <button onclick="todayView()">Today</button>
           </div>
           <button onclick="nextPeriod()">→</button>
-        </div>
-        
-        <div class="tech-filter">
-          <label style="color:#9fb0c3; font-size:12px;">Tech:</label>
-          <select id="techFilter" onchange="applyTechFilter()">
-            <option value="">All Techs</option>
-          </select>
-        </div>
-        
-        <div class="tech-filter">
-          <label style="color:#9fb0c3; font-size:12px;">Fleet:</label>
-          <select id="fleetFilter" onchange="applyFleetFilter()">
-            <option value="">All Fleets</option>
-          </select>
         </div>
         
         <button class="primary" onclick="createWorkOrder()">+ New Work Order</button>
@@ -2241,25 +2302,37 @@ function applyTechFilter(){
 
 function renderFleetFilter(){
   const select = document.getElementById('fleetFilter');
-  if(!select) return;
+  const selectHeader = document.getElementById('fleetFilterHeader');
   
-  select.innerHTML = '<option value="">All Fleets</option>';
+  const optionsHTML = '<option value="">All Fleets</option>' + 
+    fleets
+      .filter(f => f.is_active)
+      .sort((a, b) => a.fleet_name.localeCompare(b.fleet_name))
+      .map(fleet => `<option value="${fleet.fleet_id}">${fleet.icon || '🚗'} ${fleet.fleet_name}</option>`)
+      .join('');
   
-  fleets
-    .filter(f => f.is_active)
-    .sort((a, b) => a.fleet_name.localeCompare(b.fleet_name))
-    .forEach(fleet => {
-      const option = document.createElement('option');
-      option.value = fleet.fleet_id;
-      option.textContent = `${fleet.icon || '🚗'} ${fleet.fleet_name}`;
-      select.appendChild(option);
-    });
+  if (select) {
+    select.innerHTML = optionsHTML;
+    select.value = selectedFleetId || '';
+  }
   
-  select.value = selectedFleetId || '';
+  if (selectHeader) {
+    selectHeader.innerHTML = optionsHTML;
+    selectHeader.value = selectedFleetId || '';
+  }
 }
 
 function applyFleetFilter(){
   selectedFleetId = document.getElementById('fleetFilter').value;
+  const selectHeader = document.getElementById('fleetFilterHeader');
+  if (selectHeader) selectHeader.value = selectedFleetId;
+  renderSchedule();
+}
+
+function applyFleetFilterHeader(){
+  selectedFleetId = document.getElementById('fleetFilterHeader').value;
+  const select = document.getElementById('fleetFilter');
+  if (select) select.value = selectedFleetId;
   renderSchedule();
 }
 
@@ -4299,20 +4372,35 @@ function closeDetailsOverlay(){
 
 function renderTechFilter(){
   const select = document.getElementById('techFilter');
-  select.innerHTML = '<option value="">All Techs</option>';
+  const selectHeader = document.getElementById('techFilterHeader');
   
-  employees.sort((a, b) => {
-    const nameA = `${a.first_name} ${a.last_name}`;
-    const nameB = `${b.first_name} ${b.last_name}`;
-    return nameA.localeCompare(nameB);
-  });
+  const optionsHTML = '<option value="">All Techs</option>' + 
+    employees.sort((a, b) => {
+      const nameA = `${a.first_name} ${a.last_name}`;
+      const nameB = `${b.first_name} ${b.last_name}`;
+      return nameA.localeCompare(nameB);
+    }).map(emp => `<option value="${emp.employee_id}">${emp.first_name} ${emp.last_name}</option>`).join('');
   
-  employees.forEach(emp => {
-    const option = document.createElement('option');
-    option.value = emp.employee_id;
-    option.textContent = `${emp.first_name} ${emp.last_name}`;
-    select.appendChild(option);
-  });
+  if (select) select.innerHTML = optionsHTML;
+  if (selectHeader) selectHeader.innerHTML = optionsHTML;
+  
+  // Set values if already selected
+  if (select && selectedTechId) select.value = selectedTechId;
+  if (selectHeader && selectedTechId) selectHeader.value = selectedTechId;
+}
+
+function applyTechFilterHeader() {
+  selectedTechId = document.getElementById('techFilterHeader').value;
+  const select = document.getElementById('techFilter');
+  if (select) select.value = selectedTechId;
+  renderAll();
+}
+
+function applyTechFilter() {
+  selectedTechId = document.getElementById('techFilter').value;
+  const selectHeader = document.getElementById('techFilterHeader');
+  if (selectHeader) selectHeader.value = selectedTechId;
+  renderAll();
 }
 
 function renderAll(){
