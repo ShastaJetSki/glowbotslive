@@ -994,6 +994,80 @@
       letter-spacing:0.3px;
     }
 
+    /* Timeline (Mobile Today View) */
+    .timeline-container {
+      position:relative;
+      padding-left:55px;
+      display:none;
+    }
+
+    .timeline-hour {
+      position:relative;
+      min-height:80px;
+      border-bottom:1px solid rgba(107, 114, 128, 0.15);
+    }
+
+    .timeline-hour:last-child {
+      border-bottom:none;
+    }
+
+    .timeline-time {
+      position:absolute;
+      left:-55px;
+      top:0;
+      font-size:10px;
+      color:rgba(159, 176, 195, 0.5);
+      font-weight:600;
+      width:45px;
+      text-align:right;
+    }
+
+    .timeline-line {
+      position:absolute;
+      left:0;
+      right:0;
+      top:0;
+      height:1px;
+      background:rgba(107, 114, 128, 0.1);
+    }
+
+    .timeline-cards {
+      position:relative;
+      padding:4px 0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .timeline-cards .wo-card-full {
+      margin-bottom:0;
+    }
+
+    .timeline-before-hours,
+    .timeline-after-hours {
+      padding:8px 0 12px 0;
+      border-bottom:1px solid rgba(107, 114, 128, 0.2);
+    }
+
+    .timeline-section-label {
+      font-size:9px;
+      color:rgba(159, 176, 195, 0.4);
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      margin-bottom:8px;
+      font-weight:700;
+    }
+
+    .timeline-before-hours {
+      margin-bottom:8px;
+    }
+
+    .timeline-after-hours {
+      margin-top:8px;
+      border-top:1px solid rgba(107, 114, 128, 0.2);
+      border-bottom:none;
+    }
+
     /* Calendar Grid (30 Day View) */
     .calendar-grid {
       display:grid;
@@ -1242,6 +1316,11 @@
       .wo-card-full.collapsible-card {
         cursor:pointer;
       }
+
+      /* Show timeline on mobile Today view */
+      .timeline-container {
+        display:block;
+      }
     }
   </style>
 </head>
@@ -1404,6 +1483,12 @@ let currentView = 'today';
 let selectedTechId = '';
 let draggedWO = null;
 let isMobile = window.innerWidth <= 768;
+
+// Business hours (7 AM - 6 PM default, can be overridden by settings)
+const businessHours = {
+  start: 7,  // 7 AM
+  end: 18    // 6 PM (18:00)
+};
 
 window.addEventListener('resize', () => {
   isMobile = window.innerWidth <= 768;
@@ -2202,9 +2287,118 @@ function renderTodayView(){
     return timeA - timeB;
   });
   
-  dayOrders.forEach(wo => {
-    view.appendChild(createFullCard(wo));
+  // On mobile, render with timeline
+  if(isMobile) {
+    renderTimelineView(view, dayOrders);
+  } else {
+    // Desktop: Simple list
+    dayOrders.forEach(wo => {
+      view.appendChild(createFullCard(wo));
+    });
+  }
+}
+
+function renderTimelineView(container, orders) {
+  const timeline = document.createElement('div');
+  timeline.className = 'timeline-container';
+  
+  // Group orders by hour
+  const beforeHours = [];
+  const hourlyOrders = {};
+  const afterHours = [];
+  
+  // Initialize hourly buckets
+  for(let hour = businessHours.start; hour <= businessHours.end; hour++) {
+    hourlyOrders[hour] = [];
+  }
+  
+  // Sort orders into time slots
+  orders.forEach(wo => {
+    if(!wo.scheduled_start) {
+      beforeHours.push(wo);
+      return;
+    }
+    
+    const startTime = new Date(wo.scheduled_start);
+    const hour = startTime.getHours();
+    
+    if(hour < businessHours.start) {
+      beforeHours.push(wo);
+    } else if(hour >= businessHours.end) {
+      afterHours.push(wo);
+    } else {
+      hourlyOrders[hour].push(wo);
+    }
   });
+  
+  // Render before-hours section
+  if(beforeHours.length > 0) {
+    const beforeSection = document.createElement('div');
+    beforeSection.className = 'timeline-before-hours';
+    
+    const label = document.createElement('div');
+    label.className = 'timeline-section-label';
+    label.textContent = 'Before Business Hours';
+    beforeSection.appendChild(label);
+    
+    beforeHours.forEach(wo => {
+      beforeSection.appendChild(createFullCard(wo));
+    });
+    
+    timeline.appendChild(beforeSection);
+  }
+  
+  // Render hourly timeline
+  for(let hour = businessHours.start; hour <= businessHours.end; hour++) {
+    const hourSlot = document.createElement('div');
+    hourSlot.className = 'timeline-hour';
+    
+    // Time label
+    const timeLabel = document.createElement('div');
+    timeLabel.className = 'timeline-time';
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+    timeLabel.textContent = `${displayHour}${ampm}`;
+    hourSlot.appendChild(timeLabel);
+    
+    // Subtle line
+    const line = document.createElement('div');
+    line.className = 'timeline-line';
+    hourSlot.appendChild(line);
+    
+    // Cards for this hour
+    if(hourlyOrders[hour] && hourlyOrders[hour].length > 0) {
+      const cardsContainer = document.createElement('div');
+      cardsContainer.className = 'timeline-cards';
+      
+      hourlyOrders[hour].forEach(wo => {
+        cardsContainer.appendChild(createFullCard(wo));
+      });
+      
+      hourSlot.appendChild(cardsContainer);
+    }
+    
+    timeline.appendChild(hourSlot);
+  }
+  
+  // Render after-hours section
+  if(afterHours.length > 0) {
+    const afterSection = document.createElement('div');
+    afterSection.className = 'timeline-after-hours';
+    
+    const label = document.createElement('div');
+    label.className = 'timeline-section-label';
+    label.textContent = 'After Business Hours';
+    afterSection.appendChild(label);
+    
+    afterHours.forEach(wo => {
+      afterSection.appendChild(createFullCard(wo));
+    });
+    
+    timeline.appendChild(afterSection);
+  }
+  
+  container.appendChild(timeline);
 }
 
 function render7DayView(){
