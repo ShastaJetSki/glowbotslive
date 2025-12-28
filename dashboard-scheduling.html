@@ -1037,10 +1037,7 @@
       font-size:18px;
       font-weight:700;
       color:#34d399;
-      padding:8px 12px;
-      background:rgba(52, 211, 153, 0.1);
-      border-radius:8px;
-      border:1px solid #34d399;
+      margin-top:8px;
     }
 
     .wo-card-action-btn:active {
@@ -2048,6 +2045,9 @@ function createFullCard(wo, options = {}){
   const isCompleted = wo.status === 'completed' || wo.status === 'closed';
   const isPickup = wo.status === 'ready_for_pickup';
   
+  // Calculate total cost (parts + labor + fees)
+  const totalCost = calculateWorkOrderTotal(wo);
+  
   // Get appointment time
   let timeDisplay = '';
   if(wo.scheduled_start) {
@@ -2080,28 +2080,25 @@ function createFullCard(wo, options = {}){
         <div class="wo-card-full-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
         <div class="wo-card-full-tech">Tech: ${techName}</div>
         ${timeDisplay ? `<div class="wo-card-full-time">Job Time: ${timeDisplay}</div>` : ''}
+        ${isPickup ? `<div class="wo-card-total-cost">$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
       </div>
     </div>
-    ${!isCompleted ? `
+    ${!isCompleted && !isPickup ? `
       <div class="wo-card-full-actions">
-        ${isPickup ? `
-          <div class="wo-card-total-cost">$${(wo.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        ` : `
-          <button class="wo-card-action-btn" data-wo-id="${wo.work_order_id}" data-action="date-picker" title="Pick Date">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-          </button>
-          <button class="wo-card-action-btn mobile-only ${options.collapsible ? 'collapsible-action' : ''}" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Move to Tomorrow">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="7 13 12 18 17 13"></polyline>
-              <polyline points="7 6 12 11 17 6"></polyline>
-            </svg>
-          </button>
-        `}
+        <button class="wo-card-action-btn" data-wo-id="${wo.work_order_id}" data-action="date-picker" title="Pick Date">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+        </button>
+        <button class="wo-card-action-btn mobile-only ${options.collapsible ? 'collapsible-action' : ''}" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Move to Tomorrow">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="7 13 12 18 17 13"></polyline>
+            <polyline points="7 6 12 11 17 6"></polyline>
+          </svg>
+        </button>
       </div>
     ` : ''}
   `;
@@ -3677,27 +3674,56 @@ function toggleTech(techGroup){
   techGroup.classList.toggle('collapsed');
 }
 
+function calculateWorkOrderTotal(wo) {
+  // Calculate total: parts + labor + fees
+  let total = 0;
+  
+  // Try to use total_price first if it exists
+  if(wo.total_price && parseFloat(wo.total_price) > 0) {
+    return parseFloat(wo.total_price);
+  }
+  
+  // Otherwise calculate from components
+  if(wo.parts_cost) {
+    total += parseFloat(wo.parts_cost) || 0;
+  }
+  
+  if(wo.labor_cost) {
+    total += parseFloat(wo.labor_cost) || 0;
+  }
+  
+  if(wo.fees) {
+    total += parseFloat(wo.fees) || 0;
+  }
+  
+  // If still 0, try calculating labor from scheduled hours
+  if(total === 0 && wo.scheduled_start && wo.scheduled_end) {
+    const start = new Date(wo.scheduled_start);
+    const end = new Date(wo.scheduled_end);
+    const hours = (end - start) / (1000 * 60 * 60);
+    total = hours * SHOP_LABOR_RATE;
+  }
+  
+  return total;
+}
+
 function renderSideColumns(){
   const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
   
-  // Calculate total hours and labor value
-  let totalHours = 0;
+  // Calculate total value from all work orders (parts + labor + fees)
+  let totalValue = 0;
   pickupOrders.forEach(wo => {
-    if(wo.scheduled_start && wo.scheduled_end) {
-      const start = new Date(wo.scheduled_start);
-      const end = new Date(wo.scheduled_end);
-      const hours = (end - start) / (1000 * 60 * 60);
-      totalHours += hours;
-    }
+    const woTotal = calculateWorkOrderTotal(wo);
+    totalValue += woTotal;
   });
-  const totalValue = totalHours * SHOP_LABOR_RATE;
   
   // Update desktop pickup count with total
-  const pickupCountText = `${pickupOrders.length}    $${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pickupCountText = `${pickupOrders.length}        $${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   document.getElementById('pickupCount').textContent = pickupCountText;
   
   // Update mobile pickup count (just number)
   const mobilePickupCount = document.getElementById('mobilePickupCount');
+  if(mobilePickupCount) mobilePickupCount.textContent = pickupOrders.length;
   if(mobilePickupCount) mobilePickupCount.textContent = pickupOrders.length;
   
   const pickupColumn = document.getElementById('pickupColumn');
