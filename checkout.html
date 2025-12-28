@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout - WorkLogicPro</title>
+  <meta name="supabase-url" content="https://kxqkwpkmtgvmthpafoqx.supabase.co">
+  <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI0ODE0MzIsImV4cCI6MjA0ODA1NzQzMn0.sG_vertrcVEw7NwfQRx9DUt5k2s3DkU2sKtLVyNjvk0">
+  
+  <!-- Stripe JS -->
+  <script src="https://js.stripe.com/v3/"></script>
+  
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { 
+      font-family:system-ui,-apple-system,sans-serif;
+      background:#0b0f14;
+      color:#e8eef6;
+      min-height:100vh;
+    }
+
+    /* Scrollbar */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #223044 #0f1621;
+    }
+
+    *::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: #0f1621;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: #223044;
+      border-radius: 5px;
+    }
+
+    .header {
+      background:#0f1621;
+      border-bottom:1px solid #223044;
+      padding:20px 24px;
+      position:sticky;
+      top:0;
+      z-index:100;
+    }
+
+    .header-content {
+      max-width:800px;
+      margin:0 auto;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .header-title {
+      font-size:24px;
+      font-weight:700;
+      color:#e8eef6;
+    }
+
+    .back-link {
+      color:#3b82f6;
+      text-decoration:none;
+      font-size:14px;
+      font-weight:600;
+      transition:all 0.15s;
+    }
+
+    .back-link:hover {
+      color:#60a5fa;
+    }
+
+    .container {
+      max-width:800px;
+      margin:0 auto;
+      padding:40px 24px;
+    }
+
+    .checkout-card {
+      background:#0f1621;
+      border:2px solid #3b82f6;
+      border-left:4px solid #3b82f6;
+      border-radius:12px;
+      padding:32px;
+      margin-bottom:24px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .section-title {
+      font-size:18px;
+      font-weight:700;
+      color:#e8eef6;
+      margin-bottom:20px;
+      padding-bottom:12px;
+      border-bottom:2px solid #223044;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .info-row {
+      display:flex;
+      justify-content:space-between;
+      margin-bottom:12px;
+      padding-bottom:12px;
+      border-bottom:1px solid #223044;
+    }
+
+    .info-row:last-child {
+      border-bottom:none;
+      margin-bottom:0;
+      padding-bottom:0;
+    }
+
+    .info-label {
+      font-size:14px;
+      color:#9fb0c3;
+      font-weight:600;
+    }
+
+    .info-value {
+      font-size:14px;
+      color:#e8eef6;
+      font-weight:600;
+      text-align:right;
+    }
+
+    .total-row {
+      margin-top:20px;
+      padding-top:20px;
+      border-top:2px solid #223044;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    .total-label {
+      font-size:20px;
+      font-weight:700;
+      color:#e8eef6;
+      text-transform:uppercase;
+    }
+
+    .total-amount {
+      font-size:32px;
+      font-weight:700;
+      color:#34d399;
+    }
+
+    .payment-methods {
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+      gap:16px;
+      margin-bottom:24px;
+    }
+
+    .payment-method {
+      background:#1a2535;
+      border:2px solid #223044;
+      border-radius:12px;
+      padding:20px;
+      cursor:pointer;
+      transition:all 0.15s;
+      text-align:center;
+    }
+
+    .payment-method:hover {
+      border-color:#3b82f6;
+      background:#243648;
+    }
+
+    .payment-method.active {
+      border-color:#3b82f6;
+      background:#243648;
+    }
+
+    .payment-method-icon {
+      font-size:32px;
+      margin-bottom:8px;
+    }
+
+    .payment-method-name {
+      font-size:14px;
+      font-weight:600;
+      color:#e8eef6;
+    }
+
+    #card-element {
+      background:#1a2535;
+      border:1px solid #223044;
+      border-radius:8px;
+      padding:16px;
+      margin-bottom:20px;
+    }
+
+    #card-errors {
+      color:#ef4444;
+      font-size:14px;
+      margin-top:8px;
+      min-height:20px;
+    }
+
+    .btn-primary {
+      width:100%;
+      background:#34d399;
+      border:1px solid #34d399;
+      color:#0f1621;
+      padding:16px;
+      border-radius:8px;
+      font-size:16px;
+      font-weight:700;
+      cursor:pointer;
+      transition:all 0.15s;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .btn-primary:hover {
+      background:#10b981;
+      border-color:#10b981;
+    }
+
+    .btn-primary:disabled {
+      background:#1a2535;
+      border-color:#223044;
+      color:#6b7280;
+      cursor:not-allowed;
+    }
+
+    .btn-secondary {
+      width:100%;
+      background:transparent;
+      border:1px solid #223044;
+      color:#9fb0c3;
+      padding:16px;
+      border-radius:8px;
+      font-size:16px;
+      font-weight:700;
+      cursor:pointer;
+      transition:all 0.15s;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      margin-top:12px;
+    }
+
+    .btn-secondary:hover {
+      border-color:#3b82f6;
+      color:#3b82f6;
+      background:#1a2535;
+    }
+
+    .loading {
+      text-align:center;
+      padding:60px;
+      font-size:18px;
+      color:#9fb0c3;
+    }
+
+    .success-message {
+      background:rgba(52,211,153,0.2);
+      border:2px solid #34d399;
+      border-radius:12px;
+      padding:24px;
+      text-align:center;
+      margin-bottom:24px;
+    }
+
+    .success-icon {
+      font-size:48px;
+      color:#34d399;
+      margin-bottom:16px;
+    }
+
+    .success-title {
+      font-size:24px;
+      font-weight:700;
+      color:#34d399;
+      margin-bottom:8px;
+    }
+
+    .success-text {
+      font-size:16px;
+      color:#e8eef6;
+    }
+
+    .email-receipt {
+      background:#1a2535;
+      border:1px solid #223044;
+      border-radius:8px;
+      padding:12px 16px;
+      margin-bottom:20px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .email-receipt input[type="email"] {
+      flex:1;
+      background:transparent;
+      border:none;
+      color:#e8eef6;
+      font-size:14px;
+      outline:none;
+    }
+
+    .email-receipt input[type="email"]::placeholder {
+      color:#6b7280;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding:20px 16px;
+      }
+
+      .checkout-card {
+        padding:20px;
+      }
+
+      .total-amount {
+        font-size:24px;
+      }
+
+      .payment-methods {
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-content">
+      <div class="header-title">Checkout</div>
+      <a href="dashboard-scheduling-new.html" class="back-link">← Back to Schedule</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div id="content">
+      <div class="loading">Loading checkout...</div>
+    </div>
+  </div>
+
+  <script>
+    const REST_BASE = document.querySelector('meta[name="supabase-url"]').content + "/rest/v1";
+    const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+    const SHOP_LABOR_RATE = 150;
+    
+    // IMPORTANT: Replace with your Stripe publishable key
+    const STRIPE_PUBLISHABLE_KEY = 'pk_test_YOUR_STRIPE_KEY_HERE';
+    
+    let stripe;
+    let elements;
+    let cardElement;
+    let workOrder;
+    let customer;
+    let vehicle;
+    let selectedPaymentMethod = 'card';
+
+    async function validateAuth() {
+      const token = localStorage.getItem("sb_access_token");
+      if (!token) return null;
+
+      try {
+        const response = await fetch(`${REST_BASE.replace('/rest/v1', '')}/auth/v1/user`, {
+          headers: {
+            'apikey': ANON_KEY,
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          localStorage.removeItem("sb_access_token");
+          return null;
+        }
+
+        return token;
+      } catch (error) {
+        console.error("Auth validation error:", error);
+        return null;
+      }
+    }
+
+    async function loadCheckout() {
+      const token = await validateAuth();
+      if (!token) {
+        location.href = 'login.html';
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const woId = params.get('id');
+
+      if (!woId) {
+        document.getElementById('content').innerHTML = '<div class="loading">No work order specified</div>';
+        return;
+      }
+
+      try {
+        // Fetch work order
+        const woResponse = await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${woId}`, {
+          headers: {
+            'apikey': ANON_KEY,
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const workOrders = await woResponse.json();
+        
+        if (!workOrders || workOrders.length === 0) {
+          document.getElementById('content').innerHTML = '<div class="loading">Work order not found</div>';
+          return;
+        }
+
+        workOrder = workOrders[0];
+
+        // Fetch customer and vehicle
+        const [customerRes, vehicleRes] = await Promise.all([
+          fetch(`${REST_BASE}/customers?customer_id=eq.${workOrder.customer_id}`, {
+            headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
+          }),
+          fetch(`${REST_BASE}/vehicles?vehicle_id=eq.${workOrder.vehicle_id}`, {
+            headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}` }
+          })
+        ]);
+
+        const customers = await customerRes.json();
+        const vehicles = await vehicleRes.json();
+
+        customer = customers[0];
+        vehicle = vehicles[0];
+
+        renderCheckout();
+
+      } catch (error) {
+        console.error('Error loading checkout:', error);
+        document.getElementById('content').innerHTML = '<div class="loading">Error loading checkout</div>';
+      }
+    }
+
+    function calculateTotal() {
+      let total = 0;
+      
+      if(workOrder.total_price && parseFloat(workOrder.total_price) > 0) {
+        return parseFloat(workOrder.total_price);
+      }
+      
+      const parts = workOrder.parts_cost ? parseFloat(workOrder.parts_cost) : 0;
+      const labor = workOrder.labor_cost ? parseFloat(workOrder.labor_cost) : 0;
+      const fees = workOrder.fees ? parseFloat(workOrder.fees) : 0;
+      
+      total = parts + labor + fees;
+      
+      if(total === 0 && workOrder.scheduled_start && workOrder.scheduled_end) {
+        const start = new Date(workOrder.scheduled_start);
+        const end = new Date(workOrder.scheduled_end);
+        const hours = (end - start) / (1000 * 60 * 60);
+        total = hours * SHOP_LABOR_RATE;
+      }
+      
+      return total;
+    }
+
+    function renderCheckout() {
+      const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown';
+      const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : 'Unknown Vehicle';
+      const woNumber = workOrder.wo_number || workOrder.work_order_number || `WO${workOrder.work_order_id.substring(0, 8)}`;
+      
+      const partsTotal = workOrder.parts_cost ? parseFloat(workOrder.parts_cost) : 0;
+      const laborTotal = workOrder.labor_cost ? parseFloat(workOrder.labor_cost) : 0;
+      const feesTotal = workOrder.fees ? parseFloat(workOrder.fees) : 0;
+      const total = calculateTotal();
+
+      const html = `
+        <div class="checkout-card">
+          <div class="section-title">Order Summary</div>
+          <div class="info-row">
+            <div class="info-label">Work Order</div>
+            <div class="info-value">#${woNumber}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Customer</div>
+            <div class="info-value">${customerName}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Vehicle</div>
+            <div class="info-value">${vehicleInfo}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Parts</div>
+            <div class="info-value">$${partsTotal.toFixed(2)}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Labor</div>
+            <div class="info-value">$${laborTotal.toFixed(2)}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Fees</div>
+            <div class="info-value">$${feesTotal.toFixed(2)}</div>
+          </div>
+          <div class="total-row">
+            <div class="total-label">Total</div>
+            <div class="total-amount">$${total.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div class="checkout-card">
+          <div class="section-title">Payment Method</div>
+          
+          <div class="payment-methods">
+            <div class="payment-method active" onclick="selectPaymentMethod('card')">
+              <div class="payment-method-icon">💳</div>
+              <div class="payment-method-name">Credit/Debit Card</div>
+            </div>
+            <div class="payment-method" onclick="selectPaymentMethod('cash')">
+              <div class="payment-method-icon">💵</div>
+              <div class="payment-method-name">Cash</div>
+            </div>
+            <div class="payment-method" onclick="selectPaymentMethod('check')">
+              <div class="payment-method-icon">🏦</div>
+              <div class="payment-method-name">Check</div>
+            </div>
+          </div>
+
+          <div id="card-payment-section">
+            <div id="card-element"></div>
+            <div id="card-errors"></div>
+          </div>
+
+          <div class="email-receipt">
+            <span>📧</span>
+            <input type="email" id="receiptEmail" placeholder="Email receipt to..." value="${customer?.email || ''}">
+          </div>
+
+          <button class="btn-primary" id="payBtn" onclick="processPayment()">
+            Pay $${total.toFixed(2)}
+          </button>
+          
+          <button class="btn-secondary" onclick="history.back()">
+            Cancel
+          </button>
+        </div>
+      `;
+
+      document.getElementById('content').innerHTML = html;
+
+      // Initialize Stripe
+      initializeStripe();
+    }
+
+    function initializeStripe() {
+      if (STRIPE_PUBLISHABLE_KEY === 'pk_test_YOUR_STRIPE_KEY_HERE') {
+        console.warn('Stripe key not configured. Card payments will be simulated.');
+        return;
+      }
+
+      stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+      elements = stripe.elements();
+      
+      cardElement = elements.create('card', {
+        style: {
+          base: {
+            color: '#e8eef6',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: '16px',
+            '::placeholder': {
+              color: '#6b7280'
+            }
+          },
+          invalid: {
+            color: '#ef4444',
+            iconColor: '#ef4444'
+          }
+        }
+      });
+      
+      cardElement.mount('#card-element');
+      
+      cardElement.on('change', (event) => {
+        const displayError = document.getElementById('card-errors');
+        if (event.error) {
+          displayError.textContent = event.error.message;
+        } else {
+          displayError.textContent = '';
+        }
+      });
+    }
+
+    function selectPaymentMethod(method) {
+      selectedPaymentMethod = method;
+      
+      // Update UI
+      document.querySelectorAll('.payment-method').forEach(el => {
+        el.classList.remove('active');
+      });
+      event.target.closest('.payment-method').classList.add('active');
+
+      // Show/hide card element
+      const cardSection = document.getElementById('card-payment-section');
+      if (method === 'card') {
+        cardSection.style.display = 'block';
+      } else {
+        cardSection.style.display = 'none';
+      }
+    }
+
+    async function processPayment() {
+      const payBtn = document.getElementById('payBtn');
+      const receiptEmail = document.getElementById('receiptEmail').value;
+      const total = calculateTotal();
+
+      payBtn.disabled = true;
+      payBtn.textContent = 'Processing...';
+
+      try {
+        const token = localStorage.getItem('sb_access_token');
+
+        if (selectedPaymentMethod === 'card') {
+          // Process card payment with Stripe
+          if (!stripe || !cardElement) {
+            // Simulate card payment if Stripe not configured
+            await simulateCardPayment(total, receiptEmail, token);
+          } else {
+            await processStripePayment(total, receiptEmail, token);
+          }
+        } else {
+          // Process cash/check payment
+          await processCashPayment(selectedPaymentMethod, total, receiptEmail, token);
+        }
+
+      } catch (error) {
+        alert('Payment failed: ' + error.message);
+        payBtn.disabled = false;
+        payBtn.textContent = `Pay $${total.toFixed(2)}`;
+      }
+    }
+
+    async function simulateCardPayment(amount, email, token) {
+      // Simulate a delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Complete the order
+      await completeWorkOrder(amount, 'card', email, token);
+    }
+
+    async function processStripePayment(amount, email, token) {
+      // Create payment intent on your server
+      // This is a placeholder - you'll need to create a server endpoint
+      const response = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: Math.round(amount * 100), // Stripe uses cents
+          work_order_id: workOrder.work_order_id
+        })
+      });
+
+      const { clientSecret } = await response.json();
+
+      // Confirm payment
+      const result = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: customer ? `${customer.first_name} ${customer.last_name}` : 'Customer',
+            email: email || customer?.email
+          }
+        }
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      // Complete the order
+      await completeWorkOrder(amount, 'card', email, token, result.paymentIntent.id);
+    }
+
+    async function processCashPayment(method, amount, email, token) {
+      // Complete the order
+      await completeWorkOrder(amount, method, email, token);
+    }
+
+    async function completeWorkOrder(amount, paymentMethod, email, token, paymentIntentId = null) {
+      // 1. Update work order status
+      await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${workOrder.work_order_id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+      });
+
+      // 2. Create payment record (if you have a payments table)
+      // Uncomment and adjust:
+      /*
+      await fetch(`${REST_BASE}/payments`, {
+        method: 'POST',
+        headers: {
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          work_order_id: workOrder.work_order_id,
+          amount: amount,
+          payment_method: paymentMethod,
+          payment_date: new Date().toISOString(),
+          stripe_payment_intent_id: paymentIntentId,
+          status: 'completed'
+        })
+      });
+      */
+
+      // 3. Send email receipt
+      if (email) {
+        await sendReceipt(email, amount, paymentMethod);
+      }
+
+      // 4. Show success
+      showSuccess(amount, email);
+    }
+
+    async function sendReceipt(email, amount, paymentMethod) {
+      const woNumber = workOrder.wo_number || workOrder.work_order_number || `WO${workOrder.work_order_id.substring(0, 8)}`;
+      const customerName = customer ? `${customer.first_name} ${customer.last_name}` : 'Customer';
+      
+      // TODO: Connect to your email service
+      console.log('Sending receipt to:', email);
+      console.log('Receipt details:', {
+        workOrder: woNumber,
+        customer: customerName,
+        amount: amount,
+        method: paymentMethod,
+        date: new Date().toLocaleString()
+      });
+
+      // Example: Call your email API
+      /*
+      await fetch('/api/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: email,
+          workOrderNumber: woNumber,
+          customerName: customerName,
+          amount: amount,
+          paymentMethod: paymentMethod
+        })
+      });
+      */
+    }
+
+    function showSuccess(amount, email) {
+      const html = `
+        <div class="success-message">
+          <div class="success-icon">✓</div>
+          <div class="success-title">Payment Successful!</div>
+          <div class="success-text">
+            Payment of $${amount.toFixed(2)} has been processed.
+            ${email ? `<br>Receipt sent to ${email}` : ''}
+          </div>
+        </div>
+        
+        <div class="checkout-card">
+          <button class="btn-primary" onclick="location.href='dashboard-scheduling-new.html'">
+            Return to Dashboard
+          </button>
+        </div>
+      `;
+
+      document.getElementById('content').innerHTML = html;
+    }
+
+    loadCheckout();
+  </script>
+</body>
+</html>
