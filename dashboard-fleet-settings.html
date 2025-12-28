@@ -132,7 +132,7 @@
       background:#1a2535;
       border:2px solid #223044;
       color:#9fb0c3;
-      padding:10px 20px;
+      padding:12px 16px;
       border-radius:6px;
       cursor:pointer;
       font-size:14px;
@@ -140,7 +140,29 @@
       transition:all 0.2s;
       display:flex;
       align-items:center;
-      gap:8px;
+      gap:10px;
+    }
+    
+    .fleet-tab-icon {
+      font-size:20px;
+    }
+    
+    .fleet-tab-info {
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:2px;
+    }
+    
+    .fleet-tab-name {
+      font-size:14px;
+      font-weight:600;
+    }
+    
+    .fleet-tab-revenue {
+      font-size:11px;
+      color:#6b7280;
+      font-weight:500;
     }
     
     .fleet-tab:hover {
@@ -152,6 +174,10 @@
       background:#1e3a5f;
       border-color:#3b82f6;
       color:#60a5fa;
+    }
+    
+    .fleet-tab.active .fleet-tab-revenue {
+      color:#34d399;
     }
     
     .create-fleet-btn-top {
@@ -493,6 +519,37 @@
       line-height:1.4;
     }
     
+    .fleet-spend-metrics {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin-bottom:12px;
+      padding:12px;
+      background:#0f1621;
+      border-radius:6px;
+      border:1px solid #223044;
+    }
+    
+    .spend-metric {
+      text-align:center;
+    }
+    
+    .spend-label {
+      color:#6b7280;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      margin-bottom:4px;
+      font-weight:600;
+    }
+    
+    .spend-value {
+      color:#34d399;
+      font-size:20px;
+      font-weight:700;
+      letter-spacing:-0.5px;
+    }
+    
     .fleet-count {
       color:#60a5fa;
       font-size:13px;
@@ -816,6 +873,16 @@
         grid-template-columns:1fr;
       }
       
+      .fleet-spend-metrics {
+        grid-template-columns:1fr;
+        gap:8px;
+        padding:8px;
+      }
+      
+      .spend-value {
+        font-size:18px;
+      }
+      
       .modal-content {
         margin:20px;
       }
@@ -1127,14 +1194,20 @@
     // Render fleet tabs
     function renderFleetTabs() {
       const tabs = document.getElementById('fleetTabs');
-      tabs.innerHTML = fleets.map(fleet => `
-        <button class="fleet-tab ${selectedFleetId === fleet.fleet_id ? 'active' : ''}" 
-                onclick="selectFleet('${fleet.fleet_id}')"
-                style="border-color:${selectedFleetId === fleet.fleet_id ? fleet.color : '#223044'}">
-          <span>${fleet.icon}</span>
-          <span>${fleet.fleet_name}</span>
-        </button>
-      `).join('');
+      tabs.innerHTML = fleets.map(fleet => {
+        const monthRevenue = getFleetMonthRevenue(fleet.fleet_id);
+        return `
+          <button class="fleet-tab ${selectedFleetId === fleet.fleet_id ? 'active' : ''}" 
+                  onclick="selectFleet('${fleet.fleet_id}')"
+                  style="border-color:${selectedFleetId === fleet.fleet_id ? fleet.color : '#223044'}">
+            <span class="fleet-tab-icon">${fleet.icon}</span>
+            <div class="fleet-tab-info">
+              <span class="fleet-tab-name">${fleet.fleet_name}</span>
+              <span class="fleet-tab-revenue">$${monthRevenue}/mo</span>
+            </div>
+          </button>
+        `;
+      }).join('');
     }
 
     // Select fleet and update view
@@ -1292,6 +1365,18 @@
             <div class="fleet-name">${fleet.fleet_name}</div>
           </div>
           <div class="fleet-description">${fleet.description || 'No description'}</div>
+          
+          <div class="fleet-spend-metrics">
+            <div class="spend-metric">
+              <div class="spend-label">Total Revenue (YTD)</div>
+              <div class="spend-value">$${getFleetTotalRevenue(fleet.fleet_id)}</div>
+            </div>
+            <div class="spend-metric">
+              <div class="spend-label">This Month</div>
+              <div class="spend-value">$${getFleetMonthRevenue(fleet.fleet_id)}</div>
+            </div>
+          </div>
+          
           <div class="fleet-count">${fleet.vehicle_count || 0} Vehicles</div>
           <div class="fleet-actions">
             <button class="fleet-btn" onclick="editFleet('${fleet.fleet_id}')">✎ Edit</button>
@@ -1300,6 +1385,23 @@
           </div>
         </div>
       `).join('');
+    }
+
+    // Get fleet revenue helpers
+    function getFleetTotalRevenue(fleetId) {
+      const data = fleetSpecificData[fleetId];
+      if (!data) return '0';
+      // Calculate YTD (6 months of data)
+      const ytd = data.monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0);
+      return ytd.toLocaleString();
+    }
+
+    function getFleetMonthRevenue(fleetId) {
+      const data = fleetSpecificData[fleetId];
+      if (!data) return '0';
+      // Get last month's revenue
+      const lastMonth = data.monthlyRevenue[data.monthlyRevenue.length - 1];
+      return lastMonth ? lastMonth.revenue.toLocaleString() : '0';
     }
 
     // Update charts for selected fleet
