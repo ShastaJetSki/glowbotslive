@@ -1961,6 +1961,7 @@
     </div>
     
     <div class="header-actions">
+      <button onclick="location.href='fleet-settings.html'" style="background:#34d399; border-color:#34d399;">🚗 Fleet Settings</button>
       <button onclick="goToSettings()">Settings</button>
       <button onclick="logout()">Logout</button>
     </div>
@@ -1991,6 +1992,13 @@
           <label style="color:#9fb0c3; font-size:12px;">Tech:</label>
           <select id="techFilter" onchange="applyTechFilter()">
             <option value="">All Techs</option>
+          </select>
+        </div>
+        
+        <div class="tech-filter">
+          <label style="color:#9fb0c3; font-size:12px;">Fleet:</label>
+          <select id="fleetFilter" onchange="applyFleetFilter()">
+            <option value="">All Fleets</option>
           </select>
         </div>
         
@@ -2027,8 +2035,11 @@ let workOrders = [];
 let customers = [];
 let vehicles = [];
 let employees = [];
+let fleets = [];
+let vehicleFleetAssignments = [];
 let currentView = 'today';
 let selectedTechId = '';
+let selectedFleetId = '';
 let draggedWO = null;
 let isMobile = window.innerWidth <= 768;
 
@@ -2203,13 +2214,37 @@ function applyTechFilter(){
   renderSchedule();
 }
 
+function renderFleetFilter(){
+  const select = document.getElementById('fleetFilter');
+  if(!select) return;
+  
+  select.innerHTML = '<option value="">All Fleets</option>';
+  
+  fleets
+    .filter(f => f.is_active)
+    .sort((a, b) => a.fleet_name.localeCompare(b.fleet_name))
+    .forEach(fleet => {
+      const option = document.createElement('option');
+      option.value = fleet.fleet_id;
+      option.textContent = `${fleet.icon || '🚗'} ${fleet.fleet_name}`;
+      select.appendChild(option);
+    });
+  
+  select.value = selectedFleetId || '';
+}
+
+function applyFleetFilter(){
+  selectedFleetId = document.getElementById('fleetFilter').value;
+  renderSchedule();
+}
+
 function getWorkOrdersForDate(date){
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const dateStr = `${year}-${month}-${day}`;
   
-  return workOrders.filter(wo => {
+  let filtered = workOrders.filter(wo => {
     // Exclude only completed and closed from day columns
     // Keep ready_for_pickup so they can be rescheduled
     if(wo.status === 'completed' || wo.status === 'closed') {
@@ -2224,6 +2259,17 @@ function getWorkOrdersForDate(date){
     
     return false;
   });
+  
+  // Apply fleet filter if selected
+  if(selectedFleetId && vehicleFleetAssignments.length > 0) {
+    const fleetVehicleIds = vehicleFleetAssignments
+      .filter(a => a.fleet_id === selectedFleetId)
+      .map(a => a.vehicle_id);
+    
+    filtered = filtered.filter(wo => fleetVehicleIds.includes(wo.vehicle_id));
+  }
+  
+  return filtered;
 }
 
 function createWOCard(wo){
@@ -4256,8 +4302,11 @@ async function load(){
     customers = await fetchTable("customers", token);
     vehicles = await fetchTable("vehicles", token);
     employees = await fetchTable("employees", token);
+    fleets = await fetchTable("fleets", token);
+    vehicleFleetAssignments = await fetchTable("vehicle_fleet_assignments", token);
     
     renderTechFilter();
+    renderFleetFilter();
     renderAll();
     
     // Setup auto-scroll for dragging (works for today and list views)
