@@ -4172,19 +4172,9 @@ function showDetailsOverlay(woId) {
   // Pay Now button
   const payBtn = document.getElementById('detailsPayBtn');
   if(payBtn) {
-    payBtn.onclick = async () => {
-      if(confirm(`Process payment of $${completeTotal.toFixed(2)} for ${customerName}?`)) {
-        payBtn.disabled = true;
-        payBtn.textContent = 'Processing...';
-        
-        try {
-          await processPayment(woId, completeTotal, customerName, customer ? customer.email : null);
-        } catch(error) {
-          alert('Payment processing failed: ' + error.message);
-          payBtn.disabled = false;
-          payBtn.textContent = 'Pay Now';
-        }
-      }
+    payBtn.onclick = () => {
+      // Redirect to checkout page
+      location.href = `checkout.html?id=${woId}`;
     };
   }
 
@@ -4204,111 +4194,6 @@ function showDetailsOverlay(woId) {
 
 function closeDetailsOverlay(){
   document.getElementById('detailsOverlay').classList.remove('active');
-}
-
-async function processPayment(woId, amount, customerName, customerEmail) {
-  const token = localStorage.getItem('sb_access_token');
-  if(!token) {
-    throw new Error('Not authenticated');
-  }
-
-  try {
-    // 1. Update work order status to completed
-    const updateResponse = await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${woId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        status: 'completed',
-        completed_at: new Date().toISOString()
-      })
-    });
-
-    if(!updateResponse.ok) {
-      throw new Error('Failed to update work order status');
-    }
-
-    // 2. Create payment record (if you have a payments table)
-    // Uncomment and adjust if you have a payments table:
-    /*
-    await fetch(`${REST_BASE}/payments`, {
-      method: 'POST',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        work_order_id: woId,
-        amount: amount,
-        payment_date: new Date().toISOString(),
-        payment_method: 'cash', // or card, etc
-        status: 'completed'
-      })
-    });
-    */
-
-    // 3. Send email receipt to customer (if email service is configured)
-    if(customerEmail) {
-      await sendReceipt(woId, customerName, customerEmail, amount);
-    }
-
-    // 4. Reload data and close overlay
-    await loadWorkOrders(token);
-    renderAll();
-    closeDetailsOverlay();
-
-    alert(`Payment of $${amount.toFixed(2)} processed successfully!${customerEmail ? '\nReceipt sent to ' + customerEmail : ''}`);
-
-  } catch(error) {
-    console.error('Payment processing error:', error);
-    throw error;
-  }
-}
-
-async function sendReceipt(woId, customerName, customerEmail, amount) {
-  // TODO: Integrate with your email service (SendGrid, AWS SES, etc)
-  // This is a placeholder - you'll need to set up an email service
-  
-  console.log('Sending receipt:', {
-    to: customerEmail,
-    subject: `Receipt for Work Order #${woId}`,
-    body: `
-      Dear ${customerName},
-      
-      Thank you for your business!
-      
-      Work Order: #${woId}
-      Amount Paid: $${amount.toFixed(2)}
-      Date: ${new Date().toLocaleDateString()}
-      
-      Your vehicle service has been completed.
-      
-      Best regards,
-      WorkLogicPro
-    `
-  });
-
-  // Example API call (adjust to your email service):
-  /*
-  const response = await fetch('/api/send-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to: customerEmail,
-      subject: `Receipt for Work Order #${woId}`,
-      html: generateReceiptHTML(woId, customerName, amount)
-    })
-  });
-  
-  if(!response.ok) {
-    throw new Error('Failed to send receipt email');
-  }
-  */
 }
 
 function renderTechFilter(){
