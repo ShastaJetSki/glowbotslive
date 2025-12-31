@@ -3,501 +3,494 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Parts Management</title>
+  <title>Parts Department</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0b0f14;
-      color: #e8eef6;
-    }
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-      flex-wrap: wrap;
-      gap: 15px;
-    }
-    h1 { color: #60a5fa; font-size: 28px; }
-    .tabs {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-      border-bottom: 2px solid #1a2535;
-      flex-wrap: wrap;
-    }
-    .tab {
-      padding: 12px 24px;
-      background: none;
-      border: none;
-      color: #94a3b8;
-      cursor: pointer;
-      border-bottom: 3px solid transparent;
-      transition: all 0.2s;
-      font-size: 15px;
-    }
-    .tab:hover { color: #e8eef6; }
-    .tab.active {
-      color: #60a5fa;
-      border-bottom-color: #60a5fa;
-    }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .toolbar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .search-box {
-      flex: 1;
-      min-width: 250px;
-      background: #1a2535;
-      border: 1px solid #2d3f56;
-      border-radius: 6px;
-      padding: 10px 14px;
-      color: #e8eef6;
-      font-size: 14px;
-    }
-    .btn {
-      padding: 10px 18px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-    .btn-primary {
-      background: #3b82f6;
-      color: white;
-    }
+    body { font-family: system-ui; background: #0b0f14; color: #e8eef6; display: flex; height: 100vh; overflow: hidden; }
+    
+    /* Sidebar */
+    .sidebar { width: 240px; background: #1a2535; border-right: 1px solid #2d3f56; display: flex; flex-direction: column; }
+    .logo { padding: 20px; font-size: 18px; font-weight: 700; color: #60a5fa; border-bottom: 1px solid #2d3f56; }
+    .nav-item { padding: 12px 20px; cursor: pointer; transition: all 0.2s; color: #94a3b8; display: flex; align-items: center; gap: 10px; }
+    .nav-item:hover { background: #223044; color: #e8eef6; }
+    .nav-item.active { background: #223044; color: #60a5fa; border-left: 3px solid #60a5fa; }
+    
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    
+    /* Top Bar */
+    .top-bar { background: #1a2535; border-bottom: 1px solid #2d3f56; padding: 16px 20px; }
+    .top-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .top-stat { background: #0f1621; padding: 10px 12px; border-radius: 6px; border-left: 3px solid #3b82f6; }
+    .top-stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .top-stat-value { font-size: 18px; font-weight: 700; color: #e8eef6; margin-top: 2px; }
+    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    
+    /* Content */
+    .content { flex: 1; overflow-y: auto; padding: 20px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    
+    /* Buttons */
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
+    .btn-primary { background: #3b82f6; color: white; }
     .btn-primary:hover { background: #2563eb; }
-    .btn-secondary {
-      background: #475569;
-      color: white;
-    }
+    .btn-secondary { background: #475569; color: white; }
     .btn-secondary:hover { background: #334155; }
-    .btn-sm {
-      padding: 6px 12px;
-      font-size: 13px;
-    }
-    .btn-danger {
-      background: #dc2626;
-      color: white;
-    }
+    .btn-success { background: #059669; color: white; }
+    .btn-success:hover { background: #047857; }
+    .btn-danger { background: #dc2626; color: white; }
     .btn-danger:hover { background: #b91c1c; }
-    .table-container {
-      background: #1a2535;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th {
-      background: #0f1621;
-      padding: 14px;
-      text-align: left;
-      font-weight: 600;
-      color: #94a3b8;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    td {
-      padding: 14px;
-      border-top: 1px solid #2d3f56;
-    }
-    tr:hover td {
-      background: #223044;
-    }
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-    }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    
+    /* Cards */
+    .card { background: #1a2535; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .card-title { font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 16px; }
+    
+    /* Stats Grid */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .stat-card { background: #1a2535; padding: 16px; border-radius: 8px; border-left: 4px solid #3b82f6; }
+    .stat-label { color: #94a3b8; font-size: 12px; margin-bottom: 4px; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #e8eef6; }
+    
+    /* Tables */
+    .table-container { background: #1a2535; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #0f1621; padding: 12px; text-align: left; font-weight: 600; color: #94a3b8; font-size: 12px; text-transform: uppercase; }
+    td { padding: 12px; border-top: 1px solid #2d3f56; }
+    tr:hover td { background: #223044; }
+    
+    /* Alerts */
+    .alerts { margin-bottom: 20px; }
+    .alert { background: #1a2535; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .alert-critical { border-left-color: #dc2626; }
+    .alert-warning { border-left-color: #f59e0b; }
+    .alert-info { border-left-color: #3b82f6; }
+    
+    /* Recent Strip */
+    .recent-strip { display: flex; gap: 12px; overflow-x: auto; padding: 12px 0; margin-bottom: 20px; }
+    .recent-card { background: #1a2535; border: 1px solid #2d3f56; border-radius: 8px; padding: 12px; min-width: 260px; cursor: pointer; transition: all 0.2s; }
+    .recent-card:hover { border-color: #3b82f6; }
+    .recent-num { color: #60a5fa; font-weight: 600; font-size: 13px; }
+    .recent-name { color: #e8eef6; font-size: 12px; margin: 4px 0; }
+    .recent-details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2d3f56; font-size: 11px; }
+    .recent-label { color: #94a3b8; }
+    .recent-value { color: #e8eef6; font-weight: 600; }
+    
+    /* Forms */
+    .form-group { margin-bottom: 14px; }
+    label { display: block; margin-bottom: 4px; color: #94a3b8; font-size: 13px; font-weight: 500; }
+    input, select, textarea { width: 100%; padding: 8px 10px; background: #0f1621; border: 1px solid #2d3f56; border-radius: 6px; color: #e8eef6; font-size: 13px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    
+    /* Modal */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
+    .modal.active { display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-content { background: #1a2535; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .modal-title { font-size: 18px; color: #60a5fa; }
+    .close-btn { background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; }
+    
+    /* Badge */
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     .badge-success { background: #065f46; color: #34d399; }
     .badge-warning { background: #92400e; color: #fbbf24; }
     .badge-danger { background: #7f1d1d; color: #f87171; }
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.8);
-      z-index: 1000;
-      overflow-y: auto;
-      padding: 20px;
-    }
-    .modal.active { display: flex; align-items: center; justify-content: center; }
-    .modal-content {
-      background: #1a2535;
-      border-radius: 12px;
-      padding: 30px;
-      max-width: 600px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-    .modal-title {
-      font-size: 22px;
-      color: #60a5fa;
-    }
-    .close-btn {
-      background: none;
-      border: none;
-      color: #94a3b8;
-      font-size: 28px;
-      cursor: pointer;
-      padding: 0;
-      width: 32px;
-      height: 32px;
-      line-height: 32px;
-    }
-    .close-btn:hover { color: #e8eef6; }
-    .form-group {
-      margin-bottom: 18px;
-    }
-    label {
-      display: block;
-      margin-bottom: 6px;
-      color: #94a3b8;
-      font-size: 14px;
-      font-weight: 500;
-    }
-    input, select, textarea {
-      width: 100%;
-      padding: 10px 12px;
-      background: #0f1621;
-      border: 1px solid #2d3f56;
-      border-radius: 6px;
-      color: #e8eef6;
-      font-size: 14px;
-    }
-    input:focus, select:focus, textarea:focus {
-      outline: none;
-      border-color: #3b82f6;
-    }
-    textarea {
-      resize: vertical;
-      min-height: 80px;
-    }
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    .stat-card {
-      background: #1a2535;
-      padding: 20px;
-      border-radius: 8px;
-      border-left: 4px solid #3b82f6;
-    }
-    .stat-label {
-      color: #94a3b8;
-      font-size: 12px;
-      margin-bottom: 6px;
-    }
-    .stat-value {
-      font-size: 24px;
-      font-weight: 700;
-      color: #e8eef6;
-    }
-    .actions {
-      display: flex;
-      gap: 8px;
-    }
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: #94a3b8;
-    }
-    .empty-state h3 {
-      color: #e8eef6;
-      margin-bottom: 10px;
-    }
-    .chart-container {
-      background: #1a2535;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      height: 300px;
-    }
-    .autocomplete-items {
-      position: absolute;
-      background: #1a2535;
-      border: 1px solid #2d3f56;
-      border-radius: 6px;
-      margin-top: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 100;
-      width: calc(100% - 28px);
-    }
-    .autocomplete-item {
-      padding: 10px;
-      cursor: pointer;
-      border-bottom: 1px solid #2d3f56;
-    }
-    .autocomplete-item:hover {
-      background: #223044;
-    }
-    .file-upload {
-      border: 2px dashed #2d3f56;
-      border-radius: 6px;
-      padding: 30px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .file-upload:hover {
-      border-color: #3b82f6;
-      background: rgba(59, 130, 246, 0.05);
-    }
-    .file-upload input {
-      display: none;
-    }
+    .badge-info { background: #1e3a8a; color: #60a5fa; }
+    
+    /* Search */
+    .search-box { flex: 1; min-width: 200px; background: #0f1621; border: 1px solid #2d3f56; border-radius: 6px; padding: 8px 12px; color: #e8eef6; font-size: 13px; }
+    
+    /* Chart */
+    .chart { height: 300px; margin-bottom: 20px; }
+    
     @media (max-width: 768px) {
-      .form-row { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: 1fr; }
-      table { font-size: 13px; }
-      th, td { padding: 10px; }
+      .sidebar { width: 60px; }
+      .logo, .nav-item span { display: none; }
+      .top-stats { grid-template-columns: repeat(2, 1fr); }
       .desktop-only { display: none; }
-      .chart-container { height: 200px; }
+      .form-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 
-<div class="container">
-  <div class="header">
-    <h1>Parts Management</h1>
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo">Parts Dept</div>
+  <div class="nav-item active" onclick="showSection('dashboard')">
+    <span>📊</span> <span>Dashboard</span>
   </div>
-
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('inventory')">Inventory</button>
-    <button class="tab" onclick="switchTab('categories')">Categories</button>
-    <button class="tab" onclick="switchTab('suppliers')">Suppliers</button>
+  <div class="nav-item" onclick="showSection('inventory')">
+    <span>📦</span> <span>Inventory</span>
   </div>
+  <div class="nav-item" onclick="showSection('workorders')">
+    <span>🔧</span> <span>Work Orders</span>
+  </div>
+  <div class="nav-item" onclick="showSection('purchaseorders')">
+    <span>📋</span> <span>Purchase Orders</span>
+  </div>
+  <div class="nav-item" onclick="showSection('receiving')">
+    <span>📥</span> <span>Receiving</span>
+  </div>
+  <div class="nav-item" onclick="showSection('suppliers')">
+    <span>🏢</span> <span>Suppliers</span>
+  </div>
+  <div class="nav-item" onclick="showSection('counts')">
+    <span>📊</span> <span>Counts</span>
+  </div>
+  <div class="nav-item" onclick="showSection('transactions')">
+    <span>📜</span> <span>Transactions</span>
+  </div>
+  <div class="nav-item" onclick="showSection('reports')">
+    <span>📈</span> <span>Reports</span>
+  </div>
+</div>
 
-  <div id="inventory-tab" class="tab-content active">
-    <div class="stats">
-      <div class="stat-card">
-        <div class="stat-label">Total Parts</div>
-        <div class="stat-value" id="totalParts">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Value</div>
-        <div class="stat-value" id="totalValue">$0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Low Stock</div>
-        <div class="stat-value" id="lowStock">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Out of Stock</div>
-        <div class="stat-value" id="outStock">0</div>
-      </div>
-      <div class="stat-card" style="border-left-color: #10b981;">
-        <div class="stat-label">Added 7 Days</div>
-        <div class="stat-value" id="added7">0</div>
-      </div>
-      <div class="stat-card" style="border-left-color: #f59e0b;">
-        <div class="stat-label">Added 30 Days</div>
-        <div class="stat-value" id="added30">0</div>
-      </div>
-      <div class="stat-card" style="border-left-color: #8b5cf6;">
-        <div class="stat-label">Added 90 Days</div>
-        <div class="stat-value" id="added90">0</div>
-      </div>
+<!-- Main -->
+<div class="main">
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="top-stats">
+      <div class="top-stat"><div class="top-stat-label">Inventory Value</div><div class="top-stat-value" id="invValue">$0</div></div>
+      <div class="top-stat"><div class="top-stat-label">Parts On Hand</div><div class="top-stat-value" id="partsOnHand">0</div></div>
+      <div class="top-stat"><div class="top-stat-label">Low Stock</div><div class="top-stat-value" id="lowStock">0</div></div>
+      <div class="top-stat"><div class="top-stat-label">Out of Stock</div><div class="top-stat-value" id="outStock">0</div></div>
+      <div class="top-stat"><div class="top-stat-label">On Order</div><div class="top-stat-value" id="onOrder">0</div></div>
+      <div class="top-stat"><div class="top-stat-label">Used Today</div><div class="top-stat-value" id="usedToday">0</div></div>
+      <div class="top-stat"><div class="top-stat-label">Revenue MTD</div><div class="top-stat-value" id="revenueMTD">$0</div></div>
     </div>
-
-    <div class="chart-container">
-      <canvas id="inventoryChart"></canvas>
-    </div>
-
-    <div class="toolbar">
-      <div style="position: relative; flex: 1; min-width: 250px;">
-        <input type="text" id="searchParts" class="search-box" placeholder="Search parts..." autocomplete="off">
-        <div id="autocomplete" class="autocomplete-items"></div>
-      </div>
-      <select id="filterCategory" class="search-box" style="flex: 0; min-width: 150px;">
-        <option value="">All Categories</option>
-      </select>
+    <div class="top-actions">
       <button class="btn btn-primary" onclick="openPartModal()">+ Add Part</button>
+      <button class="btn btn-success desktop-only" onclick="openReceivingModal()">📥 Receive Parts</button>
+      <button class="btn btn-secondary desktop-only" onclick="openIssueModal()">📤 Issue to WO</button>
+      <input type="text" id="globalSearch" class="search-box" placeholder="Search part #, WO, VIN, barcode...">
       <button class="btn btn-secondary desktop-only" onclick="document.getElementById('csvFile').click()">Import CSV</button>
       <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV(event)">
     </div>
-
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Part #</th>
-            <th>Name</th>
-            <th>Category</th>
-            <th>On Hand</th>
-            <th>Cost</th>
-            <th>Retail</th>
-            <th>Markup</th>
-            <th>Location</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="partsTable"></tbody>
-      </table>
-    </div>
   </div>
 
-  <div id="categories-tab" class="tab-content">
-    <div class="toolbar">
-      <button class="btn btn-primary" onclick="openCategoryModal()">+ Add Category</button>
-    </div>
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Category Name</th>
-            <th>Description</th>
-            <th>Parts Count</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="categoriesTable"></tbody>
-      </table>
-    </div>
-  </div>
+  <!-- Content -->
+  <div class="content">
+    
+    <!-- Dashboard Section -->
+    <div id="dashboard" class="section active">
+      
+      <!-- Alerts -->
+      <div class="alerts">
+        <div class="card-title">Action Queue</div>
+        <div id="alertsList"></div>
+      </div>
 
-  <div id="suppliers-tab" class="tab-content">
-    <div class="toolbar">
-      <button class="btn btn-primary" onclick="openSupplierModal()">+ Add Supplier</button>
+      <!-- Recent Parts -->
+      <div id="recentSection" style="display:none;">
+        <div class="card-title">Recently Viewed Parts</div>
+        <div class="recent-strip" id="recentStrip"></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat-card"><div class="stat-label">Added 7 Days</div><div class="stat-value" id="added7">0</div></div>
+        <div class="stat-card" style="border-left-color:#f59e0b;"><div class="stat-label">Added 30 Days</div><div class="stat-value" id="added30">0</div></div>
+        <div class="stat-card" style="border-left-color:#8b5cf6;"><div class="stat-label">Added 90 Days</div><div class="stat-value" id="added90">0</div></div>
+        <div class="stat-card" style="border-left-color:#10b981;"><div class="stat-label">Avg Markup</div><div class="stat-value" id="avgMarkup">0%</div></div>
+      </div>
+
+      <!-- Chart -->
+      <div class="card">
+        <div class="card-title">Inventory by Category</div>
+        <div class="chart"><canvas id="dashChart"></canvas></div>
+      </div>
     </div>
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Supplier Name</th>
-            <th>Contact</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>Payment Terms</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="suppliersTable"></tbody>
-      </table>
+
+    <!-- Inventory Section -->
+    <div id="inventory" class="section">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="color:#60a5fa;">Parts Inventory</h2>
+        <div style="display:flex; gap:8px;">
+          <select id="catFilter" class="search-box" style="flex:0; min-width:150px;">
+            <option value="">All Categories</option>
+          </select>
+          <input type="text" id="searchParts" class="search-box" placeholder="Search..." style="width:250px;">
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAll"></th>
+              <th>Part #</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>On Hand</th>
+              <th>Available</th>
+              <th>Reserved</th>
+              <th>On Order</th>
+              <th>Location</th>
+              <th>Cost</th>
+              <th>Retail</th>
+              <th>Margin</th>
+              <th>Supplier</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inventoryTable"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="bulkReorder()">Reorder Selected</button>
+        <button class="btn btn-secondary btn-sm desktop-only" onclick="exportInventory()">Export CSV</button>
+        <button class="btn btn-secondary btn-sm desktop-only" onclick="bulkPriceUpdate()">Mass Price Update</button>
+      </div>
     </div>
+
+    <!-- Work Orders Section -->
+    <div id="workorders" class="section">
+      <h2 style="color:#60a5fa; margin-bottom:16px;">Work Order Parts</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>WO #</th>
+              <th>Customer</th>
+              <th>Vehicle</th>
+              <th>Tech</th>
+              <th>Parts</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="woPartsTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Purchase Orders Section -->
+    <div id="purchaseorders" class="section">
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+        <h2 style="color:#60a5fa;">Purchase Orders</h2>
+        <button class="btn btn-primary" onclick="openPOModal()">+ Create PO</button>
+      </div>
+      <div class="stats">
+        <div class="stat-card"><div class="stat-label">Draft</div><div class="stat-value" id="poDraft">0</div></div>
+        <div class="stat-card" style="border-left-color:#f59e0b;"><div class="stat-label">Pending</div><div class="stat-value" id="poPending">0</div></div>
+        <div class="stat-card" style="border-left-color:#10b981;"><div class="stat-label">Partial</div><div class="stat-value" id="poPartial">0</div></div>
+        <div class="stat-card" style="border-left-color:#8b5cf6;"><div class="stat-label">Complete</div><div class="stat-value" id="poComplete">0</div></div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>PO #</th>
+              <th>Supplier</th>
+              <th>Date</th>
+              <th>ETA</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="poTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Receiving Section -->
+    <div id="receiving" class="section">
+      <h2 style="color:#60a5fa; margin-bottom:16px;">Receive Parts</h2>
+      <div class="card">
+        <div class="form-group">
+          <label>Scan Barcode or Enter Part #</label>
+          <input type="text" id="receiveBarcode" placeholder="Scan or type..." autofocus>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>PO Number</label>
+            <select id="receivePO"></select>
+          </div>
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" id="receiveQty" value="1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Bin Location</label>
+            <input type="text" id="receiveBin">
+          </div>
+          <div class="form-group">
+            <label>Condition</label>
+            <select id="receiveCondition">
+              <option>Good</option>
+              <option>Damaged</option>
+              <option>Backorder</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-success" onclick="processReceipt()">Receive</button>
+      </div>
+      <div class="table-container" style="margin-top:20px;">
+        <table>
+          <thead>
+            <tr><th>Part #</th><th>Name</th><th>Qty</th><th>Bin</th><th>Time</th></tr>
+          </thead>
+          <tbody id="receiveHistory"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Suppliers Section -->
+    <div id="suppliers" class="section">
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+        <h2 style="color:#60a5fa;">Suppliers</h2>
+        <button class="btn btn-primary" onclick="openSupplierModal()">+ Add Supplier</button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Supplier</th>
+              <th>Contact</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>Lead Time</th>
+              <th>On-Time %</th>
+              <th>YTD Spend</th>
+              <th>Terms</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="suppliersTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Counts Section -->
+    <div id="counts" class="section">
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+        <h2 style="color:#60a5fa;">Inventory Counts</h2>
+        <button class="btn btn-primary" onclick="openCountModal()">+ New Count</button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Count #</th>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Parts</th>
+              <th>Discrepancies</th>
+              <th>Value Adj</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="countsTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Transactions Section -->
+    <div id="transactions" class="section">
+      <h2 style="color:#60a5fa; margin-bottom:16px;">Transaction Log</h2>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <select id="transType" class="search-box" style="flex:0; width:150px;">
+          <option value="">All Types</option>
+          <option>Receipt</option>
+          <option>Issue</option>
+          <option>Adjustment</option>
+          <option>Return</option>
+          <option>Transfer</option>
+        </select>
+        <input type="date" id="transDate" class="search-box" style="flex:0; width:150px;">
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Date/Time</th>
+              <th>Type</th>
+              <th>Part #</th>
+              <th>Description</th>
+              <th>Qty Change</th>
+              <th>Before</th>
+              <th>After</th>
+              <th>Reference</th>
+              <th>User</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="transTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Reports Section -->
+    <div id="reports" class="section">
+      <h2 style="color:#60a5fa; margin-bottom:16px;">Reports & Analytics</h2>
+      <div class="stats">
+        <div class="stat-card"><div class="stat-label">Inventory Turns</div><div class="stat-value">4.2x</div></div>
+        <div class="stat-card" style="border-left-color:#f59e0b;"><div class="stat-label">Fill Rate</div><div class="stat-value">94%</div></div>
+        <div class="stat-card" style="border-left-color:#10b981;"><div class="stat-label">Avg Margin</div><div class="stat-value">42%</div></div>
+        <div class="stat-card" style="border-left-color:#8b5cf6;"><div class="stat-label">Dead Stock</div><div class="stat-value">12</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Quick Reports</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+          <button class="btn btn-secondary" onclick="runReport('aging')">Inventory Aging</button>
+          <button class="btn btn-secondary" onclick="runReport('deadstock')">Dead Stock</button>
+          <button class="btn btn-secondary" onclick="runReport('fastmovers')">Fast Movers</button>
+          <button class="btn btn-secondary" onclick="runReport('slowmovers')">Slow Movers</button>
+          <button class="btn btn-secondary" onclick="runReport('profitability')">Profitability</button>
+          <button class="btn btn-secondary" onclick="runReport('fillrate')">Fill Rate</button>
+          <button class="btn btn-secondary" onclick="runReport('valuation')">Inventory Valuation</button>
+          <button class="btn btn-secondary" onclick="runReport('lostsales')">Lost Sales</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
+<!-- Modals -->
 <div id="partModal" class="modal">
   <div class="modal-content">
     <div class="modal-header">
-      <h2 class="modal-title" id="partModalTitle">Add Part</h2>
+      <h2 class="modal-title">Add Part</h2>
       <button class="close-btn" onclick="closeModal('partModal')">&times;</button>
     </div>
-    <form id="partForm" onsubmit="savePart(event)">
-      <div class="form-group">
-        <label>Part Number *</label>
-        <input type="text" id="partNumber" required>
+    <form onsubmit="savePart(event)">
+      <div class="form-row">
+        <div class="form-group"><label>Part Number *</label><input type="text" id="partNumber" required></div>
+        <div class="form-group"><label>Barcode</label><input type="text" id="partBarcode"></div>
       </div>
-      <div class="form-group">
-        <label>Part Name *</label>
-        <input type="text" id="partName" required>
-      </div>
-      <div class="form-group">
-        <label>Description</label>
-        <textarea id="partDescription"></textarea>
+      <div class="form-group"><label>Description *</label><input type="text" id="partName" required></div>
+      <div class="form-group"><label>Notes</label><textarea id="partDescription"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Category</label><select id="partCategory"></select></div>
+        <div class="form-group"><label>Supplier</label><select id="partSupplier"></select></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Category</label>
-          <select id="partCategory"></select>
-        </div>
-        <div class="form-group">
-          <label>Supplier</label>
-          <select id="partSupplier"></select>
-        </div>
+        <div class="form-group"><label>Qty On Hand *</label><input type="number" id="partQty" value="0" required></div>
+        <div class="form-group"><label>Reorder Point</label><input type="number" id="partReorder" value="0"></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Quantity On Hand *</label>
-          <input type="number" id="partQty" value="0" required>
-        </div>
-        <div class="form-group">
-          <label>Reorder Point</label>
-          <input type="number" id="partReorder" value="0">
-        </div>
+        <div class="form-group"><label>Cost *</label><input type="number" step="0.01" id="partCost" required></div>
+        <div class="form-group"><label>Retail *</label><input type="number" step="0.01" id="partRetail" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Cost Price *</label>
-          <input type="number" step="0.01" id="partCost" required>
-        </div>
-        <div class="form-group">
-          <label>Retail Price *</label>
-          <input type="number" step="0.01" id="partRetail" required>
-        </div>
+        <div class="form-group"><label>Bin</label><input type="text" id="partBin"></div>
+        <div class="form-group"><label>Shelf</label><input type="text" id="partShelf"></div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Bin Location</label>
-          <input type="text" id="partBin">
-        </div>
-        <div class="form-group">
-          <label>Shelf Location</label>
-          <input type="text" id="partShelf">
-        </div>
-      </div>
-      <div style="display: flex; gap: 10px; margin-top: 24px;">
-        <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('partModal')">Cancel</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div id="categoryModal" class="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2 class="modal-title">Add Category</h2>
-      <button class="close-btn" onclick="closeModal('categoryModal')">&times;</button>
-    </div>
-    <form id="categoryForm" onsubmit="saveCategory(event)">
-      <div class="form-group">
-        <label>Category Name *</label>
-        <input type="text" id="categoryName" required>
-      </div>
-      <div class="form-group">
-        <label>Description</label>
-        <textarea id="categoryDescription"></textarea>
-      </div>
-      <div style="display: flex; gap: 10px; margin-top: 24px;">
-        <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
-        <button type="button" class="btn btn-secondary" onclick="closeModal('categoryModal')">Cancel</button>
       </div>
     </form>
   </div>
@@ -509,61 +502,31 @@
       <h2 class="modal-title">Add Supplier</h2>
       <button class="close-btn" onclick="closeModal('supplierModal')">&times;</button>
     </div>
-    <form id="supplierForm" onsubmit="saveSupplier(event)">
-      <div class="form-group">
-        <label>Supplier Name *</label>
-        <input type="text" id="supplierName" required>
+    <form onsubmit="saveSupplier(event)">
+      <div class="form-group"><label>Supplier Name *</label><input type="text" id="supplierName" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Contact</label><input type="text" id="supplierContact"></div>
+        <div class="form-group"><label>Phone</label><input type="tel" id="supplierPhone"></div>
+      </div>
+      <div class="form-group"><label>Email</label><input type="email" id="supplierEmail"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Address</label><input type="text" id="supplierAddress"></div>
+        <div class="form-group"><label>City</label><input type="text" id="supplierCity"></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Contact Name</label>
-          <input type="text" id="supplierContact">
-        </div>
-        <div class="form-group">
-          <label>Phone</label>
-          <input type="tel" id="supplierPhone">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" id="supplierEmail">
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Address</label>
-          <input type="text" id="supplierAddress">
-        </div>
-        <div class="form-group">
-          <label>City</label>
-          <input type="text" id="supplierCity">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>State</label>
-          <input type="text" id="supplierState">
-        </div>
-        <div class="form-group">
-          <label>Zip Code</label>
-          <input type="text" id="supplierZip">
-        </div>
+        <div class="form-group"><label>State</label><input type="text" id="supplierState"></div>
+        <div class="form-group"><label>Zip</label><input type="text" id="supplierZip"></div>
       </div>
       <div class="form-group">
         <label>Payment Terms</label>
         <select id="supplierTerms">
-          <option value="">Select...</option>
-          <option value="Net 30">Net 30</option>
-          <option value="Net 60">Net 60</option>
-          <option value="COD">COD</option>
-          <option value="Prepaid">Prepaid</option>
+          <option>Net 30</option>
+          <option>Net 60</option>
+          <option>COD</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea id="supplierNotes"></textarea>
-      </div>
-      <div style="display: flex; gap: 10px; margin-top: 24px;">
-        <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('supplierModal')">Cancel</button>
       </div>
     </form>
@@ -576,232 +539,194 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let tenantId = '11111111-1111-1111-1111-111111111111';
-let currentPartId = null;
-let parts = [];
-let categories = [];
-let suppliers = [];
-let chart = null;
+let parts = [], categories = [], suppliers = [], recentSearches = [];
+let chart;
 
 async function init() {
-  await loadCategories();
-  await loadSuppliers();
-  await loadParts();
-  updateStats();
-  populateDropdowns();
+  await loadData();
   initChart();
+  loadRecent();
+  updateAllStats();
+  renderAlerts();
 }
 
-async function loadParts() {
-  const { data, error } = await sb
-    .from('parts_inventory')
-    .select('*, parts_categories(category_name), parts_suppliers(supplier_name)')
-    .eq('tenant_id', tenantId)
-    .order('part_number');
-  
-  if (!error) {
-    parts = data || [];
-    renderParts();
-    updateChart();
-  }
+async function loadData() {
+  const [p, c, s] = await Promise.all([
+    sb.from('parts_inventory').select('*, parts_categories(category_name), parts_suppliers(supplier_name)').eq('tenant_id', tenantId),
+    sb.from('parts_categories').select('*').eq('tenant_id', tenantId),
+    sb.from('parts_suppliers').select('*').eq('tenant_id', tenantId)
+  ]);
+  parts = p.data || [];
+  categories = c.data || [];
+  suppliers = s.data || [];
+  renderAll();
 }
 
-async function loadCategories() {
-  const { data } = await sb
-    .from('parts_categories')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('category_name');
-  
-  categories = data || [];
-  renderCategories();
-  populateCategoryFilter();
-}
-
-async function loadSuppliers() {
-  const { data } = await sb
-    .from('parts_suppliers')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('supplier_name');
-  
-  suppliers = data || [];
+function renderAll() {
+  renderInventory();
   renderSuppliers();
+  populateDropdowns();
 }
 
-function renderParts() {
-  const tbody = document.getElementById('partsTable');
-  if (parts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><h3>No parts yet</h3><p>Add your first part to get started</p></td></tr>';
-    return;
-  }
-  
-  const search = document.getElementById('searchParts').value.toLowerCase();
-  const catFilter = document.getElementById('filterCategory').value;
-  
-  const filtered = parts.filter(p => {
-    const matchSearch = !search || p.part_number.toLowerCase().includes(search) || p.part_name.toLowerCase().includes(search);
-    const matchCat = !catFilter || p.category_id === catFilter;
-    return matchSearch && matchCat;
-  });
-  
-  tbody.innerHTML = filtered.map(p => {
-    const status = p.quantity_on_hand <= 0 ? 'danger' : p.quantity_on_hand <= p.reorder_point ? 'warning' : 'success';
-    const categoryName = p.parts_categories?.category_name || '-';
-    
+function renderInventory() {
+  const tbody = document.getElementById('inventoryTable');
+  tbody.innerHTML = parts.map(p => {
+    const status = p.quantity_on_hand <= 0 ? 'Out' : p.quantity_on_hand <= p.reorder_point ? 'Low' : 'OK';
+    const badge = status === 'Out' ? 'danger' : status === 'Low' ? 'warning' : 'success';
     return `<tr>
+      <td><input type="checkbox" class="part-check" data-id="${p.part_id}"></td>
       <td><strong>${p.part_number}</strong></td>
       <td>${p.part_name}</td>
-      <td>${categoryName}</td>
-      <td><span class="badge badge-${status}">${p.quantity_on_hand}</span></td>
+      <td>${p.parts_categories?.category_name || '-'}</td>
+      <td>${p.quantity_on_hand}</td>
+      <td>${p.quantity_available}</td>
+      <td>${p.quantity_reserved}</td>
+      <td>${p.quantity_on_order}</td>
+      <td>${p.bin_location || '-'}</td>
       <td>$${p.cost_price.toFixed(2)}</td>
       <td>$${p.retail_price.toFixed(2)}</td>
       <td>${p.markup_percentage?.toFixed(0) || 0}%</td>
-      <td>${p.bin_location || '-'}</td>
-      <td class="actions">
-        <button class="btn btn-sm btn-secondary" onclick="editPart('${p.part_id}')">Edit</button>
-        <button class="btn btn-sm btn-danger desktop-only" onclick="deletePart('${p.part_id}')">Del</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function renderCategories() {
-  const tbody = document.getElementById('categoriesTable');
-  if (categories.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><h3>No categories yet</h3></td></tr>';
-    return;
-  }
-  
-  tbody.innerHTML = categories.map(c => {
-    const count = parts.filter(p => p.category_id === c.category_id).length;
-    return `<tr>
-      <td><strong>${c.category_name}</strong></td>
-      <td>${c.description || '-'}</td>
-      <td>${count}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteCategory('${c.category_id}')">Delete</button></td>
+      <td>${p.parts_suppliers?.supplier_name || '-'}</td>
+      <td><span class="badge badge-${badge}">${status}</span></td>
+      <td><button class="btn btn-sm btn-secondary" onclick="editPart('${p.part_id}')">Edit</button></td>
     </tr>`;
   }).join('');
 }
 
 function renderSuppliers() {
-  const tbody = document.getElementById('suppliersTable');
-  if (suppliers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><h3>No suppliers yet</h3></td></tr>';
-    return;
-  }
-  
-  tbody.innerHTML = suppliers.map(s => `<tr>
+  document.getElementById('suppliersTable').innerHTML = suppliers.map(s => `<tr>
     <td><strong>${s.supplier_name}</strong></td>
     <td>${s.contact_name || '-'}</td>
     <td>${s.phone || '-'}</td>
     <td>${s.email || '-'}</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
     <td>${s.payment_terms || '-'}</td>
     <td><button class="btn btn-sm btn-danger" onclick="deleteSupplier('${s.supplier_id}')">Delete</button></td>
   </tr>`).join('');
 }
 
-function updateStats() {
+function renderAlerts() {
+  const alerts = parts.filter(p => p.quantity_on_hand <= p.reorder_point);
+  document.getElementById('alertsList').innerHTML = alerts.length ? alerts.slice(0,5).map(p => `
+    <div class="alert alert-${p.quantity_on_hand <= 0 ? 'critical' : 'warning'}">
+      <div><strong>${p.part_number}</strong> - ${p.part_name} (${p.quantity_on_hand} on hand)</div>
+      <button class="btn btn-sm btn-primary" onclick="createPOForPart('${p.part_id}')">Create PO</button>
+    </div>
+  `).join('') : '<div class="alert alert-info"><div>No alerts</div></div>';
+}
+
+function loadRecent() {
+  try {
+    recentSearches = JSON.parse(localStorage.getItem('recentParts') || '[]');
+    renderRecent();
+  } catch(e) {}
+}
+
+function renderRecent() {
+  if (!recentSearches.length) {
+    document.getElementById('recentSection').style.display = 'none';
+    return;
+  }
+  document.getElementById('recentSection').style.display = 'block';
+  document.getElementById('recentStrip').innerHTML = recentSearches.map(p => `
+    <div class="recent-card" onclick="editPart('${p.part_id}')">
+      <div class="recent-num">${p.part_number}</div>
+      <div class="recent-name">${p.part_name}</div>
+      <div class="recent-details">
+        <div><span class="recent-label">On Hand:</span> <span class="recent-value">${p.quantity_on_hand}</span></div>
+        <div><span class="recent-label">Cost:</span> <span class="recent-value">$${p.cost_price}</span></div>
+        <div><span class="recent-label">Retail:</span> <span class="recent-value">$${p.retail_price}</span></div>
+        <div><span class="recent-label">Bin:</span> <span class="recent-value">${p.bin_location || '-'}</span></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addToRecent(part) {
+  recentSearches = recentSearches.filter(p => p.part_id !== part.part_id);
+  recentSearches.unshift(part);
+  recentSearches = recentSearches.slice(0,10);
+  localStorage.setItem('recentParts', JSON.stringify(recentSearches));
+  renderRecent();
+}
+
+function updateAllStats() {
   const now = new Date();
+  document.getElementById('invValue').textContent = '$' + parts.reduce((s,p) => s + (p.quantity_on_hand * p.retail_price), 0).toFixed(0);
+  document.getElementById('partsOnHand').textContent = parts.reduce((s,p) => s + p.quantity_on_hand, 0);
+  document.getElementById('lowStock').textContent = parts.filter(p => p.quantity_on_hand > 0 && p.quantity_on_hand <= p.reorder_point).length;
+  document.getElementById('outStock').textContent = parts.filter(p => p.quantity_on_hand <= 0).length;
+  document.getElementById('onOrder').textContent = parts.reduce((s,p) => s + p.quantity_on_order, 0);
+  document.getElementById('usedToday').textContent = '0';
+  document.getElementById('revenueMTD').textContent = '$0';
+  
   const day7 = new Date(now - 7*24*60*60*1000);
   const day30 = new Date(now - 30*24*60*60*1000);
   const day90 = new Date(now - 90*24*60*60*1000);
-  
-  document.getElementById('totalParts').textContent = parts.length;
-  document.getElementById('totalValue').textContent = '$' + parts.reduce((sum, p) => sum + (p.quantity_on_hand * p.retail_price), 0).toFixed(0);
-  document.getElementById('lowStock').textContent = parts.filter(p => p.quantity_on_hand > 0 && p.quantity_on_hand <= p.reorder_point).length;
-  document.getElementById('outStock').textContent = parts.filter(p => p.quantity_on_hand <= 0).length;
   document.getElementById('added7').textContent = parts.filter(p => new Date(p.created_at) >= day7).length;
   document.getElementById('added30').textContent = parts.filter(p => new Date(p.created_at) >= day30).length;
   document.getElementById('added90').textContent = parts.filter(p => new Date(p.created_at) >= day90).length;
+  
+  const avgMarkup = parts.length ? parts.reduce((s,p) => s + (p.markup_percentage || 0), 0) / parts.length : 0;
+  document.getElementById('avgMarkup').textContent = avgMarkup.toFixed(0) + '%';
 }
 
 function initChart() {
-  const ctx = document.getElementById('inventoryChart');
+  const ctx = document.getElementById('dashChart');
   const catCounts = {};
   categories.forEach(c => catCounts[c.category_name] = 0);
   parts.forEach(p => {
     const cat = p.parts_categories?.category_name || 'Uncategorized';
     catCounts[cat] = (catCounts[cat] || 0) + p.quantity_on_hand;
   });
-  
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: Object.keys(catCounts),
       datasets: [{
-        label: 'Parts by Category',
         data: Object.values(catCounts),
-        backgroundColor: 'rgba(59, 130, 246, 0.5)',
-        borderColor: 'rgba(59, 130, 246, 1)',
+        backgroundColor: 'rgba(59,130,246,0.5)',
+        borderColor: 'rgba(59,130,246,1)',
         borderWidth: 2
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        title: { display: true, text: 'Inventory by Category', color: '#94a3b8' }
-      },
+      plugins: { legend: { display: false } },
       scales: {
-        y: { 
-          beginAtZero: true, 
-          ticks: { color: '#94a3b8' },
-          grid: { color: '#1a2535' }
-        },
-        x: { 
-          ticks: { color: '#94a3b8' },
-          grid: { color: '#1a2535' }
-        }
+        y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1a2535' } },
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#1a2535' } }
       }
     }
   });
 }
 
-function updateChart() {
-  if (!chart) return;
-  const catCounts = {};
-  categories.forEach(c => catCounts[c.category_name] = 0);
-  parts.forEach(p => {
-    const cat = p.parts_categories?.category_name || 'Uncategorized';
-    catCounts[cat] = (catCounts[cat] || 0) + p.quantity_on_hand;
-  });
-  chart.data.labels = Object.keys(catCounts);
-  chart.data.datasets[0].data = Object.values(catCounts);
-  chart.update();
-}
-
 function populateDropdowns() {
-  document.getElementById('partCategory').innerHTML = '<option value="">Select...</option>' + 
-    categories.map(c => `<option value="${c.category_id}">${c.category_name}</option>`).join('');
-  document.getElementById('partSupplier').innerHTML = '<option value="">Select...</option>' + 
-    suppliers.map(s => `<option value="${s.supplier_id}">${s.supplier_name}</option>`).join('');
+  const catOpts = '<option value="">Select...</option>' + categories.map(c => `<option value="${c.category_id}">${c.category_name}</option>`).join('');
+  const supOpts = '<option value="">Select...</option>' + suppliers.map(s => `<option value="${s.supplier_id}">${s.supplier_name}</option>`).join('');
+  document.getElementById('partCategory').innerHTML = catOpts;
+  document.getElementById('partSupplier').innerHTML = supOpts;
+  document.getElementById('catFilter').innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.category_id}">${c.category_name}</option>`).join('');
 }
 
-function populateCategoryFilter() {
-  document.getElementById('filterCategory').innerHTML = '<option value="">All Categories</option>' + 
-    categories.map(c => `<option value="${c.category_id}">${c.category_name}</option>`).join('');
-}
-
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+function showSection(sec) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   event.target.classList.add('active');
-  document.getElementById(tab + '-tab').classList.add('active');
+  document.getElementById(sec).classList.add('active');
 }
 
 function openPartModal() {
-  currentPartId = null;
-  document.getElementById('partModalTitle').textContent = 'Add Part';
-  document.getElementById('partForm').reset();
   document.getElementById('partModal').classList.add('active');
 }
 
 function editPart(id) {
   const part = parts.find(p => p.part_id === id);
   if (!part) return;
-  currentPartId = id;
-  document.getElementById('partModalTitle').textContent = 'Edit Part';
+  addToRecent(part);
   document.getElementById('partNumber').value = part.part_number;
   document.getElementById('partName').value = part.part_name;
   document.getElementById('partDescription').value = part.description || '';
@@ -813,7 +738,7 @@ function editPart(id) {
   document.getElementById('partRetail').value = part.retail_price;
   document.getElementById('partBin').value = part.bin_location || '';
   document.getElementById('partShelf').value = part.shelf_location || '';
-  document.getElementById('partModal').classList.add('active');
+  openPartModal();
 }
 
 async function savePart(e) {
@@ -833,56 +758,13 @@ async function savePart(e) {
     bin_location: document.getElementById('partBin').value || null,
     shelf_location: document.getElementById('partShelf').value || null
   };
-  
-  let error;
-  if (currentPartId) {
-    ({ error } = await sb.from('parts_inventory').update(data).eq('part_id', currentPartId));
-  } else {
-    ({ error } = await sb.from('parts_inventory').insert(data));
-  }
-  
-  if (!error) {
-    closeModal('partModal');
-    await loadParts();
-    updateStats();
-  }
-}
-
-async function deletePart(id) {
-  if (!confirm('Delete this part?')) return;
-  await sb.from('parts_inventory').delete().eq('part_id', id);
-  await loadParts();
-  updateStats();
-}
-
-function openCategoryModal() {
-  document.getElementById('categoryForm').reset();
-  document.getElementById('categoryModal').classList.add('active');
-}
-
-async function saveCategory(e) {
-  e.preventDefault();
-  await sb.from('parts_categories').insert({
-    tenant_id: tenantId,
-    category_name: document.getElementById('categoryName').value,
-    description: document.getElementById('categoryDescription').value || null
-  });
-  closeModal('categoryModal');
-  await loadCategories();
-  populateDropdowns();
-  updateChart();
-}
-
-async function deleteCategory(id) {
-  if (!confirm('Delete category?')) return;
-  await sb.from('parts_categories').delete().eq('category_id', id);
-  await loadCategories();
-  populateDropdowns();
-  updateChart();
+  await sb.from('parts_inventory').insert(data);
+  closeModal('partModal');
+  await loadData();
+  updateAllStats();
 }
 
 function openSupplierModal() {
-  document.getElementById('supplierForm').reset();
   document.getElementById('supplierModal').classList.add('active');
 }
 
@@ -898,96 +780,59 @@ async function saveSupplier(e) {
     city: document.getElementById('supplierCity').value || null,
     state: document.getElementById('supplierState').value || null,
     zip_code: document.getElementById('supplierZip').value || null,
-    payment_terms: document.getElementById('supplierTerms').value || null,
-    notes: document.getElementById('supplierNotes').value || null
+    payment_terms: document.getElementById('supplierTerms').value || null
   });
   closeModal('supplierModal');
-  await loadSuppliers();
-  populateDropdowns();
+  await loadData();
 }
 
 async function deleteSupplier(id) {
-  if (!confirm('Delete supplier?')) return;
-  await sb.from('parts_suppliers').delete().eq('supplier_id', id);
-  await loadSuppliers();
-  populateDropdowns();
+  if (confirm('Delete?')) {
+    await sb.from('parts_suppliers').delete().eq('supplier_id', id);
+    await loadData();
+  }
 }
 
 function closeModal(id) {
   document.getElementById(id).classList.remove('active');
 }
 
-// Autocomplete
-let autocompleteTimeout;
-document.getElementById('searchParts').addEventListener('input', (e) => {
-  clearTimeout(autocompleteTimeout);
-  const val = e.target.value.toLowerCase();
-  const container = document.getElementById('autocomplete');
-  
-  if (val.length < 2) {
-    container.innerHTML = '';
-    renderParts();
-    return;
-  }
-  
-  autocompleteTimeout = setTimeout(() => {
-    const matches = parts.filter(p => 
-      p.part_number.toLowerCase().includes(val) || 
-      p.part_name.toLowerCase().includes(val)
-    ).slice(0, 5);
-    
-    container.innerHTML = matches.map(p => 
-      `<div class="autocomplete-item" onclick="selectPart('${p.part_number}')">${p.part_number} - ${p.part_name}</div>`
-    ).join('');
-    
-    renderParts();
-  }, 300);
-});
-
-function selectPart(num) {
-  document.getElementById('searchParts').value = num;
-  document.getElementById('autocomplete').innerHTML = '';
-  renderParts();
-}
-
-// CSV Import
+// Placeholder functions
+function openReceivingModal() { alert('Receiving modal'); }
+function openIssueModal() { alert('Issue to WO modal'); }
+function bulkReorder() { alert('Bulk reorder'); }
+function exportInventory() { alert('Export CSV'); }
+function bulkPriceUpdate() { alert('Mass price update'); }
+function createPOForPart(id) { alert('Create PO for part'); }
+function openPOModal() { alert('Create PO'); }
+function openCountModal() { alert('New count'); }
+function processReceipt() { alert('Process receipt'); }
+function runReport(type) { alert('Run report: ' + type); }
 async function importCSV(e) {
   const file = e.target.files[0];
   if (!file) return;
-  
   const text = await file.text();
   const lines = text.split('\n').filter(l => l.trim());
-  const headers = lines[0].split(',').map(h => h.trim());
-  
   const imports = [];
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',');
-    const part = {
+    const vals = lines[i].split(',');
+    imports.push({
       tenant_id: tenantId,
-      part_number: values[0]?.trim(),
-      part_name: values[1]?.trim(),
-      quantity_on_hand: parseInt(values[2]) || 0,
-      quantity_available: parseInt(values[2]) || 0,
-      cost_price: parseFloat(values[3]) || 0,
-      retail_price: parseFloat(values[4]) || 0
-    };
-    if (part.part_number && part.part_name) imports.push(part);
+      part_number: vals[0]?.trim(),
+      part_name: vals[1]?.trim(),
+      quantity_on_hand: parseInt(vals[2]) || 0,
+      quantity_available: parseInt(vals[2]) || 0,
+      cost_price: parseFloat(vals[3]) || 0,
+      retail_price: parseFloat(vals[4]) || 0
+    });
   }
-  
-  if (imports.length > 0) {
+  if (imports.length) {
     await sb.from('parts_inventory').insert(imports);
-    await loadParts();
-    updateStats();
+    await loadData();
+    updateAllStats();
     alert(`Imported ${imports.length} parts`);
   }
 }
-
-document.getElementById('filterCategory').addEventListener('change', renderParts);
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#searchParts')) {
-    document.getElementById('autocomplete').innerHTML = '';
-  }
-});
 
 init();
 </script>
