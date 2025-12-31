@@ -674,8 +674,9 @@ async function init() {
 }
 
 async function loadData() {
+  // Load data separately (no FK joins needed)
   const [p, c, s] = await Promise.all([
-    sb.from('parts_inventory').select('*, parts_categories(category_name), parts_suppliers(supplier_name)').eq('tenant_id', tenantId),
+    sb.from('parts_inventory').select('*').eq('tenant_id', tenantId),
     sb.from('parts_categories').select('*').eq('tenant_id', tenantId),
     sb.from('parts_suppliers').select('*').eq('tenant_id', tenantId)
   ]);
@@ -687,6 +688,14 @@ async function loadData() {
   parts = p.data || [];
   categories = c.data || [];
   suppliers = s.data || [];
+  
+  // Manually join category and supplier names
+  parts.forEach(part => {
+    const cat = categories.find(c => c.category_id === part.category_id);
+    const sup = suppliers.find(s => s.supplier_id === part.primary_supplier_id);
+    part.category_name = cat?.category_name || '-';
+    part.supplier_name = sup?.supplier_name || '-';
+  });
   
   console.log('📦 Loaded:', parts.length, 'parts,', categories.length, 'categories,', suppliers.length, 'suppliers');
   
@@ -708,16 +717,16 @@ function renderInventory() {
       <td><input type="checkbox" class="part-check" data-id="${p.part_id}"></td>
       <td><strong>${p.part_number}</strong></td>
       <td>${p.part_name}</td>
-      <td>${p.parts_categories?.category_name || '-'}</td>
+      <td>${p.category_name || '-'}</td>
       <td>${p.quantity_on_hand}</td>
       <td>${p.quantity_available}</td>
-      <td>${p.quantity_reserved}</td>
-      <td>${p.quantity_on_order}</td>
+      <td>${p.quantity_reserved || 0}</td>
+      <td>${p.quantity_on_order || 0}</td>
       <td>${p.bin_location || '-'}</td>
       <td>$${p.cost_price.toFixed(2)}</td>
       <td>$${p.retail_price.toFixed(2)}</td>
       <td>${p.markup_percentage?.toFixed(0) || 0}%</td>
-      <td>${p.parts_suppliers?.supplier_name || '-'}</td>
+      <td>${p.supplier_name || '-'}</td>
       <td><span class="badge badge-${badge}">${status}</span></td>
       <td><button class="btn btn-sm btn-secondary" onclick="editPart('${p.part_id}')">Edit</button></td>
     </tr>`;
@@ -809,7 +818,7 @@ function initChart() {
   const catCounts = {};
   categories.forEach(c => catCounts[c.category_name] = 0);
   parts.forEach(p => {
-    const cat = p.parts_categories?.category_name || 'Uncategorized';
+    const cat = p.category_name || 'Uncategorized';
     catCounts[cat] = (catCounts[cat] || 0) + p.quantity_on_hand;
   });
   chart = new Chart(ctx, {
