@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Parts Department</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
@@ -34,7 +36,18 @@
     .section.active { display: block; }
     
     /* Buttons */
-    .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
+    .btn { 
+      padding: 8px 16px; 
+      border: none; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-size: 13px; 
+      transition: all 0.2s; 
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      min-height: 36px;
+    }
     .btn-primary { background: #3b82f6; color: white; }
     .btn-primary:hover { background: #2563eb; }
     .btn-secondary { background: #475569; color: white; }
@@ -107,12 +120,95 @@
     /* Chart */
     .chart { height: 300px; margin-bottom: 20px; }
     
+    /* Tablet */
+    @media (max-width: 1024px) {
+      .top-stats { grid-template-columns: repeat(3, 1fr); }
+      th, td { padding: 10px 8px; font-size: 13px; }
+    }
+    
+    /* Mobile */
     @media (max-width: 768px) {
-      .sidebar { width: 60px; }
-      .logo, .nav-item span { display: none; }
-      .top-stats { grid-template-columns: repeat(2, 1fr); }
+      body { font-size: 14px; }
+      .sidebar { 
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: 60px;
+        border-right: none;
+        border-top: 1px solid #2d3f56;
+        flex-direction: row;
+        overflow-x: auto;
+        z-index: 100;
+      }
+      .logo { display: none; }
+      .nav-item { 
+        min-width: 60px;
+        padding: 8px;
+        border-left: none;
+        border-top: 3px solid transparent;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-size: 10px;
+      }
+      .nav-item.active { border-left: none; border-top-color: #60a5fa; }
+      .nav-item span:first-child { margin: 0; font-size: 20px; }
+      .nav-item span:last-child { margin-top: 2px; }
+      
+      .main { margin-bottom: 60px; }
+      .content { padding: 12px; }
+      
+      .top-bar { padding: 12px; }
+      .top-stats { 
+        grid-template-columns: repeat(2, 1fr); 
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .top-stat { padding: 8px; }
+      .top-stat-label { font-size: 9px; }
+      .top-stat-value { font-size: 16px; }
+      .top-actions { gap: 6px; }
+      
+      .search-box { min-width: 150px; font-size: 13px; }
+      .btn { padding: 8px 12px; font-size: 12px; }
+      .btn-sm { padding: 5px 10px; font-size: 11px; }
       .desktop-only { display: none !important; }
+      
+      .stats { grid-template-columns: 1fr; gap: 12px; }
+      .stat-card { padding: 12px; }
+      .stat-value { font-size: 20px; }
+      
+      .card { padding: 16px; margin-bottom: 16px; }
+      .card-title { font-size: 14px; }
+      
       .form-row { grid-template-columns: 1fr; }
+      .form-group { margin-bottom: 12px; }
+      input, select, textarea { font-size: 16px; } /* Prevents zoom on iOS */
+      
+      .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 600px; font-size: 12px; }
+      th, td { padding: 8px 6px; white-space: nowrap; }
+      
+      .modal { padding: 10px; }
+      .modal-content { padding: 20px; max-height: 85vh; }
+      
+      .chart { height: 200px; }
+      
+      .recent-strip { padding: 8px 0; }
+      .recent-card { min-width: 220px; padding: 10px; }
+      
+      .alert { flex-direction: column; align-items: flex-start; gap: 8px; }
+      
+      h2 { font-size: 18px; }
+    }
+    
+    /* Small phones */
+    @media (max-width: 375px) {
+      .top-stats { grid-template-columns: 1fr; }
+      .top-stat-value { font-size: 20px; }
+      .nav-item span:last-child { font-size: 9px; }
     }
   </style>
 </head>
@@ -159,7 +255,7 @@
     </div>
     <div class="top-actions">
       <button class="btn btn-primary" onclick="openPartModal()">+ Add Part</button>
-      <button class="btn btn-success desktop-only" onclick="showSection('receiving')">📥 Receive Parts</button>
+      <button class="btn btn-success desktop-only" onclick="window.location.href='barcode-receive.html'">📥 Receive Parts</button>
       <button class="btn btn-secondary desktop-only" onclick="showSection('workorders')">🔍 Look Up Work Order</button>
       <button class="btn btn-primary desktop-only" onclick="createWorkOrderFromParts()">+ Create Work Order</button>
       <input type="text" id="globalSearch" class="search-box" placeholder="Search part #, WO, VIN, barcode...">
@@ -562,11 +658,19 @@ let parts = [], categories = [], suppliers = [], recentSearches = [];
 let chart;
 
 async function init() {
-  await loadData();
-  initChart();
-  loadRecent();
-  updateAllStats();
-  renderAlerts();
+  console.log('🚀 Parts Dashboard initializing...');
+  console.log('Tenant ID:', tenantId);
+  
+  try {
+    await loadData();
+    initChart();
+    loadRecent();
+    updateAllStats();
+    renderAlerts();
+    console.log('✅ Dashboard loaded:', parts.length, 'parts,', categories.length, 'categories,', suppliers.length, 'suppliers');
+  } catch (error) {
+    console.error('❌ Dashboard initialization failed:', error);
+  }
 }
 
 async function loadData() {
@@ -575,9 +679,17 @@ async function loadData() {
     sb.from('parts_categories').select('*').eq('tenant_id', tenantId),
     sb.from('parts_suppliers').select('*').eq('tenant_id', tenantId)
   ]);
+  
+  if (p.error) console.error('❌ Parts load error:', p.error);
+  if (c.error) console.error('❌ Categories load error:', c.error);
+  if (s.error) console.error('❌ Suppliers load error:', s.error);
+  
   parts = p.data || [];
   categories = c.data || [];
   suppliers = s.data || [];
+  
+  console.log('📦 Loaded:', parts.length, 'parts,', categories.length, 'categories,', suppliers.length, 'suppliers');
+  
   renderAll();
 }
 
@@ -747,6 +859,7 @@ function editPart(id) {
   if (!part) return;
   addToRecent(part);
   document.getElementById('partNumber').value = part.part_number;
+  document.getElementById('partBarcode').value = part.barcode || '';
   document.getElementById('partName').value = part.part_name;
   document.getElementById('partDescription').value = part.description || '';
   document.getElementById('partCategory').value = part.category_id || '';
@@ -765,6 +878,7 @@ async function savePart(e) {
   const data = {
     tenant_id: tenantId,
     part_number: document.getElementById('partNumber').value,
+    barcode: document.getElementById('partBarcode').value || null,
     part_name: document.getElementById('partName').value,
     description: document.getElementById('partDescription').value || null,
     category_id: document.getElementById('partCategory').value || null,
