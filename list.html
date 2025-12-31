@@ -37,12 +37,13 @@
     padding: 16px 0;
   }
 
-  /* TOP ROW */
+  /* TOP ROW: title/address + phone + controls */
   .top {
     display: grid;
-    grid-template-columns: 260px 80px 1fr;
+    grid-template-columns: 260px 72px 1fr;
     gap: 16px;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
+    align-items: stretch;
   }
 
   .title-wrap input {
@@ -55,17 +56,34 @@
     margin-bottom: 6px;
   }
 
-  .title-wrap .address {
+  .right-tools {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .tool-btn {
+    background: #e5e7eb;
+    color: #475569;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
     font-size: 12px;
+    cursor: pointer;
+  }
+
+  .tool-btn:hover {
+    background: #dbe3ee;
   }
 
   .phone {
     width: 48px;
-    height: 76px;
+    height: 100%;
     border-radius: 10px;
     border: 1px solid #cbd5e1;
     cursor: pointer;
-    margin: auto;
+    background: #e5e7eb;
   }
 
   .g0 { background:#e5e7eb }
@@ -75,18 +93,7 @@
   .g4 { background:#fde68a }
   .g5 { background:#99f6e4 }
 
-  textarea.notes {
-    width: 100%;
-    min-height: 72px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 8px;
-    background: #f8fafc;
-    font-size: 13px;
-    resize: vertical;
-  }
-
-  /* COLUMN TITLES */
+  /* Column title row + status row align together */
   .headers {
     display: grid;
     grid-template-columns: 340px repeat(var(--cols), 96px);
@@ -100,6 +107,7 @@
   .col-header {
     position: relative;
     text-align: center;
+    padding: 0 10px;
   }
 
   .col-header input {
@@ -124,12 +132,12 @@
     cursor: pointer;
   }
 
-  /* STATUS ROW */
   .status-row {
     display: grid;
     grid-template-columns: 340px repeat(var(--cols), 96px);
     gap: 10px;
     align-items: center;
+    margin-bottom: 10px; /* space before notes */
   }
 
   .left-controls {
@@ -140,11 +148,17 @@
 
   .delete-row {
     background: #e5e7eb;
+    color: #475569;
     border: none;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 4px 10px;
     font-size: 11px;
     cursor: pointer;
+  }
+
+  .delete-row:hover {
+    background: #fee2e2;
+    color: #991b1b;
   }
 
   .cell {
@@ -157,13 +171,45 @@
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
+    user-select: none;
   }
 
-  .s0   { background:#fff }
-  .s25  { background:#facc15 }
-  .s50  { background:#93c5fd }
+  .s0   { background:#fff; color:#0f172a }
+  .s25  { background:#facc15; color:#1e293b }
+  .s50  { background:#93c5fd; color:#0f172a }
   .s75  { background:#2563eb; color:white }
   .s100 { background:#22c55e; color:white }
+
+  /* NOTES (now below columns) */
+  .notes-wrap {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .notes-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    padding-top: 10px;
+  }
+
+  textarea.notes {
+    width: 100%;
+    min-height: 84px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px;
+    background: #f8fafc;
+    font-size: 13px;
+    resize: vertical;
+  }
+
+  /* Collapsed state: hide notes only */
+  .collapsed .notes-wrap {
+    display: none;
+  }
 </style>
 </head>
 
@@ -202,9 +248,9 @@
 
     rows.forEach((r, ri) => {
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "card" + (r.collapsed ? " collapsed" : "");
 
-      /* TOP */
+      /* TOP: title/address + phone + collapse */
       const top = document.createElement("div");
       top.className = "top";
 
@@ -217,7 +263,6 @@
       title.oninput = e => r.title = e.target.value;
 
       const address = document.createElement("input");
-      address.className = "address";
       address.value = r.address;
       address.placeholder = "Address";
       address.oninput = e => r.address = e.target.value;
@@ -229,17 +274,21 @@
       phone.className = `phone g${r.group}`;
       phone.onclick = () => { r.group = (r.group + 1) % 6; render(); };
 
-      const notes = document.createElement("textarea");
-      notes.className = "notes";
-      notes.value = r.notes;
-      notes.placeholder = "Notes / context…";
-      notes.oninput = e => r.notes = e.target.value;
+      const tools = document.createElement("div");
+      tools.className = "right-tools";
+
+      const collapseBtn = document.createElement("button");
+      collapseBtn.className = "tool-btn";
+      collapseBtn.textContent = r.collapsed ? "Expand" : "Collapse";
+      collapseBtn.onclick = () => { r.collapsed = !r.collapsed; render(); };
+
+      tools.appendChild(collapseBtn);
 
       top.appendChild(titleWrap);
       top.appendChild(phone);
-      top.appendChild(notes);
+      top.appendChild(tools);
 
-      /* HEADERS */
+      /* HEADERS (column titles) */
       const headers = document.createElement("div");
       headers.className = "headers";
       headers.innerHTML = `<div></div>`;
@@ -261,7 +310,7 @@
         headers.appendChild(h);
       });
 
-      /* STATUS */
+      /* STATUS ROW (percent boxes) */
       const status = document.createElement("div");
       status.className = "status-row";
 
@@ -284,9 +333,28 @@
         status.appendChild(c);
       });
 
+      /* NOTES (below columns) */
+      const notesWrap = document.createElement("div");
+      notesWrap.className = "notes-wrap";
+
+      const notesLabel = document.createElement("div");
+      notesLabel.className = "notes-label";
+      notesLabel.textContent = "Notes";
+
+      const notes = document.createElement("textarea");
+      notes.className = "notes";
+      notes.value = r.notes;
+      notes.placeholder = "Notes / context…";
+      notes.oninput = e => r.notes = e.target.value;
+
+      notesWrap.appendChild(notesLabel);
+      notesWrap.appendChild(notes);
+
       card.appendChild(top);
       card.appendChild(headers);
       card.appendChild(status);
+      card.appendChild(notesWrap);
+
       board.appendChild(card);
     });
   }
@@ -297,6 +365,7 @@
       address: "",
       notes: "",
       group: 0,
+      collapsed: false,
       cells: Array(columns.length).fill(0)
     });
     render();
