@@ -106,10 +106,42 @@
     
     /* Alerts */
     .alerts { margin-bottom: 20px; }
-    .alert { background: #1a2535; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-    .alert-critical { border-left-color: #dc2626; }
-    .alert-warning { border-left-color: #f59e0b; }
-    .alert-info { border-left-color: #3b82f6; }
+    .alert { 
+      background: #1a2535; 
+      border-left: 4px solid #f59e0b; 
+      padding: 12px 16px; 
+      margin-bottom: 8px; 
+      border-radius: 6px; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+      transition: all 0.2s;
+    }
+    .alert:hover {
+      background: #223044;
+      transform: translateX(4px);
+    }
+    .alert-critical { 
+      border-left-color: #dc2626; 
+      background: rgba(220, 38, 38, 0.05);
+    }
+    .alert-critical:hover {
+      background: rgba(220, 38, 38, 0.1);
+    }
+    .alert-warning { 
+      border-left-color: #f59e0b; 
+      background: rgba(245, 158, 11, 0.05);
+    }
+    .alert-warning:hover {
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .alert-info { 
+      border-left-color: #3b82f6; 
+      background: rgba(59, 130, 246, 0.05);
+    }
+    .alert-info:hover {
+      background: rgba(59, 130, 246, 0.1);
+    }
     
     /* Recent Strip */
     .recent-strip { display: flex; gap: 12px; overflow-x: auto; padding: 12px 0; margin-bottom: 20px; }
@@ -988,13 +1020,117 @@ function renderSuppliers() {
 }
 
 function renderAlerts() {
-  const alerts = parts.filter(p => p.quantity_on_hand <= p.reorder_point);
-  document.getElementById('alertsList').innerHTML = alerts.length ? alerts.slice(0,5).map(p => `
-    <div class="alert alert-${p.quantity_on_hand <= 0 ? 'critical' : 'warning'}">
-      <div><strong>${p.part_number}</strong> - ${p.part_name} (${p.quantity_on_hand} on hand)</div>
-      <button class="btn btn-sm btn-primary" onclick="createPOForPart('${p.part_id}')">Create PO</button>
+  const alerts = [];
+  
+  // 1. CRITICAL: Out of Stock (highest priority)
+  const outOfStock = parts.filter(p => p.quantity_on_hand <= 0);
+  outOfStock.forEach(p => {
+    alerts.push({
+      type: 'critical',
+      priority: 1,
+      title: `OUT OF STOCK: ${p.part_number}`,
+      message: `${p.part_name} - Zero inventory`,
+      action: 'Create PO',
+      onClick: `createPOForPart('${p.part_id}')`
+    });
+  });
+  
+  // 2. WARNING: Low Stock (below reorder point but not zero)
+  const lowStock = parts.filter(p => p.quantity_on_hand > 0 && p.quantity_on_hand <= p.reorder_point);
+  lowStock.forEach(p => {
+    alerts.push({
+      type: 'warning',
+      priority: 2,
+      title: `LOW STOCK: ${p.part_number}`,
+      message: `${p.part_name} - Only ${p.quantity_on_hand} remaining (reorder at ${p.reorder_point})`,
+      action: 'Reorder',
+      onClick: `createPOForPart('${p.part_id}')`
+    });
+  });
+  
+  // 3. ERROR: Negative Inventory (data issue)
+  const negative = parts.filter(p => p.quantity_on_hand < 0);
+  negative.forEach(p => {
+    alerts.push({
+      type: 'critical',
+      priority: 1,
+      title: `NEGATIVE INVENTORY: ${p.part_number}`,
+      message: `${p.part_name} - Shows ${p.quantity_on_hand} (inventory error)`,
+      action: 'Adjust',
+      onClick: `editPart('${p.part_id}')`
+    });
+  });
+  
+  // 4. INFO: Missing Pricing
+  const noPricing = parts.filter(p => !p.cost_price || !p.retail_price);
+  noPricing.slice(0, 3).forEach(p => {
+    alerts.push({
+      type: 'info',
+      priority: 3,
+      title: `MISSING PRICING: ${p.part_number}`,
+      message: `${p.part_name} - Needs cost/retail price`,
+      action: 'Edit',
+      onClick: `editPart('${p.part_id}')`
+    });
+  });
+  
+  // 5. INFO: No Supplier Assigned
+  const noSupplier = parts.filter(p => !p.primary_supplier_id && p.quantity_on_hand <= p.reorder_point);
+  noSupplier.slice(0, 3).forEach(p => {
+    alerts.push({
+      type: 'info',
+      priority: 3,
+      title: `NO SUPPLIER: ${p.part_number}`,
+      message: `${p.part_name} - Assign supplier for reordering`,
+      action: 'Edit',
+      onClick: `editPart('${p.part_id}')`
+    });
+  });
+  
+  // 6. WARNING: High Value at Risk (out of stock, high value)
+  const highValueOut = parts.filter(p => p.quantity_on_hand <= 0 && p.retail_price > 100);
+  highValueOut.forEach(p => {
+    alerts.push({
+      type: 'warning',
+      priority: 2,
+      title: `HIGH VALUE OUT: ${p.part_number}`,
+      message: `${p.part_name} - $${p.retail_price.toFixed(2)} part unavailable`,
+      action: 'Priority Order',
+      onClick: `createPOForPart('${p.part_id}')`
+    });
+  });
+  
+  // Sort by priority
+  alerts.sort((a, b) => a.priority - b.priority);
+  
+  // Render alerts
+  if (alerts.length === 0) {
+    document.getElementById('alertsList').innerHTML = '<div class="alert alert-info"><div>No alerts - All inventory levels good</div></div>';
+    return;
+  }
+  
+  // Show top 10 alerts
+  document.getElementById('alertsList').innerHTML = alerts.slice(0, 10).map(alert => `
+    <div class="alert alert-${alert.type}">
+      <div>
+        <strong>${alert.title}</strong><br>
+        <span style="font-size: 13px;">${alert.message}</span>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="${alert.onClick}">${alert.action}</button>
     </div>
-  `).join('') : '<div class="alert alert-info"><div>No alerts</div></div>';
+  `).join('');
+  
+  // Show count if more alerts exist
+  if (alerts.length > 10) {
+    document.getElementById('alertsList').innerHTML += `
+      <div class="alert alert-info">
+        <div style="text-align: center; width: 100%;">
+          <strong>+ ${alerts.length - 10} more alerts</strong><br>
+          <span style="font-size: 12px;">Click Inventory to view all issues</span>
+        </div>
+      </div>
+    `;
+  }
 }
 
 function loadRecent() {
