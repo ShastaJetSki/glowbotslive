@@ -28,6 +28,13 @@
     .top-stat-value { font-size: 18px; font-weight: 700; color: #e8eef6; margin-top: 2px; }
     .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     
+    /* Work Order Panel */
+    .wo-panel { display: none; height: calc(100vh - 200px); background: #0b0f14; border-top: 2px solid #2d3f56; overflow: hidden; }
+    .wo-panel.active { display: flex; flex-direction: column; }
+    .wo-header { padding: 12px 20px; background: #1a2535; border-bottom: 1px solid #2d3f56; display: flex; justify-content: space-between; align-items: center; }
+    .wo-title { color: #60a5fa; font-size: 16px; font-weight: 600; }
+    .wo-content { flex: 1; overflow-y: auto; }
+    
     /* Content */
     .content { flex: 1; overflow-y: auto; padding: 20px; }
     .section { display: none; }
@@ -111,7 +118,7 @@
       .sidebar { width: 60px; }
       .logo, .nav-item span { display: none; }
       .top-stats { grid-template-columns: repeat(2, 1fr); }
-      .desktop-only { display: none; }
+      .desktop-only { display: none !important; }
       .form-row { grid-template-columns: 1fr; }
     }
   </style>
@@ -166,10 +173,22 @@
     <div class="top-actions">
       <button class="btn btn-primary" onclick="openPartModal()">+ Add Part</button>
       <button class="btn btn-success desktop-only" onclick="openReceivingModal()">📥 Receive Parts</button>
-      <button class="btn btn-secondary desktop-only" onclick="openIssueModal()">📤 Issue to WO</button>
+      <button class="btn btn-secondary desktop-only" onclick="openWorkOrderLookup()">🔍 Look Up Work Order</button>
+      <button class="btn btn-primary desktop-only" onclick="createWorkOrderFromParts()">+ Create Work Order</button>
       <input type="text" id="globalSearch" class="search-box" placeholder="Search part #, WO, VIN, barcode...">
       <button class="btn btn-secondary desktop-only" onclick="document.getElementById('csvFile').click()">Import CSV</button>
       <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV(event)">
+    </div>
+  </div>
+
+  <!-- Work Order Panel -->
+  <div id="workOrderPanel" class="wo-panel">
+    <div class="wo-header">
+      <h3 class="wo-title" id="woTitle">Work Order</h3>
+      <button class="btn btn-sm btn-secondary" onclick="closeWorkOrderPanel()">✕ Close</button>
+    </div>
+    <div class="wo-content">
+      <iframe id="workOrderFrame" src="" style="width: 100%; height: 100%; border: none;"></iframe>
     </div>
   </div>
 
@@ -265,7 +284,9 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="woPartsTable"></tbody>
+          <tbody id="woPartsTable">
+            <tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No active work orders with parts</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -296,7 +317,9 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="poTable"></tbody>
+          <tbody id="poTable">
+            <tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No purchase orders</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -312,7 +335,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>PO Number</label>
-            <select id="receivePO"></select>
+            <select id="receivePO"><option>Select PO...</option></select>
           </div>
           <div class="form-group">
             <label>Quantity</label>
@@ -340,7 +363,9 @@
           <thead>
             <tr><th>Part #</th><th>Name</th><th>Qty</th><th>Bin</th><th>Time</th></tr>
           </thead>
-          <tbody id="receiveHistory"></tbody>
+          <tbody id="receiveHistory">
+            <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No receipts today</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -391,7 +416,9 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="countsTable"></tbody>
+          <tbody id="countsTable">
+            <tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No inventory counts</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -426,7 +453,9 @@
               <th>Reason</th>
             </tr>
           </thead>
-          <tbody id="transTable"></tbody>
+          <tbody id="transTable">
+            <tr><td colspan="10" style="text-align:center; padding:40px; color:#94a3b8;">No transactions</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -797,9 +826,43 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('active');
 }
 
+// Work Order Functions
+function openWorkOrderLookup() {
+  const woNum = prompt('Enter Work Order Number:');
+  if (!woNum) return;
+  
+  document.getElementById('woTitle').textContent = `Work Order #${woNum}`;
+  document.getElementById('workOrderFrame').src = `work-order-edit.html?wo=${woNum}`;
+  document.getElementById('workOrderPanel').classList.add('active');
+  document.querySelector('.content').style.display = 'none';
+}
+
+function createWorkOrderFromParts() {
+  document.getElementById('woTitle').textContent = 'New Work Order';
+  document.getElementById('workOrderFrame').src = 'work-order-edit.html?new=true&from=parts';
+  document.getElementById('workOrderPanel').classList.add('active');
+  document.querySelector('.content').style.display = 'none';
+}
+
+function closeWorkOrderPanel() {
+  document.getElementById('workOrderPanel').classList.remove('active');
+  document.querySelector('.content').style.display = 'block';
+  document.getElementById('workOrderFrame').src = '';
+}
+
+// Listen for messages from work order iframe
+window.addEventListener('message', function(e) {
+  if (e.data === 'closeWorkOrder') {
+    closeWorkOrderPanel();
+  }
+  if (e.data && e.data.type === 'workOrderSaved') {
+    loadData();
+    updateAllStats();
+  }
+});
+
 // Placeholder functions
 function openReceivingModal() { alert('Receiving modal'); }
-function openIssueModal() { alert('Issue to WO modal'); }
 function bulkReorder() { alert('Bulk reorder'); }
 function exportInventory() { alert('Export CSV'); }
 function bulkPriceUpdate() { alert('Mass price update'); }
@@ -808,6 +871,7 @@ function openPOModal() { alert('Create PO'); }
 function openCountModal() { alert('New count'); }
 function processReceipt() { alert('Process receipt'); }
 function runReport(type) { alert('Run report: ' + type); }
+
 async function importCSV(e) {
   const file = e.target.files[0];
   if (!file) return;
