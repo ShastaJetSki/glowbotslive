@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Purchase Orders</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: system-ui; 
+      background: #0b0f14; 
+      color: #e8eef6;
+      padding-bottom: 20px;
+    }
+    
+    .header {
+      background: #1a2535;
+      padding: 16px 20px;
+      border-bottom: 1px solid #2d3f56;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 { color: #60a5fa; font-size: 20px; }
+    
+    .container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat {
+      background: #1a2535;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .stat-label {
+      color: #94a3b8;
+      font-size: 12px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      color: #e8eef6;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    
+    /* Filter */
+    .filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    select, input {
+      padding: 10px 12px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 6px;
+      color: #e8eef6;
+      font-size: 14px;
+    }
+    
+    /* PO List */
+    .po-list {
+      display: grid;
+      gap: 16px;
+    }
+    .po-card {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .po-card:hover {
+      border-color: #3b82f6;
+      background: #1e2a3d;
+    }
+    .po-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .po-number {
+      color: #60a5fa;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .po-status {
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-draft { background: #64748b; color: white; }
+    .status-pending { background: #f59e0b; color: #0b0f14; }
+    .status-ordered { background: #3b82f6; color: white; }
+    .status-partial { background: #8b5cf6; color: white; }
+    .status-complete { background: #10b981; color: white; }
+    .status-cancelled { background: #dc2626; color: white; }
+    
+    .po-info {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .po-detail {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .detail-label {
+      color: #94a3b8;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .detail-value {
+      color: #e8eef6;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .po-notes {
+      color: #94a3b8;
+      font-size: 13px;
+      font-style: italic;
+    }
+    
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      overflow-y: auto;
+    }
+    .modal.show {
+      display: block;
+    }
+    .modal-content {
+      background: #1a2535;
+      max-width: 900px;
+      margin: 40px auto;
+      border-radius: 12px;
+    }
+    .modal-header {
+      padding: 24px;
+      border-bottom: 1px solid #2d3f56;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      color: #60a5fa;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 32px;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+    }
+    .close-btn:hover {
+      background: #2d3f56;
+      color: #e8eef6;
+    }
+    .modal-body {
+      padding: 24px;
+    }
+    
+    /* PO Items Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #2d3f56;
+    }
+    th {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    td {
+      color: #e8eef6;
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-secondary {
+      background: #475569;
+      color: white;
+    }
+    .btn-success {
+      background: #059669;
+      color: white;
+    }
+    
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: #94a3b8;
+    }
+    
+    @media (max-width: 768px) {
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .po-info {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .filters {
+        flex-direction: column;
+      }
+      input, select {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Purchase Orders</h1>
+  <div style="display: flex; gap: 12px;">
+    <button class="btn btn-primary" onclick="window.location.href='purchase-order-create.html'">+ Create PO</button>
+    <button class="btn btn-secondary" onclick="window.location.href='parts-dashboard-final.html'">Back</button>
+  </div>
+</div>
+
+<div class="container">
+  
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat" style="border-left-color: #64748b;">
+      <div class="stat-label">Draft</div>
+      <div class="stat-value" id="statDraft">0</div>
+    </div>
+    <div class="stat" style="border-left-color: #f59e0b;">
+      <div class="stat-label">Pending</div>
+      <div class="stat-value" id="statPending">0</div>
+    </div>
+    <div class="stat" style="border-left-color: #8b5cf6;">
+      <div class="stat-label">Partial</div>
+      <div class="stat-value" id="statPartial">0</div>
+    </div>
+    <div class="stat" style="border-left-color: #10b981;">
+      <div class="stat-label">Complete</div>
+      <div class="stat-value" id="statComplete">0</div>
+    </div>
+  </div>
+  
+  <!-- Filters -->
+  <div class="filters">
+    <select id="filterStatus" onchange="filterPOs()">
+      <option value="">All Statuses</option>
+      <option value="draft">Draft</option>
+      <option value="pending">Pending</option>
+      <option value="ordered">Ordered</option>
+      <option value="partial">Partial</option>
+      <option value="complete">Complete</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <select id="filterSupplier" onchange="filterPOs()">
+      <option value="">All Suppliers</option>
+    </select>
+    <input type="text" id="searchPO" placeholder="Search PO number..." oninput="filterPOs()" style="flex: 1;">
+  </div>
+  
+  <!-- PO List -->
+  <div id="poList" class="po-list"></div>
+
+</div>
+
+<!-- PO Detail Modal -->
+<div id="poModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalPONumber"></div>
+        <div id="modalSupplier" style="color: #94a3b8; font-size: 14px; margin-top: 4px;"></div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px;">
+        <div class="po-detail">
+          <div class="detail-label">Order Date</div>
+          <div class="detail-value" id="modalOrderDate"></div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Expected Date</div>
+          <div class="detail-value" id="modalExpectedDate"></div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Status</div>
+          <div id="modalStatus"></div>
+        </div>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px;">
+        <div class="po-detail">
+          <div class="detail-label">Subtotal</div>
+          <div class="detail-value" id="modalSubtotal"></div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Tax</div>
+          <div class="detail-value" id="modalTax"></div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Total</div>
+          <div class="detail-value" id="modalTotal" style="color: #60a5fa; font-size: 18px;"></div>
+        </div>
+      </div>
+      
+      <div id="modalNotes" style="color: #94a3b8; font-style: italic; margin-bottom: 20px;"></div>
+      
+      <h3 style="color: #60a5fa; margin-bottom: 16px;">Items</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Part #</th>
+            <th>Description</th>
+            <th>Ordered</th>
+            <th>Received</th>
+            <th>Unit Cost</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="modalItems"></tbody>
+      </table>
+      
+      <div style="margin-top: 24px; display: flex; gap: 12px;">
+        <button class="btn btn-success" onclick="receiveFromPO()">Receive Items</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = '11111111-1111-1111-1111-111111111111';
+let allPOs = [];
+let suppliers = [];
+let selectedPO = null;
+
+async function init() {
+  await loadSuppliers();
+  await loadPOs();
+}
+
+async function loadSuppliers() {
+  const { data } = await sb.from('parts_suppliers').select('*').eq('tenant_id', tenantId);
+  suppliers = data || [];
+  
+  const select = document.getElementById('filterSupplier');
+  select.innerHTML = '<option value="">All Suppliers</option>' + 
+    suppliers.map(s => `<option value="${s.supplier_id}">${s.supplier_name}</option>`).join('');
+}
+
+async function loadPOs() {
+  const { data } = await sb
+    .from('parts_purchase_orders')
+    .select('*, parts_suppliers(supplier_name)')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
+  
+  allPOs = data || [];
+  
+  // Update stats
+  document.getElementById('statDraft').textContent = allPOs.filter(po => po.status === 'draft').length;
+  document.getElementById('statPending').textContent = allPOs.filter(po => po.status === 'pending' || po.status === 'ordered').length;
+  document.getElementById('statPartial').textContent = allPOs.filter(po => po.status === 'partial').length;
+  document.getElementById('statComplete').textContent = allPOs.filter(po => po.status === 'complete').length;
+  
+  filterPOs();
+}
+
+function filterPOs() {
+  const statusFilter = document.getElementById('filterStatus').value;
+  const supplierFilter = document.getElementById('filterSupplier').value;
+  const searchQuery = document.getElementById('searchPO').value.toLowerCase();
+  
+  let filtered = allPOs;
+  
+  if (statusFilter) {
+    filtered = filtered.filter(po => po.status === statusFilter);
+  }
+  
+  if (supplierFilter) {
+    filtered = filtered.filter(po => po.supplier_id === supplierFilter);
+  }
+  
+  if (searchQuery) {
+    filtered = filtered.filter(po => po.po_number.toLowerCase().includes(searchQuery));
+  }
+  
+  renderPOs(filtered);
+}
+
+function renderPOs(pos) {
+  const container = document.getElementById('poList');
+  
+  if (!pos.length) {
+    container.innerHTML = '<div class="empty">No purchase orders found</div>';
+    return;
+  }
+  
+  container.innerHTML = pos.map(po => `
+    <div class="po-card" onclick="viewPO('${po.po_id}')">
+      <div class="po-header">
+        <div class="po-number">${po.po_number}</div>
+        <div class="po-status status-${po.status}">${po.status}</div>
+      </div>
+      <div class="po-info">
+        <div class="po-detail">
+          <div class="detail-label">Supplier</div>
+          <div class="detail-value">${po.parts_suppliers?.supplier_name || 'Unknown'}</div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Order Date</div>
+          <div class="detail-value">${new Date(po.order_date).toLocaleDateString()}</div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Expected</div>
+          <div class="detail-value">${po.expected_date ? new Date(po.expected_date).toLocaleDateString() : 'TBD'}</div>
+        </div>
+        <div class="po-detail">
+          <div class="detail-label">Total</div>
+          <div class="detail-value">$${po.total_amount.toFixed(2)}</div>
+        </div>
+      </div>
+      ${po.notes ? `<div class="po-notes">${po.notes}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function viewPO(poId) {
+  const po = allPOs.find(p => p.po_id === poId);
+  if (!po) return;
+  
+  selectedPO = po;
+  
+  // Load PO lines
+  const { data: lines } = await sb
+    .from('parts_purchase_order_lines')
+    .select('*, parts_inventory(part_number, part_name)')
+    .eq('po_id', poId)
+    .order('line_number');
+  
+  selectedPO.lines = lines || [];
+  
+  // Populate modal
+  document.getElementById('modalPONumber').textContent = po.po_number;
+  document.getElementById('modalSupplier').textContent = po.parts_suppliers?.supplier_name || 'Unknown Supplier';
+  document.getElementById('modalOrderDate').textContent = new Date(po.order_date).toLocaleDateString();
+  document.getElementById('modalExpectedDate').textContent = po.expected_date ? new Date(po.expected_date).toLocaleDateString() : 'TBD';
+  document.getElementById('modalStatus').innerHTML = `<span class="po-status status-${po.status}">${po.status}</span>`;
+  document.getElementById('modalSubtotal').textContent = '$' + po.subtotal.toFixed(2);
+  document.getElementById('modalTax').textContent = '$' + po.tax_amount.toFixed(2);
+  document.getElementById('modalTotal').textContent = '$' + po.total_amount.toFixed(2);
+  document.getElementById('modalNotes').textContent = po.notes || 'No notes';
+  
+  // Render items
+  document.getElementById('modalItems').innerHTML = lines.map(line => `
+    <tr>
+      <td>${line.parts_inventory?.part_number || 'Unknown'}</td>
+      <td>${line.parts_inventory?.part_name || 'Unknown Part'}</td>
+      <td>${line.quantity_ordered}</td>
+      <td>${line.quantity_received || 0}</td>
+      <td>$${line.unit_cost.toFixed(2)}</td>
+      <td>$${(line.quantity_ordered * line.unit_cost).toFixed(2)}</td>
+    </tr>
+  `).join('');
+  
+  document.getElementById('poModal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('poModal').classList.remove('show');
+  selectedPO = null;
+}
+
+function receiveFromPO() {
+  if (selectedPO) {
+    window.location.href = `barcode-receive.html#po-${selectedPO.po_id}`;
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
