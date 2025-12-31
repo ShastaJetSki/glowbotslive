@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Receive Parts - Barcode Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: system-ui; 
+      background: #0b0f14; 
+      color: #e8eef6;
+      padding-bottom: 80px;
+    }
+    
+    .header {
+      background: #1a2535;
+      padding: 16px 20px;
+      border-bottom: 1px solid #2d3f56;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    h1 { color: #60a5fa; font-size: 20px; }
+    
+    .container { padding: 20px; max-width: 600px; margin: 0 auto; }
+    
+    /* Scanner */
+    .scanner-section {
+      background: #1a2535;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    #reader {
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    
+    /* Scanned Items List */
+    .scanned-items {
+      background: #1a2535;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .section-title {
+      color: #60a5fa;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .item {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .item-barcode {
+      color: #60a5fa;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .item-name {
+      color: #e8eef6;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .item-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .qty-input {
+      flex: 1;
+      padding: 10px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 6px;
+      color: #e8eef6;
+      font-size: 16px;
+      text-align: center;
+    }
+    .qty-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 6px;
+      background: #475569;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .qty-btn:active { background: #334155; }
+    .remove-btn {
+      background: #dc2626;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: manipulation;
+      margin-bottom: 12px;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:active { background: #2563eb; }
+    .btn-success { background: #059669; color: white; }
+    .btn-success:active { background: #047857; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-secondary:active { background: #334155; }
+    
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: #1a2535;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-label {
+      color: #94a3b8;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      color: #e8eef6;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #94a3b8;
+    }
+    
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a2535;
+      border: 1px solid #3b82f6;
+      padding: 16px 24px;
+      border-radius: 8px;
+      display: none;
+      z-index: 1000;
+      min-width: 200px;
+      text-align: center;
+    }
+    .toast.show { display: block; }
+    
+    /* Bottom Actions */
+    .bottom-actions {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1a2535;
+      border-top: 1px solid #2d3f56;
+      padding: 16px 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📦 Receive Parts</h1>
+</div>
+
+<div class="container">
+  
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Items Scanned</div>
+      <div class="stat-value" id="itemCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Total Quantity</div>
+      <div class="stat-value" id="totalQty">0</div>
+    </div>
+  </div>
+
+  <!-- Scanner -->
+  <div class="scanner-section">
+    <div class="section-title">Scan Barcode</div>
+    <div id="reader"></div>
+    <button id="toggleScanner" class="btn btn-primary">Start Scanner</button>
+    <button id="manualEntry" class="btn btn-secondary">Manual Entry</button>
+  </div>
+
+  <!-- Scanned Items -->
+  <div class="scanned-items">
+    <div class="section-title">Scanned Items (<span id="itemCountText">0</span>)</div>
+    <div id="itemsList">
+      <div class="empty">No items scanned yet.<br>Start scanning barcodes above.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom Actions -->
+<div class="bottom-actions">
+  <button id="receiveAll" class="btn btn-success" disabled>Receive All Items</button>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = '11111111-1111-1111-1111-111111111111';
+let scannedItems = [];
+let scanner = null;
+let isScanning = false;
+
+// Initialize
+document.getElementById('toggleScanner').addEventListener('click', toggleScanner);
+document.getElementById('manualEntry').addEventListener('click', manualEntry);
+document.getElementById('receiveAll').addEventListener('click', receiveAll);
+
+async function toggleScanner() {
+  if (isScanning) {
+    stopScanner();
+  } else {
+    startScanner();
+  }
+}
+
+async function startScanner() {
+  const config = {
+    fps: 10,
+    qrbox: { width: 250, height: 250 },
+    aspectRatio: 1.0
+  };
+  
+  try {
+    scanner = new Html5Qrcode("reader");
+    await scanner.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      onScanError
+    );
+    
+    isScanning = true;
+    document.getElementById('toggleScanner').textContent = 'Stop Scanner';
+    document.getElementById('toggleScanner').classList.remove('btn-primary');
+    document.getElementById('toggleScanner').classList.add('btn-secondary');
+  } catch (err) {
+    console.error('Scanner error:', err);
+    showToast('Camera access denied or not available');
+  }
+}
+
+function stopScanner() {
+  if (scanner) {
+    scanner.stop();
+    scanner = null;
+  }
+  isScanning = false;
+  document.getElementById('toggleScanner').textContent = 'Start Scanner';
+  document.getElementById('toggleScanner').classList.remove('btn-secondary');
+  document.getElementById('toggleScanner').classList.add('btn-primary');
+}
+
+async function onScanSuccess(decodedText) {
+  console.log('Scanned:', decodedText);
+  
+  // Check if already scanned
+  const existing = scannedItems.find(item => item.barcode === decodedText);
+  if (existing) {
+    existing.quantity++;
+    showToast('Quantity increased to ' + existing.quantity);
+  } else {
+    // Look up part in database
+    const { data, error } = await sb
+      .from('parts_inventory')
+      .select('*')
+      .eq('barcode', decodedText)
+      .eq('tenant_id', tenantId)
+      .single();
+    
+    if (data) {
+      scannedItems.push({
+        barcode: decodedText,
+        part_id: data.part_id,
+        part_number: data.part_number,
+        part_name: data.part_name,
+        quantity: 1
+      });
+      showToast('Added: ' + data.part_name);
+    } else {
+      // Part not found, add as unknown
+      scannedItems.push({
+        barcode: decodedText,
+        part_id: null,
+        part_number: 'UNKNOWN',
+        part_name: 'Unknown Part - ' + decodedText,
+        quantity: 1
+      });
+      showToast('Unknown barcode added');
+    }
+  }
+  
+  renderItems();
+  updateStats();
+}
+
+function onScanError(error) {
+  // Ignore scan errors (happens continuously while scanning)
+}
+
+function manualEntry() {
+  const barcode = prompt('Enter barcode manually:');
+  if (barcode) {
+    onScanSuccess(barcode);
+  }
+}
+
+function renderItems() {
+  const container = document.getElementById('itemsList');
+  
+  if (scannedItems.length === 0) {
+    container.innerHTML = '<div class="empty">No items scanned yet.<br>Start scanning barcodes above.</div>';
+    return;
+  }
+  
+  container.innerHTML = scannedItems.map((item, index) => `
+    <div class="item">
+      <div class="item-barcode">${item.barcode}</div>
+      <div class="item-name">${item.part_number} - ${item.part_name}</div>
+      <div class="item-controls">
+        <button class="qty-btn" onclick="changeQty(${index}, -1)">−</button>
+        <input type="number" class="qty-input" value="${item.quantity}" onchange="setQty(${index}, this.value)" min="1">
+        <button class="qty-btn" onclick="changeQty(${index}, 1)">+</button>
+        <button class="remove-btn" onclick="removeItem(${index})">Remove</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function changeQty(index, delta) {
+  scannedItems[index].quantity = Math.max(1, scannedItems[index].quantity + delta);
+  renderItems();
+  updateStats();
+}
+
+function setQty(index, value) {
+  scannedItems[index].quantity = Math.max(1, parseInt(value) || 1);
+  renderItems();
+  updateStats();
+}
+
+function removeItem(index) {
+  scannedItems.splice(index, 1);
+  renderItems();
+  updateStats();
+}
+
+function updateStats() {
+  const itemCount = scannedItems.length;
+  const totalQty = scannedItems.reduce((sum, item) => sum + item.quantity, 0);
+  
+  document.getElementById('itemCount').textContent = itemCount;
+  document.getElementById('totalQty').textContent = totalQty;
+  document.getElementById('itemCountText').textContent = itemCount;
+  
+  document.getElementById('receiveAll').disabled = itemCount === 0;
+}
+
+async function receiveAll() {
+  if (scannedItems.length === 0) return;
+  
+  if (!confirm(`Receive ${scannedItems.length} items (${scannedItems.reduce((s,i) => s + i.quantity, 0)} total quantity)?`)) {
+    return;
+  }
+  
+  document.getElementById('receiveAll').disabled = true;
+  document.getElementById('receiveAll').textContent = 'Receiving...';
+  
+  try {
+    // Update inventory for each item
+    for (const item of scannedItems) {
+      if (item.part_id) {
+        // Increment quantity
+        const { data: current } = await sb
+          .from('parts_inventory')
+          .select('quantity_on_hand, quantity_available')
+          .eq('part_id', item.part_id)
+          .single();
+        
+        if (current) {
+          await sb
+            .from('parts_inventory')
+            .update({
+              quantity_on_hand: current.quantity_on_hand + item.quantity,
+              quantity_available: current.quantity_available + item.quantity
+            })
+            .eq('part_id', item.part_id);
+          
+          // Log transaction
+          await sb
+            .from('parts_transactions')
+            .insert({
+              tenant_id: tenantId,
+              part_id: item.part_id,
+              transaction_type: 'Receipt',
+              quantity_change: item.quantity,
+              quantity_before: current.quantity_on_hand,
+              quantity_after: current.quantity_on_hand + item.quantity,
+              reference_type: 'Barcode Scan',
+              notes: 'Mobile receiving - Barcode: ' + item.barcode
+            });
+        }
+      }
+    }
+    
+    showToast('✅ All items received successfully!');
+    
+    // Clear items
+    scannedItems = [];
+    renderItems();
+    updateStats();
+    
+    // Option to return to dashboard
+    setTimeout(() => {
+      if (confirm('Items received! Return to Parts Dashboard?')) {
+        window.location.href = 'parts-dashboard-final.html';
+      }
+    }, 1500);
+    
+  } catch (error) {
+    console.error('Receive error:', error);
+    showToast('Error receiving items: ' + error.message);
+  } finally {
+    document.getElementById('receiveAll').disabled = false;
+    document.getElementById('receiveAll').textContent = 'Receive All Items';
+  }
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// Prevent accidental page refresh
+window.addEventListener('beforeunload', (e) => {
+  if (scannedItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+</script>
+
+</body>
+</html>
