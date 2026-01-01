@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Map - Global View</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0b0f14;
+      min-height: 100vh;
+      padding: 20px;
+      color: #e8eef6;
+    }
+
+    .container { max-width: 2000px; margin: 0 auto; }
+
+    .header {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 { color: #60a5fa; font-size: 28px; font-weight: 700; }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: white;
+      background: #3b82f6;
+      font-size: 14px;
+      border: none;
+    }
+
+    .btn:hover { background: #2563eb; }
+
+    .global-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    .tables-map {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 20px;
+    }
+
+    .table-card {
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+
+    .table-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.2);
+    }
+
+    .table-header {
+      background: #1a2535;
+      padding: 16px 20px;
+      border-bottom: 2px solid #2d3f56;
+      cursor: pointer;
+    }
+
+    .table-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #60a5fa;
+      font-family: 'Courier New', monospace;
+    }
+
+    .table-summary {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .table-body {
+      padding: 16px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+    }
+
+    .table-card.expanded .table-body {
+      max-height: 2000px;
+    }
+
+    .section {
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #60a5fa;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .columns-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .column-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #1a2535;
+      border-radius: 6px;
+      font-size: 13px;
+      border-left: 3px solid transparent;
+    }
+
+    .column-item.primary-key {
+      border-left-color: #f59e0b;
+      background: #1e1410;
+    }
+
+    .column-item.foreign-key {
+      border-left-color: #10b981;
+      background: #0f1713;
+    }
+
+    .column-name {
+      font-family: 'Courier New', monospace;
+      color: #e8eef6;
+      font-weight: 600;
+    }
+
+    .column-type {
+      font-family: 'Courier New', monospace;
+      color: #94a3b8;
+      font-size: 11px;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-pk { background: #78350f; color: #fcd34d; }
+    .badge-fk { background: #065f46; color: #6ee7b7; }
+    .badge-nullable { background: #1e3a8a; color: #93c5fd; }
+
+    .relationships {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .relationship {
+      background: #1a2535;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border-left: 3px solid #10b981;
+      font-size: 12px;
+    }
+
+    .rel-arrow {
+      color: #10b981;
+      font-weight: 700;
+      margin: 0 8px;
+    }
+
+    .rel-table {
+      color: #60a5fa;
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+    }
+
+    .rel-column {
+      color: #94a3b8;
+      font-family: 'Courier New', monospace;
+    }
+
+    .connection-map {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .map-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-bottom: 16px;
+    }
+
+    .connection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 12px;
+    }
+
+    .connection {
+      background: #1a2535;
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 4px solid #10b981;
+      font-size: 13px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: #94a3b8;
+      font-size: 16px;
+    }
+
+    .expand-icon {
+      float: right;
+      transition: transform 0.3s;
+    }
+
+    .table-card.expanded .expand-icon {
+      transform: rotate(180deg);
+    }
+
+    @media (max-width: 768px) {
+      .tables-map {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🗺️ Database Map - Global View</h1>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn" onclick="loadSchema()">🔄 Refresh</button>
+      <a href="admin-dashboard-collapsible.html" class="btn">← Dashboard</a>
+    </div>
+  </div>
+
+  <div class="global-stats">
+    <div class="stat-card">
+      <div class="stat-value" id="totalTables">-</div>
+      <div class="stat-label">Total Tables</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalColumns">-</div>
+      <div class="stat-label">Total Columns</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalRelationships">-</div>
+      <div class="stat-label">Relationships</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalPrimaryKeys">-</div>
+      <div class="stat-label">Primary Keys</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalForeignKeys">-</div>
+      <div class="stat-label">Foreign Keys</div>
+    </div>
+  </div>
+
+  <div class="connection-map">
+    <div class="map-title">🔗 Global Connections</div>
+    <div id="connectionsGrid" class="connection-grid"></div>
+  </div>
+
+  <div id="loading" class="loading">Loading database schema...</div>
+
+  <div class="tables-map" id="tablesMap"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+  
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let tables = [];
+  let columns = [];
+  let relationships = [];
+  let primaryKeys = [];
+
+  async function loadSchema() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('tablesMap').innerHTML = '';
+
+    try {
+      // Load all schema data
+      await Promise.all([
+        loadTables(),
+        loadColumns(),
+        loadRelationships(),
+        loadPrimaryKeys()
+      ]);
+
+      renderSchema();
+      updateStats();
+      renderConnections();
+
+      document.getElementById('loading').style.display = 'none';
+
+    } catch (error) {
+      console.error('Error:', error);
+      document.getElementById('loading').innerHTML = 
+        `<div style="color: #ef4444;">
+          ❌ Error loading schema<br><br>
+          <strong>Did you run AUTO-DISCOVER-SCHEMA.sql?</strong><br><br>
+          ${error.message}
+        </div>`;
+    }
+  }
+
+  async function loadTables() {
+    const { data, error } = await supabaseClient.rpc('get_all_tables');
+    if (error) throw error;
+    tables = data || [];
+  }
+
+  async function loadColumns() {
+    const { data, error } = await supabaseClient.rpc('get_all_columns');
+    if (error) throw error;
+    columns = data || [];
+  }
+
+  async function loadRelationships() {
+    const { data, error } = await supabaseClient.rpc('get_all_relationships');
+    if (error) throw error;
+    relationships = data || [];
+  }
+
+  async function loadPrimaryKeys() {
+    const { data, error } = await supabaseClient.rpc('get_primary_keys');
+    if (error) throw error;
+    primaryKeys = data || [];
+  }
+
+  function renderSchema() {
+    const container = document.getElementById('tablesMap');
+
+    container.innerHTML = tables.map(table => {
+      const tableCols = columns.filter(c => c.table_name === table.table_name);
+      const tableRels = relationships.filter(r => r.from_table === table.table_name);
+      const tablePKs = primaryKeys.filter(pk => pk.table_name === table.table_name);
+      const tableFKs = relationships.filter(r => r.from_table === table.table_name);
+
+      return `
+        <div class="table-card" id="table-${table.table_name}">
+          <div class="table-header" onclick="toggleTable('${table.table_name}')">
+            <div class="table-name">${table.table_name} <span class="expand-icon">▼</span></div>
+            <div class="table-summary">
+              <span>${tableCols.length} columns</span>
+              <span>${tablePKs.length} PK</span>
+              <span>${tableFKs.length} FK</span>
+              <span>${tableRels.length} connections</span>
+            </div>
+          </div>
+
+          <div class="table-body">
+            <!-- Columns -->
+            <div class="section">
+              <div class="section-title">📊 Columns (${tableCols.length})</div>
+              <div class="columns-list">
+                ${tableCols.map(col => {
+                  const isPK = tablePKs.some(pk => pk.column_name === col.column_name);
+                  const isFK = tableFKs.some(fk => fk.from_column === col.column_name);
+                  const cssClass = isPK ? 'primary-key' : (isFK ? 'foreign-key' : '');
+                  
+                  return `
+                    <div class="column-item ${cssClass}">
+                      <div>
+                        <span class="column-name">${col.column_name}</span>
+                        ${isPK ? '<span class="badge badge-pk">PK</span>' : ''}
+                        ${isFK ? '<span class="badge badge-fk">FK</span>' : ''}
+                        ${col.is_nullable === 'YES' ? '<span class="badge badge-nullable">NULL</span>' : ''}
+                      </div>
+                      <span class="column-type">${col.data_type}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- Relationships -->
+            ${tableRels.length > 0 ? `
+              <div class="section">
+                <div class="section-title">🔗 Relationships (${tableRels.length})</div>
+                <div class="relationships">
+                  ${tableRels.map(rel => `
+                    <div class="relationship">
+                      <span class="rel-table">${rel.from_table}</span>.<span class="rel-column">${rel.from_column}</span>
+                      <span class="rel-arrow">→</span>
+                      <span class="rel-table">${rel.to_table}</span>.<span class="rel-column">${rel.to_column}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderConnections() {
+    const container = document.getElementById('connectionsGrid');
+
+    // Group relationships by connection
+    const connections = relationships.map(rel => ({
+      text: `${rel.from_table}.${rel.from_column} → ${rel.to_table}.${rel.to_column}`,
+      from: rel.from_table,
+      to: rel.to_table
+    }));
+
+    container.innerHTML = connections.map(conn => `
+      <div class="connection" onclick="highlightTables('${conn.from}', '${conn.to}')">
+        ${conn.text}
+      </div>
+    `).join('');
+  }
+
+  function updateStats() {
+    const totalCols = columns.length;
+    const totalRels = relationships.length;
+    const totalPKs = primaryKeys.length;
+    const totalFKs = relationships.length;
+
+    document.getElementById('totalTables').textContent = tables.length;
+    document.getElementById('totalColumns').textContent = totalCols;
+    document.getElementById('totalRelationships').textContent = totalRels;
+    document.getElementById('totalPrimaryKeys').textContent = totalPKs;
+    document.getElementById('totalForeignKeys').textContent = totalFKs;
+  }
+
+  function toggleTable(tableName) {
+    const card = document.getElementById(`table-${tableName}`);
+    card.classList.toggle('expanded');
+  }
+
+  function highlightTables(from, to) {
+    // Clear previous highlights
+    document.querySelectorAll('.table-card').forEach(card => {
+      card.style.borderColor = '#2d3f56';
+    });
+
+    // Highlight connected tables
+    const fromCard = document.getElementById(`table-${from}`);
+    const toCard = document.getElementById(`table-${to}`);
+
+    if (fromCard) {
+      fromCard.style.borderColor = '#10b981';
+      fromCard.classList.add('expanded');
+      fromCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    if (toCard) {
+      toCard.style.borderColor = '#3b82f6';
+      toCard.classList.add('expanded');
+    }
+  }
+
+  // Initialize
+  loadSchema();
+</script>
+
+</body>
+</html>
