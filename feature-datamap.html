@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature-Data Map</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0b0f14;
+      min-height: 100vh;
+      padding: 20px;
+      color: #e8eef6;
+    }
+
+    .container { max-width: 2000px; margin: 0 auto; }
+
+    .header {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 { color: #60a5fa; font-size: 28px; font-weight: 700; }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: white;
+      background: #3b82f6;
+      font-size: 14px;
+      border: none;
+      margin-left: 8px;
+    }
+
+    .btn:hover { background: #2563eb; }
+
+    .view-toggle {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 24px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: 1px solid #2d3f56;
+      background: transparent;
+      color: #94a3b8;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn.active {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    .search-box {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #e8eef6;
+      font-size: 14px;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    /* Feature View */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .feature-card {
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+    }
+
+    .feature-header {
+      background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+      padding: 20px;
+      cursor: pointer;
+    }
+
+    .feature-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 8px;
+    }
+
+    .feature-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #93c5fd;
+    }
+
+    .feature-body {
+      padding: 20px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+    }
+
+    .feature-card.expanded .feature-body {
+      max-height: 2000px;
+    }
+
+    .data-section {
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #60a5fa;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .table-group {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .table-group-name {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      color: #60a5fa;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .fields-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .field-tag {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      color: #94a3b8;
+    }
+
+    .field-tag.read { border-color: #10b981; color: #6ee7b7; }
+    .field-tag.write { border-color: #f59e0b; color: #fcd34d; }
+    .field-tag.update { border-color: #3b82f6; color: #93c5fd; }
+    .field-tag.delete { border-color: #ef4444; color: #fca5a5; }
+
+    .action-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-left: 6px;
+    }
+
+    .action-read { background: #065f46; color: #6ee7b7; }
+    .action-write { background: #78350f; color: #fcd34d; }
+    .action-update { background: #1e3a8a; color: #93c5fd; }
+    .action-delete { background: #7f1d1d; color: #fca5a5; }
+
+    /* Table View */
+    .tables-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+      gap: 20px;
+    }
+
+    .table-card {
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+      padding: 20px;
+      cursor: pointer;
+    }
+
+    .table-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: white;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 8px;
+    }
+
+    .table-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #6ee7b7;
+    }
+
+    .table-body {
+      padding: 20px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+    }
+
+    .table-card.expanded .table-body {
+      max-height: 2000px;
+    }
+
+    .feature-usage {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .feature-usage-name {
+      font-weight: 700;
+      color: #60a5fa;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .usage-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .expand-icon {
+      float: right;
+      transition: transform 0.3s;
+      font-size: 20px;
+    }
+
+    .expanded .expand-icon {
+      transform: rotate(180deg);
+    }
+
+    .view-section {
+      display: none;
+    }
+
+    .view-section.active {
+      display: block;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    .legend {
+      background: #0f1621;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 768px) {
+      .features-grid, .tables-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🎯 Feature-Data Map</h1>
+    <div>
+      <button class="btn" onclick="saveMapping()">💾 Save Progress</button>
+      <a href="admin-dashboard-collapsible.html" class="btn">← Dashboard</a>
+    </div>
+  </div>
+
+  <div class="view-toggle">
+    <button class="toggle-btn active" onclick="switchView('features')">📱 Features View</button>
+    <button class="toggle-btn" onclick="switchView('tables')">📊 Tables View</button>
+    <button class="toggle-btn" onclick="switchView('matrix')">🔄 Matrix View</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-value" id="totalFeatures">0</div>
+      <div class="stat-label">Features/Screens</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalMappings">0</div>
+      <div class="stat-label">Data Mappings</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalTables">0</div>
+      <div class="stat-label">Tables Used</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="completeness">0%</div>
+      <div class="stat-label">Mapping Complete</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <strong style="color: #60a5fa;">Actions:</strong>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #10b981;"></div>
+      <span>Read</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #f59e0b;"></div>
+      <span>Write/Create</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #3b82f6;"></div>
+      <span>Update</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #ef4444;"></div>
+      <span>Delete</span>
+    </div>
+  </div>
+
+  <div class="search-box">
+    <input 
+      type="text" 
+      class="search-input" 
+      placeholder="🔍 Search features, tables, or fields..."
+      id="searchInput"
+      oninput="filterContent(this.value)">
+  </div>
+
+  <!-- Features View -->
+  <div class="view-section active" id="featuresView">
+    <div class="features-grid" id="featuresGrid"></div>
+  </div>
+
+  <!-- Tables View -->
+  <div class="view-section" id="tablesView">
+    <div class="tables-grid" id="tablesGrid"></div>
+  </div>
+
+  <!-- Matrix View -->
+  <div class="view-section" id="matrixView">
+    <div id="matrixGrid"></div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+  
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Feature to Data Mapping
+  const featureDataMap = {
+    "Admin Dashboard": {
+      description: "Main overview with stats and metrics",
+      status: "complete",
+      tables: {
+        tenants: {
+          fields: ["tenant_name", "status", "monthly_recurring_revenue", "total_users"],
+          actions: ["read"]
+        },
+        financial_metrics: {
+          fields: ["total_revenue", "total_costs", "net_profit", "profit_margin", "active_tenants"],
+          actions: ["read"]
+        },
+        operational_costs: {
+          fields: ["service_name", "monthly_cost", "category_id"],
+          actions: ["read"]
+        },
+        subscription_tiers: {
+          fields: ["tier_display_name", "monthly_price"],
+          actions: ["read"]
+        }
+      }
+    },
+    "Admin Settings": {
+      description: "Manage costs, tiers, users, and platform settings",
+      status: "complete",
+      tables: {
+        operational_costs: {
+          fields: ["service_name", "provider_name", "monthly_cost", "annual_cost", "category_id"],
+          actions: ["read", "write", "update", "delete"]
+        },
+        cost_categories: {
+          fields: ["category_name", "color_code"],
+          actions: ["read"]
+        },
+        subscription_tiers: {
+          fields: ["tier_name", "tier_display_name", "monthly_price", "annual_price", "features"],
+          actions: ["read", "write", "update", "delete"]
+        },
+        tenants: {
+          fields: ["tenant_name", "company_name", "email", "tier_id", "status", "monthly_recurring_revenue"],
+          actions: ["read", "write", "update", "delete"]
+        }
+      }
+    },
+    "Support Tickets": {
+      description: "Customer support ticket management",
+      status: "in_progress",
+      tables: {
+        support_tickets: {
+          fields: ["ticket_number", "subject", "description", "priority", "status", "tenant_id", "assigned_to"],
+          actions: ["read", "write", "update"]
+        },
+        ticket_comments: {
+          fields: ["content", "ticket_id", "commenter_name", "is_internal"],
+          actions: ["read", "write"]
+        },
+        tenants: {
+          fields: ["tenant_name", "company_name"],
+          actions: ["read"]
+        }
+      }
+    },
+    "Financial Reports": {
+      description: "Revenue, costs, and profitability analysis",
+      status: "in_progress",
+      tables: {
+        revenue_records: {
+          fields: ["amount", "revenue_type", "billing_period_start", "billing_period_end", "payment_status", "tenant_id"],
+          actions: ["read"]
+        },
+        financial_metrics: {
+          fields: ["metric_period", "total_revenue", "recurring_revenue", "total_costs", "net_profit", "churn_rate"],
+          actions: ["read"]
+        },
+        operational_costs: {
+          fields: ["service_name", "monthly_cost", "annual_cost"],
+          actions: ["read"]
+        },
+        tenants: {
+          fields: ["tenant_name", "monthly_recurring_revenue", "status"],
+          actions: ["read"]
+        }
+      }
+    },
+    "Tenant Management": {
+      description: "View and manage all SaaS customers",
+      status: "complete",
+      tables: {
+        tenants: {
+          fields: ["tenant_id", "tenant_name", "company_name", "domain", "tier_id", "status", "billing_email", "monthly_recurring_revenue", "total_users"],
+          actions: ["read", "update"]
+        },
+        subscription_tiers: {
+          fields: ["tier_display_name", "monthly_price"],
+          actions: ["read"]
+        },
+        tenant_users: {
+          fields: ["email", "full_name", "role", "last_login_at"],
+          actions: ["read"]
+        }
+      }
+    },
+    "User Management": {
+      description: "Manage tenant users and access",
+      status: "planning",
+      tables: {
+        tenant_users: {
+          fields: ["user_id", "tenant_id", "email", "full_name", "role", "is_active", "last_login_at"],
+          actions: ["read", "write", "update", "delete"]
+        },
+        tenants: {
+          fields: ["tenant_name", "company_name"],
+          actions: ["read"]
+        }
+      }
+    },
+    "Billing & Payments": {
+      description: "Process payments and manage subscriptions",
+      status: "planning",
+      tables: {
+        revenue_records: {
+          fields: ["amount", "revenue_type", "payment_status", "payment_method", "transaction_id", "tenant_id"],
+          actions: ["read", "write"]
+        },
+        tenants: {
+          fields: ["billing_email", "tier_id", "billing_cycle", "monthly_recurring_revenue"],
+          actions: ["read", "update"]
+        },
+        subscription_tiers: {
+          fields: ["monthly_price", "annual_price"],
+          actions: ["read"]
+        }
+      }
+    },
+    "Analytics Dashboard": {
+      description: "Business intelligence and metrics",
+      status: "planning",
+      tables: {
+        financial_metrics: {
+          fields: ["metric_period", "total_revenue", "active_tenants", "churn_rate", "arpu", "customer_ltv"],
+          actions: ["read"]
+        },
+        activity_log: {
+          fields: ["activity_type", "created_at", "tenant_id"],
+          actions: ["read"]
+        }
+      }
+    }
+  };
+
+  let currentView = 'features';
+
+  function init() {
+    renderFeaturesView();
+    renderTablesView();
+    renderMatrixView();
+    updateStats();
+    loadProgress();
+  }
+
+  function renderFeaturesView() {
+    const grid = document.getElementById('featuresGrid');
+    
+    grid.innerHTML = Object.entries(featureDataMap).map(([featureName, feature]) => {
+      const tableCount = Object.keys(feature.tables).length;
+      const fieldCount = Object.values(feature.tables).reduce((sum, t) => sum + t.fields.length, 0);
+      
+      return `
+        <div class="feature-card" id="feature-${featureName.replace(/\s/g, '_')}">
+          <div class="feature-header" onclick="toggleCard(this)">
+            <div class="feature-name">${featureName} <span class="expand-icon">▼</span></div>
+            <div class="feature-meta">
+              <span>${feature.description}</span>
+              <span>•</span>
+              <span>${tableCount} tables</span>
+              <span>•</span>
+              <span>${fieldCount} fields</span>
+            </div>
+          </div>
+
+          <div class="feature-body">
+            <div class="data-section">
+              <div class="section-title">📊 Data Usage</div>
+              ${Object.entries(feature.tables).map(([tableName, tableData]) => `
+                <div class="table-group">
+                  <div class="table-group-name">
+                    ${tableName}
+                    ${tableData.actions.map(action => 
+                      `<span class="action-badge action-${action}">${action}</span>`
+                    ).join('')}
+                  </div>
+                  <div class="fields-list">
+                    ${tableData.fields.map(field => 
+                      `<div class="field-tag">${field}</div>`
+                    ).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderTablesView() {
+    const grid = document.getElementById('tablesGrid');
+    
+    // Build reverse mapping: table -> features
+    const tableToFeatures = {};
+    
+    Object.entries(featureDataMap).forEach(([featureName, feature]) => {
+      Object.entries(feature.tables).forEach(([tableName, tableData]) => {
+        if (!tableToFeatures[tableName]) {
+          tableToFeatures[tableName] = [];
+        }
+        tableToFeatures[tableName].push({
+          feature: featureName,
+          fields: tableData.fields,
+          actions: tableData.actions
+        });
+      });
+    });
+
+    grid.innerHTML = Object.entries(tableToFeatures).map(([tableName, features]) => {
+      const featureCount = features.length;
+      const totalFields = new Set(features.flatMap(f => f.fields)).size;
+      
+      return `
+        <div class="table-card" id="table-${tableName}">
+          <div class="table-header" onclick="toggleCard(this)">
+            <div class="table-name">${tableName} <span class="expand-icon">▼</span></div>
+            <div class="table-meta">
+              <span>Used by ${featureCount} features</span>
+              <span>•</span>
+              <span>${totalFields} unique fields</span>
+            </div>
+          </div>
+
+          <div class="table-body">
+            <div class="data-section">
+              <div class="section-title">🎯 Used By Features</div>
+              ${features.map(f => `
+                <div class="feature-usage">
+                  <div class="feature-usage-name">
+                    ${f.feature}
+                    ${f.actions.map(action => 
+                      `<span class="action-badge action-${action}">${action}</span>`
+                    ).join('')}
+                  </div>
+                  <div class="usage-details">
+                    ${f.fields.map(field => 
+                      `<div class="field-tag">${field}</div>`
+                    ).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderMatrixView() {
+    const grid = document.getElementById('matrixGrid');
+    
+    // Build table list
+    const allTables = new Set();
+    Object.values(featureDataMap).forEach(feature => {
+      Object.keys(feature.tables).forEach(table => allTables.add(table));
+    });
+    
+    const tablesList = Array.from(allTables).sort();
+    const featuresList = Object.keys(featureDataMap);
+
+    grid.innerHTML = `
+      <div style="overflow-x: auto; background: #0f1621; border: 1px solid #2d3f56; border-radius: 12px; padding: 20px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #2d3f56; color: #60a5fa; position: sticky; left: 0; background: #0f1621;">Feature</th>
+              ${tablesList.map(table => 
+                `<th style="padding: 12px; text-align: center; border-bottom: 2px solid #2d3f56; color: #60a5fa; font-family: 'Courier New', monospace; font-size: 12px; min-width: 100px;">${table}</th>`
+              ).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${featuresList.map(feature => {
+              const featureData = featureDataMap[feature];
+              return `
+                <tr style="border-bottom: 1px solid #2d3f56;">
+                  <td style="padding: 12px; font-weight: 600; color: #e8eef6; position: sticky; left: 0; background: #0f1621;">${feature}</td>
+                  ${tablesList.map(table => {
+                    const tableData = featureData.tables[table];
+                    if (tableData) {
+                      const actions = tableData.actions.join(', ');
+                      const color = tableData.actions.includes('write') ? '#f59e0b' : 
+                                   tableData.actions.includes('update') ? '#3b82f6' :
+                                   tableData.actions.includes('delete') ? '#ef4444' : '#10b981';
+                      return `<td style="padding: 12px; text-align: center;"><div style="width: 20px; height: 20px; border-radius: 50%; background: ${color}; margin: 0 auto;" title="${actions}"></div></td>`;
+                    }
+                    return `<td style="padding: 12px; text-align: center;"><div style="width: 20px; height: 20px; border-radius: 50%; background: #1a2535; margin: 0 auto;"></div></td>`;
+                  }).join('')}
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function updateStats() {
+    const totalFeatures = Object.keys(featureDataMap).length;
+    
+    let totalMappings = 0;
+    const tablesUsed = new Set();
+    
+    Object.values(featureDataMap).forEach(feature => {
+      Object.keys(feature.tables).forEach(table => {
+        tablesUsed.add(table);
+        totalMappings++;
+      });
+    });
+
+    const completedFeatures = Object.values(featureDataMap).filter(f => f.status === 'complete').length;
+    const completeness = Math.round((completedFeatures / totalFeatures) * 100);
+
+    document.getElementById('totalFeatures').textContent = totalFeatures;
+    document.getElementById('totalMappings').textContent = totalMappings;
+    document.getElementById('totalTables').textContent = tablesUsed.size;
+    document.getElementById('completeness').textContent = completeness + '%';
+  }
+
+  function switchView(view) {
+    currentView = view;
+    
+    // Update buttons
+    document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Update views
+    document.querySelectorAll('.view-section').forEach(section => section.classList.remove('active'));
+    document.getElementById(view + 'View').classList.add('active');
+  }
+
+  function toggleCard(header) {
+    header.parentElement.classList.toggle('expanded');
+  }
+
+  function filterContent(searchTerm) {
+    const term = searchTerm.toLowerCase();
+    
+    // Filter features
+    document.querySelectorAll('.feature-card').forEach(card => {
+      const text = card.textContent.toLowerCase();
+      card.style.display = text.includes(term) ? 'block' : 'none';
+    });
+    
+    // Filter tables
+    document.querySelectorAll('.table-card').forEach(card => {
+      const text = card.textContent.toLowerCase();
+      card.style.display = text.includes(term) ? 'block' : 'none';
+    });
+  }
+
+  function saveMapping() {
+    localStorage.setItem('featureDataMap', JSON.stringify(featureDataMap));
+    alert('✅ Mapping saved to browser storage!');
+  }
+
+  function loadProgress() {
+    const saved = localStorage.getItem('featureDataMap');
+    if (saved) {
+      // Could merge saved progress with defaults
+      console.log('Saved progress loaded');
+    }
+  }
+
+  // Initialize
+  init();
+</script>
+
+</body>
+</html>
