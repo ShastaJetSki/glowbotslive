@@ -266,6 +266,7 @@
   <div class="tabs">
     <div class="tab active" onclick="switchTab('costs')">Operational Costs</div>
     <div class="tab" onclick="switchTab('tiers')">Subscription Tiers</div>
+    <div class="tab" onclick="switchTab('users')">User Management</div>
     <div class="tab" onclick="switchTab('general')">General Settings</div>
     <div class="tab" onclick="switchTab('billing')">Billing Settings</div>
   </div>
@@ -403,6 +404,89 @@ Feature 3"></textarea>
     </div>
   </div>
 
+  <!-- User Management Tab -->
+  <div class="tab-content" id="users">
+    <div class="panel">
+      <div class="panel-title">
+        <span>Add New User</span>
+        <button class="btn success" onclick="addUser()">Add User</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" class="form-input" id="userName" placeholder="John Doe">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="userEmail" placeholder="user@example.com">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-select" id="userRole">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="support">Support</option>
+            <option value="viewer">Viewer (Read-Only)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Subscription Tier</label>
+          <select class="form-select" id="userTier">
+            <option value="free">Free Plan</option>
+            <option value="basic">Basic Plan - $19/mo</option>
+            <option value="pro">Pro Plan - $49/mo</option>
+            <option value="enterprise">Enterprise Plan - $299/mo</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Account Status</label>
+          <select class="form-select" id="userStatus">
+            <option value="active">Active</option>
+            <option value="trial">Trial</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Custom Monthly Price ($)</label>
+          <input type="number" class="form-input" id="userCustomPrice" placeholder="0.00" step="0.01">
+          <small style="color: #94a3b8; font-size: 11px;">Leave blank to use tier default</small>
+        </div>
+
+        <div class="form-group full-width">
+          <label class="form-label">Notes (Internal)</label>
+          <textarea class="form-textarea" id="userNotes" placeholder="Promo code used: SAVE50, Special pricing for early adopter..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Current Users</div>
+
+      <table class="cost-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Tier</th>
+            <th>Monthly Price</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersTableBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- General Settings Tab -->
   <div class="tab-content" id="general">
     <div class="panel">
@@ -517,6 +601,12 @@ Feature 3"></textarea>
     { id: 2, name: "Basic Plan", key: "basic", monthly: 19, annual: 190, features: "All Free features\nEmail support\n5 users\n10GB storage" },
     { id: 3, name: "Pro Plan", key: "pro", monthly: 49, annual: 490, features: "All Basic features\nPriority support\n25 users\n100GB storage" },
     { id: 4, name: "Enterprise", key: "enterprise", monthly: 299, annual: 2990, features: "All Pro features\n24/7 support\nUnlimited users\n1TB storage" }
+  ];
+
+  const users = [
+    { id: 1, name: "John Smith", email: "john@acme.com", role: "admin", tier: "enterprise", customPrice: null, status: "active", notes: "" },
+    { id: 2, name: "Jane Doe", email: "jane@startup.com", role: "user", tier: "pro", customPrice: 39.00, status: "active", notes: "Early adopter discount" },
+    { id: 3, name: "Bob Wilson", email: "bob@smallbiz.com", role: "user", tier: "basic", customPrice: null, status: "trial", notes: "14-day trial" }
   ];
 
   function switchTab(tabName) {
@@ -659,6 +749,92 @@ Feature 3"></textarea>
     }
   }
 
+  // User Management Functions
+  function renderUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = users.map(user => {
+      const tierInfo = tiers.find(t => t.key === user.tier);
+      const displayPrice = user.customPrice !== null ? user.customPrice : (tierInfo ? tierInfo.monthly : 0);
+      
+      return `
+        <tr>
+          <td>${user.name}</td>
+          <td>${user.email}</td>
+          <td><span class="category-badge cat-services">${user.role}</span></td>
+          <td>${tierInfo ? tierInfo.name : user.tier}</td>
+          <td>$${displayPrice.toFixed(2)}${user.customPrice !== null ? ' <small style="color:#10b981">(custom)</small>' : ''}</td>
+          <td><span class="category-badge cat-${user.status === 'active' ? 'infrastructure' : user.status === 'trial' ? 'fees' : 'operations'}">${user.status}</span></td>
+          <td>
+            <button class="action-btn" onclick="editUser(${user.id})">Edit</button>
+            <button class="action-btn delete" onclick="deleteUser(${user.id})">Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function addUser() {
+    const name = document.getElementById('userName').value;
+    const email = document.getElementById('userEmail').value;
+    const role = document.getElementById('userRole').value;
+    const tier = document.getElementById('userTier').value;
+    const status = document.getElementById('userStatus').value;
+    const customPrice = document.getElementById('userCustomPrice').value;
+    const notes = document.getElementById('userNotes').value;
+
+    if (!name || !email) {
+      alert('Please fill in name and email');
+      return;
+    }
+
+    const newUser = {
+      id: users.length + 1,
+      name: name,
+      email: email,
+      role: role,
+      tier: tier,
+      customPrice: customPrice ? parseFloat(customPrice) : null,
+      status: status,
+      notes: notes
+    };
+
+    users.push(newUser);
+    renderUsers();
+    
+    // Clear form
+    document.getElementById('userName').value = '';
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userRole').value = 'user';
+    document.getElementById('userTier').value = 'free';
+    document.getElementById('userStatus').value = 'active';
+    document.getElementById('userCustomPrice').value = '';
+    document.getElementById('userNotes').value = '';
+    
+    alert('User added successfully!');
+  }
+
+  function editUser(id) {
+    const user = users.find(u => u.id === id);
+    if (user) {
+      document.getElementById('userName').value = user.name;
+      document.getElementById('userEmail').value = user.email;
+      document.getElementById('userRole').value = user.role;
+      document.getElementById('userTier').value = user.tier;
+      document.getElementById('userStatus').value = user.status;
+      document.getElementById('userCustomPrice').value = user.customPrice || '';
+      document.getElementById('userNotes').value = user.notes;
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function deleteUser(id) {
+    if (confirm('Delete this user? This will remove their access.')) {
+      const index = users.findIndex(u => u.id === id);
+      users.splice(index, 1);
+      renderUsers();
+    }
+  }
+
   function saveGeneralSettings() {
     alert('General settings saved successfully!');
   }
@@ -669,6 +845,7 @@ Feature 3"></textarea>
 
   renderCosts();
   renderTiers();
+  renderUsers();
 </script>
 
 </body>
