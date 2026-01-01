@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vehicle Lookup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <meta name="supabase-anon-key"
+    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+
+  <style>
+    body { margin:0; padding:0; font-family:system-ui; background:#0b0f14; color:#e8eef6; }
+    h1 { margin:0; font-size:40px; }
+    h2 { margin:18px 0 10px; font-size:18px; }
+
+    input {
+      width:100%; padding:12px;
+      border-radius:10px; border:1px solid #223044;
+      background:#0f1621; color:#e8eef6;
+      margin-bottom:16px;
+      position:relative;
+    }
+    
+    .autocomplete-container {
+      position:relative;
+      width:100%;
+      margin-bottom:16px;
+    }
+    
+    .autocomplete-dropdown {
+      position:absolute;
+      top:100%;
+      left:0;
+      right:0;
+      background:#0f1621;
+      border:1px solid #223044;
+      border-top:none;
+      border-radius:0 0 10px 10px;
+      max-height:300px;
+      overflow-y:auto;
+      z-index:1000;
+      display:none;
+    }
+    
+    .autocomplete-dropdown.active {
+      display:block;
+    }
+    
+    .autocomplete-item {
+      padding:12px;
+      cursor:pointer;
+      border-bottom:1px solid #223044;
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    
+    .autocomplete-item:last-child {
+      border-bottom:none;
+    }
+    
+    .autocomplete-item:hover {
+      background:#1a2535;
+    }
+    
+    .autocomplete-highlight {
+      background:#2563eb;
+      color:#fff;
+    }
+    
+    .autocomplete-item .vehicle-image {
+      width:50px;
+      height:50px;
+    }
+    
+    .autocomplete-item .vehicle-placeholder {
+      width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg, #1a2535 0%, #0f1621 100%);
+    }
+    
+    .autocomplete-item .vehicle-placeholder svg {
+      width:50%;
+      height:50%;
+      opacity:0.4;
+    }
+
+    .stats {
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
+    }
+    
+    /* KPI */
+    .kpi { 
+      min-width:200px; 
+      flex: 1 1 200px; 
+      cursor:pointer;
+      padding:12px 14px;
+    }
+    .kpi:hover { border-color:#2f4461; }
+    .kpi.active { border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+    .kpi.hidden { display: none; }
+    .label { 
+      font-size:12px; 
+      color:#9fb0c3;
+      margin-bottom:4px;
+    }
+    .value { 
+      font-size:42px; 
+      font-weight:700; 
+      line-height:1.1;
+      text-align:right;
+    }
+    
+    .stat-label { font-size:12px; color:#9fb0c3; }
+    .stat-value { font-size:22px; font-weight:700; margin-top:6px; }
+
+    .list {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+      gap:12px;
+    }
+
+    .card {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:14px 16px;
+      cursor:pointer;
+    }
+    .card:hover { border-color:#38bdf8; }
+    
+    .vehicle-content {
+      display:flex;
+      flex-direction:column;
+      gap:0;
+    }
+    
+    .vehicle-top {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      padding-bottom:8px;
+    }
+    
+    .vehicle-info {
+      flex:1;
+      min-width:0;
+    }
+    
+    .vehicle-image {
+      width:80px;
+      height:80px;
+      border-radius:8px;
+      background:#0b0f14;
+      border:1px solid #223044;
+      flex-shrink:0;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    
+    .vehicle-image img {
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+    
+    .vehicle-placeholder {
+      width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg, #1a2535 0%, #0f1621 100%);
+    }
+    
+    .vehicle-placeholder svg {
+      width:60%;
+      height:60%;
+      opacity:0.4;
+    }
+    
+    .vehicle-wo-info {
+      border-top:1px solid #223044;
+      padding-top:8px;
+      font-size:11px;
+    }
+    
+    .vehicle-wo-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:4px;
+    }
+    
+    .vehicle-wo-number {
+      color:#3b82f6;
+      font-weight:600;
+      font-size:11px;
+    }
+    
+    .vehicle-wo-status {
+      display:inline-block;
+      padding:2px 6px;
+      border-radius:4px;
+      background:#1a2535;
+      color:#60a5fa;
+      text-transform:uppercase;
+      font-size:9px;
+      font-weight:600;
+      line-height:1.2;
+    }
+    
+    .vehicle-wo-tech {
+      color:#9fb0c3;
+      font-size:10px;
+      line-height:1.3;
+    }
+
+    .muted { font-size:12px; color:#9fb0c3; margin-top:4px; }
+
+    /* MODAL */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.85);
+      z-index:999;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal.active { display:flex; }
+
+    .modalContent {
+      background:#0f1621;
+      border:1px solid #223044;
+      border-radius:14px;
+      padding:20px;
+      width:100%;
+      max-width:620px;
+      max-height:80vh;
+      overflow:auto;
+    }
+
+    button {
+      padding:8px 14px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:#1a2535;
+      color:#fff;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    button:hover { background:#243648; }
+
+    /* Mobile Bottom Nav */
+    .mobile-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0f1621;
+      border-top: 1px solid #223044;
+      padding: 8px;
+      z-index: 100;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+    }
+
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      background: #1a2535;
+      color: #9fb0c3;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .mobile-nav-btn.active {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    .mobile-nav-btn:active {
+      transform: scale(0.95);
+    }
+
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-bottom-nav { display: block; }
+      
+      /* Add padding to bottom of content so it doesn't get hidden */
+      body {
+        padding-bottom: 140px;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-bottom-nav { display: none !important; }
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Desktop Sticky Header -->
+  <div class="desktop-header" style="position:sticky; top:0; z-index:100; background:#0b0f14; border-bottom:1px solid #223044;">
+    <!-- Title and Logout Bar -->
+    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+      <h1 style="margin:0; font-size:32px; font-weight:600;" id="tenantTitle">Vehicle Lookup</h1>
+      <button onclick="logout()" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Logout</button>
+    </div>
+    
+    <!-- Navigation Tabs -->
+    <div style="padding:0 24px 12px;">
+      <nav style="display:flex; gap:24px; overflow-x:auto;">
+        <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Business</a>
+        <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
+        <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Vehicles</a>
+        <a href="dashboard-settings.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
+      </nav>
+    </div>
+    
+    <!-- Service/Parts/Sales buttons BELOW divider -->
+    <div style="padding:0 24px 12px; border-top:1px solid #223044; padding-top:12px;">
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
+        <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
+        <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation -->
+  <div class="mobile-bottom-nav">
+    <div class="mobile-nav-grid">
+      <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+      <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+      <a href="dashboard-vehicle-search.html" class="mobile-nav-btn active">Vehicles</a>
+      <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
+    </div>
+    <div class="mobile-nav-secondary">
+      <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+      <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+      <a href="dashboard-sales.html" class="mobile-nav-btn">Sales</a>
+    </div>
+  </div>
+
+  <!-- Main Content (Scrollable) -->
+  <div style="padding:24px;">
+
+  <div class="stats" id="statsSection">
+    <div class="card kpi" id="kpiAll" onclick="filterByStatus('all')" style="cursor:pointer;">
+      <div class="label">All Vehicles</div>
+      <div class="value" id="allVehiclesValue">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiScheduled" onclick="filterByStatus('scheduled')" style="cursor:pointer;">
+      <div class="label">Scheduled Work</div>
+      <div class="value" id="scheduledValue">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiParts" onclick="filterByStatus('awaiting_parts')" style="cursor:pointer;">
+      <div class="label">Waiting on Parts</div>
+      <div class="value" id="awaitingPartsValue">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiPickup" onclick="filterByStatus('ready_for_pickup')" style="cursor:pointer;">
+      <div class="label">Ready for Pickup</div>
+      <div class="value" id="pickupValue">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiPastDue" onclick="filterByStatus('past_due')" style="cursor:pointer;">
+      <div class="label">⚠️ Past Due</div>
+      <div class="value" id="pastDueValue">0</div>
+    </div>
+    
+    <div class="card kpi" id="kpiCompleted" onclick="filterByStatus('completed')" style="cursor:pointer;">
+      <div class="label">Completed</div>
+      <div class="value" id="completedValue">0</div>
+    </div>
+  </div>
+
+  <div class="autocomplete-container">
+    <input id="search" placeholder="Search by license plate, make, model, or VIN…" autocomplete="off" />
+    <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+  </div>
+  
+  <div class="list" id="results"></div>
+
+  <!-- VEHICLE MODAL -->
+  <div id="vehicleModal" class="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modalContent">
+      <h2 id="modalTitle"></h2>
+      <div id="modalVehicleInfo" class="muted"></div>
+
+      <h3 style="margin-top:16px;">Owner Information</h3>
+      <div id="vehicleOwner"></div>
+
+      <div style="margin-top:16px; text-align:right;">
+        <button onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+const REST_BASE = `${API_BASE}/rest/v1`;
+const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
+
+function logout(){
+  localStorage.removeItem("sb_access_token");
+  location.replace("login.html");
+}
+
+async function validateAuth(){
+  const token = localStorage.getItem("sb_access_token");
+  if(!token) return null;
+
+  const r = await fetch(`${API_BASE}/auth/v1/user`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  return r.ok ? token : null;
+}
+
+async function fetchTable(table, token, query = ""){
+  const r = await fetch(`${REST_BASE}/${table}?select=*${query}`, {
+    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  });
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+let vehicles = [];
+let customers = [];
+let workOrders = [];
+let employees = [];
+let selectedIndex = -1;
+let activeFilter = 'all';
+
+const search = document.getElementById('search');
+const results = document.getElementById('results');
+const totalVehicles = document.getElementById('totalVehicles') || {textContent: ''};
+
+// Track vehicle views in localStorage
+function recordVehicleView(vehicleId) {
+  const views = JSON.parse(localStorage.getItem('wl_vehicle_views') || '{}');
+  views[vehicleId] = new Date().toISOString();
+  localStorage.setItem('wl_vehicle_views', JSON.stringify(views));
+}
+
+function getVehicleViews() {
+  return JSON.parse(localStorage.getItem('wl_vehicle_views') || '{}');
+}
+
+function sortVehiclesByRecentView(vehicleList) {
+  const views = getVehicleViews();
+  return vehicleList.sort((a, b) => {
+    // First priority: vehicles with active work orders
+    const aHasWO = workOrders.some(wo => wo.vehicle_id === a.vehicle_id);
+    const bHasWO = workOrders.some(wo => wo.vehicle_id === b.vehicle_id);
+    
+    if (aHasWO && !bHasWO) return -1;
+    if (!aHasWO && bHasWO) return 1;
+    
+    // Second priority: most recently viewed
+    const aTime = views[a.vehicle_id] ? new Date(views[a.vehicle_id]).getTime() : 0;
+    const bTime = views[b.vehicle_id] ? new Date(views[b.vehicle_id]).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
+function updateKPIs() {
+  const now = new Date();
+  
+  // Count vehicles with active work orders (onsite)
+  const vehiclesOnsite = vehicles.filter(v => 
+    workOrders.some(wo => wo.vehicle_id === v.vehicle_id)
+  );
+  
+  // Count vehicles by status
+  const scheduledVehicles = workOrders.filter(wo => 
+    wo.status === 'scheduled' || wo.status === 'in_progress'
+  );
+  const awaitingPartsVehicles = workOrders.filter(wo => 
+    wo.status === 'awaiting_parts'
+  );
+  const readyForPickupVehicles = workOrders.filter(wo => 
+    wo.status === 'ready_for_pickup'
+  );
+  const pastDueVehicles = workOrders.filter(wo => {
+    if (!wo.scheduled_end) return false;
+    return new Date(wo.scheduled_end) < now && wo.status !== 'completed' && wo.status !== 'closed';
+  });
+  const completedVehicles = workOrders.filter(wo => 
+    wo.status === 'completed' || wo.status === 'closed'
+  );
+  
+  // Update values - First card shows TOTAL vehicles, not just onsite
+  document.getElementById('allVehiclesValue').textContent = vehicles.length;
+  document.getElementById('scheduledValue').textContent = scheduledVehicles.length;
+  document.getElementById('awaitingPartsValue').textContent = awaitingPartsVehicles.length;
+  document.getElementById('pickupValue').textContent = readyForPickupVehicles.length;
+  document.getElementById('pastDueValue').textContent = pastDueVehicles.length;
+  document.getElementById('completedValue').textContent = completedVehicles.length;
+  
+  // Hide/show Past Due card
+  const pastDueCard = document.getElementById('kpiPastDue');
+  if (pastDueVehicles.length > 0) {
+    pastDueCard.classList.remove('hidden');
+    pastDueCard.style.borderColor = '#991b1b';
+    pastDueCard.style.boxShadow = '0 0 0 1px rgba(153,27,27,.35) inset';
+    pastDueCard.querySelector('.label').style.color = '#b91c1c';
+    pastDueCard.querySelector('.value').style.color = '#b91c1c';
+  } else {
+    pastDueCard.classList.add('hidden');
+  }
+  
+  // Hide/show Completed card
+  const completedCard = document.getElementById('kpiCompleted');
+  if (completedVehicles.length > 0) {
+    completedCard.classList.remove('hidden');
+  } else {
+    completedCard.classList.add('hidden');
+  }
+  
+  // Update active state
+  document.querySelectorAll('.kpi').forEach(kpi => kpi.classList.remove('active'));
+  const activeCard = document.getElementById(`kpi${activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1).replace('_', '').replace('ForPickup', 'Pickup')}`);
+  if (activeCard) activeCard.classList.add('active');
+}
+
+function filterByStatus(status) {
+  activeFilter = status;
+  updateKPIs();
+  render();
+}
+
+window.filterByStatus = filterByStatus;
+
+function norm(v){ return String(v||"").toLowerCase(); }
+
+function getFilteredVehicles(){
+  const q = norm(search.value);
+  if(!q) return [];
+  
+  // Filter vehicles
+  const matches = vehicles.filter(v =>
+    norm(v.license_plate).includes(q) ||
+    norm(v.make).includes(q) ||
+    norm(v.model).includes(q) ||
+    norm(v.year).includes(q) ||
+    norm(v.vin_or_cf_number).includes(q)
+  );
+  
+  // Sort by license plate match first, then by recent views
+  const views = getVehicleViews();
+  return matches.sort((a, b) => {
+    // Prioritize exact license plate matches
+    const aLicenseMatch = norm(a.license_plate).startsWith(q);
+    const bLicenseMatch = norm(b.license_plate).startsWith(q);
+    
+    if (aLicenseMatch && !bLicenseMatch) return -1;
+    if (!aLicenseMatch && bLicenseMatch) return 1;
+    
+    // Then sort by most recently viewed
+    const aTime = views[a.vehicle_id] ? new Date(views[a.vehicle_id]).getTime() : 0;
+    const bTime = views[b.vehicle_id] ? new Date(views[b.vehicle_id]).getTime() : 0;
+    return bTime - aTime;
+  }).slice(0, 10); // Limit to 10 results
+}
+
+function showAutocomplete(){
+  const filtered = getFilteredVehicles();
+  const dropdown = document.getElementById('autocompleteDropdown');
+  
+  if(!search.value.trim() || filtered.length === 0){
+    dropdown.classList.remove('active');
+    return;
+  }
+  
+  dropdown.innerHTML = filtered.map((v, idx) => {
+    const imageUrl = v.vehicle_image_url 
+      ? (v.vehicle_image_url.startsWith('http') 
+         ? v.vehicle_image_url 
+         : `${API_BASE}/storage/v1/object/public/vehicle-images/${v.vehicle_image_url}`)
+      : null;
+    
+    return `
+      <div class="autocomplete-item ${idx === selectedIndex ? 'autocomplete-highlight' : ''}" 
+           onclick="selectVehicle('${v.vehicle_id}')"
+           data-index="${idx}">
+        <div class="vehicle-image">
+          ${imageUrl 
+            ? `<img src="${imageUrl}" alt="${v.year} ${v.make} ${v.model}" />`
+            : `<div class="vehicle-placeholder">
+                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   <path d="M5 13L3 13L3 11L5 11L5 13Z" fill="#38bdf8"/>
+                   <path d="M21 13L19 13L19 11L21 11L21 13Z" fill="#38bdf8"/>
+                   <path d="M5 11L6.5 8C6.78 7.43 7.35 7 8 7L16 7C16.65 7 17.22 7.43 17.5 8L19 11L5 11Z" fill="#60a5fa"/>
+                   <path d="M5 11L5 16C5 16.55 5.45 17 6 17L7 17C7.55 17 8 16.55 8 16L8 15L16 15L16 16C16 16.55 16.45 17 17 17L18 17C18.55 17 19 16.55 19 16L19 11L5 11Z" fill="#3b82f6"/>
+                   <circle cx="7.5" cy="13" r="1" fill="#0f1621"/>
+                   <circle cx="16.5" cy="13" r="1" fill="#0f1621"/>
+                 </svg>
+               </div>`}
+        </div>
+        <div class="vehicle-info">
+          <strong>${v.year || ""} ${v.make || ""} ${v.model || ""}</strong>
+          <div class="muted" style="color:#3b82f6; font-weight:600;">Plate: ${v.license_plate || "—"}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+  
+  dropdown.classList.add('active');
+}
+
+function selectVehicle(vehicleId){
+  const dropdown = document.getElementById('autocompleteDropdown');
+  dropdown.classList.remove('active');
+  search.value = '';
+  selectedIndex = -1;
+  recordVehicleView(vehicleId);
+  openVehicle(vehicleId);
+}
+
+function render(){
+  const q = norm(search.value);
+
+  let filtered = !q ? vehicles : vehicles.filter(v =>
+    norm(v.license_plate).includes(q) ||
+    norm(v.make).includes(q) ||
+    norm(v.model).includes(q) ||
+    norm(v.year).includes(q) ||
+    norm(v.vin_or_cf_number).includes(q)
+  );
+  
+  // Apply status filter
+  if (activeFilter !== 'all') {
+    const now = new Date();
+    filtered = filtered.filter(v => {
+      const wo = workOrders.find(wo => wo.vehicle_id === v.vehicle_id);
+      if (!wo) return activeFilter === 'completed';
+      
+      if (activeFilter === 'scheduled') {
+        return wo.status === 'scheduled' || wo.status === 'in_progress';
+      } else if (activeFilter === 'awaiting_parts') {
+        return wo.status === 'awaiting_parts';
+      } else if (activeFilter === 'ready_for_pickup') {
+        return wo.status === 'ready_for_pickup';
+      } else if (activeFilter === 'past_due') {
+        return wo.scheduled_end && new Date(wo.scheduled_end) < now && wo.status !== 'completed' && wo.status !== 'closed';
+      } else if (activeFilter === 'completed') {
+        return wo.status === 'completed' || wo.status === 'closed';
+      }
+      return true;
+    });
+  }
+  
+  // Sort by most recently viewed
+  filtered = sortVehiclesByRecentView(filtered);
+
+  results.innerHTML = filtered.map(v => {
+    const imageUrl = v.vehicle_image_url 
+      ? (v.vehicle_image_url.startsWith('http') 
+         ? v.vehicle_image_url 
+         : `${API_BASE}/storage/v1/object/public/vehicle-images/${v.vehicle_image_url}`)
+      : null;
+    
+    // Find active work order for this vehicle
+    const activeWO = workOrders.find(wo => wo.vehicle_id === v.vehicle_id);
+    let woInfoHtml = '';
+    
+    if (activeWO) {
+      const woNum = activeWO.wo_number || activeWO.work_order_id.substring(0, 8);
+      const tech = employees.find(e => e.employee_id === activeWO.assigned_employee_id);
+      const techName = tech ? `${tech.first_name} ${tech.last_name}` : 'Unassigned';
+      const status = activeWO.status || 'draft';
+      
+      woInfoHtml = `
+        <div class="vehicle-wo-info">
+          <div class="vehicle-wo-row">
+            <div class="vehicle-wo-number">WO-${woNum}</div>
+            <div class="vehicle-wo-status">${status}</div>
+          </div>
+          <div class="vehicle-wo-tech">Tech: ${techName}</div>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="card" onclick="recordVehicleView('${v.vehicle_id}'); openVehicle('${v.vehicle_id}');">
+        <div class="vehicle-content">
+          <div class="vehicle-top">
+            <div class="vehicle-info">
+              <strong>${v.year || ""} ${v.make || ""} ${v.model || ""}</strong>
+              <div class="muted">Plate: ${v.license_plate || "—"}</div>
+              <div class="muted">VIN/CF: ${v.vin_or_cf_number || "—"}</div>
+            </div>
+            <div class="vehicle-image">
+              ${imageUrl 
+                ? `<img src="${imageUrl}" alt="${v.year} ${v.make} ${v.model}" />`
+                : `<div class="vehicle-placeholder">
+                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                       <path d="M5 13L3 13L3 11L5 11L5 13Z" fill="#38bdf8"/>
+                       <path d="M21 13L19 13L19 11L21 11L21 13Z" fill="#38bdf8"/>
+                       <path d="M5 11L6.5 8C6.78 7.43 7.35 7 8 7L16 7C16.65 7 17.22 7.43 17.5 8L19 11L5 11Z" fill="#60a5fa"/>
+                       <path d="M5 11L5 16C5 16.55 5.45 17 6 17L7 17C7.55 17 8 16.55 8 16L8 15L16 15L16 16C16 16.55 16.45 17 17 17L18 17C18.55 17 19 16.55 19 16L19 11L5 11Z" fill="#3b82f6"/>
+                       <circle cx="7.5" cy="13" r="1" fill="#0f1621"/>
+                       <circle cx="16.5" cy="13" r="1" fill="#0f1621"/>
+                     </svg>
+                   </div>`}
+            </div>
+          </div>
+          ${woInfoHtml}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function openVehicle(vehicleId){
+  const token = localStorage.getItem("sb_access_token");
+  const v = vehicles.find(x => x.vehicle_id === vehicleId);
+  if(!v) return;
+
+  modalTitle.textContent = `${v.year || ""} ${v.make || ""} ${v.model || ""}`;
+  modalVehicleInfo.innerHTML = `
+    License Plate: ${v.license_plate || "—"}<br>
+    VIN/CF Number: ${v.vin_or_cf_number || "—"}<br>
+    Color: ${v.color || "—"}
+  `;
+
+  // Find owner
+  const owner = customers.find(c => c.customer_id === v.customer_id);
+  
+  vehicleOwner.innerHTML = owner 
+    ? `
+      <div class="card">
+        <strong>${owner.first_name || ""} ${owner.last_name || ""}</strong>
+        <div class="muted">Phone: ${owner.phone || "—"}</div>
+        <div class="muted">Email: ${owner.email || "—"}</div>
+      </div>
+    `
+    : `<div class="muted">No owner information available.</div>`;
+
+  vehicleModal.classList.add("active");
+}
+
+function closeModal(){
+  vehicleModal.classList.remove("active");
+}
+
+async function load(){
+  const token = await validateAuth();
+  if(!token) return location.replace("login.html");
+
+  vehicles = await fetchTable("vehicles", token);
+  customers = await fetchTable("customers", token);
+  
+  // Load ALL work orders first to see what we have
+  const allWOResponse = await fetch(
+    `${REST_BASE}/work_orders?select=work_order_id,wo_number,vehicle_id,status,assigned_employee_id,scheduled_end`,
+    { headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` } }
+  );
+  const allWorkOrders = allWOResponse.ok ? await allWOResponse.json() : [];
+  
+  // Filter to only non-completed/closed work orders
+  workOrders = allWorkOrders.filter(wo => 
+    wo.status !== 'completed' && 
+    wo.status !== 'closed' &&
+    wo.vehicle_id // Must have a vehicle assigned
+  );
+  
+  // Load employees to get tech names
+  employees = await fetchTable("employees", token);
+  
+  totalVehicles.textContent = vehicles.length;
+  
+  // Set tenant title if available
+  const tenantEl = document.getElementById("tenantTitle");
+  if(vehicles.length > 0 && vehicles[0].tenant_name) {
+    tenantEl.textContent = vehicles[0].tenant_name;
+    document.title = vehicles[0].tenant_name + " - Vehicles";
+  }
+  
+  updateKPIs();
+  render();
+}
+
+search.addEventListener("input", () => {
+  showAutocomplete();
+  render();
+});
+
+search.addEventListener("keydown", (e) => {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if(!dropdown.classList.contains('active')) return;
+  
+  const items = dropdown.querySelectorAll('.autocomplete-item');
+  
+  if(e.key === 'ArrowDown'){
+    e.preventDefault();
+    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+    showAutocomplete();
+  } else if(e.key === 'ArrowUp'){
+    e.preventDefault();
+    selectedIndex = Math.max(selectedIndex - 1, -1);
+    showAutocomplete();
+  } else if(e.key === 'Enter' && selectedIndex >= 0){
+    e.preventDefault();
+    const selectedItem = items[selectedIndex];
+    if(selectedItem) selectedItem.click();
+  } else if(e.key === 'Escape'){
+    dropdown.classList.remove('active');
+    selectedIndex = -1;
+  }
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if(!search.contains(e.target) && !dropdown.contains(e.target)){
+    dropdown.classList.remove('active');
+    selectedIndex = -1;
+  }
+});
+
+load();
+</script>
+
+</div>
+<!-- End Main Content -->
+
+</body>
+</html>
