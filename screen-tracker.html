@@ -42,6 +42,22 @@
     .header-nav {
       display: flex;
       gap: 12px;
+      align-items: center;
+    }
+
+    .save-indicator {
+      color: #10b981;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      background: #065f46;
+      border-radius: 6px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .save-indicator.show {
+      opacity: 1;
     }
 
     .btn {
@@ -479,6 +495,7 @@
   <div class="header">
     <h1>Screen Design Tracker</h1>
     <div class="header-nav">
+      <div class="save-indicator" id="saveIndicator">✓ Auto-saved</div>
       <a href="admin-dashboard.html" class="btn">Dashboard</a>
       <a href="progress-view.html" class="btn secondary">Progress View</a>
       <button class="btn success" onclick="addScreen()">+ Add Screen</button>
@@ -539,6 +556,36 @@
     }
   ];
 
+  // Auto-save functionality
+  function saveData() {
+    const data = {
+      columns: columns,
+      screens: screens
+    };
+    localStorage.setItem('screenTrackerData', JSON.stringify(data));
+    showSaveIndicator();
+  }
+
+  function loadData() {
+    const saved = localStorage.getItem('screenTrackerData');
+    if (saved) {
+      const data = JSON.parse(saved);
+      columns = data.columns || columns;
+      screens = data.screens || screens;
+    }
+  }
+
+  function showSaveIndicator() {
+    const indicator = document.getElementById('saveIndicator');
+    indicator.classList.add('show');
+    setTimeout(() => {
+      indicator.classList.remove('show');
+    }, 2000);
+  }
+
+  // Load data on page load
+  loadData();
+
   function render() {
     const container = document.getElementById("screensContainer");
     container.style.setProperty("--cols", columns.length);
@@ -590,6 +637,7 @@
           e.stopPropagation();
           screen.progress[ci] = (state + 1) % progressStates.length;
           render();
+          saveData();
         };
 
         const label = document.createElement("div");
@@ -631,7 +679,7 @@
         <div class="detail-label">Screen Title</div>
         <input class="detail-input" value="${screen.title || ''}" 
                placeholder="Working Title" 
-               oninput="screens[${si}].title = this.value; render()">
+               oninput="screens[${si}].title = this.value; render(); saveData()">
       `;
 
       // Address
@@ -641,7 +689,7 @@
         <div class="detail-label">Screen File</div>
         <input class="detail-input" value="${screen.address || ''}" 
                placeholder="e.g., login.html" 
-               oninput="screens[${si}].address = this.value">
+               oninput="screens[${si}].address = this.value; saveData()">
       `;
 
       // Version
@@ -651,7 +699,7 @@
         <div class="detail-label">Version</div>
         <input class="detail-input" value="${screen.version || ''}" 
                placeholder="e.g., v1.0" 
-               oninput="screens[${si}].version = this.value">
+               oninput="screens[${si}].version = this.value; saveData()">
       `;
 
       // Color
@@ -659,7 +707,7 @@
       colorField.className = "detail-field";
       colorField.innerHTML = `
         <div class="detail-label">Color Theme</div>
-        <select class="detail-input" onchange="screens[${si}].color = parseInt(this.value); render()">
+        <select class="detail-input" onchange="screens[${si}].color = parseInt(this.value); render(); saveData()">
           ${[0,1,2,3,4,5,6,7,8,9].map(i => 
             `<option value="${i}" ${screen.color === i ? 'selected' : ''}>Theme ${i + 1}</option>`
           ).join('')}
@@ -673,7 +721,7 @@
         <div class="detail-label">Notes</div>
         <textarea class="detail-input" 
                   placeholder="Screen details, requirements, notes..."
-                  oninput="screens[${si}].notes = this.value">${screen.notes || ''}</textarea>
+                  oninput="screens[${si}].notes = this.value; saveData()">${screen.notes || ''}</textarea>
       `;
 
       // Delete
@@ -704,7 +752,7 @@
     const manager = document.getElementById("columnManager");
     manager.innerHTML = columns.map((col, i) => `
       <div class="column-tag">
-        <input value="${col}" oninput="columns[${i}] = this.value; render()">
+        <input value="${col}" oninput="columns[${i}] = this.value; render(); saveData()">
         <button onclick="deleteColumn(${i})" title="Delete column">×</button>
       </div>
     `).join('');
@@ -721,12 +769,14 @@
       progress: Array(columns.length).fill(0)
     });
     render();
+    saveData();
   }
 
   function deleteScreen(index) {
     if (confirm("Delete this screen?")) {
       screens.splice(index, 1);
       render();
+      saveData();
     }
   }
 
@@ -736,6 +786,7 @@
       columns.push(name);
       screens.forEach(s => s.progress.push(0));
       render();
+      saveData();
     }
   }
 
@@ -744,6 +795,7 @@
       columns.splice(index, 1);
       screens.forEach(s => s.progress.splice(index, 1));
       render();
+      saveData();
     }
   }
 
