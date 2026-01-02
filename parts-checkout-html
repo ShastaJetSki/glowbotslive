@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Parts Checkout</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0b0f14; 
+      color: #e8eef6; 
+      height: 100vh;
+      overflow: hidden;
+      padding-bottom: 102px;
+    }
+    
+    /* Header */
+    .header {
+      background: #1a2535;
+      padding: 16px;
+      border-bottom: 2px solid #2d3f56;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .header-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-bottom: 12px;
+    }
+    
+    /* Search Bar */
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .search-input {
+      flex: 1;
+      padding: 14px 16px;
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 8px;
+      color: #e8eef6;
+      font-size: 16px;
+      -webkit-appearance: none;
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .scan-btn {
+      padding: 14px 20px;
+      background: #3b82f6;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .scan-btn:active {
+      background: #2563eb;
+      transform: scale(0.98);
+    }
+    
+    /* Cart Summary */
+    .cart-summary {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      background: #0f1621;
+      border-radius: 8px;
+    }
+    .summary-item {
+      flex: 1;
+      text-align: center;
+    }
+    .summary-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .summary-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #e8eef6;
+    }
+    .summary-value.total {
+      color: #60a5fa;
+      font-size: 24px;
+    }
+    
+    /* Main Content */
+    .content {
+      height: calc(100vh - 280px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px;
+    }
+    
+    /* Cart Items */
+    .cart-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: #94a3b8;
+    }
+    .cart-empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .cart-item {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .item-number {
+      font-size: 13px;
+      color: #60a5fa;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .item-name {
+      font-size: 15px;
+      color: #e8eef6;
+      font-weight: 500;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-price {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    
+    /* Quantity Controls */
+    .qty-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0f1621;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .qty-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: #3b82f6;
+      color: white;
+      font-size: 20px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .qty-btn:active {
+      background: #2563eb;
+      transform: scale(0.95);
+    }
+    .qty-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #e8eef6;
+      min-width: 30px;
+      text-align: center;
+    }
+    .item-total {
+      font-size: 18px;
+      font-weight: 700;
+      color: #60a5fa;
+      min-width: 80px;
+      text-align: right;
+    }
+    .remove-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: #dc2626;
+      color: white;
+      font-size: 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .remove-btn:active {
+      background: #b91c1c;
+      transform: scale(0.95);
+    }
+    
+    /* Bottom Actions */
+    .bottom-actions {
+      position: fixed;
+      bottom: 102px;
+      left: 0;
+      right: 0;
+      background: #1a2535;
+      border-top: 2px solid #2d3f56;
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      z-index: 40;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .clear-btn {
+      background: #475569;
+      color: white;
+    }
+    .clear-btn:active {
+      background: #334155;
+    }
+    .checkout-btn {
+      background: #059669;
+      color: white;
+      flex: 2;
+    }
+    .checkout-btn:active {
+      background: #047857;
+    }
+    .checkout-btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+    
+    /* Mobile Bottom Navigation */
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1a2535;
+      border-top: 1px solid #2d3f56;
+      z-index: 100;
+    }
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: #1f2e40;
+    }
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: #1a2535;
+    }
+    .mobile-nav-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      padding: 12px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-top: 3px solid transparent;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      height: 44px;
+      box-sizing: border-box;
+    }
+    .mobile-nav-btn:active,
+    .mobile-nav-btn.active {
+      background: #223044;
+      color: #60a5fa;
+      border-top-color: #3b82f6;
+    }
+    
+    /* Checkout Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .modal.show {
+      display: block;
+    }
+    .modal-content {
+      background: #1a2535;
+      margin: 20px;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      margin: 40px auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .modal-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 32px;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* Total Display */
+    .total-display {
+      text-align: center;
+      padding: 20px;
+      background: #0f1621;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .total-label {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+    .total-amount {
+      font-size: 42px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    
+    /* Payment Methods */
+    .payment-methods {
+      margin-bottom: 24px;
+    }
+    .section-label {
+      font-size: 12px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .payment-method {
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.2s;
+    }
+    .payment-method:active {
+      transform: scale(0.98);
+    }
+    .payment-method.selected {
+      background: #1a2535;
+      border-color: #3b82f6;
+    }
+    .payment-icon {
+      width: 50px;
+      height: 50px;
+      background: #3b82f6;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .payment-name {
+      flex: 1;
+      font-size: 16px;
+      font-weight: 600;
+      color: #e8eef6;
+    }
+    .payment-check {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #2d3f56;
+      border-radius: 50%;
+      position: relative;
+    }
+    .payment-method.selected .payment-check {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+    .payment-method.selected .payment-check::after {
+      content: '✓';
+      position: absolute;
+      color: white;
+      font-weight: 700;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    
+    /* Customer Info */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      color: #94a3b8;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 14px;
+      background: #0f1621;
+      border: 2px solid #2d3f56;
+      border-radius: 8px;
+      color: #e8eef6;
+      font-size: 16px;
+      -webkit-appearance: none;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    
+    /* Complete Button */
+    .complete-btn {
+      width: 100%;
+      padding: 18px;
+      background: #059669;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .complete-btn:active {
+      background: #047857;
+    }
+    .complete-btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+    
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #059669;
+      color: white;
+      padding: 16px 24px;
+      border-radius: 10px;
+      font-weight: 600;
+      z-index: 2000;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+    }
+    
+    /* Quick Add Section */
+    .quick-add {
+      margin-top: 20px;
+    }
+    .quick-add-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #60a5fa;
+      margin-bottom: 12px;
+    }
+    .quick-add-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .quick-item {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 10px;
+      padding: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .quick-item:active {
+      background: #223044;
+      transform: scale(0.98);
+    }
+    .quick-item-number {
+      font-size: 11px;
+      color: #60a5fa;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .quick-item-name {
+      font-size: 13px;
+      color: #e8eef6;
+      font-weight: 500;
+      margin-bottom: 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .quick-item-price {
+      font-size: 15px;
+      color: #10b981;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-title">Parts Checkout</div>
+  
+  <div class="search-bar">
+    <input type="text" id="searchInput" class="search-input" placeholder="Scan or search part number..." autofocus>
+    <button class="scan-btn" onclick="focusSearch()">📷</button>
+  </div>
+  
+  <div class="cart-summary">
+    <div class="summary-item">
+      <div class="summary-label">Items</div>
+      <div class="summary-value" id="itemCount">0</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Subtotal</div>
+      <div class="summary-value" id="subtotalDisplay">$0</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Total</div>
+      <div class="summary-value total" id="totalDisplay">$0</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="content">
+  <div id="cartItems">
+    <div class="cart-empty">
+      <div class="cart-empty-icon">🛒</div>
+      <div>Scan or search to add items</div>
+    </div>
+  </div>
+  
+  <!-- Quick Add Popular Items -->
+  <div class="quick-add" id="quickAdd" style="display:none;">
+    <div class="quick-add-title">Popular Items</div>
+    <div class="quick-add-grid" id="quickAddGrid"></div>
+  </div>
+</div>
+
+<!-- Bottom Actions -->
+<div class="bottom-actions">
+  <button class="action-btn clear-btn" onclick="clearCart()">Clear</button>
+  <button class="action-btn checkout-btn" id="checkoutBtn" onclick="openCheckout()" disabled>Checkout</button>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-grid">
+    <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+    <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn active">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn">Sales</a>
+  </div>
+</div>
+
+<!-- Checkout Modal -->
+<div id="checkoutModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Complete Sale</div>
+      <button class="close-btn" onclick="closeCheckout()">&times;</button>
+    </div>
+    
+    <div class="total-display">
+      <div class="total-label">Total Amount</div>
+      <div class="total-amount" id="modalTotal">$0.00</div>
+    </div>
+    
+    <div class="payment-methods">
+      <div class="section-label">Payment Method</div>
+      <div class="payment-method" onclick="selectPayment('cash')">
+        <div class="payment-icon">💵</div>
+        <div class="payment-name">Cash</div>
+        <div class="payment-check"></div>
+      </div>
+      <div class="payment-method" onclick="selectPayment('card')">
+        <div class="payment-icon">💳</div>
+        <div class="payment-name">Credit/Debit Card</div>
+        <div class="payment-check"></div>
+      </div>
+      <div class="payment-method" onclick="selectPayment('check')">
+        <div class="payment-icon">📝</div>
+        <div class="payment-name">Check</div>
+        <div class="payment-check"></div>
+      </div>
+      <div class="payment-method" onclick="selectPayment('account')">
+        <div class="payment-icon">📋</div>
+        <div class="payment-name">Account</div>
+        <div class="payment-check"></div>
+      </div>
+    </div>
+    
+    <div class="section-label">Customer Information (Optional)</div>
+    <div class="form-group">
+      <label class="form-label">Customer Name</label>
+      <input type="text" id="customerName" class="form-input" placeholder="Walk-In Customer">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Phone</label>
+      <input type="tel" id="customerPhone" class="form-input" placeholder="(555) 123-4567">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" id="customerEmail" class="form-input" placeholder="customer@example.com">
+    </div>
+    
+    <button class="complete-btn" id="completeBtn" onclick="completeSale()" disabled>Complete Sale</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const tenantId = '11111111-1111-1111-1111-111111111111';
+let cart = [];
+let parts = [];
+let selectedPayment = null;
+const taxRate = 0.0825; // 8.25% tax
+
+async function init() {
+  await loadParts();
+  loadQuickAdd();
+  
+  // Search on enter or after typing
+  const searchInput = document.getElementById('searchInput');
+  searchInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+      searchPart(searchInput.value);
+    }
+  });
+  
+  // Auto-search for part numbers (if it looks like a part number)
+  searchInput.addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    if (val.length >= 3 && /^[A-Z0-9-]+$/i.test(val)) {
+      // Auto-search if it looks like a part number
+      setTimeout(() => {
+        if (searchInput.value === val) {
+          searchPart(val);
+        }
+      }, 500);
+    }
+  });
+}
+
+async function loadParts() {
+  const { data } = await sb
+    .from('parts_inventory')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .gt('quantity_on_hand', 0);
+  
+  parts = data || [];
+}
+
+function loadQuickAdd() {
+  // Show top 6 most popular/recent items
+  const quickItems = parts
+    .filter(p => p.quantity_on_hand > 0)
+    .slice(0, 6);
+  
+  if (quickItems.length > 0) {
+    document.getElementById('quickAdd').style.display = 'block';
+    document.getElementById('quickAddGrid').innerHTML = quickItems.map(p => `
+      <div class="quick-item" onclick="quickAddItem('${p.part_id}')">
+        <div class="quick-item-number">${p.part_number}</div>
+        <div class="quick-item-name">${p.part_name}</div>
+        <div class="quick-item-price">$${p.retail_price.toFixed(2)}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function searchPart(query) {
+  if (!query.trim()) return;
+  
+  const q = query.trim().toLowerCase();
+  const part = parts.find(p => 
+    p.part_number.toLowerCase() === q ||
+    p.barcode === q ||
+    p.part_number.toLowerCase().includes(q)
+  );
+  
+  if (part) {
+    addToCart(part);
+    document.getElementById('searchInput').value = '';
+    showToast(`Added ${part.part_name}`);
+  } else {
+    showToast('Part not found', true);
+  }
+}
+
+function quickAddItem(partId) {
+  const part = parts.find(p => p.part_id === partId);
+  if (part) {
+    addToCart(part);
+    showToast(`Added ${part.part_name}`);
+  }
+}
+
+function addToCart(part) {
+  const existing = cart.find(item => item.part_id === part.part_id);
+  
+  if (existing) {
+    if (existing.quantity < part.quantity_on_hand) {
+      existing.quantity++;
+    } else {
+      showToast('Not enough stock', true);
+      return;
+    }
+  } else {
+    cart.push({
+      part_id: part.part_id,
+      part_number: part.part_number,
+      part_name: part.part_name,
+      price: part.retail_price,
+      quantity: 1,
+      max_qty: part.quantity_on_hand
+    });
+  }
+  
+  renderCart();
+  updateSummary();
+}
+
+function renderCart() {
+  const container = document.getElementById('cartItems');
+  
+  if (cart.length === 0) {
+    container.innerHTML = `
+      <div class="cart-empty">
+        <div class="cart-empty-icon">🛒</div>
+        <div>Scan or search to add items</div>
+      </div>
+    `;
+    document.getElementById('checkoutBtn').disabled = true;
+    return;
+  }
+  
+  document.getElementById('checkoutBtn').disabled = false;
+  
+  container.innerHTML = cart.map((item, idx) => `
+    <div class="cart-item">
+      <div class="item-info">
+        <div class="item-number">${item.part_number}</div>
+        <div class="item-name">${item.part_name}</div>
+        <div class="item-price">$${item.price.toFixed(2)} each</div>
+      </div>
+      <div class="qty-controls">
+        <button class="qty-btn" onclick="updateQty(${idx}, -1)">−</button>
+        <div class="qty-value">${item.quantity}</div>
+        <button class="qty-btn" onclick="updateQty(${idx}, 1)">+</button>
+      </div>
+      <div class="item-total">$${(item.quantity * item.price).toFixed(2)}</div>
+      <button class="remove-btn" onclick="removeItem(${idx})">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateQty(idx, change) {
+  const item = cart[idx];
+  const newQty = item.quantity + change;
+  
+  if (newQty <= 0) {
+    removeItem(idx);
+  } else if (newQty <= item.max_qty) {
+    item.quantity = newQty;
+    renderCart();
+    updateSummary();
+  } else {
+    showToast('Not enough stock', true);
+  }
+}
+
+function removeItem(idx) {
+  cart.splice(idx, 1);
+  renderCart();
+  updateSummary();
+}
+
+function updateSummary() {
+  const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  const tax = subtotal * taxRate;
+  const total = subtotal + tax;
+  
+  document.getElementById('itemCount').textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
+  document.getElementById('subtotalDisplay').textContent = '$' + subtotal.toFixed(2);
+  document.getElementById('totalDisplay').textContent = '$' + total.toFixed(2);
+}
+
+function clearCart() {
+  if (!cart.length) return;
+  
+  if (confirm('Clear all items from cart?')) {
+    cart = [];
+    renderCart();
+    updateSummary();
+  }
+}
+
+function openCheckout() {
+  if (!cart.length) return;
+  
+  const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  const tax = subtotal * taxRate;
+  const total = subtotal + tax;
+  
+  document.getElementById('modalTotal').textContent = '$' + total.toFixed(2);
+  document.getElementById('checkoutModal').classList.add('show');
+  
+  // Reset payment selection
+  selectedPayment = null;
+  document.querySelectorAll('.payment-method').forEach(el => el.classList.remove('selected'));
+  document.getElementById('completeBtn').disabled = true;
+}
+
+function closeCheckout() {
+  document.getElementById('checkoutModal').classList.remove('show');
+}
+
+function selectPayment(method) {
+  selectedPayment = method;
+  
+  document.querySelectorAll('.payment-method').forEach(el => el.classList.remove('selected'));
+  event.target.closest('.payment-method').classList.add('selected');
+  
+  document.getElementById('completeBtn').disabled = false;
+}
+
+async function completeSale() {
+  if (!selectedPayment) {
+    showToast('Please select payment method', true);
+    return;
+  }
+  
+  if (!cart.length) return;
+  
+  const customerName = document.getElementById('customerName').value.trim() || 'Walk-In Customer';
+  const customerPhone = document.getElementById('customerPhone').value.trim() || null;
+  const customerEmail = document.getElementById('customerEmail').value.trim() || null;
+  
+  const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  const tax = subtotal * taxRate;
+  const total = subtotal + tax;
+  
+  document.getElementById('completeBtn').disabled = true;
+  document.getElementById('completeBtn').textContent = 'Processing...';
+  
+  try {
+    // Create invoice
+    const { data: invoice, error: invoiceError } = await sb
+      .from('parts_invoices')
+      .insert({
+        tenant_id: tenantId,
+        invoice_number: 'INV-' + Date.now(),
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        subtotal: subtotal,
+        tax_rate: taxRate,
+        tax_amount: tax,
+        total_amount: total,
+        payment_method: selectedPayment,
+        status: 'paid'
+      })
+      .select()
+      .single();
+    
+    if (invoiceError) throw invoiceError;
+    
+    // Create invoice lines
+    const lines = cart.map((item, idx) => ({
+      tenant_id: tenantId,
+      invoice_id: invoice.invoice_id,
+      part_id: item.part_id,
+      line_number: idx + 1,
+      quantity: item.quantity,
+      unit_price: item.price,
+      line_total: item.quantity * item.price
+    }));
+    
+    await sb.from('parts_invoice_lines').insert(lines);
+    
+    // Update inventory and create transactions
+    for (const item of cart) {
+      const part = parts.find(p => p.part_id === item.part_id);
+      
+      await sb.from('parts_inventory').update({
+        quantity_on_hand: part.quantity_on_hand - item.quantity,
+        quantity_available: part.quantity_available - item.quantity
+      }).eq('part_id', item.part_id);
+      
+      await sb.from('parts_transactions').insert({
+        tenant_id: tenantId,
+        part_id: item.part_id,
+        transaction_type: 'Sale',
+        quantity_change: -item.quantity,
+        quantity_before: part.quantity_on_hand,
+        quantity_after: part.quantity_on_hand - item.quantity,
+        reference_type: 'Invoice',
+        reference_id: invoice.invoice_id,
+        notes: `Sale to ${customerName}`
+      });
+    }
+    
+    // Success!
+    closeCheckout();
+    showToast('Sale completed! Invoice: ' + invoice.invoice_number);
+    
+    // Reset
+    setTimeout(() => {
+      cart = [];
+      renderCart();
+      updateSummary();
+      document.getElementById('customerName').value = '';
+      document.getElementById('customerPhone').value = '';
+      document.getElementById('customerEmail').value = '';
+      loadParts();
+    }, 1500);
+    
+  } catch (error) {
+    console.error('Sale error:', error);
+    showToast('Error: ' + error.message, true);
+  } finally {
+    document.getElementById('completeBtn').disabled = false;
+    document.getElementById('completeBtn').textContent = 'Complete Sale';
+  }
+}
+
+function focusSearch() {
+  document.getElementById('searchInput').focus();
+}
+
+function showToast(message, isError = false) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.style.background = isError ? '#dc2626' : '#059669';
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+init();
+</script>
+
+</body>
+</html>
