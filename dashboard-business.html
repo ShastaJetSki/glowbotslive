@@ -1,23 +1,620 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="utf-8" />
   <title>Business Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <meta name="supabase-anon-key"
+    content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
+  <link rel="stylesheet" href="theme-system.css">
+
+
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); }
+    body { margin:0; padding:0; font-family:system-ui; background:var(--bg-primary); color:var(--text-primary); visibility:hidden; }
+    body.auth-verified { visibility:visible; }
+
+    h1 { margin:0; font-size:40px; }
+    h2 { margin:18px 0 10px; font-size:18px; display:flex; align-items:center; gap:10px; }
+
+    .row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
     
-    .desktop-header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: var(--bg-primary);
-      border-bottom: 1px solid #223044;
+    /* KPI cards - ensure all 5 fit on one row on larger screens */
+    #kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
     }
     
+    @media (min-width: 1400px) {
+      #kpis {
+        grid-template-columns: repeat(5, 1fr);
+      }
+    }
+    
+    /* Tech cards grid - balanced rows with max 3 per row for better balance */
+    #techCards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    /* On larger screens, limit to 3 columns for better balance */
+    @media (min-width: 1200px) {
+      #techCards {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    
+    .card { 
+      background:var(--bg-secondary); 
+      border:2px solid #223044; 
+      border-radius:12px; 
+      padding:14px 16px;
+      box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    button {
+      padding:8px 14px; 
+      border-radius:8px; 
+      border:2px solid #2a3b55;
+      background:var(--bg-card); 
+      color:#fff; 
+      cursor:pointer;
+      white-space:nowrap;
+      box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s ease;
+    }
+    button:hover { 
+      background:var(--bg-hover);
+      box-shadow: 
+        0 2px 6px rgba(0, 0, 0, 0.25);
+      transform: translateY(-1px);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+
+    .filters { 
+      display:flex; 
+      gap:8px; 
+      margin: 8px 0 14px; 
+      flex-wrap:wrap;
+      background: linear-gradient(135deg, #0f1621 0%, #121a28 100%);
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid #1a2535;
+      box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+    .pill {
+      padding:6px 10px; 
+      border-radius:8px; 
+      border:2px solid #223044;
+      background:var(--bg-secondary); 
+      color:var(--text-primary); 
+      cursor:pointer; 
+      font-size:12px;
+      user-select:none;
+      box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s ease;
+    }
+    .pill:hover {
+      border-color:#2f4461;
+      box-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.25);
+    }
+    .pill.active { 
+      border-color:var(--accent-primary); 
+      border-width:2px;
+      box-shadow:
+        0 2px 6px rgba(59, 130, 246, 0.3),
+        0 0 0 1px rgba(59,130,246,.35) inset; 
+    }
+    
+    /* Value button - sort modifier styling */
+    .pill-sort {
+      background: linear-gradient(135deg, #1e3a5f 0%, var(--accent-light) 100%);
+      border-color: var(--accent-primary);
+      color: var(--text-primary);
+    }
+    .pill-sort:hover {
+      background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent-primary) 100%);
+      border-color: var(--accent-light);
+      box-shadow: 
+        0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+    .pill-sort.active {
+      background: linear-gradient(135deg, var(--accent-light) 0%, #1d4ed8 100%);
+      border-color: var(--accent-light);
+      box-shadow:
+        0 3px 8px rgba(59, 130, 246, 0.5),
+        0 0 0 2px rgba(96, 165, 250, 0.5) inset;
+    }
+
+    /* KPI */
+    .kpi { 
+      min-width:240px; 
+      flex: 1 1 240px; 
+      cursor:pointer;
+      border-left: 4px solid var(--accent-primary);
+    }
+    .kpi:hover { border-color:#2f4461; border-left-color:var(--accent-primary); }
+    .label { font-size:12px; color:var(--text-secondary); }
+    .value { font-size:18px; font-weight:650; margin-top:6px; line-height:1.3; }
+    .muted { font-size:12px; color:var(--text-secondary); margin-top:6px; }
+    .error { color:#ffb3b3; white-space:pre-wrap; }
+
+    /* TECH card (manager capacity) */
+    .tech {
+      min-width:320px; flex: 1 1 320px;
+      display:flex; justify-content:space-between; align-items:center;
+      cursor:pointer;
+      border-left: 4px solid var(--accent-primary);
+    }
+    .tech.active { 
+      border-color:var(--accent-primary); 
+      border-left-color:var(--accent-primary);
+      box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        0 1px 3px rgba(0, 0, 0, 0.2),
+        0 0 0 1px rgba(59,130,246,.35) inset; 
+    }
+
+    .techLeft { display:flex; flex-direction:column; gap:8px; min-width:0; }
+    .metric { font-size:18px; font-weight:700; }
+    .sub { font-size:12px; color:var(--text-secondary); }
+
+    .load { font-size:12px; font-weight:700; }
+    .load.light { color:#4ade80; }
+    .load.normal { color:var(--accent-light); }
+    .load.heavy { color:#f59e0b; }
+    .load.over { color:#ef4444; }
+
+    .techRight { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:96px; }
+    .avatar {
+      width:80px; height:80px; border-radius:12px;
+      border:2px solid #223044; background:var(--bg-primary);
+      display:flex; align-items:center; justify-content:center;
+      font-weight:700; font-size:24px; color:var(--text-primary);
+      box-shadow: 
+        0 2px 6px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      filter: brightness(0.8);
+    }
+    
+    .avatar:not([style*="background-image"]) {
+      filter: none; /* Keep initials at full brightness */
+    }
+
+    /* overdue red dot */
+    .dot{
+      display:inline-block;
+      width:5px;
+      height:5px;
+      border-radius:50%;
+      background:#ff2d2d;
+      box-shadow:0 0 7px #ff2d2d;
+      margin-right:6px;
+      transform: translateY(-1px);
+    }
+
+    .techName { font-size:12px; text-align:center; line-height:1.2; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    
+    .role-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    
+    .role-badge.manager {
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    /* UPDATED WORK ORDER CARD STYLES */
+    .wo {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      gap: 14px;
+      border-left: 4px solid var(--accent-primary);
+      padding: 10px 12px;
+    }
+    .wo:hover { 
+      border-color:#38bdf8;
+      border-left-color:#38bdf8;
+      box-shadow: 
+        0 4px 12px rgba(56, 189, 248, 0.2),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .wo-left {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .wo-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-width: 90px;
+      justify-content: space-between;
+    }
+
+    .wo-customer {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+
+    .wo-vehicle {
+      color: var(--text-secondary);
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .wo-status-display {
+      color: var(--accent-light);
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      line-height: 1.2;
+    }
+
+    .wo-tech {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .wo-time {
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .wo-hours {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .wo-tech-avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 8px;
+      border: 2px solid #223044;
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-primary);
+      box-shadow: 
+        0 2px 6px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      filter: brightness(0.8);
+    }
+    
+    .wo-tech-avatar:not([style*="background-image"]) {
+      filter: none; /* Keep initials at full brightness */
+    }
+
+    .wo-tech-name {
+      font-size: 11px;
+      text-align: center;
+      line-height: 1.2;
+      color: var(--text-secondary);
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wo-edit-btn {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      width: 100%;
+      box-shadow: 
+        0 2px 4px rgba(59, 130, 246, 0.3);
+    }
+
+    .wo-edit-btn:hover {
+      background: var(--accent-light);
+      border-color: var(--accent-light);
+      transform: translateY(-1px);
+      box-shadow: 
+        0 3px 6px rgba(59, 130, 246, 0.4);
+    }
+
+    .wo-edit-btn:active {
+      transform: translateY(0);
+    }
+
+    .badge {
+      padding:3px 8px;
+      border-radius:6px;
+      font-size:10px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .badge.priority-urgent,
+    .badge.priority-high {
+      background:#ef444420;
+      color:#ef4444;
+      border:1px solid #ef444440;
+    }
+
+    .badge.priority-medium {
+      background:#f59e0b20;
+      color:#f59e0b;
+      border:1px solid #f59e0b40;
+    }
+
+    .badge.priority-low {
+      background:var(--accent-light)20;
+      color:var(--accent-light);
+      border:1px solid var(--accent-light)40;
+    }
+
+    .badge.status {
+      background:var(--accent-primary)20;
+      color:var(--accent-light);
+      border:1px solid var(--accent-primary)40;
+    }
+
+    .badge.status-waiting,
+    .badge.status-awaiting_parts,
+    .badge.status-parts_on_order {
+      background:#f59e0b20;
+      color:#f59e0b;
+      border:1px solid #f59e0b40;
+    }
+
+    .badge.status-diagnosis_required,
+    .badge.status-customer_approval {
+      background:#ef444420;
+      color:#ef4444;
+      border:1px solid #ef444440;
+    }
+
+    .badge.status-completed,
+    .badge.status-ready_for_pickup,
+    .badge.status-closed {
+      background:#4ade8020;
+      color:#4ade80;
+      border:1px solid #4ade8040;
+    }
+
+    /* Magnified Details Modal */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.90);
+      z-index:999;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    }
+    .modal.active { display:flex; }
+
+    .modal-content {
+      background:var(--bg-secondary);
+      border:2px solid #223044;
+      border-radius:12px;
+      padding:32px;
+      width:100%;
+      max-width:700px;
+      max-height:85vh;
+      overflow-y:auto;
+      box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.4),
+        0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      margin-bottom:24px;
+      padding-bottom:20px;
+      border-bottom:2px solid #223044;
+    }
+
+    .modal-title {
+      font-size:28px;
+      font-weight:700;
+      color:var(--text-primary);
+    }
+
+    .modal-close {
+      background:transparent;
+      border:none;
+      color:var(--text-secondary);
+      font-size:32px;
+      cursor:pointer;
+      padding:0;
+      width:40px;
+      height:40px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+      color:var(--text-primary);
+      background:var(--bg-card);
+      border-radius:8px;
+      transform: scale(1.1);
+    }
+
+    .modal-section {
+      margin-bottom:24px;
+    }
+
+    .modal-section:last-child {
+      margin-bottom:0;
+    }
+
+    .modal-section-title {
+      font-size:16px;
+      font-weight:700;
+      color:var(--accent-light);
+      margin-bottom:16px;
+      text-transform:uppercase;
+      letter-spacing:1px;
+    }
+
+    .modal-info-row {
+      display:flex;
+      justify-content:space-between;
+      padding:14px 0;
+      border-bottom:1px solid var(--border-default);
+      gap:20px;
+      align-items:center;
+    }
+
+    .modal-info-row:last-child {
+      border-bottom:none;
+    }
+
+    .modal-label {
+      font-size:16px;
+      color:var(--text-secondary);
+      flex-shrink:0;
+      font-weight:500;
+    }
+
+    .modal-value {
+      font-size:20px;
+      font-weight:600;
+      text-align:right;
+      flex-grow:1;
+      color:var(--text-primary);
+    }
+
+    .modal-value.highlight {
+      font-size:24px;
+      color:var(--accent-light);
+      font-weight:700;
+    }
+
+    .modal-value a {
+      color:var(--accent-light);
+      text-decoration:none;
+      font-size:20px;
+      font-weight:600;
+    }
+
+    .modal-value a:hover {
+      color:#38bdf8;
+      text-decoration:underline;
+    }
+
+    .modal-footer {
+      margin-top:24px;
+      padding-top:20px;
+      border-top:2px solid #223044;
+      display:flex;
+      justify-content:flex-end;
+      gap:12px;
+    }
+
+    .modal-footer button {
+      padding:12px 24px;
+      font-size:15px;
+      font-weight:600;
+    }
+
+    .btn-details {
+      background:var(--accent-primary);
+      border-color:var(--accent-primary);
+    }
+
+    .btn-details:hover {
+      background:var(--accent-light);
+    }
+
+    /* Accordion styles for collapsible sections */
+    .accordion-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      padding: 0;
+      background: transparent;
+      border: none;
+      width: 100%;
+      text-align: left;
+      margin: 18px 0 10px;
+    }
+
+    .accordion-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .accordion-icon {
+      font-size: 20px;
+      color: var(--text-secondary);
+      transition: transform 0.2s ease;
+    }
+
+    .accordion-header.active .accordion-icon {
+      transform: rotate(180deg);
+    }
+
+    .accordion-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .accordion-content.active {
+      max-height: 5000px;
+    }
+
+    .accordion-inner {
+      padding-top: 0;
+    }
+
+    /* Mobile Header with Hamburger */
     .mobile-top-header {
       display: none;
       position: sticky;
@@ -47,6 +644,17 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .mobile-menu-toggle:hover {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    .mobile-menu-toggle:active {
+      transform: scale(0.95);
     }
 
     .mobile-header-center {
@@ -83,6 +691,11 @@
       font-size: 13px;
       background: var(--bg-card);
       border: 1px solid var(--accent-primary);
+      transition: all 0.2s;
+    }
+
+    .mobile-header-actions button:active {
+      background: #243648;
     }
 
     .accordion-icon-header {
@@ -95,6 +708,7 @@
       transform: rotate(180deg);
     }
 
+    /* Mobile Bottom Nav */
     .mobile-bottom-nav {
       display:none;
       position:fixed;
@@ -136,10 +750,6 @@
       text-decoration:none;
       min-height:44px;
     }
-    
-    .mobile-nav-grid .mobile-nav-btn {
-      background:#0a373d;
-    }
 
     .mobile-nav-btn.active, 
     .mobile-nav-btn:hover {
@@ -151,225 +761,18 @@
     .mobile-nav-btn:active {
       transform:scale(0.95);
     }
-    
-    .main { display: flex; flex-direction: column; min-height: 100vh; }
-    .content { flex: 1; padding: 20px; }
-    
-    .top-bar { background: var(--bg-card); border-bottom: 1px solid #2d3f56; padding: 16px 20px; margin-bottom: 20px; }
-    
-    .date-range-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-    
-    .date-picker-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    
-    .date-picker-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .date-input {
-      padding: 12px 16px;
-      border-radius: 8px;
-      border: 2px solid #223044;
-      background: var(--bg-secondary);
-      color: var(--text-primary);
-      font-size: 14px;
-      font-weight: 500;
-      font-family: system-ui;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-    
-    .date-input:hover {
-      border-color: var(--accent-primary);
-    }
-    
-    .date-input:focus {
-      outline: none;
-      border-color: var(--accent-primary);
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    }
-    
-    .date-input::-webkit-calendar-picker-indicator {
-      filter: invert(1);
-      cursor: pointer;
-    }
-    
-    .quick-ranges {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
-    }
-    
-    .quick-range-btn {
-      padding: 8px 16px;
-      border-radius: 8px;
-      border: 2px solid #223044;
-      background: var(--bg-secondary);
-      color: var(--text-primary);
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-    
-    .quick-range-btn:hover {
-      border-color: #2f4461;
-      background: var(--bg-card);
-    }
-    
-    .quick-range-btn.active {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-      color: white;
-    }
-    
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px;
-      background: var(--bg-card);
-      border-radius: 8px;
-      margin-bottom: 16px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    
-    .section-header:hover {
-      background: #223044;
-    }
-    
-    .section-header-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--accent-light);
-    }
-    
-    .section-header-icon {
-      font-size: 24px;
-      color: var(--text-secondary);
-      transition: transform 0.2s;
-    }
-    
-    .section-header.collapsed .section-header-icon {
-      transform: rotate(-90deg);
-    }
-    
-    .section-content {
-      overflow: hidden;
-      transition: max-height 0.3s ease;
-      margin-bottom: 24px;
-    }
-    
-    .section-content.collapsed {
-      max-height: 0 !important;
-    }
-    
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-    
-    .stat-card {
-      background: var(--bg-card);
-      padding: 16px;
-      border-radius: 8px;
-      border-left: 4px solid var(--accent-primary);
-    }
-    
-    .stat-card.warning {
-      border-left-color: #f59e0b;
-    }
-    
-    .stat-card.success {
-      border-left-color: #10b981;
-    }
-    
-    .stat-card.danger {
-      border-left-color: #ef4444;
-    }
-    
-    .stat-label {
-      color: #94a3b8;
-      font-size: 12px;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .stat-value {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin-bottom: 4px;
-    }
-    
-    .stat-subtext {
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-    
-    .chart-container {
-      background: var(--bg-card);
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-    }
-    
-    .chart-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--accent-light);
-      margin-bottom: 16px;
-    }
-    
-    canvas {
-      max-height: 300px;
-    }
-    
+
     @media (max-width: 768px) {
       .desktop-header { display:none !important; }
       .mobile-top-header { display:block; }
       .mobile-bottom-nav { display:block !important; }
       
-      body { padding-bottom:102px; }
-      .content { padding:12px; }
-      
-      .stats-grid {
-        grid-template-columns: 1fr;
+      body {
+        padding-bottom:165px;
       }
       
-      .date-range-container {
-        grid-template-columns: 1fr;
-        gap: 12px;
-      }
-      
-      .quick-ranges {
-        justify-content: center;
-      }
-      
-      .quick-range-btn {
-        font-size: 12px;
-        padding: 8px 12px;
-      }
-      
-      .section-header-title {
-        font-size: 16px;
+      h1 {
+        font-size: 24px !important;
       }
     }
     
@@ -377,909 +780,1328 @@
       .mobile-top-header { display:none !important; }
       .mobile-bottom-nav { display:none !important; }
     }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      header { padding-bottom: 8px; }
+      h1 { font-size: 32px; }
+      .header-buttons { width: 100%; justify-content: flex-end; }
+      .modal-content { 
+        padding:20px; 
+        max-height:90vh; 
+      }
+      .modal-title {
+        font-size:22px;
+      }
+      .modal-section-title {
+        font-size:14px;
+      }
+      .modal-info-row { 
+        flex-direction:column; 
+        gap:6px;
+        align-items:flex-start;
+      }
+      .modal-label {
+        font-size:14px;
+      }
+      .modal-value { 
+        text-align:left;
+        font-size:18px;
+      }
+      .modal-value.highlight {
+        font-size:20px;
+      }
+      .modal-footer button {
+        padding:10px 18px;
+        font-size:14px;
+      }
+      
+      /* Consistent mobile padding - reduce from 24px to 12px */
+      .main-content {
+        padding: 12px !important;
+      }
+      
+      h2 {
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+      }
+      
+      .accordion-header {
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+      }
+      
+      /* Ensure all elements fill container width properly */
+      .filters {
+        margin-left: 0;
+        margin-right: 0;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      
+      #techCards,
+      #workOrders,
+      #kpis {
+        margin-left: 0;
+        margin-right: 0;
+        width: 100%;
+      }
+      
+      .tech,
+      .kpi,
+      .wo {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      
+      /* Single column layouts on mobile */
+      #techCards {
+        grid-template-columns: 1fr;
+      }
+      
+      #kpis {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
+
 <body>
-
-<div class="mobile-top-header">
-  <div class="mobile-header-bar">
-    <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">
-      <span class="accordion-icon-header">☰</span>
-    </button>
-    <div class="mobile-header-center">
-      <div class="mobile-header-title">Business Dashboard</div>
-    </div>
-    <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
-  </div>
-  
-  <div class="mobile-header-content" id="mobileHeaderContent">
-    <div class="mobile-header-actions">
-      <button onclick="location.href='dashboard-service.html'">Service</button>
-      <button onclick="location.href='dashboard-parts.html'">Parts</button>
-      <button onclick="location.href='dashboard-sales.html'">Sales</button>
-    </div>
-  </div>
-</div>
-
-<div class="desktop-header">
-  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
-    <h1 style="margin:0; font-size:32px; font-weight:600;">Business Dashboard</h1>
-    <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
-  </div>
-  
-  <div style="padding:0 24px 12px;">
-    <nav style="display:flex; gap:24px; overflow-x:auto;">
-      <a href="dashboard-business.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid var(--accent-primary);">Business</a>
-      <a href="dashboard-customer-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
-      <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
-      <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
-    </nav>
-  </div>
-  
-  <div style="padding:0 24px 12px; border-top:1px solid var(--border-default); padding-top:12px;">
-    <div style="display:flex; gap:12px; justify-content:flex-end;">
-      <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
-      <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
-      <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
-    </div>
-  </div>
-</div>
-
-<div class="main">
-  <div class="top-bar">
-    <div class="quick-ranges">
-      <button class="quick-range-btn active" onclick="setQuickRange('today')">Today</button>
-      <button class="quick-range-btn" onclick="setQuickRange('yesterday')">Yesterday</button>
-      <button class="quick-range-btn" onclick="setQuickRange('thisWeek')">This Week</button>
-      <button class="quick-range-btn" onclick="setQuickRange('lastWeek')">Last Week</button>
-      <button class="quick-range-btn" onclick="setQuickRange('thisMonth')">This Month</button>
-      <button class="quick-range-btn" onclick="setQuickRange('lastMonth')">Last Month</button>
-      <button class="quick-range-btn" onclick="setQuickRange('next7')">Next 7 Days</button>
-      <button class="quick-range-btn" onclick="setQuickRange('next30')">Next 30 Days</button>
-      <button class="quick-range-btn" onclick="setQuickRange('ytd')">Year to Date</button>
+  <!-- Mobile Top Header -->
+  <div class="mobile-top-header">
+    <div class="mobile-header-bar">
+      <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">
+        <span class="accordion-icon-header">☰</span>
+      </button>
+      <div class="mobile-header-center">
+        <div class="mobile-header-title" id="mobileTenantTitle">Business Dashboard</div>
+      </div>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
     </div>
     
-    <div class="date-range-container">
-      <div class="date-picker-group">
-        <label class="date-picker-label">From Date</label>
-        <input type="date" id="startDate" class="date-input" onchange="customDateSelected()">
+    <div class="mobile-header-content" id="mobileHeaderContent">
+      <div class="mobile-header-actions">
+        <button onclick="location.href='dashboard-service.html'">Service</button>
+        <button onclick="location.href='dashboard-parts.html'">Parts</button>
+        <button onclick="location.href='dashboard-sales.html'">Sales</button>
       </div>
-      <div class="date-picker-group">
-        <label class="date-picker-label">To Date</label>
-        <input type="date" id="endDate" class="date-input" onchange="customDateSelected()">
-      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Sticky Header -->
+  <div class="desktop-header" style="position:sticky; top:0; z-index:100; background:var(--bg-primary); border-bottom:1px solid var(--border-default);">
+    <!-- Title and Logout Bar -->
+    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+      <h1 style="margin:0; font-size:32px; font-weight:600;" id="tenantTitle">Business Dashboard</h1>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
     </div>
     
-    <div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:8px;">
-      <span id="dateRangeDisplay" style="color:var(--accent-light); font-weight:600;">Today</span>
+    <!-- Navigation Tabs -->
+    <div style="padding:0 24px 12px;">
+      <nav style="display:flex; gap:24px; overflow-x:auto;">
+        <a href="dashboard-business.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid var(--accent-primary);">Business</a>
+        <a href="dashboard-customer-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
+        <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
+        <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
+      </nav>
     </div>
-  </div>
-
-  <div class="content">
     
-    <!-- Service Department Section -->
-    <div class="section-header collapsed" onclick="toggleSection('service')">
-      <div class="section-header-title">Service Department</div>
-      <div class="section-header-icon">▼</div>
-    </div>
-    <div class="section-content collapsed" id="serviceContent">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Revenue</div>
-          <div class="stat-value" id="serviceRevenue">$0</div>
-          <div class="stat-subtext">Labor + Parts</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Work Orders</div>
-          <div class="stat-value" id="serviceOrders">0</div>
-          <div class="stat-subtext">Completed</div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-label">Labor Hours</div>
-          <div class="stat-value" id="serviceLaborHours">0</div>
-          <div class="stat-subtext">Billable Hours</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Avg Ticket</div>
-          <div class="stat-value" id="serviceAvgTicket">$0</div>
-          <div class="stat-subtext">Per Work Order</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Efficiency Rate</div>
-          <div class="stat-value" id="serviceEfficiency">0%</div>
-          <div class="stat-subtext">Labor Utilization</div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-label">Open Work Orders</div>
-          <div class="stat-value" id="serviceOpen">0</div>
-          <div class="stat-subtext">In Progress</div>
-        </div>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Daily Revenue Trend</div>
-        <canvas id="serviceRevenueChart"></canvas>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Work Orders by Status</div>
-        <canvas id="serviceStatusChart"></canvas>
+    <!-- Service/Parts/Sales buttons BELOW divider -->
+    <div style="padding:0 24px 12px; border-top:1px solid var(--border-default); padding-top:12px;">
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
+        <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
+        <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
       </div>
     </div>
-
-    <!-- Parts Department Section -->
-    <div class="section-header collapsed" onclick="toggleSection('parts')">
-      <div class="section-header-title">Parts Department</div>
-      <div class="section-header-icon">▼</div>
-    </div>
-    <div class="section-content collapsed" id="partsContent">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Parts Revenue</div>
-          <div class="stat-value" id="partsRevenue">$0</div>
-          <div class="stat-subtext">Sales</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Parts Sold</div>
-          <div class="stat-value" id="partsSold">0</div>
-          <div class="stat-subtext">Units</div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-label">Gross Margin</div>
-          <div class="stat-value" id="partsMargin">0%</div>
-          <div class="stat-subtext">Profit Margin</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Inventory Value</div>
-          <div class="stat-value" id="partsInventoryValue">$0</div>
-          <div class="stat-subtext">On Hand</div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-label">Low Stock Items</div>
-          <div class="stat-value" id="partsLowStock">0</div>
-          <div class="stat-subtext">Need Reorder</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Turnover Rate</div>
-          <div class="stat-value" id="partsTurnover">0x</div>
-          <div class="stat-subtext">Inventory Turns</div>
-        </div>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Daily Parts Sales</div>
-        <canvas id="partsSalesChart"></canvas>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Top Selling Parts</div>
-        <canvas id="partsTopSellingChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Sales Department Section -->
-    <div class="section-header collapsed" onclick="toggleSection('sales')">
-      <div class="section-header-title">Sales Department</div>
-      <div class="section-header-icon">▼</div>
-    </div>
-    <div class="section-content collapsed" id="salesContent">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Revenue</div>
-          <div class="stat-value" id="salesRevenue">$0</div>
-          <div class="stat-subtext">Closed Won</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Deals Closed</div>
-          <div class="stat-value" id="salesDeals">0</div>
-          <div class="stat-subtext">Won</div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-label">Win Rate</div>
-          <div class="stat-value" id="salesWinRate">0%</div>
-          <div class="stat-subtext">Close Rate</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Avg Deal Size</div>
-          <div class="stat-value" id="salesAvgDeal">$0</div>
-          <div class="stat-subtext">Per Sale</div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-label">Pipeline Value</div>
-          <div class="stat-value" id="salesPipeline">$0</div>
-          <div class="stat-subtext">Active Opportunities</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Conversion Rate</div>
-          <div class="stat-value" id="salesConversion">0%</div>
-          <div class="stat-subtext">Lead to Customer</div>
-        </div>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Daily Sales Revenue</div>
-        <canvas id="salesRevenueChart"></canvas>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Pipeline by Stage</div>
-        <canvas id="salesPipelineChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Overall Summary Section -->
-    <div class="section-header collapsed" onclick="toggleSection('summary')">
-      <div class="section-header-title">Overall Business Summary</div>
-      <div class="section-header-icon">▼</div>
-    </div>
-    <div class="section-content collapsed" id="summaryContent">
-      <div class="stats-grid">
-        <div class="stat-card success">
-          <div class="stat-label">Total Revenue</div>
-          <div class="stat-value" id="totalRevenue">$0</div>
-          <div class="stat-subtext">All Departments</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Service Revenue</div>
-          <div class="stat-value" id="summaryService">$0</div>
-          <div class="stat-subtext"><span id="servicePercent">0%</span> of Total</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Parts Revenue</div>
-          <div class="stat-value" id="summaryParts">$0</div>
-          <div class="stat-subtext"><span id="partsPercent">0%</span> of Total</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Sales Revenue</div>
-          <div class="stat-value" id="summarySales">$0</div>
-          <div class="stat-subtext"><span id="salesPercent">0%</span> of Total</div>
-        </div>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Revenue by Department</div>
-        <canvas id="summaryRevenueChart"></canvas>
-      </div>
-      
-      <div class="chart-container">
-        <div class="chart-title">Daily Total Revenue Trend</div>
-        <canvas id="summaryTrendChart"></canvas>
-      </div>
-    </div>
-
   </div>
-</div>
 
-<div class="mobile-bottom-nav">
-  <div class="mobile-nav-grid">
-    <a href="dashboard-business.html" class="mobile-nav-btn active">Business</a>
-    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
-    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
-    <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+  <!-- Mobile Bottom Navigation -->
+  <div class="mobile-bottom-nav">
+    <div class="mobile-nav-grid">
+      <a href="dashboard-business.html" class="mobile-nav-btn active">Business</a>
+      <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+      <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+      <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+    </div>
+    <div class="mobile-nav-secondary">
+      <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+      <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+      <a href="dashboard-sales.html" class="mobile-nav-btn">Sales</a>
+    </div>
   </div>
-  <div class="mobile-nav-secondary">
-    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
-    <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
-    <a href="dashboard-sales.html" class="mobile-nav-btn">Sales</a>
+
+  <!-- Main Content (Scrollable) -->
+  <div class="main-content" style="padding:24px;">
+
+  <!-- KPI row with accordion -->
+  <button class="accordion-header active" onclick="toggleAccordion(this)">
+    <h2>Key Performance Indicators</h2>
+    <span class="accordion-icon">▼</span>
+  </button>
+  <div class="accordion-content active">
+    <div class="accordion-inner">
+      <div class="row" id="kpis"></div>
+    </div>
   </div>
-</div>
+
+  <!-- Date range filters -->
+  <div class="filters">
+    <div class="pill active" id="btnToday" onclick="setRange('today')">Today</div>
+    <div class="pill" id="btnNext7" onclick="setRange('next7')">7 Days</div>
+    <div class="pill" id="btnNext30" onclick="setRange('next30')">30 Days</div>
+    <div class="pill" id="btnNext90" onclick="setRange('next90')">90 Days</div>
+  </div>
+
+  <!-- Tech cards -->
+  <h2>Managers & Technicians</h2>
+  <div id="techCards"></div>
+
+  <!-- Work order navigation filters -->
+  <!-- Order: All, Unassigned, Past Due, Fleet 1, Fleet 2, Value (sort modifier), Clear Filters (always last) -->
+  <div class="filters">
+    <div class="pill" id="btnAll" onclick="showAll()">All</div>
+    <div class="pill" id="btnUnassigned" onclick="filterUnassigned()">Unassigned</div>
+    <div class="pill" id="btnPastDue" onclick="filterPastDue()">Past Due</div>
+    <div class="pill" id="btnFleet1" onclick="filterFleet('fleet1')">Fleet 1</div>
+    <div class="pill" id="btnFleet2" onclick="filterFleet('fleet2')">Fleet 2</div>
+    <div class="pill pill-sort" id="sortValue" onclick="setSort('value')">Value</div>
+    <div class="pill" onclick="clearFilters()">Clear Filters</div>
+  </div>
+
+  <!-- Work Orders -->
+  <h2>
+    Work Orders
+    <button onclick="createWorkOrder()">+ New Work Order</button>
+  </h2>
+  <div id="workOrders">Loading…</div>
+  
+  </div>
+  <!-- End Main Content -->
+
+  <!-- Magnified Work Order Details Modal -->
+  <div id="quickSummaryModal" class="modal" onclick="if(event.target===this) closeQuickSummary()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Work Order Details</div>
+        <button class="modal-close" onclick="closeQuickSummary()">×</button>
+      </div>
+      <div id="modalBody"></div>
+      <div class="modal-footer">
+        <button onclick="closeQuickSummary()">Close</button>
+        <button class="btn-details" id="viewDetailsBtn">Edit Work Order</button>
+      </div>
+    </div>
+  </div>
 
 <script>
-const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
+  const API_BASE = `https://${PROJECT_REF}.supabase.co`;
+  const FUNCTIONS_BASE = `${API_BASE}/functions/v1`;
+  const REST_BASE = `${API_BASE}/rest/v1`;
+  const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
 
-let startDate = new Date();
-let endDate = new Date();
-let activeQuickRange = 'today';
-let charts = {};
-
-function toggleMobileMenu(button) {
-  const content = document.getElementById('mobileHeaderContent');
-  content.classList.toggle('expanded');
-  button.classList.toggle('active');
-}
-
-function logout() {
-  localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
-}
-
-function toggleSection(sectionId) {
-  const content = document.getElementById(sectionId + 'Content');
-  const header = event.currentTarget;
-  
-  content.classList.toggle('collapsed');
-  header.classList.toggle('collapsed');
-  
-  if (!content.classList.contains('collapsed')) {
-    content.style.maxHeight = content.scrollHeight + 'px';
-  } else {
-    content.style.maxHeight = '0px';
+  // Business Settings
+  const DEFAULT_LABOR_RATE = 125; // $/hr
+  const RATE_KEY = "wl_labor_rate";
+  function getLaborRate(){
+    const v = Number(localStorage.getItem(RATE_KEY));
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_LABOR_RATE;
   }
-  
-  // Save state
-  localStorage.setItem('section_' + sectionId, content.classList.contains('collapsed') ? 'collapsed' : 'expanded');
-}
 
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+  // Mobile menu toggle
+  function toggleMobileMenu(button) {
+    const content = document.getElementById('mobileHeaderContent');
+    content.classList.toggle('expanded');
+    button.classList.toggle('active');
+  }
 
-function formatDateDisplay(date) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+  // Accordion toggle
+  function toggleAccordion(button) {
+    const content = button.nextElementSibling;
+    button.classList.toggle('active');
+    content.classList.toggle('active');
+  }
 
-function updateDateInputs() {
-  document.getElementById('startDate').value = formatDate(startDate);
-  document.getElementById('endDate').value = formatDate(endDate);
-}
-
-function updateDateDisplay() {
-  const start = formatDateDisplay(startDate);
-  const end = formatDateDisplay(endDate);
-  
-  let displayText = '';
-  
-  if (formatDate(startDate) === formatDate(endDate)) {
-    if (formatDate(startDate) === formatDate(new Date())) {
-      displayText = 'Today';
-    } else {
-      displayText = start;
+  // Initialize mobile-specific defaults
+  function initMobileDefaults() {
+    // Collapse KPI accordion on mobile
+    if (window.innerWidth <= 768) {
+      const kpiAccordionHeader = document.querySelector('.accordion-header');
+      const kpiAccordionContent = document.querySelector('.accordion-content');
+      if (kpiAccordionHeader && kpiAccordionContent) {
+        kpiAccordionHeader.classList.remove('active');
+        kpiAccordionContent.classList.remove('active');
+      }
     }
-  } else {
-    displayText = `${start} - ${end}`;
   }
-  
-  document.getElementById('dateRangeDisplay').textContent = displayText;
-}
 
-function setQuickRange(range) {
-  activeQuickRange = range;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  // Clear all active states
-  document.querySelectorAll('.quick-range-btn').forEach(btn => btn.classList.remove('active'));
-  
-  // Set active state
-  event.target.classList.add('active');
-  
-  switch(range) {
-    case 'today':
-      startDate = new Date(today);
-      endDate = new Date(today);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'yesterday':
-      startDate = new Date(today);
-      startDate.setDate(today.getDate() - 1);
-      endDate = new Date(startDate);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'thisWeek':
-      const dayOfWeek = today.getDay();
-      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      startDate = new Date(today);
-      startDate.setDate(today.getDate() + mondayOffset);
-      endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + 6);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'lastWeek':
-      const lastWeekEnd = new Date(today);
-      lastWeekEnd.setDate(today.getDate() - today.getDay());
-      const lastWeekStart = new Date(lastWeekEnd);
-      lastWeekStart.setDate(lastWeekEnd.getDate() - 6);
-      startDate = lastWeekStart;
-      endDate = lastWeekEnd;
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'thisMonth':
-      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-      endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'lastMonth':
-      startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      endDate = new Date(today.getFullYear(), today.getMonth(), 0);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'next7':
-      startDate = new Date(today);
-      endDate = new Date(today);
-      endDate.setDate(today.getDate() + 6);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'next30':
-      startDate = new Date(today);
-      endDate = new Date(today);
-      endDate.setDate(today.getDate() + 29);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-      
-    case 'ytd':
-      startDate = new Date(today.getFullYear(), 0, 1);
-      endDate = new Date(today);
-      endDate.setHours(23, 59, 59, 999);
-      break;
-  }
-  
-  updateDateInputs();
-  updateDateDisplay();
-  loadDashboardData();
-}
-
-function customDateSelected() {
-  const startInput = document.getElementById('startDate').value;
-  const endInput = document.getElementById('endDate').value;
-  
-  if (!startInput || !endInput) return;
-  
-  startDate = new Date(startInput);
-  startDate.setHours(0, 0, 0, 0);
-  
-  endDate = new Date(endInput);
-  endDate.setHours(23, 59, 59, 999);
-  
-  // Clear quick range buttons
-  document.querySelectorAll('.quick-range-btn').forEach(btn => btn.classList.remove('active'));
-  activeQuickRange = null;
-  
-  updateDateDisplay();
-  loadDashboardData();
-}
-
-function getDateRange() {
-  return { 
-    start: new Date(startDate), 
-    end: new Date(endDate) 
+  // SSOT status buckets (matches DB constraint vocabulary)
+  const STATUS_BUCKETS = {
+    scheduled: ["draft","scheduled","in_progress","repairing","testing","scheduled_pickup","scheduled_dropoff"],
+    complications: ["diagnosis_required","customer_approval"],
+    waiting: ["awaiting_parts","parts_on_order"],
+    pickup: ["ready_for_pickup"],
+    pastdue: [], // Past due is calculated dynamically based on scheduled_end
+    completed: ["completed","closed"]
   };
-}
+  
+  function statusIn(bucket, status){
+    return (STATUS_BUCKETS[bucket] || []).includes(status);
+  }
+  
+  // Check if a work order is past due
+  function isPastDue(w){
+    // Past due if:
+    // 1. Has a scheduled_end date
+    // 2. scheduled_end is in the past
+    // 3. Not completed or closed
+    if(!w.scheduled_end) return false;
+    if(w.status === "completed" || w.status === "closed") return false;
+    return new Date(w.scheduled_end) < new Date();
+  }
 
-async function loadDashboardData() {
-  const { start, end } = getDateRange();
-  
-  // Load service data
-  await loadServiceData(start, end);
-  
-  // Load parts data
-  await loadPartsData(start, end);
-  
-  // Load sales data (placeholder)
-  loadSalesData(start, end);
-  
-  // Update summary
-  updateSummary();
-}
+  // State
+  let employees = [];
+  let employeesById = {};
+  let technicians = [];
+  let orders = [];
+  let customers = [];
+  let customersById = {};
+  let vehicles = [];
+  let vehiclesById = {};
 
-async function loadServiceData(start, end) {
-  try {
-    // Get work orders in date range (both past completed and future scheduled)
-    const { data: workOrders } = await sb
-      .from('work_orders')
-      .select('*')
-      .or(`created_at.gte.${start.toISOString()},scheduled_start.gte.${start.toISOString()}`)
-      .or(`created_at.lte.${end.toISOString()},scheduled_start.lte.${end.toISOString()}`);
+  let activeTechId = null;
+  let activeRange = "today";
+  let activeKpi = null;
+  let activeSort = null;
+  let activeFleet = null;
+
+  // Date helpers
+  function startOfToday(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function endOfToday(){ const d = new Date(); d.setHours(23,59,59,999); return d; }
+
+  function startOfNext7Days(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function endOfNext7Days(){ const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(23,59,59,999); return d; }
+  function startOfNext30Days(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function endOfNext30Days(){ const d = new Date(); d.setDate(d.getDate() + 30); d.setHours(23,59,59,999); return d; }
+  function startOfNext90Days(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function endOfNext90Days(){ const d = new Date(); d.setDate(d.getDate() + 90); d.setHours(23,59,59,999); return d; }
+
+  function money(n){ return `$${Number(n || 0).toFixed(0)}`; }
+  function formatHrsRev(hours){
+    const rate = getLaborRate();
+    const rev = Number(hours || 0) * rate;
+    return `${Number(hours || 0).toFixed(1)}h / ${money(rev)}`;
+  }
+
+  function logout(){
+    localStorage.removeItem("sb_access_token");
+    location.replace("login.html");
+  }
+
+  function goToSettings(){
+    location.href = "dashboard-settings.html";
+  }
+
+  /* AUTH (do not change) */
+  async function validateAuth(){
+    const token = localStorage.getItem("sb_access_token");
+    if (!token) return null;
+
+    const res = await fetch(`${API_BASE}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+    });
+
+    if (!res.ok) return null;
+    return token;
+  }
+
+  async function fetchJson(url, token){
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async function fetchTable(table, token){
+    const res = await fetch(`${REST_BASE}/${table}?select=*`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  function createWorkOrder(){
+    location.href = "work-order-new.html";
+  }
+
+  function editWorkOrder(id, event){
+    if(event) event.stopPropagation();
+    location.href = `work-order-edit.html?id=${id}`;
+  }
+
+  // Hours logic (kept similar to your current behavior)
+  function jobHours(w){
+    if (w.scheduled_start && w.scheduled_end) {
+      return (new Date(w.scheduled_end) - new Date(w.scheduled_start)) / 36e5;
+    }
+
+    // fallback estimates by status
+    if (w.status === "diagnosis_required") return 2;
+    if (w.status === "awaiting_parts") return 1;
+    if (["scheduled","in_progress","repairing","testing","ready_for_pickup"].includes(w.status)) return 3;
+
+    return 0;
+  }
+
+  // Overdue helper (SSOT)
+  function isOverdue(w){
+    if (!w.scheduled_start) return false;
+    if (["completed","closed"].includes(w.status)) return false;
+    return new Date(w.scheduled_start) < new Date();
+  }
+
+  function inRange(w){
+    if (activeRange === "all") return true;
+
+    const d = w.scheduled_start ? new Date(w.scheduled_start) : null;
+
+    const sToday = startOfToday();
+    const eToday = endOfToday();
+    const sNext7 = startOfNext7Days();
+    const eNext7 = endOfNext7Days();
+    const sNext30 = startOfNext30Days();
+    const eNext30 = endOfNext30Days();
+    const sNext90 = startOfNext90Days();
+    const eNext90 = endOfNext90Days();
+
+    if (activeRange === "today") {
+      // ALWAYS show past due items in today's view
+      if (isPastDue(w)) return true;
+      
+      if (!d && w.status === "scheduled") return true;
+      
+      // Compare dates only (ignore time) to avoid timezone issues
+      const workDate = new Date(d);
+      workDate.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      return workDate.getTime() === today.getTime();
+    }
+    if (activeRange === "next7") {
+      // Also show past due in next 7 days view
+      if (isPastDue(w)) return true;
+      
+      if (!d && w.status === "scheduled") return true;
+      return d && d >= sNext7 && d <= eNext7;
+    }
+    if (activeRange === "next30") {
+      // Also show past due in next 30 days view
+      if (isPastDue(w)) return true;
+      
+      if (!d && w.status === "scheduled") return true;
+      return d && d >= sNext30 && d <= eNext30;
+    }
+    if (activeRange === "next90") {
+      // Also show past due in next 90 days view
+      if (isPastDue(w)) return true;
+      
+      if (!d && w.status === "scheduled") return true;
+      return d && d >= sNext90 && d <= eNext90;
+    }
+    return true;
+  }
+
+  function initialsFromName(name){
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "??";
+    return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+  }
+
+  function getAvatarUrl(employee){
+    if(employee.avatar_url) {
+      if(employee.avatar_url.startsWith('http')) {
+        return employee.avatar_url;
+      }
+      return `${API_BASE}/storage/v1/object/public/avatars/${employee.avatar_url}`;
+    }
+    return null;
+  }
+
+  function techDisplayName(t){
+    const first = (t.first_name || "").trim();
+    const last = (t.last_name || "").trim();
+    return (first || last) ? `${first} ${last}`.trim() : (t.name || "Tech");
+  }
+
+  function formatStatus(status){
+    if (!status) return "unknown";
+    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  function formatDateTime(dateStr){
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    const dateFormatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timeFormatted = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return { date: dateFormatted, time: timeFormatted };
+  }
+
+  function setTenantTitleSafely(){
+    const el = document.getElementById("tenantTitle");
+    const mobileEl = document.getElementById("mobileTenantTitle");
+
+    let name = "";
+    for (const o of (Array.isArray(orders) ? orders : [])) {
+      if (typeof o?.tenant_name === "string" && o.tenant_name.trim()) { name = o.tenant_name.trim(); break; }
+    }
+    if (!name) {
+      for (const e of (Array.isArray(employees) ? employees : [])) {
+        if (typeof e?.tenant_name === "string" && e.tenant_name.trim()) { name = e.tenant_name.trim(); break; }
+      }
+    }
+    if (!name) name = "Business Dashboard";
+
+    el.textContent = name;
+    if(mobileEl) mobileEl.textContent = name;
+    document.title = name;
+  }
+
+  /* KPI rendering */
+  function renderKPIs(){
+    const kpisEl = document.getElementById("kpis");
+    if (!kpisEl) return;
+
+    const inView = (Array.isArray(orders) ? orders : []).filter(w => inRange(w));
     
-    const completedOrders = (workOrders || []).filter(wo => 
-      (wo.status === 'completed' || wo.status === 'closed') &&
-      wo.created_at && 
-      new Date(wo.created_at) >= start && 
-      new Date(wo.created_at) <= end
+    const complications = inView.filter(w => statusIn("complications", w.status));
+    const waiting = inView.filter(w => statusIn("waiting", w.status));
+    const pastdue = inView.filter(w => isPastDue(w));
+    
+    const completedAndPickup = inView.filter(w => 
+      statusIn("completed", w.status) || statusIn("pickup", w.status)
     );
-    
-    const scheduledOrders = (workOrders || []).filter(wo =>
-      wo.scheduled_start &&
-      new Date(wo.scheduled_start) >= start &&
-      new Date(wo.scheduled_start) <= end &&
-      wo.status !== 'completed' &&
-      wo.status !== 'closed'
+
+    // Total open work (not completed/closed)
+    const totalOpen = inView.filter(w => 
+      !statusIn("completed", w.status) && w.status !== "closed"
     );
-    
-    const openOrders = (workOrders || []).filter(wo => 
-      wo.status !== 'completed' && wo.status !== 'closed'
-    );
-    
-    // Calculate metrics
-    const totalRevenue = completedOrders.reduce((sum, wo) => sum + (wo.total_amount || 0), 0);
-    const totalHours = completedOrders.reduce((sum, wo) => sum + (wo.labor_hours || 0), 0);
-    const avgTicket = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
-    
-    // Update UI
-    document.getElementById('serviceRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString();
-    document.getElementById('serviceOrders').textContent = completedOrders.length;
-    document.getElementById('serviceLaborHours').textContent = Math.round(totalHours);
-    document.getElementById('serviceAvgTicket').textContent = '$' + Math.round(avgTicket).toLocaleString();
-    document.getElementById('serviceEfficiency').textContent = '85%'; // Placeholder
-    document.getElementById('serviceOpen').textContent = scheduledOrders.length;
-    
-    // Charts
-    createServiceCharts(workOrders, start, end);
-    
-  } catch (error) {
-    console.error('Error loading service data:', error);
+
+    function sumH(arr){ return arr.reduce((s,w)=> s + jobHours(w), 0); }
+
+    const kpiCard = (key, title, arr, isWarning = false) => `
+      <div class="card kpi ${activeKpi===key?'active':''}" onclick="toggleKpi('${key}')" style="${isWarning && arr.length > 0 ? 'border-color:#ef4444; box-shadow:0 0 0 1px rgba(239,68,68,.35) inset;' : ''}">
+        <div class="label" style="${isWarning && arr.length > 0 ? 'color:#ef4444;' : ''}">${title}</div>
+        <div class="value" style="${isWarning && arr.length > 0 ? 'color:#ef4444;' : ''}">${formatHrsRev(sumH(arr))}</div>
+        <div class="muted">Jobs: ${arr.length}</div>
+      </div>
+    `;
+
+    kpisEl.innerHTML =
+      kpiCard("totalopen", "Total Open Work", totalOpen) +
+      kpiCard("complications", "Waiting on Approval or Diagnosis", complications) +
+      kpiCard("waiting", "Waiting on Parts or Services", waiting) +
+      kpiCard("pastdue", "⚠️ Past Deadline", pastdue, true) +
+      kpiCard("completedandpickup", "Completed & Ready for Pickup", completedAndPickup);
   }
-}
 
-async function loadPartsData(start, end) {
-  try {
-    // Get parts transactions
-    const { data: transactions } = await sb
-      .from('parts_transactions')
-      .select('*')
-      .eq('transaction_type', 'Sale')
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString());
+  window.toggleKpi = function(key){
+    activeKpi = (activeKpi === key) ? null : key;
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
+
+  /* Range + Sort */
+  window.setRange = function(r){
+    activeRange = r;
+
+    const btnToday  = document.getElementById("btnToday");
+    const btnNext7  = document.getElementById("btnNext7");
+    const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
+    const btnAll    = document.getElementById("btnAll");
+
+    if (btnToday)  btnToday.classList.toggle("active", r==="today");
+    if (btnNext7)  btnNext7.classList.toggle("active", r==="next7");
+    if (btnNext30) btnNext30.classList.toggle("active", r==="next30");
+    if (btnNext90) btnNext90.classList.toggle("active", r==="next90");
+    if (btnAll)    btnAll.classList.toggle("active", r==="all");
+
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
+
+  window.showAll = function(){
+    activeRange = "all";
+    activeKpi = null;
+    activeTechId = null;
+    activeFleet = null;
     
-    // Get inventory
-    const { data: inventory } = await sb
-      .from('parts_inventory')
-      .select('*');
-    
-    // Calculate metrics
-    const partsSold = (transactions || []).reduce((sum, t) => sum + Math.abs(t.quantity_change || 0), 0);
-    const partsRevenue = 0; // Placeholder - would need invoice data
-    const inventoryValue = (inventory || []).reduce((sum, p) => sum + (p.quantity_on_hand * p.cost_price || 0), 0);
-    const lowStock = (inventory || []).filter(p => p.quantity_on_hand <= p.reorder_point).length;
-    
-    // Update UI
-    document.getElementById('partsRevenue').textContent = '$' + Math.round(partsRevenue).toLocaleString();
-    document.getElementById('partsSold').textContent = partsSold;
-    document.getElementById('partsMargin').textContent = '35%'; // Placeholder
-    document.getElementById('partsInventoryValue').textContent = '$' + Math.round(inventoryValue).toLocaleString();
-    document.getElementById('partsLowStock').textContent = lowStock;
-    document.getElementById('partsTurnover').textContent = '4.2x'; // Placeholder
-    
-    // Charts
-    createPartsCharts(transactions, inventory);
-    
-  } catch (error) {
-    console.error('Error loading parts data:', error);
-  }
-}
+    const btnToday  = document.getElementById("btnToday");
+    const btnNext7  = document.getElementById("btnNext7");
+    const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
+    const btnAll    = document.getElementById("btnAll");
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnUnassigned = document.getElementById("btnUnassigned");
+    const btnFleet1 = document.getElementById("btnFleet1");
+    const btnFleet2 = document.getElementById("btnFleet2");
 
-function loadSalesData(start, end) {
-  // Placeholder - would integrate with sales opportunities table
-  document.getElementById('salesRevenue').textContent = '$0';
-  document.getElementById('salesDeals').textContent = '0';
-  document.getElementById('salesWinRate').textContent = '0%';
-  document.getElementById('salesAvgDeal').textContent = '$0';
-  document.getElementById('salesPipeline').textContent = '$0';
-  document.getElementById('salesConversion').textContent = '0%';
-  
-  // Charts
-  createSalesCharts();
-}
+    // Clear date range and category filters, preserve Value sort
+    if (btnToday)  btnToday.classList.remove("active");
+    if (btnNext7)  btnNext7.classList.remove("active");
+    if (btnNext30) btnNext30.classList.remove("active");
+    if (btnNext90) btnNext90.classList.remove("active");
+    if (btnAll)    btnAll.classList.add("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnUnassigned) btnUnassigned.classList.remove("active");
+    if (btnFleet1) btnFleet1.classList.remove("active");
+    if (btnFleet2) btnFleet2.classList.remove("active");
 
-function updateSummary() {
-  const serviceRev = parseFloat(document.getElementById('serviceRevenue').textContent.replace(/[$,]/g, '')) || 0;
-  const partsRev = parseFloat(document.getElementById('partsRevenue').textContent.replace(/[$,]/g, '')) || 0;
-  const salesRev = parseFloat(document.getElementById('salesRevenue').textContent.replace(/[$,]/g, '')) || 0;
-  
-  const total = serviceRev + partsRev + salesRev;
-  
-  document.getElementById('totalRevenue').textContent = '$' + Math.round(total).toLocaleString();
-  document.getElementById('summaryService').textContent = '$' + Math.round(serviceRev).toLocaleString();
-  document.getElementById('summaryParts').textContent = '$' + Math.round(partsRev).toLocaleString();
-  document.getElementById('summarySales').textContent = '$' + Math.round(salesRev).toLocaleString();
-  
-  if (total > 0) {
-    document.getElementById('servicePercent').textContent = Math.round((serviceRev / total) * 100) + '%';
-    document.getElementById('partsPercent').textContent = Math.round((partsRev / total) * 100) + '%';
-    document.getElementById('salesPercent').textContent = Math.round((salesRev / total) * 100) + '%';
-  }
-  
-  createSummaryCharts(serviceRev, partsRev, salesRev);
-}
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
 
-function createServiceCharts(data, start, end) {
-  // Generate date labels for the range
-  const dateLabels = [];
-  const current = new Date(start);
-  while (current <= end) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  // Limit to max 30 days for chart readability
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
-  // Revenue trend chart
-  if (charts.serviceRevenue) charts.serviceRevenue.destroy();
-  const ctx1 = document.getElementById('serviceRevenueChart');
-  charts.serviceRevenue = new Chart(ctx1, {
-    type: 'line',
-    data: {
-      labels: displayLabels,
-      datasets: [{
-        label: 'Revenue',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 2000) + 1000),
-        borderColor: 'var(--accent-primary)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        tension: 0.4
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3', maxRotation: 45, minRotation: 45 } }
-      }
-    }
-  });
-  
-  // Status chart
-  if (charts.serviceStatus) charts.serviceStatus.destroy();
-  const ctx2 = document.getElementById('serviceStatusChart');
-  charts.serviceStatus = new Chart(ctx2, {
-    type: 'doughnut',
-    data: {
-      labels: ['Completed', 'In Progress', 'Waiting', 'Scheduled'],
-      datasets: [{
-        data: [45, 15, 8, 12],
-        backgroundColor: ['#10b981', 'var(--accent-primary)', '#f59e0b', '#8b5cf6']
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#e8eef6' } }
-      }
-    }
-  });
-}
-
-function createPartsCharts(transactions, inventory) {
-  // Generate date labels
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
-  // Sales trend
-  if (charts.partsSales) charts.partsSales.destroy();
-  const ctx1 = document.getElementById('partsSalesChart');
-  charts.partsSales = new Chart(ctx1, {
-    type: 'bar',
-    data: {
-      labels: displayLabels,
-      datasets: [{
-        label: 'Parts Sold',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 30) + 40),
-        backgroundColor: '#10b981'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3', maxRotation: 45, minRotation: 45 } }
-      }
-    }
-  });
-  
-  // Top selling
-  if (charts.partsTopSelling) charts.partsTopSelling.destroy();
-  const ctx2 = document.getElementById('partsTopSellingChart');
-  charts.partsTopSelling = new Chart(ctx2, {
-    type: 'bar',
-    data: {
-      labels: ['Oil Filter', 'Air Filter', 'Brake Pads', 'Spark Plugs', 'Wiper Blades'],
-      datasets: [{
-        label: 'Units Sold',
-        data: [145, 128, 98, 87, 76],
-        backgroundColor: 'var(--accent-primary)'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        x: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        y: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
-      }
-    }
-  });
-}
-
-function createSalesCharts() {
-  // Generate date labels
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
-  // Revenue trend
-  if (charts.salesRevenue) charts.salesRevenue.destroy();
-  const ctx1 = document.getElementById('salesRevenueChart');
-  charts.salesRevenue = new Chart(ctx1, {
-    type: 'line',
-    data: {
-      labels: displayLabels,
-      datasets: [{
-        label: 'Revenue',
-        data: new Array(displayLabels.length).fill(0),
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-        tension: 0.4
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3', maxRotation: 45, minRotation: 45 } }
-      }
-    }
-  });
-  
-  // Pipeline stages
-  if (charts.salesPipeline) charts.salesPipeline.destroy();
-  const ctx2 = document.getElementById('salesPipelineChart');
-  charts.salesPipeline = new Chart(ctx2, {
-    type: 'bar',
-    data: {
-      labels: ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won'],
-      datasets: [{
-        label: 'Deals',
-        data: [0, 0, 0, 0, 0],
-        backgroundColor: '#8b5cf6'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
-      }
-    }
-  });
-}
-
-function createSummaryCharts(serviceRev, partsRev, salesRev) {
-  // Revenue by department
-  if (charts.summaryRevenue) charts.summaryRevenue.destroy();
-  const ctx1 = document.getElementById('summaryRevenueChart');
-  charts.summaryRevenue = new Chart(ctx1, {
-    type: 'doughnut',
-    data: {
-      labels: ['Service', 'Parts', 'Sales'],
-      datasets: [{
-        data: [serviceRev, partsRev, salesRev],
-        backgroundColor: ['var(--accent-primary)', '#10b981', '#8b5cf6']
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#e8eef6' } }
-      }
-    }
-  });
-  
-  // Generate date labels
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
-  // Total trend
-  if (charts.summaryTrend) charts.summaryTrend.destroy();
-  const ctx2 = document.getElementById('summaryTrendChart');
-  charts.summaryTrend = new Chart(ctx2, {
-    type: 'line',
-    data: {
-      labels: displayLabels,
-      datasets: [{
-        label: 'Total Revenue',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 2000) + 1000),
-        borderColor: 'var(--accent-light)',
-        backgroundColor: 'rgba(96, 165, 250, 0.1)',
-        tension: 0.4
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
-        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3', maxRotation: 45, minRotation: 45 } }
-      }
-    }
-  });
-}
-
-// Initialize
-async function init() {
-  // Set initial dates to today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  startDate = new Date(today);
-  endDate = new Date(today);
-  endDate.setHours(23, 59, 59, 999);
-  
-  // Update date inputs
-  updateDateInputs();
-  updateDateDisplay();
-  
-  // Load initial data
-  await loadDashboardData();
-  
-  // Set all sections to collapsed by default
-  ['service', 'parts', 'sales', 'summary'].forEach(section => {
-    const content = document.getElementById(section + 'Content');
-    const header = document.querySelector(`[onclick="toggleSection('${section}')"]`);
-    const saved = localStorage.getItem('section_' + section);
-    
-    if (saved !== 'expanded') {
-      if (header) header.classList.add('collapsed');
-      content.classList.add('collapsed');
-      content.style.maxHeight = '0px';
+  window.filterPastDue = function(){
+    // Toggle past due filter
+    if (activeKpi === "pastdue") {
+      activeKpi = null;
+      document.getElementById("btnPastDue")?.classList.remove("active");
     } else {
-      if (header) header.classList.remove('collapsed');
-      content.classList.remove('collapsed');
-      content.style.maxHeight = content.scrollHeight + 'px';
+      activeKpi = "pastdue";
+      activeTechId = null;
+      activeFleet = null;
+      
+      document.getElementById("btnPastDue")?.classList.add("active");
+      
+      // Clear other category filters but preserve Value sort
+      const btnAll = document.getElementById("btnAll");
+      const btnUnassigned = document.getElementById("btnUnassigned");
+      const btnFleet1 = document.getElementById("btnFleet1");
+      const btnFleet2 = document.getElementById("btnFleet2");
+      if (btnAll) btnAll.classList.remove("active");
+      if (btnUnassigned) btnUnassigned.classList.remove("active");
+      if (btnFleet1) btnFleet1.classList.remove("active");
+      if (btnFleet2) btnFleet2.classList.remove("active");
     }
-  });
-}
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
 
-init();
+  window.setSort = function(s){
+    // Toggle value sort on/off - works with any active filter
+    if (activeSort === s) {
+      activeSort = null;
+    } else {
+      activeSort = s;
+    }
+    
+    const sortValueBtn = document.getElementById("sortValue");
+    if (sortValueBtn) sortValueBtn.classList.toggle("active", activeSort === "value");
+    
+    renderWorkOrders();
+  };
+
+  window.filterUnassigned = function(){
+    activeTechId = "__unassigned__";
+    activeKpi = null;
+    activeFleet = null;
+    
+    const btnAll = document.getElementById("btnAll");
+    const btnUnassigned = document.getElementById("btnUnassigned");
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnFleet1 = document.getElementById("btnFleet1");
+    const btnFleet2 = document.getElementById("btnFleet2");
+    
+    // Clear category filters but preserve Value sort
+    if (btnAll) btnAll.classList.remove("active");
+    if (btnUnassigned) btnUnassigned.classList.add("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnFleet1) btnFleet1.classList.remove("active");
+    if (btnFleet2) btnFleet2.classList.remove("active");
+    
+    renderTechCards();
+    renderWorkOrders();
+  };
+
+  window.filterFleet = function(fleet){
+    activeFleet = (activeFleet === fleet) ? null : fleet;
+    
+    // When activating a fleet filter, clear other category filters
+    if (activeFleet) {
+      activeTechId = null;
+      activeKpi = null;
+      
+      const btnAll = document.getElementById("btnAll");
+      const btnUnassigned = document.getElementById("btnUnassigned");
+      const btnPastDue = document.getElementById("btnPastDue");
+      if (btnAll) btnAll.classList.remove("active");
+      if (btnUnassigned) btnUnassigned.classList.remove("active");
+      if (btnPastDue) btnPastDue.classList.remove("active");
+    }
+    
+    const fleet1Btn = document.getElementById("btnFleet1");
+    const fleet2Btn = document.getElementById("btnFleet2");
+    if (fleet1Btn) fleet1Btn.classList.toggle("active", activeFleet === "fleet1");
+    if (fleet2Btn) fleet2Btn.classList.toggle("active", activeFleet === "fleet2");
+    
+    renderWorkOrders();
+  };
+
+  window.clearFilters = function(){
+    activeTechId = null;
+    activeKpi = null;
+    activeRange = "today";
+    activeSort = null;
+    activeFleet = null;
+
+    const btnToday  = document.getElementById("btnToday");
+    const btnNext7  = document.getElementById("btnNext7");
+    const btnNext30 = document.getElementById("btnNext30");
+    const btnNext90 = document.getElementById("btnNext90");
+    const btnAll    = document.getElementById("btnAll");
+    const sortValue = document.getElementById("sortValue");
+    const btnUnassigned = document.getElementById("btnUnassigned");
+    const btnPastDue = document.getElementById("btnPastDue");
+    const btnFleet1 = document.getElementById("btnFleet1");
+    const btnFleet2 = document.getElementById("btnFleet2");
+
+    if (btnToday)  btnToday.classList.add("active");
+    if (btnNext7)  btnNext7.classList.remove("active");
+    if (btnNext30) btnNext30.classList.remove("active");
+    if (btnNext90) btnNext90.classList.remove("active");
+    if (btnAll)    btnAll.classList.remove("active");
+    if (sortValue) sortValue.classList.remove("active");
+    if (btnUnassigned) btnUnassigned.classList.remove("active");
+    if (btnPastDue) btnPastDue.classList.remove("active");
+    if (btnFleet1) btnFleet1.classList.remove("active");
+    if (btnFleet2) btnFleet2.classList.remove("active");
+
+    renderKPIs();
+    renderTechCards();
+    renderWorkOrders();
+  };
+
+  /* Tech cards */
+  function renderTechCards(){
+    const techEl = document.getElementById("techCards");
+    if (!techEl) return;
+
+    const sToday = startOfToday();
+    const eToday = endOfToday();
+    const sNext7 = startOfNext7Days();
+    const eNext7 = endOfNext7Days();
+
+    // Get pay period settings from localStorage
+    const payPeriodType = localStorage.getItem('wl_pay_period_type') || 'weekly'; // daily, weekly, biweekly, monthly
+    const payPeriodStart = parseInt(localStorage.getItem('wl_pay_period_start_day')) || 1; // Day of week (0-6) or day of month (1-31)
+    const payPeriodStartDateStr = localStorage.getItem('wl_pay_period_start_date'); // For biweekly
+    
+    // Calculate pay period start date
+    function getPayPeriodStart() {
+      const now = new Date();
+      let periodStart = new Date(now);
+      
+      if (payPeriodType === 'daily') {
+        periodStart.setHours(0, 0, 0, 0);
+      } else if (payPeriodType === 'weekly') {
+        // payPeriodStart is day of week (0=Sunday, 1=Monday, etc)
+        const currentDay = now.getDay();
+        const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
+        periodStart.setDate(now.getDate() - daysToSubtract);
+        periodStart.setHours(0, 0, 0, 0);
+      } else if (payPeriodType === 'biweekly') {
+        // Use the date picker date as reference
+        if (payPeriodStartDateStr) {
+          const referenceDate = new Date(payPeriodStartDateStr);
+          referenceDate.setHours(0, 0, 0, 0);
+          
+          // Calculate how many days since reference date
+          const daysSince = Math.floor((now - referenceDate) / (24 * 60 * 60 * 1000));
+          
+          // Calculate which 2-week period we're in
+          const periodsSince = Math.floor(daysSince / 14);
+          
+          // Set to start of current period
+          periodStart = new Date(referenceDate);
+          periodStart.setDate(referenceDate.getDate() + (periodsSince * 14));
+        } else {
+          // Fallback to old method if no date set
+          const currentDay = now.getDay();
+          const daysToSubtract = (currentDay - payPeriodStart + 7) % 7;
+          periodStart.setDate(now.getDate() - daysToSubtract);
+          
+          const epochStart = new Date(2024, 0, 1);
+          const weeksSinceEpoch = Math.floor((periodStart - epochStart) / (7 * 24 * 60 * 60 * 1000));
+          if (weeksSinceEpoch % 2 !== 0) {
+            periodStart.setDate(periodStart.getDate() - 7);
+          }
+          periodStart.setHours(0, 0, 0, 0);
+        }
+      } else if (payPeriodType === 'monthly') {
+        // payPeriodStart is day of month (1-31)
+        if (now.getDate() >= payPeriodStart) {
+          periodStart.setDate(payPeriodStart);
+        } else {
+          periodStart.setMonth(now.getMonth() - 1);
+          periodStart.setDate(payPeriodStart);
+        }
+        periodStart.setHours(0, 0, 0, 0);
+      }
+      
+      return periodStart;
+    }
+    
+    const payPeriodStartDate = getPayPeriodStart();
+
+    // Show ALL technicians who have ANY assigned work orders (regardless of range)
+    const techsWithWork = (Array.isArray(technicians) ? technicians : []).filter(t => {
+      // Check if tech has ANY work orders assigned at all
+      const hasAnyWork = (Array.isArray(orders) ? orders : []).some(w => 
+        w.assigned_employee_id === t.employee_id
+      );
+      return hasAnyWork;
+    });
+
+    techEl.innerHTML = techsWithWork.map(t=>{
+      const name = techDisplayName(t);
+      const initials = initialsFromName(name);
+      const avatarUrl = getAvatarUrl(t);
+
+      // Get ALL work for this tech in range (for calculating hours)
+      const mine = (Array.isArray(orders) ? orders : []).filter(w =>
+        w.assigned_employee_id === t.employee_id &&
+        inRange(w)
+      );
+
+      const hasOverdue = (Array.isArray(orders) ? orders : []).some(w =>
+        w.assigned_employee_id === t.employee_id && isOverdue(w)
+      );
+
+      let rangeH = 0; // Hours in current selected range
+      let completedH = 0; // Hours completed this week
+
+      mine.forEach(w=>{
+        const hrs = jobHours(w);
+        rangeH += hrs; // All hours in the selected range
+      });
+
+      // Calculate completed hours this week
+      const startOfWeek = new Date();
+      const dayOfWeek = startOfWeek.getDay();
+      const mondayOffset = (dayOfWeek + 6) % 7; // Days since Monday
+      startOfWeek.setDate(startOfWeek.getDate() - mondayOffset);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      (Array.isArray(orders) ? orders : []).forEach(w => {
+        if (w.assigned_employee_id !== t.employee_id) return;
+        if ((w.status === 'completed' || w.status === 'closed') && w.scheduled_start) {
+          const completedDate = new Date(w.scheduled_start);
+          if (completedDate >= startOfWeek) {
+            completedH += jobHours(w);
+          }
+        }
+      });
+
+      // Load calculation based on today's hours only
+      let todayH = 0;
+      (Array.isArray(orders) ? orders : []).forEach(w => {
+        if (w.assigned_employee_id !== t.employee_id) return;
+        if (!w.scheduled_start) return;
+        
+        const workDate = new Date(w.scheduled_start);
+        workDate.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (workDate.getTime() === today.getTime()) {
+          todayH += jobHours(w);
+        }
+      });
+
+      const pct = todayH / 8;
+      let cls="light", lbl="LIGHT";
+      if (pct >= 0.5) { cls="normal"; lbl="NORMAL"; }
+      if (pct >= 0.8) { cls="heavy"; lbl="HEAVY"; }
+      if (pct >  1.0) { cls="over";  lbl="OVERBOOKED"; }
+
+      const active = activeTechId === t.employee_id ? "active" : "";
+
+      const avatarStyle = avatarUrl 
+        ? `background-image: url('${avatarUrl}'); background-size: cover; background-position: center;` 
+        : '';
+      
+      // Label for range hours
+      let rangeLabel = "Today";
+      if (activeRange === "next7") rangeLabel = "7 Days";
+      else if (activeRange === "next30") rangeLabel = "30 Days";
+      else if (activeRange === "next90") rangeLabel = "90 Days";
+      else if (activeRange === "all") rangeLabel = "All Scheduled";
+
+      const roleBadge = t.role === 'manager' 
+        ? '<div class="role-badge manager">MANAGER</div>' 
+        : '';
+
+      return `
+        <div class="card tech ${active}" onclick="selectTech('${t.employee_id}')">
+          <div class="techLeft">
+            <div class="metric">${formatHrsRev(rangeH)}</div>
+            <div class="sub">${rangeLabel}</div>
+
+            <div class="metric">${formatHrsRev(completedH)}</div>
+            <div class="sub">Hours Completed This Week</div>
+
+            <div class="load ${cls}">${hasOverdue ? '<span class="dot"></span>' : ''}${lbl}</div>
+          </div>
+
+          <div class="techRight">
+            ${roleBadge}
+            <div class="avatar" style="${avatarStyle}">${avatarUrl ? '' : initials}</div>
+            <div class="techName">${name}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    
+    // If no techs with work, show message
+    if (techsWithWork.length === 0) {
+      techEl.innerHTML = `<div class="muted">No managers or technicians with scheduled work in this view.</div>`;
+    }
+  }
+
+  window.selectTech = function(id){
+    activeTechId = (activeTechId === id) ? null : id;
+    renderTechCards();
+    renderWorkOrders();
+
+    const wo = document.getElementById("workOrders");
+    if (wo) wo.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  function priorityRank(p){
+    const v = String(p || "").toLowerCase();
+    if (v === "urgent" || v === "high") return 0;
+    if (v === "medium") return 1;
+    if (v === "low") return 2;
+    return 3;
+  }
+
+  function workOrdersFiltered(){
+    let arr = Array.isArray(orders) ? orders : [];
+
+    // Default view: exclude completed/closed and ready_for_pickup
+    if (!activeKpi && !activeTechId) {
+      arr = arr.filter(w => 
+        !statusIn("completed", w.status) && 
+        !statusIn("pickup", w.status)
+      );
+    }
+
+    if (activeKpi === "totalopen") {
+      arr = arr.filter(w => !statusIn("completed", w.status) && w.status !== "closed");
+    } else if (activeKpi === "pastdue") {
+      // Show work orders that are past deadline OR scheduled in the past
+      arr = arr.filter(w => {
+        if (w.status === "completed" || w.status === "closed") return false;
+        
+        // Past deadline (scheduled_end in past)
+        if (w.scheduled_end && new Date(w.scheduled_end) < new Date()) return true;
+        
+        // Scheduled in the past (scheduled_start in past)
+        if (w.scheduled_start && new Date(w.scheduled_start) < new Date()) return true;
+        
+        return false;
+      });
+    } else if (activeKpi === "completedandpickup") {
+      arr = arr.filter(w => statusIn("completed", w.status) || statusIn("pickup", w.status));
+    } else if (activeKpi) {
+      arr = arr.filter(w => statusIn(activeKpi, w.status));
+    }
+
+    if (activeTechId === "__unassigned__") {
+      arr = arr.filter(w => !w.assigned_employee_id);
+    } else if (activeTechId) {
+      arr = arr.filter(w => w.assigned_employee_id === activeTechId);
+    }
+
+    // Fleet filtering
+    if (activeFleet === "fleet1") {
+      arr = arr.filter(w => {
+        const vehicle = vehiclesById[w.vehicle_id];
+        return vehicle?.fleet === "Fleet 1";
+      });
+    } else if (activeFleet === "fleet2") {
+      arr = arr.filter(w => {
+        const vehicle = vehiclesById[w.vehicle_id];
+        return vehicle?.fleet === "Fleet 2";
+      });
+    }
+
+    return arr;
+  }
+
+  function renderWorkOrders(){
+    const list = document.getElementById("workOrders");
+    if (!list) return;
+
+    const filtered = workOrdersFiltered();
+
+    if (!filtered.length) {
+      list.innerHTML = `<div class="muted">No work orders for this view.</div>`;
+      return;
+    }
+
+    filtered.sort((a,b)=>{
+      // ALWAYS show past due items first
+      const aPastDue = isPastDue(a);
+      const bPastDue = isPastDue(b);
+      if (aPastDue && !bPastDue) return -1;
+      if (!aPastDue && bPastDue) return 1;
+      
+      // Value sort modifier (applies to any active filter)
+      if (activeSort === "value") {
+        const aValue = jobHours(a) * getLaborRate();
+        const bValue = jobHours(b) * getLaborRate();
+        const valueDiff = bValue - aValue; // Descending (highest value first)
+        if (valueDiff !== 0) return valueDiff;
+      }
+      
+      // When filtering by tech, sort by: most recently opened → scheduled date
+      if (activeTechId && activeTechId !== "__unassigned__") {
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 
+                         a.work_order_id ? parseInt(a.work_order_id.replace(/-/g, '').slice(0, 13)) : 0;
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 
+                         b.work_order_id ? parseInt(b.work_order_id.replace(/-/g, '').slice(0, 13)) : 0;
+        
+        // Most recent first (descending)
+        if (aCreated !== bCreated) return bCreated - aCreated;
+        
+        // Then by scheduled date (ascending)
+        const da = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
+        const db = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
+        return da - db;
+      }
+      
+      // When no KPI filter active, sort by status priority matching KPI card order
+      if (!activeKpi) {
+        const getStatusPriority = (w) => {
+          if (statusIn("complications", w.status)) return 1;
+          if (statusIn("waiting", w.status)) return 2;
+          if (statusIn("pickup", w.status)) return 3;
+          return 4;
+        };
+        
+        const aPriority = getStatusPriority(a);
+        const bPriority = getStatusPriority(b);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+      }
+      
+      // Within "Waiting on Approval" bucket: customer_approval before diagnosis_required
+      if (activeKpi === "complications" || statusIn("complications", a.status)) {
+        if (a.status === "customer_approval" && b.status === "diagnosis_required") return -1;
+        if (a.status === "diagnosis_required" && b.status === "customer_approval") return 1;
+      }
+      
+      // Default sort: by scheduled date (oldest first - ascending)
+      // This makes "Past Due" show oldest items first when Value sort is not active
+      const da = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
+      const db = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
+      return da - db;
+    });
+
+    list.innerHTML = filtered.map(w=>{
+      const customer = customersById[w.customer_id];
+      const customerName = customer 
+        ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown Customer'
+        : (w.customer_name || 'Unknown Customer');
+
+      const vehicle = vehiclesById[w.vehicle_id];
+      const vehicleDisplay = vehicle
+        ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+        : (w.vehicle_description || 'Vehicle not specified');
+
+      const status = w.status || 'draft';
+      const statusDisplay = formatStatus(status);
+
+      const techId = w.assigned_employee_id;
+      const techEmployee = techId ? employeesById[techId] : null;
+      const tech = techId
+        ? (employeesById[techId]?.name
+            || `${employeesById[techId]?.first_name||""} ${employeesById[techId]?.last_name||""}`.trim()
+            || "Unknown Tech")
+        : "Unassigned";
+      
+      const techInitials = techId ? initialsFromName(tech) : "?";
+      const techAvatarUrl = techEmployee ? getAvatarUrl(techEmployee) : null;
+      const techAvatarStyle = techAvatarUrl 
+        ? `background-image: url('${techAvatarUrl}'); background-size: cover; background-position: center;` 
+        : '';
+
+      const scheduleInfo = formatDateTime(w.scheduled_start);
+      let timeDisplay = '';
+      if(scheduleInfo) {
+        timeDisplay = scheduleInfo.time;
+      }
+
+      const hours = jobHours(w);
+      const hoursDisplay = hours > 0 ? `${hours.toFixed(1)} hrs` : '';
+
+      const woId = w.work_order_id || w.id;
+      
+      // Check if past due
+      const pastDue = isPastDue(w);
+      const pastDueStyle = pastDue ? 'border-color:#ef4444; border-left-color:#ef4444;' : '';
+
+      return `
+        <div class="card wo" onclick="viewWorkOrder('${woId}')" style="${pastDueStyle}">
+          <div class="wo-left">
+            <div class="wo-customer">${customerName}</div>
+            <div class="wo-vehicle">${vehicleDisplay}</div>
+            <div class="wo-status-display">${pastDue ? '⚠️ PAST DUE' : statusDisplay}</div>
+            <div class="wo-tech">Tech: ${tech}</div>
+            ${timeDisplay ? `<div class="wo-time">Scheduled: ${timeDisplay}</div>` : ''}
+          </div>
+          <div class="wo-right">
+            ${hoursDisplay ? `<div class="wo-hours">${hoursDisplay}</div>` : ''}
+            <div class="wo-tech-avatar" style="${techAvatarStyle}">${techAvatarUrl ? '' : techInitials}</div>
+            <button class="wo-edit-btn" onclick="editWorkOrder('${woId}', event)">Edit</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  window.viewWorkOrder = function(id){
+    const wo = orders.find(w => (w.work_order_id || w.id) == id);
+    if(!wo) return;
+
+    const customer = customersById[wo.customer_id];
+    const customerName = customer 
+      ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown Customer'
+      : (wo.customer_name || 'Unknown Customer');
+    
+    const customerPhone = customer?.phone || wo.customer_phone || null;
+    const customerEmail = customer?.email || wo.customer_email || null;
+
+    const vehicle = vehiclesById[wo.vehicle_id];
+    const vehicleDisplay = vehicle
+      ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+      : (wo.vehicle_description || 'Vehicle not specified');
+    
+    const vehiclePlate = vehicle?.license_plate || null;
+    const vehicleVin = vehicle?.vin_or_cf_number || null;
+    const vehicleColor = vehicle?.color || null;
+
+    const techId = wo.assigned_employee_id;
+    const tech = techId
+      ? (employeesById[techId]?.name
+          || `${employeesById[techId]?.first_name||""} ${employeesById[techId]?.last_name||""}`.trim()
+          || "Unknown Tech")
+      : "Unassigned";
+
+    const scheduleInfo = formatDateTime(wo.scheduled_start);
+    const scheduleDisplay = scheduleInfo 
+      ? `${scheduleInfo.date} @ ${scheduleInfo.time}`
+      : 'Not scheduled';
+
+    const jobDesc = wo.summary || wo.description || 'No description';
+
+    const status = wo.status || 'draft';
+    const statusDisplay = formatStatus(status);
+
+    const hours = jobHours(wo);
+    const estimate = formatHrsRev(hours);
+
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">Work Order Info</div>
+        <div class="modal-info-row">
+          <span class="modal-label">ID</span>
+          <span class="modal-value">#${wo.work_order_id || wo.id || 'N/A'}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Status</span>
+          <span class="modal-value">${statusDisplay}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Description</span>
+          <span class="modal-value">${jobDesc}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Estimate</span>
+          <span class="modal-value">${estimate}</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Customer</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Name</span>
+          <span class="modal-value">${customerName}</span>
+        </div>
+        ${customerPhone ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Phone</span>
+          <span class="modal-value"><a href="tel:${customerPhone}" onclick="event.stopPropagation()">${customerPhone}</a></span>
+        </div>
+        ` : ''}
+        ${customerEmail ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Email</span>
+          <span class="modal-value"><a href="mailto:${customerEmail}" onclick="event.stopPropagation()">${customerEmail}</a></span>
+        </div>
+        ` : ''}
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Vehicle</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Vehicle</span>
+          <span class="modal-value">${vehicleDisplay}</span>
+        </div>
+        ${vehicleColor ? `
+        <div class="modal-info-row">
+          <span class="modal-label">Color</span>
+          <span class="modal-value">${vehicleColor}</span>
+        </div>
+        ` : ''}
+        ${vehiclePlate ? `
+        <div class="modal-info-row">
+          <span class="modal-label">License Plate</span>
+          <span class="modal-value highlight">${vehiclePlate}</span>
+        </div>
+        ` : ''}
+        ${vehicleVin ? `
+        <div class="modal-info-row">
+          <span class="modal-label">VIN</span>
+          <span class="modal-value highlight">${vehicleVin}</span>
+        </div>
+        ` : ''}
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Assignment & Schedule</div>
+        <div class="modal-info-row">
+          <span class="modal-label">Assigned To</span>
+          <span class="modal-value">${tech}</span>
+        </div>
+        <div class="modal-info-row">
+          <span class="modal-label">Scheduled</span>
+          <span class="modal-value">${scheduleDisplay}</span>
+        </div>
+      </div>
+    `;
+
+    const detailsBtn = document.getElementById('viewDetailsBtn');
+    detailsBtn.textContent = 'Edit Work Order';
+    detailsBtn.onclick = function() {
+      location.href = `work-order-edit.html?id=${wo.work_order_id || wo.id}`;
+    };
+
+    document.getElementById('quickSummaryModal').classList.add('active');
+  };
+
+  window.closeQuickSummary = function(){
+    document.getElementById('quickSummaryModal').classList.remove('active');
+  };
+
+  function showFatal(err){
+    const msg = (err && (err.message || err)) ? String(err.message || err) : "Unknown error";
+    const wo = document.getElementById("workOrders");
+    const tc = document.getElementById("techCards");
+    const kp = document.getElementById("kpis");
+    if (kp) kp.innerHTML = "";
+    if (tc) tc.innerHTML = "";
+    if (wo) wo.innerHTML = `<div class="error">DASHBOARD ERROR:\n${msg}</div>`;
+  }
+
+  async function load(){
+    const token = await validateAuth();
+    if (!token) {
+      localStorage.removeItem("sb_access_token");
+      location.replace("login.html");
+      return;
+    }
+
+    document.body.classList.add('auth-verified');
+
+    // Initialize mobile-specific defaults
+    initMobileDefaults();
+
+    try {
+      const [emp, rawOrders, cust, veh] = await Promise.all([
+        fetchJson(`${FUNCTIONS_BASE}/employees`, token),
+        fetchJson(`${FUNCTIONS_BASE}/work_orders`, token),
+        fetchTable('customers', token),
+        fetchTable('vehicles', token)
+      ]);
+
+      employees = Array.isArray(emp) ? emp : [];
+      employees = employees.map(e => ({ ...e, name: techDisplayName(e) }));
+      employeesById = {};
+      employees.forEach(e => { if (e && e.employee_id) employeesById[e.employee_id] = e; });
+      
+      // Include both technicians and managers, sorted with managers first
+      technicians = employees
+        .filter(e => e.role === "technician" || e.role === "manager")
+        .sort((a, b) => {
+          // Managers first, then technicians
+          if (a.role === "manager" && b.role !== "manager") return -1;
+          if (a.role !== "manager" && b.role === "manager") return 1;
+          // Within same role, sort alphabetically by name
+          return (a.name || '').localeCompare(b.name || '');
+        });
+
+      customers = Array.isArray(cust) ? cust : [];
+      customersById = {};
+      customers.forEach(c => { if (c && c.customer_id) customersById[c.customer_id] = c; });
+
+      vehicles = Array.isArray(veh) ? veh : [];
+      vehiclesById = {};
+      vehicles.forEach(v => { if (v && v.vehicle_id) vehiclesById[v.vehicle_id] = v; });
+
+      const list = Array.isArray(rawOrders) ? rawOrders : [];
+      orders = list.map(w => ({
+        ...w,
+        assigned_employee_id: w.assigned_employee_id || w.assigned_to || null
+      }));
+
+      setTenantTitleSafely();
+
+      activeRange = "today";
+      activeSort = null;
+      activeTechId = null;
+      activeKpi = null;
+
+      renderKPIs();
+      renderTechCards();
+      renderWorkOrders();
+
+      setRange("today");
+      const p = document.getElementById("sortValue");
+      if (p) p.classList.remove("active");
+
+    } catch (err) {
+      console.error('Load error:', err);
+      showFatal(err);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", load);
+  } else {
+    load();
+  }
 </script>
 
 
