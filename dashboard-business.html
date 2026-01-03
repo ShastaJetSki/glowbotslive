@@ -4,9 +4,222 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Business Dashboard</title>
-  <link rel="stylesheet" href="theme-system.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: #0b0f14; color: #e8eef6; }
+    
+    .desktop-header {
+      position: sticky; top: 0; z-index: 100;
+      background: #0b0f14; border-bottom: 1px solid #223044;
+    }
+    
+    .mobile-top-header {
+      display: none; position: sticky; top: 0; z-index: 100;
+      background: #0f1621; border-bottom: 1px solid #223044;
+    }
+
+    .mobile-header-bar {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 12px;
+    }
+
+    .mobile-menu-toggle {
+      background: transparent; border: 1px solid transparent;
+      border-radius: 6px; color: #6b7280; font-size: 20px;
+      padding: 0; width: 36px; height: 36px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .mobile-header-center { flex: 1; margin-left: 12px; }
+    .mobile-header-title { font-size: 18px; font-weight: 600; }
+
+    .mobile-header-content {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .mobile-header-content.expanded { max-height: 200px; }
+
+    .mobile-header-actions {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; padding: 8px 12px 12px;
+      background: #0b0f14; border-top: 1px solid #223044;
+    }
+
+    .mobile-header-actions button {
+      padding: 10px; font-size: 13px;
+      background: #1a2535; border: 1px solid #3b82f6;
+      color: #e8eef6; border-radius: 8px; cursor: pointer;
+    }
+
+    .accordion-icon-header {
+      font-size: 20px; color: #9fb0c3;
+      transition: transform 0.2s ease;
+    }
+    .mobile-menu-toggle.active .accordion-icon-header { transform: rotate(180deg); }
+
+    .mobile-bottom-nav {
+      display: none; position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #0f1621; padding: 8px; z-index: 100;
+    }
+
+    .mobile-nav-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 6px; margin-bottom: 6px;
+    }
+
+    .mobile-nav-secondary {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    }
+
+    .mobile-nav-btn {
+      padding: 10px 8px; border-radius: 8px;
+      border: 1px solid #223044; background: #1a2535;
+      color: #9fb0c3; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+      display: flex; align-items: center; justify-content: center;
+      text-decoration: none; min-height: 44px;
+    }
+    
+    .mobile-nav-grid .mobile-nav-btn { background: #0a373d; }
+
+    .mobile-nav-btn.active, 
+    .mobile-nav-btn:hover {
+      background: #3b82f6; border-color: #3b82f6; color: #fff;
+    }
+    .mobile-nav-btn:active { transform: scale(0.95); }
+    
+    .main { display: flex; flex-direction: column; min-height: 100vh; }
+    .content { flex: 1; padding: 20px; }
+    
+    .top-bar { 
+      background: #1a2535; border-bottom: 1px solid #2d3f56; 
+      padding: 16px 20px; margin-bottom: 20px; 
+    }
+    
+    .date-range-container {
+      display: flex; gap: 12px; align-items: center;
+      justify-content: center; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    
+    .range-select {
+      padding: 12px 16px; border-radius: 8px;
+      border: 2px solid #223044; background: #0f1621;
+      color: #e8eef6; font-size: 14px; font-weight: 600;
+      font-family: system-ui; cursor: pointer;
+      transition: all 0.2s; min-width: 180px;
+    }
+    .range-select:hover { border-color: #3b82f6; }
+    .range-select:focus {
+      outline: none; border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .direction-toggle { display: flex; gap: 8px; }
+    
+    .direction-btn {
+      padding: 12px 24px; border-radius: 8px;
+      border: 2px solid #223044; background: #0f1621;
+      color: #9fb0c3; cursor: pointer; font-size: 14px;
+      font-weight: 600; transition: all 0.2s; min-width: 100px;
+    }
+    .direction-btn:hover {
+      border-color: #2f4461; background: #1a2535;
+    }
+    .direction-btn.active {
+      background: #3b82f6; border-color: #3b82f6; color: white;
+    }
+    .direction-btn:active { transform: scale(0.95); }
+    
+    .section-header {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 16px;
+      background: #1a2535; border-radius: 8px;
+      margin-bottom: 16px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .section-header:hover { background: #223044; }
+    
+    .section-header-title {
+      font-size: 20px; font-weight: 700; color: #60a5fa;
+    }
+    
+    .section-header-icon {
+      font-size: 24px; color: #9fb0c3; transition: transform 0.2s;
+    }
+    .section-header.collapsed .section-header-icon { transform: rotate(-90deg); }
+    
+    .section-content {
+      overflow: hidden; transition: max-height 0.3s ease;
+      margin-bottom: 24px;
+    }
+    .section-content.collapsed { max-height: 0 !important; }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 20px;
+    }
+    
+    .stat-card {
+      background: #1a2535; padding: 16px;
+      border-radius: 8px; border-left: 4px solid #3b82f6;
+    }
+    .stat-card.warning { border-left-color: #f59e0b; }
+    .stat-card.success { border-left-color: #10b981; }
+    .stat-card.danger { border-left-color: #ef4444; }
+    
+    .stat-label {
+      color: #94a3b8; font-size: 12px; margin-bottom: 8px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+      font-size: 28px; font-weight: 700;
+      color: #e8eef6; margin-bottom: 4px;
+    }
+    
+    .stat-subtext { font-size: 13px; color: #9fb0c3; }
+    
+    .chart-container {
+      background: #1a2535; padding: 20px;
+      border-radius: 8px; margin-bottom: 16px;
+    }
+    
+    .chart-title {
+      font-size: 16px; font-weight: 600;
+      color: #60a5fa; margin-bottom: 16px;
+    }
+    
+    canvas { max-height: 300px; }
+    
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block !important; }
+      
+      body { padding-bottom: 102px; }
+      .content { padding: 12px; }
+      
+      .stats-grid { grid-template-columns: 1fr; }
+      
+      .date-range-container {
+        flex-direction: column; gap: 8px;
+      }
+      .range-select { width: 100%; }
+      .direction-toggle { width: 100%; }
+      .direction-btn { flex: 1; }
+      
+      .section-header-title { font-size: 16px; }
+    }
+    
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+    }
+  </style>
 </head>
 <body>
 
@@ -18,7 +231,7 @@
     <div class="mobile-header-center">
       <div class="mobile-header-title">Business Dashboard</div>
     </div>
-    <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
+    <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
   </div>
   
   <div class="mobile-header-content" id="mobileHeaderContent">
@@ -33,23 +246,23 @@
 <div class="desktop-header">
   <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
     <h1 style="margin:0; font-size:32px; font-weight:600;">Business Dashboard</h1>
-    <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
+    <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
   </div>
   
   <div style="padding:0 24px 12px;">
     <nav style="display:flex; gap:24px; overflow-x:auto;">
-      <a href="dashboard-business.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid var(--accent-primary);">Business</a>
-      <a href="dashboard-customer-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
-      <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
-      <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
+      <a href="dashboard-business.html" style="padding:12px 0; color:#3b82f6; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid #3b82f6;">Business</a>
+      <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
+      <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
+      <a href="dashboard-settings.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
     </nav>
   </div>
   
-  <div style="padding:0 24px 12px; border-top:1px solid var(--border-primary); padding-top:12px;">
+  <div style="padding:0 24px 12px; border-top:1px solid #223044; padding-top:12px;">
     <div style="display:flex; gap:12px; justify-content:flex-end;">
-      <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-primary); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
-      <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-primary); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
-      <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-primary); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
+      <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
+      <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
+      <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
     </div>
   </div>
 </div>
@@ -72,8 +285,8 @@
       </div>
     </div>
     
-    <div style="text-align:center; color:var(--text-secondary); font-size:13px; margin-top:8px;">
-      <span id="dateRangeDisplay" style="color:var(--accent-light); font-weight:600;">30 Days (Future)</span>
+    <div style="text-align:center; color:#9fb0c3; font-size:13px; margin-top:8px;">
+      <span id="dateRangeDisplay" style="color:#60a5fa; font-weight:600;">30 Days (Future)</span>
     </div>
   </div>
 
@@ -113,7 +326,7 @@
         </div>
         <div class="stat-card warning">
           <div class="stat-label">Scheduled Orders</div>
-          <div class="stat-value" id="serviceScheduled">0</div>
+          <div class="stat-value" id="serviceOpen">0</div>
           <div class="stat-subtext">Upcoming</div>
         </div>
       </div>
@@ -293,7 +506,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentRange = '30days';
 let currentDirection = 'future';
-let startDate, endDate;
+let startDate = new Date();
+let endDate = new Date();
 let charts = {};
 
 function toggleMobileMenu(button) {
@@ -321,13 +535,6 @@ function toggleSection(sectionId) {
   }
   
   localStorage.setItem('section_' + sectionId, content.classList.contains('collapsed') ? 'collapsed' : 'expanded');
-}
-
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 function formatDateDisplay(date) {
@@ -387,7 +594,6 @@ function calculateDateRange() {
         break;
     }
   } else {
-    // Past
     endDate = new Date(today);
     endDate.setHours(23, 59, 59, 999);
     startDate = new Date(today);
@@ -455,7 +661,8 @@ async function loadServiceData(start, end) {
     const { data: workOrders } = await sb
       .from('work_orders')
       .select('*')
-      .or(`and(created_at.gte.${start.toISOString()},created_at.lte.${end.toISOString()}),and(scheduled_start.gte.${start.toISOString()},scheduled_start.lte.${end.toISOString()})`);
+      .or(`created_at.gte.${start.toISOString()},scheduled_start.gte.${start.toISOString()}`)
+      .or(`created_at.lte.${end.toISOString()},scheduled_start.lte.${end.toISOString()}`);
     
     const completedOrders = (workOrders || []).filter(wo => 
       (wo.status === 'completed' || wo.status === 'closed') &&
@@ -481,9 +688,9 @@ async function loadServiceData(start, end) {
     document.getElementById('serviceLaborHours').textContent = Math.round(totalHours);
     document.getElementById('serviceAvgTicket').textContent = '$' + Math.round(avgTicket).toLocaleString();
     document.getElementById('serviceEfficiency').textContent = '85%';
-    document.getElementById('serviceScheduled').textContent = scheduledOrders.length;
+    document.getElementById('serviceOpen').textContent = scheduledOrders.length;
     
-    createServiceCharts(workOrders, start, end);
+    createServiceCharts();
     
   } catch (error) {
     console.error('Error loading service data:', error);
@@ -515,7 +722,7 @@ async function loadPartsData(start, end) {
     document.getElementById('partsLowStock').textContent = lowStock;
     document.getElementById('partsTurnover').textContent = '4.2x';
     
-    createPartsCharts(transactions, inventory);
+    createPartsCharts();
     
   } catch (error) {
     console.error('Error loading parts data:', error);
@@ -554,28 +761,17 @@ function updateSummary() {
   createSummaryCharts(serviceRev, partsRev, salesRev);
 }
 
-function createServiceCharts(data, start, end) {
-  const dateLabels = [];
-  const current = new Date(start);
-  while (current <= end) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
+function createServiceCharts() {
   if (charts.serviceRevenue) charts.serviceRevenue.destroy();
   const ctx1 = document.getElementById('serviceRevenueChart');
   charts.serviceRevenue = new Chart(ctx1, {
     type: 'line',
     data: {
-      labels: displayLabels,
+      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
       datasets: [{
         label: 'Revenue',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 2000) + 1000),
-        borderColor: 'rgb(59, 130, 246)',
+        data: [1200, 1500, 1800, 1400, 2100],
+        borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         tension: 0.4
       }]
@@ -585,8 +781,8 @@ function createServiceCharts(data, start, end) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        x: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)', maxRotation: 45, minRotation: 45 } }
+        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
@@ -599,39 +795,28 @@ function createServiceCharts(data, start, end) {
       labels: ['Completed', 'In Progress', 'Waiting', 'Scheduled'],
       datasets: [{
         data: [45, 15, 8, 12],
-        backgroundColor: ['rgb(16, 185, 129)', 'rgb(59, 130, 246)', 'rgb(245, 158, 11)', 'rgb(139, 92, 246)']
+        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6']
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { color: 'rgb(232, 238, 246)' } } }
+      plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } }
     }
   });
 }
 
-function createPartsCharts(transactions, inventory) {
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
+function createPartsCharts() {
   if (charts.partsSales) charts.partsSales.destroy();
   const ctx1 = document.getElementById('partsSalesChart');
   charts.partsSales = new Chart(ctx1, {
     type: 'bar',
     data: {
-      labels: displayLabels,
+      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
       datasets: [{
         label: 'Parts Sold',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 30) + 40),
-        backgroundColor: 'rgb(16, 185, 129)'
+        data: [45, 52, 48, 61, 55],
+        backgroundColor: '#10b981'
       }]
     },
     options: {
@@ -639,8 +824,8 @@ function createPartsCharts(transactions, inventory) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        x: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)', maxRotation: 45, minRotation: 45 } }
+        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
@@ -654,7 +839,7 @@ function createPartsCharts(transactions, inventory) {
       datasets: [{
         label: 'Units Sold',
         data: [145, 128, 98, 87, 76],
-        backgroundColor: 'rgb(59, 130, 246)'
+        backgroundColor: '#3b82f6'
       }]
     },
     options: {
@@ -663,35 +848,24 @@ function createPartsCharts(transactions, inventory) {
       indexAxis: 'y',
       plugins: { legend: { display: false } },
       scales: {
-        x: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        y: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } }
+        x: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        y: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
 }
 
 function createSalesCharts() {
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
-  
   if (charts.salesRevenue) charts.salesRevenue.destroy();
   const ctx1 = document.getElementById('salesRevenueChart');
   charts.salesRevenue = new Chart(ctx1, {
     type: 'line',
     data: {
-      labels: displayLabels,
+      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
       datasets: [{
         label: 'Revenue',
-        data: new Array(displayLabels.length).fill(0),
-        borderColor: 'rgb(139, 92, 246)',
+        data: [0, 0, 0, 0, 0],
+        borderColor: '#8b5cf6',
         backgroundColor: 'rgba(139, 92, 246, 0.1)',
         tension: 0.4
       }]
@@ -701,8 +875,8 @@ function createSalesCharts() {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        x: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)', maxRotation: 45, minRotation: 45 } }
+        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
@@ -716,7 +890,7 @@ function createSalesCharts() {
       datasets: [{
         label: 'Deals',
         data: [0, 0, 0, 0, 0],
-        backgroundColor: 'rgb(139, 92, 246)'
+        backgroundColor: '#8b5cf6'
       }]
     },
     options: {
@@ -724,8 +898,8 @@ function createSalesCharts() {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        x: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } }
+        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
@@ -740,37 +914,26 @@ function createSummaryCharts(serviceRev, partsRev, salesRev) {
       labels: ['Service', 'Parts', 'Sales'],
       datasets: [{
         data: [serviceRev, partsRev, salesRev],
-        backgroundColor: ['rgb(59, 130, 246)', 'rgb(16, 185, 129)', 'rgb(139, 92, 246)']
+        backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6']
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { color: 'rgb(232, 238, 246)' } } }
+      plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } }
     }
   });
-  
-  const dateLabels = [];
-  const current = new Date(startDate);
-  while (current <= endDate) {
-    dateLabels.push(formatDateDisplay(new Date(current)));
-    current.setDate(current.getDate() + 1);
-  }
-  
-  const displayLabels = dateLabels.length > 30 
-    ? dateLabels.filter((_, i) => i % Math.ceil(dateLabels.length / 30) === 0)
-    : dateLabels;
   
   if (charts.summaryTrend) charts.summaryTrend.destroy();
   const ctx2 = document.getElementById('summaryTrendChart');
   charts.summaryTrend = new Chart(ctx2, {
     type: 'line',
     data: {
-      labels: displayLabels,
+      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
       datasets: [{
         label: 'Total Revenue',
-        data: new Array(displayLabels.length).fill(0).map(() => Math.floor(Math.random() * 2000) + 1000),
-        borderColor: 'rgb(96, 165, 250)',
+        data: [1200, 1500, 1800, 1400, 2100],
+        borderColor: '#60a5fa',
         backgroundColor: 'rgba(96, 165, 250, 0.1)',
         tension: 0.4
       }]
@@ -780,8 +943,8 @@ function createSummaryCharts(serviceRev, partsRev, salesRev) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)' } },
-        x: { grid: { color: 'rgb(34, 48, 68)' }, ticks: { color: 'rgb(159, 176, 195)', maxRotation: 45, minRotation: 45 } }
+        y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } },
+        x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }
       }
     }
   });
