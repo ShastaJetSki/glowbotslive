@@ -3,7 +3,800 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foreign Key Deployment - 120 Constraints</title><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Foreign Key Deployment - 120 Constraints</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0f1419;
+            color: #e1e8ed;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a5f45 0%, #1e7a5f 100%);
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(26, 95, 69, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat {
+            background: #1a1f2e;
+            border: 1px solid #2a3441;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-number.total { color: #2a9d68; }
+        .stat-number.passed { color: #22c55e; }
+        .stat-number.failed { color: #ef4444; }
+        .stat-number.pending { color: #64748b; }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .connection-panel {
+            background: #1a1f2e;
+            border: 1px solid #2a3441;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .connection-panel h3 {
+            color: #2a9d68;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            background: #0f1419;
+            border: 1px solid #2a3441;
+            border-radius: 6px;
+            padding: 12px 16px;
+            color: #e1e8ed;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #2a9d68;
+            box-shadow: 0 0 0 3px rgba(42, 157, 104, 0.1);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #2a9d68;
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background: #248556;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(42, 157, 104, 0.4);
+        }
+
+        .btn-secondary {
+            background: #1e293b;
+            color: #e1e8ed;
+            border: 1px solid #2a3441;
+        }
+
+        .btn-secondary:hover {
+            background: #2a3441;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .fk-table-container {
+            background: #1a1f2e;
+            border: 1px solid #2a3441;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .fk-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .fk-table thead {
+            background: #0f1419;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .fk-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #2a9d68;
+            border-bottom: 2px solid #2a3441;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .fk-table tbody tr {
+            border-bottom: 1px solid #2a3441;
+            transition: background 0.2s;
+        }
+
+        .fk-table tbody tr:hover {
+            background: #1e293b;
+        }
+
+        .fk-table tbody tr.status-passed {
+            background: rgba(34, 197, 94, 0.05);
+        }
+
+        .fk-table tbody tr.status-failed {
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .fk-table tbody tr.status-running {
+            background: rgba(42, 157, 104, 0.1);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .fk-table td {
+            padding: 15px;
+            font-size: 0.9rem;
+        }
+
+        .fk-number {
+            color: #64748b;
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+        }
+
+        .fk-name {
+            color: #e1e8ed;
+            font-weight: 500;
+        }
+
+        .fk-relationship {
+            color: #94a3b8;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .fk-category {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #2a3441;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.pending {
+            background: #1e293b;
+            color: #64748b;
+            border: 1px solid #2a3441;
+        }
+
+        .status-badge.passed {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status-badge.failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-badge.running {
+            background: rgba(42, 157, 104, 0.15);
+            color: #2a9d68;
+            border: 1px solid rgba(42, 157, 104, 0.3);
+        }
+
+        .btn-run {
+            padding: 8px 16px;
+            background: #2a9d68;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 80px;
+        }
+
+        .btn-run:hover:not(:disabled) {
+            background: #248556;
+            transform: translateY(-1px);
+        }
+
+        .btn-run:disabled {
+            background: #2a3441;
+            color: #64748b;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #fca5a5;
+            font-family: 'Courier New', monospace;
+        }
+
+        .progress-bar-container {
+            background: #0f1419;
+            border-radius: 8px;
+            height: 8px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #2a9d68 0%, #248556 100%);
+            transition: width 0.5s ease;
+            border-radius: 8px;
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .filter-tab {
+            padding: 10px 20px;
+            background: #1a1f2e;
+            border: 1px solid #2a3441;
+            border-radius: 6px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .filter-tab:hover {
+            background: #1e293b;
+        }
+
+        .filter-tab.active {
+            background: #2a9d68;
+            color: #ffffff;
+            border-color: #2a9d68;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f1419;
+            border: 1px solid #2a3441;
+            border-radius: 6px;
+            color: #e1e8ed;
+            font-size: 0.95rem;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #2a9d68;
+            box-shadow: 0 0 0 3px rgba(42, 157, 104, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔗 Foreign Key Deployment</h1>
+            <p>Deploy and track all 120 foreign key constraints one at a time</p>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="stat-number total" id="stat-total">120</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number passed" id="stat-passed">0</div>
+                <div class="stat-label">✅ Passed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number failed" id="stat-failed">0</div>
+                <div class="stat-label">❌ Failed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number pending" id="stat-pending">120</div>
+                <div class="stat-label">⏳ Pending</div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+        </div>
+
+        <!-- Connection Panel -->
+        <div class="connection-panel">
+            <h3>⚡ Database Connection</h3>
+            <div class="input-group">
+                <input type="text" id="supabase-url" placeholder="Supabase Project URL">
+                <input type="password" id="supabase-key" placeholder="Supabase Anon Key">
+                <button class="btn btn-primary" onclick="connectSupabase()">Connect</button>
+            </div>
+            <div class="controls">
+                <button class="btn btn-primary" onclick="runAll()">▶️ Run All</button>
+                <button class="btn btn-secondary" onclick="resetAll()">🔄 Reset All</button>
+                <button class="btn btn-secondary" onclick="exportProgress()">💾 Export Progress</button>
+            </div>
+        </div>
+
+        <!-- Search & Filter -->
+        <div class="search-box">
+            <input type="text" id="search" placeholder="🔍 Search foreign keys..." oninput="filterTable()">
+        </div>
+
+        <div class="filter-tabs">
+            <div class="filter-tab active" onclick="setFilter('all')">All (120)</div>
+            <div class="filter-tab" onclick="setFilter('pending')">Pending (<span id="filter-pending">120</span>)</div>
+            <div class="filter-tab" onclick="setFilter('passed')">Passed (<span id="filter-passed">0</span>)</div>
+            <div class="filter-tab" onclick="setFilter('failed')">Failed (<span id="filter-failed">0</span>)</div>
+        </div>
+
+        <!-- FK Table -->
+        <div class="fk-table-container">
+            <table class="fk-table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">#</th>
+                        <th style="width: 200px;">Category</th>
+                        <th>Foreign Key</th>
+                        <th style="width: 300px;">Relationship</th>
+                        <th style="width: 120px;">Status</th>
+                        <th style="width: 100px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="fk-table-body">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // All 120 Foreign Keys
+        const foreignKeys = [
+            { id: 1, category: "Multi-Tenancy", name: "tenant_users → tenants", table: "tenant_users", constraint: "fk_tenant_users_tenant", sql: "ALTER TABLE tenant_users ADD CONSTRAINT fk_tenant_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 2, category: "Multi-Tenancy", name: "tenant_users → users", table: "tenant_users", constraint: "fk_tenant_users_user", sql: "ALTER TABLE tenant_users ADD CONSTRAINT fk_tenant_users_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 3, category: "Users & Roles", name: "users → tenants", table: "users", constraint: "fk_users_tenant", sql: "ALTER TABLE users ADD CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 4, category: "Users & Roles", name: "user_roles → users", table: "user_roles", constraint: "fk_user_roles_user", sql: "ALTER TABLE user_roles ADD CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 5, category: "Users & Roles", name: "user_roles → roles", table: "user_roles", constraint: "fk_user_roles_role", sql: "ALTER TABLE user_roles ADD CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 6, category: "Users & Roles", name: "role_permissions → roles", table: "role_permissions", constraint: "fk_role_permissions_role", sql: "ALTER TABLE role_permissions ADD CONSTRAINT fk_role_permissions_role FOREIGN KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 7, category: "Users & Roles", name: "roles → tenants", table: "roles", constraint: "fk_roles_tenant", sql: "ALTER TABLE roles ADD CONSTRAINT fk_roles_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 8, category: "Users & Roles", name: "role_permissions → permissions", table: "role_permissions", constraint: "fk_role_permissions_permission", sql: "ALTER TABLE role_permissions ADD CONSTRAINT fk_role_permissions_permission FOREIGN KEY (permission_id) REFERENCES permissions(permission_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 9, category: "Customers & Vehicles", name: "vehicles → customers", table: "vehicles", constraint: "fk_vehicles_customer", sql: "ALTER TABLE vehicles ADD CONSTRAINT fk_vehicles_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 10, category: "Customers & Vehicles", name: "vehicles → tenants", table: "vehicles", constraint: "fk_vehicles_tenant", sql: "ALTER TABLE vehicles ADD CONSTRAINT fk_vehicles_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 11, category: "Employees", name: "employees → tenants", table: "employees", constraint: "fk_employees_tenant", sql: "ALTER TABLE employees ADD CONSTRAINT fk_employees_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 12, category: "Employees", name: "employees → users", table: "employees", constraint: "fk_employees_user", sql: "ALTER TABLE employees ADD CONSTRAINT fk_employees_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 13, category: "Employees", name: "invites → tenants", table: "invites", constraint: "fk_invites_tenant", sql: "ALTER TABLE invites ADD CONSTRAINT fk_invites_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 14, category: "Work Orders", name: "work_orders → tenants", table: "work_orders", constraint: "fk_work_orders_tenant", sql: "ALTER TABLE work_orders ADD CONSTRAINT fk_work_orders_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 15, category: "Work Orders", name: "work_orders → customers", table: "work_orders", constraint: "fk_work_orders_customer", sql: "ALTER TABLE work_orders ADD CONSTRAINT fk_work_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 16, category: "Work Orders", name: "work_orders → vehicles", table: "work_orders", constraint: "fk_work_orders_vehicle", sql: "ALTER TABLE work_orders ADD CONSTRAINT fk_work_orders_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles(vehicle_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 17, category: "Work Orders", name: "work_orders → employees", table: "work_orders", constraint: "fk_work_orders_assigned_employee", sql: "ALTER TABLE work_orders ADD CONSTRAINT fk_work_orders_assigned_employee FOREIGN KEY (assigned_employee_id) REFERENCES employees(employee_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 18, category: "Work Order Details", name: "work_order_parts → tenants", table: "work_order_parts", constraint: "fk_work_order_parts_tenant", sql: "ALTER TABLE work_order_parts ADD CONSTRAINT fk_work_order_parts_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 19, category: "Work Order Details", name: "work_order_parts → work_orders", table: "work_order_parts", constraint: "fk_work_order_parts_work_order", sql: "ALTER TABLE work_order_parts ADD CONSTRAINT fk_work_order_parts_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 20, category: "Work Order Details", name: "work_order_parts → parts", table: "work_order_parts", constraint: "fk_work_order_parts_part", sql: "ALTER TABLE work_order_parts ADD CONSTRAINT fk_work_order_parts_part FOREIGN KEY (part_id) REFERENCES parts(part_id) ON DELETE RESTRICT NOT VALID;" },
+            { id: 21, category: "Work Order Details", name: "work_order_labor_lines → tenants", table: "work_order_labor_lines", constraint: "fk_work_order_labor_lines_tenant", sql: "ALTER TABLE work_order_labor_lines ADD CONSTRAINT fk_work_order_labor_lines_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 22, category: "Work Order Details", name: "work_order_labor_lines → work_orders", table: "work_order_labor_lines", constraint: "fk_work_order_labor_lines_work_order", sql: "ALTER TABLE work_order_labor_lines ADD CONSTRAINT fk_work_order_labor_lines_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 23, category: "Work Order Details", name: "work_order_labor_lines → employees", table: "work_order_labor_lines", constraint: "fk_work_order_labor_lines_employee", sql: "ALTER TABLE work_order_labor_lines ADD CONSTRAINT fk_work_order_labor_lines_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 24, category: "Parts", name: "parts → tenants", table: "parts", constraint: "fk_parts_tenant", sql: "ALTER TABLE parts ADD CONSTRAINT fk_parts_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 25, category: "Parts", name: "parts_inventory → tenants", table: "parts_inventory", constraint: "fk_parts_inventory_tenant", sql: "ALTER TABLE parts_inventory ADD CONSTRAINT fk_parts_inventory_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 26, category: "Parts", name: "parts_inventory → categories", table: "parts_inventory", constraint: "fk_parts_inventory_category", sql: "ALTER TABLE parts_inventory ADD CONSTRAINT fk_parts_inventory_category FOREIGN KEY (category_id) REFERENCES parts_categories(category_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 27, category: "Parts", name: "parts_categories → tenants", table: "parts_categories", constraint: "fk_parts_categories_tenant", sql: "ALTER TABLE parts_categories ADD CONSTRAINT fk_parts_categories_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 28, category: "Parts Suppliers", name: "parts_suppliers → tenants", table: "parts_suppliers", constraint: "fk_parts_suppliers_tenant", sql: "ALTER TABLE parts_suppliers ADD CONSTRAINT fk_parts_suppliers_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 29, category: "Parts Suppliers", name: "parts_purchase_orders → tenants", table: "parts_purchase_orders", constraint: "fk_parts_purchase_orders_tenant", sql: "ALTER TABLE parts_purchase_orders ADD CONSTRAINT fk_parts_purchase_orders_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 30, category: "Parts Suppliers", name: "parts_purchase_orders → suppliers", table: "parts_purchase_orders", constraint: "fk_parts_purchase_orders_supplier", sql: "ALTER TABLE parts_purchase_orders ADD CONSTRAINT fk_parts_purchase_orders_supplier FOREIGN KEY (supplier_id) REFERENCES parts_suppliers(supplier_id) ON DELETE RESTRICT NOT VALID;" },
+            { id: 31, category: "Parts Suppliers", name: "parts_purchase_order_lines → tenants", table: "parts_purchase_order_lines", constraint: "fk_parts_purchase_order_lines_tenant", sql: "ALTER TABLE parts_purchase_order_lines ADD CONSTRAINT fk_parts_purchase_order_lines_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 32, category: "Parts Suppliers", name: "parts_purchase_order_lines → POs", table: "parts_purchase_order_lines", constraint: "fk_parts_purchase_order_lines_po", sql: "ALTER TABLE parts_purchase_order_lines ADD CONSTRAINT fk_parts_purchase_order_lines_po FOREIGN KEY (po_id) REFERENCES parts_purchase_orders(po_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 33, category: "Parts Suppliers", name: "parts_purchase_order_lines → parts", table: "parts_purchase_order_lines", constraint: "fk_parts_purchase_order_lines_part", sql: "ALTER TABLE parts_purchase_order_lines ADD CONSTRAINT fk_parts_purchase_order_lines_part FOREIGN KEY (part_id) REFERENCES parts(part_id) ON DELETE RESTRICT NOT VALID;" },
+            { id: 34, category: "Parts Invoices", name: "parts_invoices → tenants", table: "parts_invoices", constraint: "fk_parts_invoices_tenant", sql: "ALTER TABLE parts_invoices ADD CONSTRAINT fk_parts_invoices_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 35, category: "Parts Invoices", name: "parts_invoice_lines → tenants", table: "parts_invoice_lines", constraint: "fk_parts_invoice_lines_tenant", sql: "ALTER TABLE parts_invoice_lines ADD CONSTRAINT fk_parts_invoice_lines_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 36, category: "Parts Invoices", name: "parts_invoice_lines → invoices", table: "parts_invoice_lines", constraint: "fk_parts_invoice_lines_invoice", sql: "ALTER TABLE parts_invoice_lines ADD CONSTRAINT fk_parts_invoice_lines_invoice FOREIGN KEY (invoice_id) REFERENCES parts_invoices(invoice_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 37, category: "Parts Invoices", name: "parts_invoice_lines → parts", table: "parts_invoice_lines", constraint: "fk_parts_invoice_lines_part", sql: "ALTER TABLE parts_invoice_lines ADD CONSTRAINT fk_parts_invoice_lines_part FOREIGN KEY (part_id) REFERENCES parts(part_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 38, category: "Parts Invoices", name: "parts_transactions → tenants", table: "parts_transactions", constraint: "fk_parts_transactions_tenant", sql: "ALTER TABLE parts_transactions ADD CONSTRAINT fk_parts_transactions_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 39, category: "Parts Invoices", name: "parts_transactions → parts", table: "parts_transactions", constraint: "fk_parts_transactions_part", sql: "ALTER TABLE parts_transactions ADD CONSTRAINT fk_parts_transactions_part FOREIGN KEY (part_id) REFERENCES parts(part_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 40, category: "Parts Extras", name: "parts_notes → tenants", table: "parts_notes", constraint: "fk_parts_notes_tenant", sql: "ALTER TABLE parts_notes ADD CONSTRAINT fk_parts_notes_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 41, category: "Parts Extras", name: "parts_settings → tenants", table: "parts_settings", constraint: "fk_parts_settings_tenant", sql: "ALTER TABLE parts_settings ADD CONSTRAINT fk_parts_settings_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 42, category: "Parts Extras", name: "parts_specials → tenants", table: "parts_specials", constraint: "fk_parts_specials_tenant", sql: "ALTER TABLE parts_specials ADD CONSTRAINT fk_parts_specials_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 43, category: "Labor", name: "labor_codes_library → tenants", table: "labor_codes_library", constraint: "fk_labor_codes_library_tenant", sql: "ALTER TABLE labor_codes_library ADD CONSTRAINT fk_labor_codes_library_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 44, category: "Labor", name: "labor_entries → tenants", table: "labor_entries", constraint: "fk_labor_entries_tenant", sql: "ALTER TABLE labor_entries ADD CONSTRAINT fk_labor_entries_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 45, category: "Labor", name: "labor_entries → work_orders", table: "labor_entries", constraint: "fk_labor_entries_work_order", sql: "ALTER TABLE labor_entries ADD CONSTRAINT fk_labor_entries_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 46, category: "Labor", name: "labor_entries → employees", table: "labor_entries", constraint: "fk_labor_entries_employee", sql: "ALTER TABLE labor_entries ADD CONSTRAINT fk_labor_entries_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 47, category: "Labor", name: "labor_time_entries → tenants", table: "labor_time_entries", constraint: "fk_labor_time_entries_tenant", sql: "ALTER TABLE labor_time_entries ADD CONSTRAINT fk_labor_time_entries_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 48, category: "Labor", name: "labor_time_entries → employees", table: "labor_time_entries", constraint: "fk_labor_time_entries_employee", sql: "ALTER TABLE labor_time_entries ADD CONSTRAINT fk_labor_time_entries_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 49, category: "Labor & Scheduling", name: "labor_lines → tenants", table: "labor_lines", constraint: "fk_labor_lines_tenant", sql: "ALTER TABLE labor_lines ADD CONSTRAINT fk_labor_lines_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 50, category: "Labor & Scheduling", name: "labor_lines → work_orders", table: "labor_lines", constraint: "fk_labor_lines_work_order", sql: "ALTER TABLE labor_lines ADD CONSTRAINT fk_labor_lines_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 51, category: "Labor & Scheduling", name: "labor_lines → employees", table: "labor_lines", constraint: "fk_labor_lines_employee", sql: "ALTER TABLE labor_lines ADD CONSTRAINT fk_labor_lines_employee FOREIGN KEY (assigned_employee_id) REFERENCES employees(employee_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 52, category: "Labor & Scheduling", name: "schedules → tenants", table: "schedules", constraint: "fk_schedules_tenant", sql: "ALTER TABLE schedules ADD CONSTRAINT fk_schedules_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 53, category: "Labor & Scheduling", name: "schedules → work_orders", table: "schedules", constraint: "fk_schedules_work_order", sql: "ALTER TABLE schedules ADD CONSTRAINT fk_schedules_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 54, category: "Labor & Scheduling", name: "schedules → employees", table: "schedules", constraint: "fk_schedules_employee", sql: "ALTER TABLE schedules ADD CONSTRAINT fk_schedules_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 55, category: "Schedule Entries", name: "schedule_entries → tenants", table: "schedule_entries", constraint: "fk_schedule_entries_tenant", sql: "ALTER TABLE schedule_entries ADD CONSTRAINT fk_schedule_entries_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 56, category: "Schedule Entries", name: "schedule_entries → labor_lines", table: "schedule_entries", constraint: "fk_schedule_entries_labor_line", sql: "ALTER TABLE schedule_entries ADD CONSTRAINT fk_schedule_entries_labor_line FOREIGN KEY (labor_line_id) REFERENCES labor_lines(labor_line_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 57, category: "Schedule Entries", name: "schedule_entries → employees", table: "schedule_entries", constraint: "fk_schedule_entries_employee", sql: "ALTER TABLE schedule_entries ADD CONSTRAINT fk_schedule_entries_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 58, category: "Invoices & Billing", name: "invoices → tenants", table: "invoices", constraint: "fk_invoices_tenant", sql: "ALTER TABLE invoices ADD CONSTRAINT fk_invoices_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 59, category: "Invoices & Billing", name: "billing → tenants", table: "billing", constraint: "fk_billing_tenant", sql: "ALTER TABLE billing ADD CONSTRAINT fk_billing_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 60, category: "Invoices & Billing", name: "payment_methods → tenants", table: "payment_methods", constraint: "fk_payment_methods_tenant", sql: "ALTER TABLE payment_methods ADD CONSTRAINT fk_payment_methods_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 61, category: "Invoices & Billing", name: "revenue_records → tenants", table: "revenue_records", constraint: "fk_revenue_records_tenant", sql: "ALTER TABLE revenue_records ADD CONSTRAINT fk_revenue_records_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 62, category: "Subscriptions", name: "subscription_changes → tenants", table: "subscription_changes", constraint: "fk_subscription_changes_tenant", sql: "ALTER TABLE subscription_changes ADD CONSTRAINT fk_subscription_changes_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 63, category: "Subscriptions", name: "tenants → subscription_tiers", table: "tenants", constraint: "fk_tenants_tier", sql: "ALTER TABLE tenants ADD CONSTRAINT fk_tenants_tier FOREIGN KEY (tier_id) REFERENCES subscription_tiers(tier_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 64, category: "Deals & CRM", name: "pipelines → tenants", table: "pipelines", constraint: "fk_pipelines_tenant", sql: "ALTER TABLE pipelines ADD CONSTRAINT fk_pipelines_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 65, category: "Deals & CRM", name: "pipeline_stages → pipelines", table: "pipeline_stages", constraint: "fk_pipeline_stages_pipeline", sql: "ALTER TABLE pipeline_stages ADD CONSTRAINT fk_pipeline_stages_pipeline FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 66, category: "Deals & CRM", name: "deals → tenants", table: "deals", constraint: "fk_deals_tenant", sql: "ALTER TABLE deals ADD CONSTRAINT fk_deals_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 67, category: "Deals & CRM", name: "deals → customers", table: "deals", constraint: "fk_deals_customer", sql: "ALTER TABLE deals ADD CONSTRAINT fk_deals_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 68, category: "Deals & CRM", name: "deals → pipelines", table: "deals", constraint: "fk_deals_pipeline", sql: "ALTER TABLE deals ADD CONSTRAINT fk_deals_pipeline FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 69, category: "Deals & CRM", name: "deals → stages", table: "deals", constraint: "fk_deals_stage", sql: "ALTER TABLE deals ADD CONSTRAINT fk_deals_stage FOREIGN KEY (stage_id) REFERENCES pipeline_stages(stage_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 70, category: "Deal History", name: "deal_stage_history → deals", table: "deal_stage_history", constraint: "fk_deal_stage_history_deal", sql: "ALTER TABLE deal_stage_history ADD CONSTRAINT fk_deal_stage_history_deal FOREIGN KEY (deal_id) REFERENCES deals(deal_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 71, category: "Deal History", name: "deal_stage_history → from_stage", table: "deal_stage_history", constraint: "fk_deal_stage_history_from_stage", sql: "ALTER TABLE deal_stage_history ADD CONSTRAINT fk_deal_stage_history_from_stage FOREIGN KEY (from_stage_id) REFERENCES pipeline_stages(stage_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 72, category: "Deal History", name: "deal_stage_history → to_stage", table: "deal_stage_history", constraint: "fk_deal_stage_history_to_stage", sql: "ALTER TABLE deal_stage_history ADD CONSTRAINT fk_deal_stage_history_to_stage FOREIGN KEY (to_stage_id) REFERENCES pipeline_stages(stage_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 73, category: "Deal History", name: "customer_activities → tenants", table: "customer_activities", constraint: "fk_customer_activities_tenant", sql: "ALTER TABLE customer_activities ADD CONSTRAINT fk_customer_activities_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 74, category: "Deal History", name: "customer_activities → customers", table: "customer_activities", constraint: "fk_customer_activities_customer", sql: "ALTER TABLE customer_activities ADD CONSTRAINT fk_customer_activities_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 75, category: "Customer Data", name: "customer_notes → tenants", table: "customer_notes", constraint: "fk_customer_notes_tenant", sql: "ALTER TABLE customer_notes ADD CONSTRAINT fk_customer_notes_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 76, category: "Customer Data", name: "customer_notes → customers", table: "customer_notes", constraint: "fk_customer_notes_customer", sql: "ALTER TABLE customer_notes ADD CONSTRAINT fk_customer_notes_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 77, category: "Customer Data", name: "customer_notes → author", table: "customer_notes", constraint: "fk_customer_notes_author", sql: "ALTER TABLE customer_notes ADD CONSTRAINT fk_customer_notes_author FOREIGN KEY (author_user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 78, category: "Customer Data", name: "customer_orders → customers", table: "customer_orders", constraint: "fk_customer_orders_customer", sql: "ALTER TABLE customer_orders ADD CONSTRAINT fk_customer_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 79, category: "Fleets", name: "fleets → tenants", table: "fleets", constraint: "fk_fleets_tenant", sql: "ALTER TABLE fleets ADD CONSTRAINT fk_fleets_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 80, category: "Fleets", name: "vehicle_fleet_assignments → tenants", table: "vehicle_fleet_assignments", constraint: "fk_vehicle_fleet_assignments_tenant", sql: "ALTER TABLE vehicle_fleet_assignments ADD CONSTRAINT fk_vehicle_fleet_assignments_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 81, category: "Fleets", name: "vehicle_fleet_assignments → vehicles", table: "vehicle_fleet_assignments", constraint: "fk_vehicle_fleet_assignments_vehicle", sql: "ALTER TABLE vehicle_fleet_assignments ADD CONSTRAINT fk_vehicle_fleet_assignments_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles(vehicle_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 82, category: "Fleets", name: "vehicle_fleet_assignments → fleets", table: "vehicle_fleet_assignments", constraint: "fk_vehicle_fleet_assignments_fleet", sql: "ALTER TABLE vehicle_fleet_assignments ADD CONSTRAINT fk_vehicle_fleet_assignments_fleet FOREIGN KEY (fleet_id) REFERENCES fleets(fleet_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 83, category: "Fleets", name: "vehicle_fleet_assignments → users", table: "vehicle_fleet_assignments", constraint: "fk_vehicle_fleet_assignments_assigned_by", sql: "ALTER TABLE vehicle_fleet_assignments ADD CONSTRAINT fk_vehicle_fleet_assignments_assigned_by FOREIGN KEY (assigned_by) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 84, category: "AI Features", name: "ai_customer_signals → tenants", table: "ai_customer_signals", constraint: "fk_ai_customer_signals_tenant", sql: "ALTER TABLE ai_customer_signals ADD CONSTRAINT fk_ai_customer_signals_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 85, category: "AI Features", name: "ai_customer_signals → customers", table: "ai_customer_signals", constraint: "fk_ai_customer_signals_customer", sql: "ALTER TABLE ai_customer_signals ADD CONSTRAINT fk_ai_customer_signals_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 86, category: "AI Features", name: "ai_customer_summaries → tenants", table: "ai_customer_summaries", constraint: "fk_ai_customer_summaries_tenant", sql: "ALTER TABLE ai_customer_summaries ADD CONSTRAINT fk_ai_customer_summaries_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 87, category: "AI Features", name: "ai_customer_summaries → customers", table: "ai_customer_summaries", constraint: "fk_ai_customer_summaries_customer", sql: "ALTER TABLE ai_customer_summaries ADD CONSTRAINT fk_ai_customer_summaries_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 88, category: "AI Features", name: "ai_next_actions → tenants", table: "ai_next_actions", constraint: "fk_ai_next_actions_tenant", sql: "ALTER TABLE ai_next_actions ADD CONSTRAINT fk_ai_next_actions_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 89, category: "AI Features", name: "ai_next_actions → customers", table: "ai_next_actions", constraint: "fk_ai_next_actions_customer", sql: "ALTER TABLE ai_next_actions ADD CONSTRAINT fk_ai_next_actions_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 90, category: "AI Usage", name: "ai_event_log → tenants", table: "ai_event_log", constraint: "fk_ai_event_log_tenant", sql: "ALTER TABLE ai_event_log ADD CONSTRAINT fk_ai_event_log_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 91, category: "AI Usage", name: "ai_event_log → customers", table: "ai_event_log", constraint: "fk_ai_event_log_customer", sql: "ALTER TABLE ai_event_log ADD CONSTRAINT fk_ai_event_log_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 92, category: "AI Usage", name: "ai_usage → tenants", table: "ai_usage", constraint: "fk_ai_usage_tenant", sql: "ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 93, category: "AI Usage", name: "ai_usage → users", table: "ai_usage", constraint: "fk_ai_usage_user", sql: "ALTER TABLE ai_usage ADD CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 94, category: "AI Usage", name: "ai_refresh_queue → tenants", table: "ai_refresh_queue", constraint: "fk_ai_refresh_queue_tenant", sql: "ALTER TABLE ai_refresh_queue ADD CONSTRAINT fk_ai_refresh_queue_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 95, category: "AI Usage", name: "ai_refresh_queue → customers", table: "ai_refresh_queue", constraint: "fk_ai_refresh_queue_customer", sql: "ALTER TABLE ai_refresh_queue ADD CONSTRAINT fk_ai_refresh_queue_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 96, category: "AI Addons", name: "ai_wallet → tenants", table: "ai_wallet", constraint: "fk_ai_wallet_tenant", sql: "ALTER TABLE ai_wallet ADD CONSTRAINT fk_ai_wallet_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 97, category: "AI Addons", name: "ai_usage_log → tenants", table: "ai_usage_log", constraint: "fk_ai_usage_log_tenant", sql: "ALTER TABLE ai_usage_log ADD CONSTRAINT fk_ai_usage_log_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 98, category: "AI Addons", name: "ai_usage_log → addons", table: "ai_usage_log", constraint: "fk_ai_usage_log_addon", sql: "ALTER TABLE ai_usage_log ADD CONSTRAINT fk_ai_usage_log_addon FOREIGN KEY (addon_id) REFERENCES ai_addons(addon_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 99, category: "AI Addons", name: "tenant_ai_addons → tenants", table: "tenant_ai_addons", constraint: "fk_tenant_ai_addons_tenant", sql: "ALTER TABLE tenant_ai_addons ADD CONSTRAINT fk_tenant_ai_addons_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 100, category: "AI Addons", name: "tenant_ai_addons → addons", table: "tenant_ai_addons", constraint: "fk_tenant_ai_addons_addon", sql: "ALTER TABLE tenant_ai_addons ADD CONSTRAINT fk_tenant_ai_addons_addon FOREIGN KEY (addon_id) REFERENCES ai_addons(addon_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 101, category: "Support", name: "support_tickets → tenants", table: "support_tickets", constraint: "fk_support_tickets_tenant", sql: "ALTER TABLE support_tickets ADD CONSTRAINT fk_support_tickets_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 102, category: "Support", name: "support_tickets → users", table: "support_tickets", constraint: "fk_support_tickets_user", sql: "ALTER TABLE support_tickets ADD CONSTRAINT fk_support_tickets_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 103, category: "Support", name: "support_tickets → assigned_to", table: "support_tickets", constraint: "fk_support_tickets_assigned_to", sql: "ALTER TABLE support_tickets ADD CONSTRAINT fk_support_tickets_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 104, category: "Support", name: "ticket_comments → tickets", table: "ticket_comments", constraint: "fk_ticket_comments_ticket", sql: "ALTER TABLE ticket_comments ADD CONSTRAINT fk_ticket_comments_ticket FOREIGN KEY (ticket_id) REFERENCES support_tickets(ticket_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 105, category: "Support", name: "ticket_comments → users", table: "ticket_comments", constraint: "fk_ticket_comments_user", sql: "ALTER TABLE ticket_comments ADD CONSTRAINT fk_ticket_comments_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 106, category: "Tasks", name: "tasks → tenants", table: "tasks", constraint: "fk_tasks_tenant", sql: "ALTER TABLE tasks ADD CONSTRAINT fk_tasks_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 107, category: "Tasks", name: "tasks → created_by", table: "tasks", constraint: "fk_tasks_created_by", sql: "ALTER TABLE tasks ADD CONSTRAINT fk_tasks_created_by FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 108, category: "Tasks", name: "tasks → assigned_to", table: "tasks", constraint: "fk_tasks_assigned_to", sql: "ALTER TABLE tasks ADD CONSTRAINT fk_tasks_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 109, category: "Tasks", name: "task_links → tasks", table: "task_links", constraint: "fk_task_links_task", sql: "ALTER TABLE task_links ADD CONSTRAINT fk_task_links_task FOREIGN KEY (task_id) REFERENCES tasks(task_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 110, category: "Logs", name: "activity_log → tenants", table: "activity_log", constraint: "fk_activity_log_tenant", sql: "ALTER TABLE activity_log ADD CONSTRAINT fk_activity_log_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 111, category: "Logs", name: "activity_log → users", table: "activity_log", constraint: "fk_activity_log_user", sql: "ALTER TABLE activity_log ADD CONSTRAINT fk_activity_log_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 112, category: "Logs", name: "activity_log → admin_users", table: "activity_log", constraint: "fk_activity_log_admin_user", sql: "ALTER TABLE activity_log ADD CONSTRAINT fk_activity_log_admin_user FOREIGN KEY (admin_user_id) REFERENCES admin_users(admin_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 113, category: "Logs", name: "logs → tenants", table: "logs", constraint: "fk_logs_tenant", sql: "ALTER TABLE logs ADD CONSTRAINT fk_logs_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 114, category: "Logs", name: "logs → users", table: "logs", constraint: "fk_logs_user", sql: "ALTER TABLE logs ADD CONSTRAINT fk_logs_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 115, category: "Settings", name: "feature_flags → tenants", table: "feature_flags", constraint: "fk_feature_flags_tenant", sql: "ALTER TABLE feature_flags ADD CONSTRAINT fk_feature_flags_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 116, category: "Settings", name: "monthly_work_order_usage → tenants", table: "monthly_work_order_usage", constraint: "fk_monthly_work_order_usage_tenant", sql: "ALTER TABLE monthly_work_order_usage ADD CONSTRAINT fk_monthly_work_order_usage_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE NOT VALID;" },
+            { id: 117, category: "Settings", name: "operational_costs → categories", table: "operational_costs", constraint: "fk_operational_costs_category", sql: "ALTER TABLE operational_costs ADD CONSTRAINT fk_operational_costs_category FOREIGN KEY (category_id) REFERENCES cost_categories(category_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 118, category: "Additional", name: "invites → invited_by", table: "invites", constraint: "fk_invites_invited_by", sql: "ALTER TABLE invites ADD CONSTRAINT fk_invites_invited_by FOREIGN KEY (invited_by) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 119, category: "Additional", name: "deals → owner", table: "deals", constraint: "fk_deals_owner", sql: "ALTER TABLE deals ADD CONSTRAINT fk_deals_owner FOREIGN KEY (owner_user_id) REFERENCES users(user_id) ON DELETE SET NULL NOT VALID;" },
+            { id: 120, category: "Additional", name: "labor_time_entries → work_orders", table: "labor_time_entries", constraint: "fk_labor_time_entries_work_order", sql: "ALTER TABLE labor_time_entries ADD CONSTRAINT fk_labor_time_entries_work_order FOREIGN KEY (work_order_id) REFERENCES work_orders(work_order_id) ON DELETE CASCADE NOT VALID;" }
+        ];
+
+        // State
+        let dbClient = null;
+        let fkStatuses = {};
+        let currentFilter = 'all';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadProgress();
+            renderTable();
+            updateStats();
+        });
+
+        // Connect to Supabase
+        async function connectSupabase() {
+            const url = document.getElementById('supabase-url').value;
+            const key = document.getElementById('supabase-key').value;
+
+            if (!url || !key) {
+                alert('Please enter both URL and Key');
+                return;
+            }
+
+            try {
+                dbClient = window.supabase.createClient(url, key);
+                const { error } = await dbClient.from('tenants').select('count').limit(1);
+                if (error) throw error;
+                
+                alert('✅ Connected successfully!');
+                localStorage.setItem('supabase-url', url);
+                localStorage.setItem('supabase-key', key);
+            } catch (error) {
+                alert('❌ Connection failed: ' + error.message);
+                console.error('Connection error:', error);
+            }
+        }
+
+        // Run single FK
+        async function runFK(id) {
+            if (!dbClient) {
+                alert('Please connect to Supabase first');
+                return;
+            }
+
+            const fk = foreignKeys.find(f => f.id === id);
+            if (!fk) return;
+
+            fkStatuses[id] = { status: 'running', error: null, timestamp: Date.now() };
+            saveProgress();
+            renderTable();
+            updateStats();
+
+            try {
+                const { error } = await dbClient.rpc('exec_sql', { sql: fk.sql });
+                
+                if (error) {
+                    fkStatuses[id] = { status: 'failed', error: error.message, timestamp: Date.now() };
+                } else {
+                    fkStatuses[id] = { status: 'passed', error: null, timestamp: Date.now() };
+                }
+            } catch (error) {
+                fkStatuses[id] = { status: 'failed', error: error.message, timestamp: Date.now() };
+            }
+
+            saveProgress();
+            renderTable();
+            updateStats();
+        }
+
+        // Run all FKs
+        async function runAll() {
+            if (!dbClient) {
+                alert('Please connect to Supabase first');
+                return;
+            }
+
+            if (!confirm('Run all 120 foreign keys?')) return;
+
+            for (const fk of foreignKeys) {
+                if (!fkStatuses[fk.id] || fkStatuses[fk.id].status !== 'passed') {
+                    await runFK(fk.id);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+        }
+
+        // Reset all
+        function resetAll() {
+            if (!confirm('Reset all progress?')) return;
+            fkStatuses = {};
+            saveProgress();
+            renderTable();
+            updateStats();
+        }
+
+        // Set filter
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            renderTable();
+        }
+
+        // Filter table
+        function filterTable() {
+            renderTable();
+        }
+
+        // Render table
+        function renderTable() {
+            const tbody = document.getElementById('fk-table-body');
+            const search = document.getElementById('search').value.toLowerCase();
+            tbody.innerHTML = '';
+
+            const filtered = foreignKeys.filter(fk => {
+                const status = fkStatuses[fk.id]?.status || 'pending';
+                const matchesFilter = currentFilter === 'all' || status === currentFilter;
+                const matchesSearch = !search || 
+                    fk.name.toLowerCase().includes(search) || 
+                    fk.category.toLowerCase().includes(search) ||
+                    fk.table.toLowerCase().includes(search);
+                return matchesFilter && matchesSearch;
+            });
+
+            filtered.forEach(fk => {
+                const status = fkStatuses[fk.id]?.status || 'pending';
+                const error = fkStatuses[fk.id]?.error;
+
+                const tr = document.createElement('tr');
+                tr.className = `status-${status}`;
+                tr.innerHTML = `
+                    <td class="fk-number">#${fk.id}</td>
+                    <td><span class="fk-category">${fk.category}</span></td>
+                    <td class="fk-name">${fk.name}</td>
+                    <td class="fk-relationship">${fk.table} → ${fk.constraint}</td>
+                    <td><span class="status-badge ${status}">${status}</span></td>
+                    <td>
+                        <button class="btn-run" onclick="runFK(${fk.id})" ${status === 'running' ? 'disabled' : ''}>
+                            ${status === 'running' ? '⏳' : status === 'passed' ? '✅' : '▶️'} Run
+                        </button>
+                    </td>
+                `;
+
+                if (error) {
+                    const errorRow = document.createElement('tr');
+                    errorRow.className = `status-${status}`;
+                    errorRow.innerHTML = `<td colspan="6"><div class="error-message">❌ ${error}</div></td>`;
+                    tbody.appendChild(tr);
+                    tbody.appendChild(errorRow);
+                } else {
+                    tbody.appendChild(tr);
+                }
+            });
+        }
+
+        // Update stats
+        function updateStats() {
+            const total = foreignKeys.length;
+            let passed = 0, failed = 0, pending = 0;
+
+            foreignKeys.forEach(fk => {
+                const status = fkStatuses[fk.id]?.status || 'pending';
+                if (status === 'passed') passed++;
+                else if (status === 'failed') failed++;
+                else pending++;
+            });
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-passed').textContent = passed;
+            document.getElementById('stat-failed').textContent = failed;
+            document.getElementById('stat-pending').textContent = pending;
+            document.getElementById('filter-pending').textContent = pending;
+            document.getElementById('filter-passed').textContent = passed;
+            document.getElementById('filter-failed').textContent = failed;
+
+            const progress = (passed / total) * 100;
+            document.getElementById('progress-bar').style.width = progress + '%';
+        }
+
+        // Save progress
+        function saveProgress() {
+            localStorage.setItem('fk-statuses', JSON.stringify(fkStatuses));
+        }
+
+        // Load progress
+        function loadProgress() {
+            const saved = localStorage.getItem('fk-statuses');
+            if (saved) fkStatuses = JSON.parse(saved);
+
+            const url = localStorage.getItem('supabase-url');
+            const key = localStorage.setItem('supabase-key');
+            if (url) document.getElementById('supabase-url').value = url;
+            if (key) document.getElementById('supabase-key').value = key;
+        }
+
+        // Export progress
+        function exportProgress() {
+            const data = { timestamp: new Date().toISOString(), statuses: fkStatuses };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fk-progress-${Date.now()}.json`;
+            a.click();
+        }
+    </script>
+</body>
+</html>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
