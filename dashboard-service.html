@@ -493,30 +493,26 @@ async function checkAuth() {
 // DATA LOADING
 // ============================================================================
 async function loadBusinessSettings() {
-  const { data } = await sb.from('business_settings').select('business_name').single();
+  const { data, error } = await sb.from('business_settings').select('*').single();
+  if (error) {
+    console.error('Business settings error:', error.message);
+    return;
+  }
   if (data) {
-    document.getElementById('desktopBusinessName').textContent = data.business_name;
-    document.getElementById('mobileBusinessName').textContent = data.business_name;
+    const name = data.business_name || data.company_name || 'My Business';
+    document.getElementById('desktopBusinessName').textContent = name;
+    document.getElementById('mobileBusinessName').textContent = name;
   }
 }
 
 async function loadWorkOrders() {
   const { data: workOrders, error } = await sb
     .from('work_orders')
-    .select(`
-      work_order_id,
-      work_order_number,
-      status,
-      created_at,
-      total_amount,
-      labor_hours,
-      customer_id,
-      vehicle_id
-    `)
+    .select('*')
     .order('created_at', { ascending: false });
   
   if (error) {
-    console.error('Work orders error:', error);
+    console.error('Work orders error:', error.message);
     return;
   }
   
@@ -570,20 +566,20 @@ async function loadWorkOrders() {
   if (customerIds.length > 0) {
     const { data: customers } = await sb
       .from('customers')
-      .select('customer_id, full_name')
+      .select('*')
       .in('customer_id', customerIds);
     if (customers) {
-      customers.forEach(c => customersMap[c.customer_id] = c.full_name);
+      customers.forEach(c => customersMap[c.customer_id] = c.full_name || c.name || 'Unknown');
     }
   }
   
   if (vehicleIds.length > 0) {
     const { data: vehicles } = await sb
       .from('vehicles')
-      .select('vehicle_id, year, make, model')
+      .select('*')
       .in('vehicle_id', vehicleIds);
     if (vehicles) {
-      vehicles.forEach(v => vehiclesMap[v.vehicle_id] = `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim());
+      vehicles.forEach(v => vehiclesMap[v.vehicle_id] = `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim() || 'Unknown');
     }
   }
   
@@ -597,16 +593,18 @@ async function loadWorkOrders() {
     tbody.innerHTML = displayOrders.map(wo => {
       const customer = customersMap[wo.customer_id] || 'Unknown';
       const vehicle = vehiclesMap[wo.vehicle_id] || 'Unknown';
-      const statusClass = 'badge-' + (wo.status || 'scheduled');
+      const status = wo.status || 'scheduled';
+      const statusClass = 'badge-' + status.replace(/ /g, '_');
       const created = wo.created_at ? new Date(wo.created_at).toLocaleDateString() : '--';
       const total = wo.total_amount ? '$' + parseFloat(wo.total_amount).toLocaleString() : '$0';
+      const woNum = wo.work_order_number || wo.wo_number || (wo.work_order_id ? wo.work_order_id.slice(0,8) : '--');
       
       return `
         <tr class="clickable-row" onclick="location.href='work-order-detail.html?id=${wo.work_order_id}'">
-          <td>${wo.work_order_number || wo.work_order_id.slice(0,8)}</td>
+          <td>${woNum}</td>
           <td>${customer}</td>
           <td>${vehicle}</td>
-          <td><span class="badge ${statusClass}">${(wo.status || 'scheduled').replace('_', ' ')}</span></td>
+          <td><span class="badge ${statusClass}">${status.replace(/_/g, ' ')}</span></td>
           <td>${created}</td>
           <td>${total}</td>
         </tr>
@@ -618,34 +616,41 @@ async function loadWorkOrders() {
 async function loadTechnicians() {
   const { data: employees, error } = await sb
     .from('employees')
-    .select('*')
-    .in('role', ['technician', 'manager', 'owner']);
+    .select('*');
   
   if (error) {
-    console.error('Employees error:', error);
+    console.error('Employees error:', error.message);
     return;
   }
   
-  const techs = employees || [];
+  // Filter for technician-type roles
+  const techs = (employees || []).filter(e => 
+    ['technician', 'manager', 'owner', 'tech', 'mechanic'].includes((e.role || '').toLowerCase())
+  );
   
-  document.getElementById('totalTechs').textContent = techs.length;
-  document.getElementById('activeTechs').textContent = techs.filter(t => t.is_active).length;
+  // If no role filter matches, show all employees
+  const displayTechs = techs.length > 0 ? techs : (employees || []);
+  
+  document.getElementById('totalTechs').textContent = displayTechs.length;
+  document.getElementById('activeTechs').textContent = displayTechs.filter(t => t.is_active !== false).length;
   document.getElementById('totalHoursMTD').textContent = '--';
   document.getElementById('techWOsMTD').textContent = '--';
   
   const tbody = document.getElementById('techTable');
-  if (techs.length === 0) {
+  if (displayTechs.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;">No technicians found</td></tr>';
   } else {
-    tbody.innerHTML = techs.map(t => `
+    tbody.innerHTML = displayTechs.map(t => {
+      const name = t.full_name || ((t.first_name || '') + ' ' + (t.last_name || '')).trim() || 'Unknown';
+      return `
       <tr>
-        <td>${t.full_name || t.first_name + ' ' + t.last_name}</td>
+        <td>${name}</td>
         <td>${t.role || 'Technician'}</td>
         <td>--</td>
         <td>--</td>
-        <td><span class="badge ${t.is_active ? 'badge-completed' : 'badge-scheduled'}">${t.is_active ? 'Active' : 'Inactive'}</span></td>
+        <td><span class="badge ${t.is_active !== false ? 'badge-completed' : 'badge-scheduled'}">${t.is_active !== false ? 'Active' : 'Inactive'}</span></td>
       </tr>
-    `).join('');
+    `}).join('');
   }
 }
 
