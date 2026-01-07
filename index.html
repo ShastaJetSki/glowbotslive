@@ -65,14 +65,6 @@
       color:#10b981;
       font-weight:600;
     }
-    
-    .demoLink:hover {
-      color:#2563eb;
-      transform:translateX(4px);
-    }
-    .demoLink:hover span:first-child {
-      transform:translateX(4px);
-    }
 
     /* Pricing Grid */
     .pricingGrid {
@@ -342,10 +334,6 @@
       <h1 class="heroTitle">Choose Your Plan</h1>
       <p class="heroSubtitle">Select the perfect plan for your business</p>
       <p class="heroTrial">14-day free trial, Starter: no credit card • Pro: credit card required</p>
-      <button onclick="autoLoginDemo()" class="demoLink" style="display:inline-flex;align-items:center;gap:8px;margin-top:12px;color:#60a5fa;background:transparent;border:none;text-decoration:none;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.3s;">
-        <span style="font-size:18px;">→</span>
-        <span>Try Interactive Demo</span>
-      </button>
     </div>
 
     <div class="pricingGrid">
@@ -675,6 +663,27 @@
       const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+      // Check if user is already logged in - redirect to dashboard
+      async function checkAuth() {
+        const token = localStorage.getItem('sb_access_token');
+        if (token) {
+          try {
+            const { data: { user }, error } = await sb.auth.getUser(token);
+            if (user && !error) {
+              // User is logged in, redirect to dashboard
+              window.location.href = 'dashboard-business.html';
+              return;
+            }
+          } catch (err) {
+            // Token invalid, clear it
+            localStorage.removeItem('sb_access_token');
+          }
+        }
+      }
+      
+      // Run auth check on page load
+      checkAuth();
+
       let selectedTierData = {
         code: 'pro',
         name: 'Pro',
@@ -709,40 +718,6 @@
       window.closeAIDetails = function() {
         document.getElementById('aiDetailsModal').style.display = 'none';
         document.body.style.overflow = 'auto';
-      };
-
-      // Global function: Auto Login Demo
-      window.autoLoginDemo = async function() {
-        try {
-          const btn = event.target.closest('button');
-          if (btn.disabled) return; // Prevent double-click
-          
-          const originalHTML = '<span style="font-size:18px;">→</span><span>Try Interactive Demo</span>';
-          btn.innerHTML = '<span>Loading demo...</span>';
-          btn.disabled = true;
-
-          const { data, error } = await sb.auth.signInWithPassword({
-            email: 'boxsterbrothers@gmail.com',
-            password: 'boxster123'
-          });
-
-          if (error) {
-            console.error('Demo login error:', error);
-            alert('Demo temporarily unavailable. Please try again later.');
-            btn.innerHTML = originalHTML;
-            btn.disabled = false;
-            return;
-          }
-
-          window.location.href = 'dashboard-business.html';
-        } catch (err) {
-          console.error('Demo error:', err);
-          const btn = event.target.closest('button');
-          const originalHTML = '<span style="font-size:18px;">→</span><span>Try Interactive Demo</span>';
-          btn.innerHTML = originalHTML;
-          btn.disabled = false;
-          alert('Demo temporarily unavailable. Please try again later.');
-        }
       };
 
       // Global function: Handle Signup
@@ -820,6 +795,11 @@
             });
 
           if (empError) throw empError;
+
+          // Store token for authenticated session
+          if (authData.session) {
+            localStorage.setItem('sb_access_token', authData.session.access_token);
+          }
 
           msgBox.innerHTML = '<div class="message messageSuccess">✓ Account created! Redirecting to dashboard...</div>';
           
