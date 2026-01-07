@@ -194,6 +194,14 @@
     }
     
     canvas { max-height: 300px; }
+
+    .business-name {
+      font-size: 14px; color: #60a5fa; font-weight: 600;
+    }
+    
+    .loading {
+      color: #9fb0c3; font-style: italic;
+    }
     
     @media (max-width: 768px) {
       .desktop-header { display: none !important; }
@@ -230,6 +238,7 @@
     </button>
     <div class="mobile-header-center">
       <div class="mobile-header-title">Business Dashboard</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
     </div>
     <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
   </div>
@@ -245,7 +254,10 @@
 
 <div class="desktop-header">
   <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
-    <h1 style="margin:0; font-size:32px; font-weight:600;">Business Dashboard</h1>
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">Business Dashboard</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
     <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
   </div>
   
@@ -502,7 +514,14 @@
 <script>
 const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Create Supabase client (uses localStorage automatically for auth)
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
 let currentRange = '30days';
 let currentDirection = 'future';
@@ -510,15 +529,22 @@ let startDate = new Date();
 let endDate = new Date();
 let charts = {};
 
+// Store real data for charts
+let serviceChartData = { labels: [], revenue: [], statusCounts: {} };
+let partsChartData = { labels: [], sales: [], topParts: [] };
+let salesChartData = { labels: [], revenue: [], pipelineStages: {} };
+
 function toggleMobileMenu(button) {
   const content = document.getElementById('mobileHeaderContent');
   content.classList.toggle('expanded');
   button.classList.toggle('active');
 }
 
-function logout() {
+async function logout() {
+  await sb.auth.signOut();
   localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
+  localStorage.removeItem("sb_refresh_token");
+  location.replace("login-worklogic.html");
 }
 
 function toggleSection(sectionId) {
@@ -647,48 +673,99 @@ function getDateRange() {
   return { start: new Date(startDate), end: new Date(endDate) };
 }
 
+async function loadBusinessSettings() {
+  try {
+    const { data, error } = await sb
+      .from('business_settings')
+      .select('business_name')
+      .single();
+    
+    if (data && data.business_name) {
+      document.getElementById('desktopBusinessName').textContent = data.business_name;
+      document.getElementById('mobileBusinessName').textContent = data.business_name;
+    } else {
+      document.getElementById('desktopBusinessName').textContent = '';
+      document.getElementById('mobileBusinessName').textContent = '';
+    }
+  } catch (error) {
+    console.error('Error loading business settings:', error);
+  }
+}
+
 async function loadDashboardData() {
   const { start, end } = getDateRange();
   
-  await loadServiceData(start, end);
-  await loadPartsData(start, end);
-  loadSalesData(start, end);
+  await Promise.all([
+    loadServiceData(start, end),
+    loadPartsData(start, end),
+    loadSalesData(start, end)
+  ]);
+  
   updateSummary();
 }
 
 async function loadServiceData(start, end) {
   try {
-    const { data: workOrders } = await sb
+    const { data: workOrders, error } = await sb
       .from('work_orders')
       .select('*')
-      .or(`created_at.gte.${start.toISOString()},scheduled_start.gte.${start.toISOString()}`)
-      .or(`created_at.lte.${end.toISOString()},scheduled_start.lte.${end.toISOString()}`);
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString());
     
-    const completedOrders = (workOrders || []).filter(wo => 
-      (wo.status === 'completed' || wo.status === 'closed') &&
-      wo.created_at && 
-      new Date(wo.created_at) >= start && 
-      new Date(wo.created_at) <= end
+    if (error) {
+      console.error('Service data error:', error.message, error.details, error.hint);
+      throw error;
+    }
+    
+    const orders = workOrders || [];
+    
+    const completedOrders = orders.filter(wo => 
+      wo.status === 'completed' || wo.status === 'closed'
     );
     
-    const scheduledOrders = (workOrders || []).filter(wo =>
-      wo.scheduled_start &&
-      new Date(wo.scheduled_start) >= start &&
-      new Date(wo.scheduled_start) <= end &&
-      wo.status !== 'completed' &&
-      wo.status !== 'closed'
+    const scheduledOrders = orders.filter(wo =>
+      wo.status === 'scheduled' || wo.status === 'in_progress'
     );
     
-    const totalRevenue = completedOrders.reduce((sum, wo) => sum + (wo.total_amount || 0), 0);
-    const totalHours = completedOrders.reduce((sum, wo) => sum + (wo.labor_hours || 0), 0);
+    const totalRevenue = completedOrders.reduce((sum, wo) => sum + (parseFloat(wo.total_amount) || 0), 0);
+    const laborRevenue = completedOrders.reduce((sum, wo) => sum + (parseFloat(wo.labor_total) || 0), 0);
+    const totalHours = laborRevenue > 0 ? completedOrders.reduce((sum, wo) => {
+      const laborRate = parseFloat(wo.labor_total) / (parseFloat(wo.labor_hours) || 1);
+      return sum + (parseFloat(wo.labor_hours) || 0);
+    }, 0) : 0;
     const avgTicket = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
+    
+    // Calculate efficiency (billable hours / available hours)
+    const availableHours = 8 * ((end - start) / (1000 * 60 * 60 * 24)); // 8 hours per day
+    const efficiency = availableHours > 0 ? Math.min(100, Math.round((totalHours / availableHours) * 100)) : 0;
     
     document.getElementById('serviceRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString();
     document.getElementById('serviceOrders').textContent = completedOrders.length;
     document.getElementById('serviceLaborHours').textContent = Math.round(totalHours);
     document.getElementById('serviceAvgTicket').textContent = '$' + Math.round(avgTicket).toLocaleString();
-    document.getElementById('serviceEfficiency').textContent = '85%';
+    document.getElementById('serviceEfficiency').textContent = efficiency + '%';
     document.getElementById('serviceOpen').textContent = scheduledOrders.length;
+    
+    // Prepare chart data - group by date
+    const revenueByDate = {};
+    const statusCounts = { completed: 0, in_progress: 0, scheduled: 0, other: 0 };
+    
+    orders.forEach(wo => {
+      const date = new Date(wo.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (!revenueByDate[date]) revenueByDate[date] = 0;
+      if (wo.status === 'completed' || wo.status === 'closed') {
+        revenueByDate[date] += parseFloat(wo.total_amount) || 0;
+      }
+      
+      if (wo.status === 'completed' || wo.status === 'closed') statusCounts.completed++;
+      else if (wo.status === 'in_progress') statusCounts.in_progress++;
+      else if (wo.status === 'scheduled') statusCounts.scheduled++;
+      else statusCounts.other++;
+    });
+    
+    serviceChartData.labels = Object.keys(revenueByDate).slice(-7);
+    serviceChartData.revenue = serviceChartData.labels.map(l => revenueByDate[l] || 0);
+    serviceChartData.statusCounts = statusCounts;
     
     createServiceCharts();
     
@@ -699,28 +776,70 @@ async function loadServiceData(start, end) {
 
 async function loadPartsData(start, end) {
   try {
-    const { data: transactions } = await sb
-      .from('parts_transactions')
+    // Get parts invoices for revenue
+    const { data: invoices, error: invError } = await sb
+      .from('parts_invoices')
       .select('*')
-      .eq('transaction_type', 'Sale')
       .gte('created_at', start.toISOString())
       .lte('created_at', end.toISOString());
     
-    const { data: inventory } = await sb
+    // Get inventory for value calculation
+    const { data: inventory, error: invtError } = await sb
       .from('parts_inventory')
       .select('*');
     
-    const partsSold = (transactions || []).reduce((sum, t) => sum + Math.abs(t.quantity_change || 0), 0);
-    const partsRevenue = 0;
-    const inventoryValue = (inventory || []).reduce((sum, p) => sum + (p.quantity_on_hand * p.cost_price || 0), 0);
-    const lowStock = (inventory || []).filter(p => p.quantity_on_hand <= p.reorder_point).length;
+    if (invError) {
+      console.error('Parts invoices error:', invError.message, invError.details, invError.hint);
+      throw invError;
+    }
+    if (invtError) {
+      console.error('Parts inventory error:', invtError.message, invtError.details, invtError.hint);
+      throw invtError;
+    }
+    
+    const invoiceList = invoices || [];
+    const inventoryList = inventory || [];
+    
+    const partsRevenue = invoiceList.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0);
+    const partsCost = invoiceList.reduce((sum, inv) => sum + (parseFloat(inv.subtotal) || 0) * 0.65, 0); // Estimate cost
+    const partsSold = invoiceList.length;
+    
+    const inventoryValue = inventoryList.reduce((sum, p) => 
+      sum + ((parseFloat(p.quantity_on_hand) || 0) * (parseFloat(p.unit_cost) || 0)), 0);
+    const lowStock = inventoryList.filter(p => 
+      (p.quantity_on_hand || 0) <= (p.reorder_point || 5)).length;
+    
+    // Calculate margin
+    const margin = partsRevenue > 0 ? Math.round(((partsRevenue - partsCost) / partsRevenue) * 100) : 0;
+    
+    // Calculate turnover (annual sales / average inventory)
+    const daysInRange = (end - start) / (1000 * 60 * 60 * 24);
+    const annualizedSales = partsCost * (365 / daysInRange);
+    const turnover = inventoryValue > 0 ? (annualizedSales / inventoryValue).toFixed(1) : 0;
     
     document.getElementById('partsRevenue').textContent = '$' + Math.round(partsRevenue).toLocaleString();
     document.getElementById('partsSold').textContent = partsSold;
-    document.getElementById('partsMargin').textContent = '35%';
+    document.getElementById('partsMargin').textContent = margin + '%';
     document.getElementById('partsInventoryValue').textContent = '$' + Math.round(inventoryValue).toLocaleString();
     document.getElementById('partsLowStock').textContent = lowStock;
-    document.getElementById('partsTurnover').textContent = '4.2x';
+    document.getElementById('partsTurnover').textContent = turnover + 'x';
+    
+    // Prepare chart data
+    const salesByDate = {};
+    invoiceList.forEach(inv => {
+      const date = new Date(inv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (!salesByDate[date]) salesByDate[date] = 0;
+      salesByDate[date] += parseFloat(inv.total_amount) || 0;
+    });
+    
+    partsChartData.labels = Object.keys(salesByDate).slice(-7);
+    partsChartData.sales = partsChartData.labels.map(l => salesByDate[l] || 0);
+    
+    // Top parts by quantity on hand (as proxy for popularity)
+    partsChartData.topParts = inventoryList
+      .sort((a, b) => (b.quantity_on_hand || 0) - (a.quantity_on_hand || 0))
+      .slice(0, 5)
+      .map(p => ({ name: p.part_name || p.part_number || 'Unknown', qty: p.quantity_on_hand || 0 }));
     
     createPartsCharts();
     
@@ -729,15 +848,68 @@ async function loadPartsData(start, end) {
   }
 }
 
-function loadSalesData(start, end) {
-  document.getElementById('salesRevenue').textContent = '$0';
-  document.getElementById('salesDeals').textContent = '0';
-  document.getElementById('salesWinRate').textContent = '0%';
-  document.getElementById('salesAvgDeal').textContent = '$0';
-  document.getElementById('salesPipeline').textContent = '$0';
-  document.getElementById('salesConversion').textContent = '0%';
-  
-  createSalesCharts();
+async function loadSalesData(start, end) {
+  try {
+    const { data: deals, error } = await sb
+      .from('deals')
+      .select('*')
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString());
+    
+    if (error) {
+      console.error('Sales data error:', error.message, error.details, error.hint);
+      throw error;
+    }
+    
+    const dealList = deals || [];
+    
+    const wonDeals = dealList.filter(d => d.status === 'won' || d.status === 'closed_won');
+    const lostDeals = dealList.filter(d => d.status === 'lost' || d.status === 'closed_lost');
+    const activeDeals = dealList.filter(d => 
+      d.status !== 'won' && d.status !== 'lost' && 
+      d.status !== 'closed_won' && d.status !== 'closed_lost'
+    );
+    
+    const totalRevenue = wonDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0);
+    const avgDeal = wonDeals.length > 0 ? totalRevenue / wonDeals.length : 0;
+    const pipelineValue = activeDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0);
+    
+    const totalClosed = wonDeals.length + lostDeals.length;
+    const winRate = totalClosed > 0 ? Math.round((wonDeals.length / totalClosed) * 100) : 0;
+    const conversionRate = dealList.length > 0 ? Math.round((wonDeals.length / dealList.length) * 100) : 0;
+    
+    document.getElementById('salesRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString();
+    document.getElementById('salesDeals').textContent = wonDeals.length;
+    document.getElementById('salesWinRate').textContent = winRate + '%';
+    document.getElementById('salesAvgDeal').textContent = '$' + Math.round(avgDeal).toLocaleString();
+    document.getElementById('salesPipeline').textContent = '$' + Math.round(pipelineValue).toLocaleString();
+    document.getElementById('salesConversion').textContent = conversionRate + '%';
+    
+    // Prepare chart data
+    const revenueByDate = {};
+    wonDeals.forEach(d => {
+      const date = new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (!revenueByDate[date]) revenueByDate[date] = 0;
+      revenueByDate[date] += parseFloat(d.deal_value) || parseFloat(d.amount) || 0;
+    });
+    
+    salesChartData.labels = Object.keys(revenueByDate).slice(-7);
+    salesChartData.revenue = salesChartData.labels.map(l => revenueByDate[l] || 0);
+    
+    // Pipeline by stage
+    const stageCounts = {};
+    activeDeals.forEach(d => {
+      const stage = d.stage || d.status || 'Unknown';
+      if (!stageCounts[stage]) stageCounts[stage] = 0;
+      stageCounts[stage]++;
+    });
+    salesChartData.pipelineStages = stageCounts;
+    
+    createSalesCharts();
+    
+  } catch (error) {
+    console.error('Error loading sales data:', error);
+  }
 }
 
 function updateSummary() {
@@ -762,18 +934,23 @@ function updateSummary() {
 }
 
 function createServiceCharts() {
+  const labels = serviceChartData.labels.length > 0 ? serviceChartData.labels : ['No Data'];
+  const revenue = serviceChartData.revenue.length > 0 ? serviceChartData.revenue : [0];
+  const status = serviceChartData.statusCounts;
+  
   if (charts.serviceRevenue) charts.serviceRevenue.destroy();
   const ctx1 = document.getElementById('serviceRevenueChart');
   charts.serviceRevenue = new Chart(ctx1, {
     type: 'line',
     data: {
-      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
+      labels: labels,
       datasets: [{
         label: 'Revenue',
-        data: [1200, 1500, 1800, 1400, 2100],
+        data: revenue,
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        tension: 0.4
+        tension: 0.4,
+        fill: true
       }]
     },
     options: {
@@ -792,10 +969,10 @@ function createServiceCharts() {
   charts.serviceStatus = new Chart(ctx2, {
     type: 'doughnut',
     data: {
-      labels: ['Completed', 'In Progress', 'Waiting', 'Scheduled'],
+      labels: ['Completed', 'In Progress', 'Scheduled', 'Other'],
       datasets: [{
-        data: [45, 15, 8, 12],
-        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6']
+        data: [status.completed || 0, status.in_progress || 0, status.scheduled || 0, status.other || 0],
+        backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b']
       }]
     },
     options: {
@@ -807,15 +984,19 @@ function createServiceCharts() {
 }
 
 function createPartsCharts() {
+  const labels = partsChartData.labels.length > 0 ? partsChartData.labels : ['No Data'];
+  const sales = partsChartData.sales.length > 0 ? partsChartData.sales : [0];
+  const topParts = partsChartData.topParts.length > 0 ? partsChartData.topParts : [{ name: 'No Data', qty: 0 }];
+  
   if (charts.partsSales) charts.partsSales.destroy();
   const ctx1 = document.getElementById('partsSalesChart');
   charts.partsSales = new Chart(ctx1, {
     type: 'bar',
     data: {
-      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
+      labels: labels,
       datasets: [{
-        label: 'Parts Sold',
-        data: [45, 52, 48, 61, 55],
+        label: 'Sales',
+        data: sales,
         backgroundColor: '#10b981'
       }]
     },
@@ -835,10 +1016,10 @@ function createPartsCharts() {
   charts.partsTopSelling = new Chart(ctx2, {
     type: 'bar',
     data: {
-      labels: ['Oil Filter', 'Air Filter', 'Brake Pads', 'Spark Plugs', 'Wiper Blades'],
+      labels: topParts.map(p => p.name),
       datasets: [{
-        label: 'Units Sold',
-        data: [145, 128, 98, 87, 76],
+        label: 'Quantity',
+        data: topParts.map(p => p.qty),
         backgroundColor: '#3b82f6'
       }]
     },
@@ -856,18 +1037,25 @@ function createPartsCharts() {
 }
 
 function createSalesCharts() {
+  const labels = salesChartData.labels.length > 0 ? salesChartData.labels : ['No Data'];
+  const revenue = salesChartData.revenue.length > 0 ? salesChartData.revenue : [0];
+  const stages = salesChartData.pipelineStages;
+  const stageLabels = Object.keys(stages).length > 0 ? Object.keys(stages) : ['No Data'];
+  const stageValues = Object.keys(stages).length > 0 ? Object.values(stages) : [0];
+  
   if (charts.salesRevenue) charts.salesRevenue.destroy();
   const ctx1 = document.getElementById('salesRevenueChart');
   charts.salesRevenue = new Chart(ctx1, {
     type: 'line',
     data: {
-      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
+      labels: labels,
       datasets: [{
         label: 'Revenue',
-        data: [0, 0, 0, 0, 0],
+        data: revenue,
         borderColor: '#8b5cf6',
         backgroundColor: 'rgba(139, 92, 246, 0.1)',
-        tension: 0.4
+        tension: 0.4,
+        fill: true
       }]
     },
     options: {
@@ -886,10 +1074,10 @@ function createSalesCharts() {
   charts.salesPipeline = new Chart(ctx2, {
     type: 'bar',
     data: {
-      labels: ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won'],
+      labels: stageLabels,
       datasets: [{
         label: 'Deals',
-        data: [0, 0, 0, 0, 0],
+        data: stageValues,
         backgroundColor: '#8b5cf6'
       }]
     },
@@ -913,7 +1101,7 @@ function createSummaryCharts(serviceRev, partsRev, salesRev) {
     data: {
       labels: ['Service', 'Parts', 'Sales'],
       datasets: [{
-        data: [serviceRev, partsRev, salesRev],
+        data: [serviceRev || 0, partsRev || 0, salesRev || 0],
         backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6']
       }]
     },
@@ -924,18 +1112,30 @@ function createSummaryCharts(serviceRev, partsRev, salesRev) {
     }
   });
   
+  // Combine all revenue data for trend
+  const allLabels = [...new Set([...serviceChartData.labels, ...partsChartData.labels, ...salesChartData.labels])].slice(-7);
+  const trendData = allLabels.map((label, i) => {
+    const svcIdx = serviceChartData.labels.indexOf(label);
+    const prtIdx = partsChartData.labels.indexOf(label);
+    const slsIdx = salesChartData.labels.indexOf(label);
+    return (svcIdx >= 0 ? serviceChartData.revenue[svcIdx] : 0) +
+           (prtIdx >= 0 ? partsChartData.sales[prtIdx] : 0) +
+           (slsIdx >= 0 ? salesChartData.revenue[slsIdx] : 0);
+  });
+  
   if (charts.summaryTrend) charts.summaryTrend.destroy();
   const ctx2 = document.getElementById('summaryTrendChart');
   charts.summaryTrend = new Chart(ctx2, {
     type: 'line',
     data: {
-      labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'],
+      labels: allLabels.length > 0 ? allLabels : ['No Data'],
       datasets: [{
         label: 'Total Revenue',
-        data: [1200, 1500, 1800, 1400, 2100],
+        data: trendData.length > 0 ? trendData : [0],
         borderColor: '#60a5fa',
         backgroundColor: 'rgba(96, 165, 250, 0.1)',
-        tension: 0.4
+        tension: 0.4,
+        fill: true
       }]
     },
     options: {
@@ -951,6 +1151,37 @@ function createSummaryCharts(serviceRev, partsRev, salesRev) {
 }
 
 async function init() {
+  // Check for session - first try Supabase's storage, then our custom token
+  let { data: { session } } = await sb.auth.getSession();
+  
+  // If no session from Supabase, try our stored token
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    
+    if (token) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: token,
+        refresh_token: refreshToken || token
+      });
+      
+      if (error || !data.session) {
+        console.log('Token invalid, redirecting to login');
+        localStorage.removeItem('sb_access_token');
+        localStorage.removeItem('sb_refresh_token');
+        location.replace('login-worklogic.html');
+        return;
+      }
+      session = data.session;
+    } else {
+      location.replace('login-worklogic.html');
+      return;
+    }
+  }
+  
+  console.log('Session active for:', session.user.email);
+  
+  await loadBusinessSettings();
   calculateDateRange();
   updateDisplay();
   await loadDashboardData();
