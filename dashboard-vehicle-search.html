@@ -1,0 +1,1068 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vehicle Lookup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg-primary: #0b0f14;
+      --bg-secondary: #0f1621;
+      --bg-card: #1a2535;
+      --text-primary: #e8eef6;
+      --text-secondary: #9fb0c3;
+      --border-default: #223044;
+      --accent-primary: #3b82f6;
+      --accent-light: #60a5fa;
+    }
+    
+    body { margin:0; padding:0; font-family:system-ui; background:var(--bg-primary); color:var(--text-primary); }
+    h1 { margin:0; font-size:40px; }
+    h2 { margin:18px 0 10px; font-size:18px; }
+
+    input {
+      width:100%; padding:12px;
+      border-radius:10px; border:1px solid var(--border-default);
+      background:var(--bg-secondary); color:var(--text-primary);
+      margin-bottom:16px;
+    }
+    
+    .autocomplete-container {
+      position:relative;
+      width:100%;
+      margin-bottom:16px;
+    }
+    
+    .autocomplete-dropdown {
+      position:absolute;
+      top:100%;
+      left:0;
+      right:0;
+      background:var(--bg-secondary);
+      border:1px solid var(--border-default);
+      border-top:none;
+      border-radius:0 0 10px 10px;
+      max-height:300px;
+      overflow-y:auto;
+      z-index:1000;
+      display:none;
+    }
+    
+    .autocomplete-dropdown.active {
+      display:block;
+    }
+    
+    .autocomplete-item {
+      padding:12px;
+      cursor:pointer;
+      border-bottom:1px solid var(--border-default);
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    
+    .autocomplete-item:last-child {
+      border-bottom:none;
+    }
+    
+    .autocomplete-item:hover {
+      background:var(--bg-card);
+    }
+    
+    .autocomplete-highlight {
+      background:#2563eb;
+      color:#fff;
+    }
+
+    .stats {
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-bottom:16px;
+    }
+    
+    .kpi { 
+      min-width:200px; 
+      flex: 1 1 200px; 
+      cursor:pointer;
+      padding:12px 14px;
+    }
+    .kpi:hover { border-color:#2f4461; }
+    .kpi.active { border-color:var(--accent-primary); box-shadow:0 0 0 1px rgba(59,130,246,.35) inset; }
+    .kpi.hidden { display: none; }
+    .label { 
+      font-size:12px; 
+      color:var(--text-secondary);
+      margin-bottom:4px;
+    }
+    .value { 
+      font-size:42px; 
+      font-weight:700; 
+      line-height:1.1;
+      text-align:right;
+    }
+
+    .list {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+      gap:12px;
+    }
+
+    .card {
+      background:var(--bg-secondary);
+      border:1px solid var(--border-default);
+      border-radius:14px;
+      padding:14px 16px;
+      cursor:pointer;
+    }
+    .card:hover { border-color:#38bdf8; }
+    
+    .vehicle-content {
+      display:flex;
+      flex-direction:column;
+      gap:0;
+    }
+    
+    .vehicle-top {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      padding-bottom:8px;
+    }
+    
+    .vehicle-info {
+      flex:1;
+      min-width:0;
+    }
+    
+    .vehicle-image {
+      width:80px;
+      height:80px;
+      border-radius:8px;
+      background:var(--bg-primary);
+      border:1px solid var(--border-default);
+      flex-shrink:0;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    
+    .vehicle-image img {
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+    
+    .vehicle-placeholder {
+      width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg, #1a2535 0%, #0f1621 100%);
+    }
+    
+    .vehicle-placeholder svg {
+      width:60%;
+      height:60%;
+      opacity:0.4;
+    }
+    
+    .vehicle-wo-info {
+      border-top:1px solid var(--border-default);
+      padding-top:8px;
+      font-size:11px;
+    }
+    
+    .vehicle-wo-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:4px;
+    }
+    
+    .vehicle-wo-number {
+      color:var(--accent-primary);
+      font-weight:600;
+      font-size:11px;
+    }
+    
+    .vehicle-wo-status {
+      display:inline-block;
+      padding:2px 6px;
+      border-radius:4px;
+      background:var(--bg-card);
+      color:var(--accent-light);
+      text-transform:uppercase;
+      font-size:9px;
+      font-weight:600;
+    }
+
+    .muted { font-size:12px; color:var(--text-secondary); margin-top:4px; }
+    
+    /* Selectable/Copyable Fields */
+    .selectable {
+      user-select: text;
+      cursor: text;
+      display: inline;
+      font-family: monospace;
+      background: rgba(59, 130, 246, 0.1);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    
+    .selectable:hover {
+      background: rgba(59, 130, 246, 0.25);
+    }
+    
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    
+    .field-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      min-width: 40px;
+    }
+    
+    .copy-btn {
+      background: transparent;
+      border: none;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-secondary);
+      opacity: 0.5;
+      transition: all 0.2s;
+    }
+    
+    .copy-btn:hover {
+      opacity: 1;
+      color: var(--accent-primary);
+    }
+    
+    .copy-btn.copied {
+      color: #10b981;
+      opacity: 1;
+    }
+
+    /* MODAL */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.85);
+      z-index:999;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal.active { display:flex; }
+
+    .modalContent {
+      background:var(--bg-secondary);
+      border:1px solid var(--border-default);
+      border-radius:14px;
+      padding:20px;
+      width:100%;
+      max-width:620px;
+      max-height:80vh;
+      overflow:auto;
+    }
+    
+    .modal-field-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-default);
+    }
+    
+    .modal-field-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    
+    .modal-field-value {
+      font-family: monospace;
+      font-size: 14px;
+      user-select: text;
+      cursor: text;
+      background: rgba(59, 130, 246, 0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .modal-field-value:hover {
+      background: rgba(59, 130, 246, 0.25);
+    }
+
+    button {
+      padding:8px 14px;
+      border-radius:10px;
+      border:1px solid #2a3b55;
+      background:var(--bg-card);
+      color:#fff;
+      cursor:pointer;
+    }
+    button:hover { background:#243648; }
+
+    /* Headers */
+    .desktop-header {
+      position:sticky; top:0; z-index:100;
+      background:var(--bg-primary); border-bottom:1px solid var(--border-default);
+    }
+    
+    .mobile-top-header {
+      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid #223044;
+    }
+
+    .mobile-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .mobile-menu-toggle {
+      background: transparent;
+      border: none;
+      color: #6b7280;
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mobile-header-center {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .mobile-header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .business-name {
+      font-size: 12px;
+      color: var(--accent-light);
+    }
+
+    .mobile-header-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .mobile-header-content.expanded {
+      max-height: 200px;
+    }
+
+    .mobile-header-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 8px 12px 12px;
+      background: var(--bg-primary);
+      border-top: 1px solid #223044;
+    }
+
+    .mobile-header-actions button {
+      padding: 10px;
+      font-size: 13px;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-primary);
+    }
+
+    /* Mobile Bottom Nav */
+    .mobile-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      border-top: 1px solid #223044;
+      padding: 8px;
+      z-index: 100;
+    }
+
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .mobile-nav-btn.active {
+      background: var(--accent-primary);
+      color: white;
+      border-color: var(--accent-primary);
+    }
+
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block; }
+      body { padding-bottom: 140px; }
+      h1 { font-size: 24px !important; }
+      .list { grid-template-columns: 1fr; }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Mobile Top Header -->
+  <div class="mobile-top-header">
+    <div class="mobile-header-bar">
+      <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">
+        <span>☰</span>
+      </button>
+      <div class="mobile-header-center">
+        <div class="mobile-header-title">Vehicle Lookup</div>
+        <div class="business-name" id="mobileBusinessName">Loading...</div>
+      </div>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+    
+    <div class="mobile-header-content" id="mobileHeaderContent">
+      <div class="mobile-header-actions">
+        <button onclick="location.href='dashboard-service.html'">Service</button>
+        <button onclick="location.href='dashboard-parts.html'">Parts</button>
+        <button onclick="location.href='dashboard-sales.html'">Sales</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Header -->
+  <div class="desktop-header">
+    <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h1 style="margin:0; font-size:32px; font-weight:600;">Vehicle Lookup</h1>
+        <div class="business-name" id="desktopBusinessName">Loading...</div>
+      </div>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+    
+    <div style="padding:0 24px 12px;">
+      <nav style="display:flex; gap:24px;">
+        <a href="dashboard-business.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Business</a>
+        <a href="dashboard-customer-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Customers</a>
+        <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Vehicles</a>
+        <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Settings</a>
+      </nav>
+    </div>
+    
+    <div style="padding:0 24px 12px; border-top:1px solid var(--border-default); padding-top:12px;">
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px;">Service</button>
+        <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px;">Parts</button>
+        <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px;">Sales</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Nav -->
+  <div class="mobile-bottom-nav">
+    <div class="mobile-nav-grid">
+      <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+      <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+      <a href="dashboard-vehicle-search.html" class="mobile-nav-btn active">Vehicles</a>
+      <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
+    </div>
+    <div class="mobile-nav-secondary">
+      <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+      <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+      <a href="dashboard-sales.html" class="mobile-nav-btn">Sales</a>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div style="padding:24px;">
+
+    <!-- Stats Section -->
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-default); border-radius:14px; padding:16px; margin-bottom:16px;">
+      <button onclick="toggleStats()" style="display:flex; justify-content:space-between; align-items:center; width:100%; background:transparent; border:none; padding:0; cursor:pointer;">
+        <h2 style="margin:0; font-size:18px; font-weight:700; color:var(--text-primary);">Filter by Status</h2>
+        <span id="statsToggleIcon" style="font-size:20px; color:var(--text-secondary);">▶</span>
+      </button>
+      
+      <div id="statsSection" style="max-height:0; overflow:hidden; transition:max-height 0.3s ease;">
+        <div class="stats" style="margin-top:16px;">
+          <div class="card kpi active" id="kpiAll" onclick="filterByStatus('all')">
+            <div class="label">All Vehicles</div>
+            <div class="value" id="allVehiclesValue">0</div>
+          </div>
+          <div class="card kpi" id="kpiScheduled" onclick="filterByStatus('scheduled')">
+            <div class="label">Scheduled Work</div>
+            <div class="value" id="scheduledValue">0</div>
+          </div>
+          <div class="card kpi hidden" id="kpiPastDue" onclick="filterByStatus('past_due')">
+            <div class="label">⚠️ Past Due</div>
+            <div class="value" id="pastDueValue">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="autocomplete-container">
+      <input id="search" placeholder="Search by license plate, VIN, HIN, CF#, make, model…" autocomplete="off" />
+      <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+    </div>
+    
+    <div class="list" id="results"></div>
+
+    <!-- VEHICLE MODAL -->
+    <div id="vehicleModal" class="modal" onclick="if(event.target===this) closeModal()">
+      <div class="modalContent">
+        <h2 id="modalTitle"></h2>
+        <div id="modalVehicleDetails"></div>
+
+        <h3 style="margin-top:20px; color:var(--accent-light);">Owner Information</h3>
+        <div id="vehicleOwner"></div>
+
+        <div style="margin-top:16px; text-align:right;">
+          <button onclick="closeModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let vehicles = [];
+let customers = [];
+let workOrders = [];
+let employees = [];
+let activeFilter = 'all';
+let selectedIndex = -1;
+
+const search = document.getElementById('search');
+const results = document.getElementById('results');
+
+// ============================================================================
+// UI FUNCTIONS
+// ============================================================================
+function toggleStats() {
+  const section = document.getElementById('statsSection');
+  const icon = document.getElementById('statsToggleIcon');
+  
+  if(section.style.maxHeight === '0px' || section.style.maxHeight === '') {
+    section.style.maxHeight = '500px';
+    icon.textContent = '▼';
+  } else {
+    section.style.maxHeight = '0px';
+    icon.textContent = '▶';
+  }
+}
+
+function toggleMobileMenu(button) {
+  const content = document.getElementById('mobileHeaderContent');
+  content.classList.toggle('expanded');
+}
+
+// ============================================================================
+// COPY TO CLIPBOARD
+// ============================================================================
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = btn.textContent;
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.classList.remove('copied');
+    }, 1500);
+  });
+}
+
+// ============================================================================
+// LOGOUT
+// ============================================================================
+async function logout() {
+  await sb.auth.signOut();
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('sb-')) localStorage.removeItem(key);
+  });
+  window.location.href = 'login-worklogic.html?logout=1';
+}
+
+// ============================================================================
+// AUTH CHECK
+// ============================================================================
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: token,
+        refresh_token: refreshToken
+      });
+      if (error || !data.session) {
+        window.location.href = 'login-worklogic.html';
+        return null;
+      }
+      return data.session;
+    }
+    window.location.href = 'login-worklogic.html';
+    return null;
+  }
+  return session;
+}
+
+// ============================================================================
+// FILTER
+// ============================================================================
+function filterByStatus(status) {
+  activeFilter = status;
+  document.querySelectorAll('.kpi').forEach(k => k.classList.remove('active'));
+  document.getElementById(`kpi${status.charAt(0).toUpperCase() + status.slice(1).replace('_', '')}`).classList.add('active');
+  render();
+}
+
+// ============================================================================
+// RENDER VEHICLE CARD
+// ============================================================================
+function renderVehicleCard(v) {
+  const wo = workOrders.find(w => w.vehicle_id === v.vehicle_id);
+  
+  // Get IDs - check multiple possible column names
+  const licensePlate = v.license_plate || v.plate || '';
+  const vin = v.vin || v.vin_number || '';
+  const hin = v.hin || v.hin_number || '';
+  const cfNumber = v.cf_number || v.cf || v.vin_or_cf_number || '';
+  
+  let woInfoHtml = '';
+  if (wo) {
+    const woNum = wo.wo_number || wo.work_order_number || wo.work_order_id.substring(0, 8);
+    const tech = employees.find(e => e.employee_id === wo.assigned_employee_id);
+    const techName = tech ? `${tech.first_name || ''} ${tech.last_name || ''}`.trim() : 'Unassigned';
+    
+    woInfoHtml = `
+      <div class="vehicle-wo-info">
+        <div class="vehicle-wo-row">
+          <div class="vehicle-wo-number">WO-${woNum}</div>
+          <div class="vehicle-wo-status">${wo.status || 'draft'}</div>
+        </div>
+        <div style="font-size:10px; color:var(--text-secondary);">Tech: ${techName}</div>
+      </div>
+    `;
+  }
+  
+  // Build ID fields - only show if they have values
+  let idFields = '';
+  
+  if (licensePlate) {
+    idFields += `
+      <div class="field-row">
+        <span class="field-label">Plate:</span>
+        <span class="selectable" onclick="event.stopPropagation()">${licensePlate}</span>
+        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${licensePlate}', this)">📋</button>
+      </div>
+    `;
+  }
+  
+  if (cfNumber) {
+    idFields += `
+      <div class="field-row">
+        <span class="field-label">CF#:</span>
+        <span class="selectable" onclick="event.stopPropagation()">${cfNumber}</span>
+        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${cfNumber}', this)">📋</button>
+      </div>
+    `;
+  }
+  
+  if (vin) {
+    idFields += `
+      <div class="field-row">
+        <span class="field-label">VIN:</span>
+        <span class="selectable" onclick="event.stopPropagation()">${vin}</span>
+        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${vin}', this)">📋</button>
+      </div>
+    `;
+  }
+  
+  if (hin) {
+    idFields += `
+      <div class="field-row">
+        <span class="field-label">HIN:</span>
+        <span class="selectable" onclick="event.stopPropagation()">${hin}</span>
+        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${hin}', this)">📋</button>
+      </div>
+    `;
+  }
+  
+  // If no IDs, show placeholder
+  if (!idFields) {
+    idFields = '<div class="muted">No ID numbers on file</div>';
+  }
+  
+  return `
+    <div class="card" onclick="openVehicle('${v.vehicle_id}')">
+      <div class="vehicle-content">
+        <div class="vehicle-top">
+          <div class="vehicle-info">
+            <strong>${v.year || ''} ${v.make || ''} ${v.model || ''}</strong>
+            ${idFields}
+          </div>
+          <div class="vehicle-image">
+            <div class="vehicle-placeholder">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M5 13L3 13L3 11L5 11L5 13Z" fill="#38bdf8"/>
+                <path d="M21 13L19 13L19 11L21 11L21 13Z" fill="#38bdf8"/>
+                <path d="M5 11L6.5 8C6.78 7.43 7.35 7 8 7L16 7C16.65 7 17.22 7.43 17.5 8L19 11L5 11Z" fill="#60a5fa"/>
+                <path d="M5 11L5 16C5 16.55 5.45 17 6 17L7 17C7.55 17 8 16.55 8 16L8 15L16 15L16 16C16 16.55 16.45 17 17 17L18 17C18.55 17 19 16.55 19 16L19 11L5 11Z" fill="#3b82f6"/>
+                <circle cx="7.5" cy="13" r="1" fill="#0f1621"/>
+                <circle cx="16.5" cy="13" r="1" fill="#0f1621"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        ${woInfoHtml}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================================
+// RENDER
+// ============================================================================
+function render() {
+  const q = search.value.toLowerCase().trim();
+  
+  let filtered = vehicles;
+  
+  // Text filter
+  if (q) {
+    filtered = vehicles.filter(v =>
+      (v.license_plate || '').toLowerCase().includes(q) ||
+      (v.vin || '').toLowerCase().includes(q) ||
+      (v.hin || '').toLowerCase().includes(q) ||
+      (v.cf_number || '').toLowerCase().includes(q) ||
+      (v.vin_or_cf_number || '').toLowerCase().includes(q) ||
+      (v.make || '').toLowerCase().includes(q) ||
+      (v.model || '').toLowerCase().includes(q) ||
+      String(v.year || '').includes(q)
+    );
+  }
+  
+  // Status filter
+  if (activeFilter !== 'all') {
+    const now = new Date();
+    filtered = filtered.filter(v => {
+      const wo = workOrders.find(w => w.vehicle_id === v.vehicle_id);
+      if (activeFilter === 'scheduled') {
+        return wo && (wo.status === 'scheduled' || wo.status === 'in_progress');
+      }
+      if (activeFilter === 'past_due') {
+        return wo && wo.scheduled_end && new Date(wo.scheduled_end) < now && wo.status !== 'completed';
+      }
+      return true;
+    });
+  }
+  
+  results.innerHTML = filtered.length > 0 
+    ? filtered.map(renderVehicleCard).join('')
+    : '<div class="muted" style="text-align:center; padding:40px;">No vehicles found</div>';
+}
+
+// ============================================================================
+// VEHICLE MODAL
+// ============================================================================
+function openVehicle(vehicleId) {
+  const v = vehicles.find(x => x.vehicle_id === vehicleId);
+  if (!v) return;
+  
+  document.getElementById('modalTitle').textContent = `${v.year || ''} ${v.make || ''} ${v.model || ''}`;
+  
+  // Build details with selectable fields
+  const licensePlate = v.license_plate || v.plate || '';
+  const vin = v.vin || v.vin_number || '';
+  const hin = v.hin || v.hin_number || '';
+  const cfNumber = v.cf_number || v.cf || v.vin_or_cf_number || '';
+  const color = v.color || '';
+  
+  let detailsHtml = '<div style="margin-top:16px;">';
+  
+  if (licensePlate) {
+    detailsHtml += `
+      <div class="modal-field-row">
+        <span class="modal-field-label">License Plate</span>
+        <div class="modal-field-value">
+          ${licensePlate}
+          <button class="copy-btn" onclick="copyToClipboard('${licensePlate}', this)">📋 Copy</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  if (cfNumber) {
+    detailsHtml += `
+      <div class="modal-field-row">
+        <span class="modal-field-label">CF Number</span>
+        <div class="modal-field-value">
+          ${cfNumber}
+          <button class="copy-btn" onclick="copyToClipboard('${cfNumber}', this)">📋 Copy</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  if (vin) {
+    detailsHtml += `
+      <div class="modal-field-row">
+        <span class="modal-field-label">VIN</span>
+        <div class="modal-field-value">
+          ${vin}
+          <button class="copy-btn" onclick="copyToClipboard('${vin}', this)">📋 Copy</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  if (hin) {
+    detailsHtml += `
+      <div class="modal-field-row">
+        <span class="modal-field-label">HIN</span>
+        <div class="modal-field-value">
+          ${hin}
+          <button class="copy-btn" onclick="copyToClipboard('${hin}', this)">📋 Copy</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  if (color) {
+    detailsHtml += `
+      <div class="modal-field-row">
+        <span class="modal-field-label">Color</span>
+        <div class="modal-field-value">${color}</div>
+      </div>
+    `;
+  }
+  
+  detailsHtml += '</div>';
+  
+  document.getElementById('modalVehicleDetails').innerHTML = detailsHtml;
+  
+  // Find owner
+  const owner = customers.find(c => c.customer_id === v.customer_id);
+  document.getElementById('vehicleOwner').innerHTML = owner 
+    ? `
+      <div class="card" style="cursor:default;">
+        <strong>${owner.full_name || ((owner.first_name || '') + ' ' + (owner.last_name || '')).trim() || 'Unknown'}</strong>
+        <div class="muted">Phone: ${owner.phone || '—'}</div>
+        <div class="muted">Email: ${owner.email || '—'}</div>
+      </div>
+    `
+    : '<div class="muted">No owner information available</div>';
+  
+  document.getElementById('vehicleModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('vehicleModal').classList.remove('active');
+}
+
+// ============================================================================
+// UPDATE KPIs
+// ============================================================================
+function updateKPIs() {
+  document.getElementById('allVehiclesValue').textContent = vehicles.length;
+  
+  const scheduled = workOrders.filter(w => w.status === 'scheduled' || w.status === 'in_progress').length;
+  document.getElementById('scheduledValue').textContent = scheduled;
+  
+  const now = new Date();
+  const pastDue = workOrders.filter(w => 
+    w.scheduled_end && new Date(w.scheduled_end) < now && w.status !== 'completed'
+  ).length;
+  
+  const pastDueCard = document.getElementById('kpiPastDue');
+  if (pastDue > 0) {
+    pastDueCard.classList.remove('hidden');
+    document.getElementById('pastDueValue').textContent = pastDue;
+  } else {
+    pastDueCard.classList.add('hidden');
+  }
+}
+
+// ============================================================================
+// AUTOCOMPLETE
+// ============================================================================
+function showAutocomplete() {
+  const q = search.value.toLowerCase().trim();
+  const dropdown = document.getElementById('autocompleteDropdown');
+  
+  if (!q) {
+    dropdown.classList.remove('active');
+    return;
+  }
+  
+  const matches = vehicles.filter(v =>
+    (v.license_plate || '').toLowerCase().includes(q) ||
+    (v.vin || '').toLowerCase().includes(q) ||
+    (v.hin || '').toLowerCase().includes(q) ||
+    (v.cf_number || '').toLowerCase().includes(q) ||
+    (v.make || '').toLowerCase().includes(q) ||
+    (v.model || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+  
+  if (matches.length === 0) {
+    dropdown.classList.remove('active');
+    return;
+  }
+  
+  dropdown.innerHTML = matches.map((v, idx) => `
+    <div class="autocomplete-item ${idx === selectedIndex ? 'autocomplete-highlight' : ''}" 
+         onclick="openVehicle('${v.vehicle_id}')"
+         data-index="${idx}">
+      <div style="flex:1;">
+        <strong>${v.year || ''} ${v.make || ''} ${v.model || ''}</strong>
+        <div class="muted">Plate: ${v.license_plate || '—'}</div>
+      </div>
+    </div>
+  `).join('');
+  
+  dropdown.classList.add('active');
+}
+
+search.addEventListener('input', () => {
+  showAutocomplete();
+  render();
+});
+
+search.addEventListener('keydown', (e) => {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if (!dropdown.classList.contains('active')) return;
+  
+  const items = dropdown.querySelectorAll('.autocomplete-item');
+  
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+    showAutocomplete();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectedIndex = Math.max(selectedIndex - 1, -1);
+    showAutocomplete();
+  } else if (e.key === 'Enter' && selectedIndex >= 0) {
+    e.preventDefault();
+    items[selectedIndex]?.click();
+  } else if (e.key === 'Escape') {
+    dropdown.classList.remove('active');
+    selectedIndex = -1;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if (!search.contains(e.target) && !dropdown.contains(e.target)) {
+    dropdown.classList.remove('active');
+    selectedIndex = -1;
+  }
+});
+
+// ============================================================================
+// LOAD DATA
+// ============================================================================
+async function loadBusinessSettings() {
+  const { data } = await sb.from('business_settings').select('*').single();
+  if (data) {
+    const name = data.business_name || data.company_name || 'My Business';
+    document.getElementById('desktopBusinessName').textContent = name;
+    document.getElementById('mobileBusinessName').textContent = name;
+  }
+}
+
+async function load() {
+  const session = await checkAuth();
+  if (!session) return;
+  
+  console.log('Logged in as:', session.user.email);
+  
+  await loadBusinessSettings();
+  
+  // Load vehicles
+  const { data: vehicleData, error: vErr } = await sb.from('vehicles').select('*');
+  if (vErr) console.error('Vehicles error:', vErr.message);
+  vehicles = vehicleData || [];
+  
+  // Load customers
+  const { data: customerData, error: cErr } = await sb.from('customers').select('*');
+  if (cErr) console.error('Customers error:', cErr.message);
+  customers = customerData || [];
+  
+  // Load work orders (active only)
+  const { data: woData, error: wErr } = await sb
+    .from('work_orders')
+    .select('*')
+    .not('status', 'in', '("completed","closed")');
+  if (wErr) console.error('Work orders error:', wErr.message);
+  workOrders = woData || [];
+  
+  // Load employees
+  const { data: empData, error: eErr } = await sb.from('employees').select('*');
+  if (eErr) console.error('Employees error:', eErr.message);
+  employees = empData || [];
+  
+  updateKPIs();
+  render();
+}
+
+load();
+</script>
+
+</body>
+</html>
