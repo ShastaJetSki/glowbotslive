@@ -150,29 +150,31 @@
     
     /* Timeline */
     .timeline {
-      padding: 16px;
+      padding: 8px 16px 16px 8px;
     }
     
     .time-slot {
       display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
+      gap: 8px;
+      margin-bottom: 12px;
       min-height: 60px;
     }
     
     .time-label {
-      width: 60px;
+      width: 36px;
       flex-shrink: 0;
-      font-size: 13px;
-      color: #94a3b8;
-      text-align: right;
+      font-size: 10px;
+      color: #64748b;
+      text-align: left;
       padding-top: 4px;
+      font-weight: 500;
     }
     
     .slot-content {
       flex: 1;
-      border-left: 2px solid #223044;
-      padding-left: 12px;
+      border-left: 1px solid #1e293b;
+      padding-left: 10px;
+      min-height: 50px;
     }
     
     .slot-empty {
@@ -185,9 +187,15 @@
       cursor: pointer;
     }
     
-    .slot-empty:hover {
+    .slot-empty:hover, .slot-content.drag-over .slot-empty {
       border-color: #3b82f6;
       color: #60a5fa;
+      background: #0f1a2a;
+    }
+    
+    .slot-content.drag-over {
+      background: rgba(59, 130, 246, 0.1);
+      border-radius: 8px;
     }
     
     /* Appointment Card */
@@ -197,6 +205,21 @@
       padding: 14px;
       border-left: 4px solid #3b82f6;
       margin-bottom: 8px;
+      cursor: grab;
+      transition: transform 0.15s, box-shadow 0.15s;
+      user-select: none;
+    }
+    
+    .appt-card:active {
+      cursor: grabbing;
+    }
+    
+    .appt-card.dragging {
+      opacity: 0.8;
+      transform: scale(1.02);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+      z-index: 1000;
+    }
     }
     
     .appt-card.status-confirmed { border-left-color: #8b5cf6; }
@@ -628,21 +651,27 @@ function renderTimeline() {
   }
   
   container.innerHTML = slots.map(slot => `
-    <div class="time-slot">
+    <div class="time-slot" data-hour="${slot.hour}">
       <div class="time-label">${formatHour(slot.hour)}</div>
-      <div class="slot-content">
+      <div class="slot-content" data-time="${slot.time}" data-date="${dateStr}"
+           ondragover="handleDragOver(event)" 
+           ondragleave="handleDragLeave(event)" 
+           ondrop="handleDrop(event)">
         ${slot.appointments.length ? 
           slot.appointments.map(a => renderApptCard(a)).join('') :
-          `<div class="slot-empty" onclick="openAppointmentModalWithTime('${dateStr}', '${slot.time}')">+ Add appointment</div>`
+          `<div class="slot-empty" onclick="openAppointmentModalWithTime('${dateStr}', '${slot.time}')">+ Add</div>`
         }
       </div>
     </div>
   `).join('');
+  
+  // Initialize drag handlers after render
+  initDragHandlers();
 }
 
 function formatHour(h) {
-  if (h === 12) return '12 PM';
-  return h > 12 ? `${h - 12} PM` : `${h} AM`;
+  if (h === 12) return '12p';
+  return h > 12 ? `${h - 12}p` : `${h}a`;
 }
 
 function formatTime(timeStr) {
@@ -668,7 +697,11 @@ function getStatusBadge(status) {
 
 function renderApptCard(a) {
   return `
-    <div class="appt-card status-${a.status}">
+    <div class="appt-card status-${a.status}" 
+         draggable="true" 
+         data-appt-id="${a.appointment_id}"
+         data-appt-time="${a.appointment_time}"
+         data-appt-date="${a.appointment_date}">
       <div class="appt-header">
         <div>
           <div class="appt-customer">${a.customer_name}</div>
@@ -682,9 +715,9 @@ function renderApptCard(a) {
       ${a.assigned_to ? `<div class="appt-details" style="margin-top:4px;">Agent: ${a.assigned_to}</div>` : ''}
       ${a.status === 'scheduled' || a.status === 'confirmed' ? `
       <div class="appt-actions">
-        <button class="appt-action-btn btn-complete" onclick="updateStatus('${a.appointment_id}', 'completed')">Complete</button>
-        <button class="appt-action-btn btn-noshow" onclick="updateStatus('${a.appointment_id}', 'no_show')">No Show</button>
-        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call">Call</a>` : ''}
+        <button class="appt-action-btn btn-complete" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'completed')">Complete</button>
+        <button class="appt-action-btn btn-noshow" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'no_show')">No Show</button>
+        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call" onclick="event.stopPropagation()">Call</a>` : ''}
       </div>
       ` : ''}
     </div>
@@ -696,6 +729,254 @@ async function updateStatus(id, status) {
     .update({ status })
     .eq('appointment_id', id);
   await loadAppointments();
+}
+
+// ============================================================================
+// DRAG AND DROP WITH AUTO-SCROLL
+// ============================================================================
+let draggedAppt = null;
+let autoScrollInterval = null;
+const SCROLL_SPEED = 8;
+const SCROLL_ZONE = 60;
+
+function initDragHandlers() {
+  document.querySelectorAll('.appt-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+    
+    // Touch support for mobile
+    card.addEventListener('touchstart', handleTouchStart, { passive: false });
+    card.addEventListener('touchmove', handleTouchMove, { passive: false });
+    card.addEventListener('touchend', handleTouchEnd);
+  });
+}
+
+function handleDragStart(e) {
+  draggedAppt = {
+    id: e.target.dataset.apptId,
+    time: e.target.dataset.apptTime,
+    date: e.target.dataset.apptDate
+  };
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedAppt.id);
+  
+  // Start auto-scroll detection
+  document.addEventListener('dragover', checkAutoScroll);
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedAppt = null;
+  stopAutoScroll();
+  document.removeEventListener('dragover', checkAutoScroll);
+  
+  // Remove all drag-over highlights
+  document.querySelectorAll('.slot-content.drag-over').forEach(el => {
+    el.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function handleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  
+  if (!draggedAppt) return;
+  
+  const newTime = e.currentTarget.dataset.time;
+  const newDate = e.currentTarget.dataset.date;
+  
+  if (newTime === draggedAppt.time && newDate === draggedAppt.date) return;
+  
+  // Update appointment in database
+  const { error } = await sb.from('sales_appointments')
+    .update({ 
+      appointment_time: newTime,
+      appointment_date: newDate
+    })
+    .eq('appointment_id', draggedAppt.id);
+  
+  if (error) {
+    console.error('Failed to reschedule:', error);
+    return;
+  }
+  
+  // Update local data and re-render
+  const appt = appointments.find(a => a.appointment_id === draggedAppt.id);
+  if (appt) {
+    appt.appointment_time = newTime;
+    appt.appointment_date = newDate;
+  }
+  
+  renderTimeline();
+}
+
+// Auto-scroll when dragging near edges
+function checkAutoScroll(e) {
+  const y = e.clientY;
+  const x = e.clientX;
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  
+  let scrollX = 0;
+  let scrollY = 0;
+  
+  // Vertical scroll zones
+  if (y < SCROLL_ZONE) {
+    scrollY = -SCROLL_SPEED * (1 - y / SCROLL_ZONE);
+  } else if (y > vh - SCROLL_ZONE) {
+    scrollY = SCROLL_SPEED * (1 - (vh - y) / SCROLL_ZONE);
+  }
+  
+  // Horizontal scroll zones
+  if (x < SCROLL_ZONE) {
+    scrollX = -SCROLL_SPEED * (1 - x / SCROLL_ZONE);
+  } else if (x > vw - SCROLL_ZONE) {
+    scrollX = SCROLL_SPEED * (1 - (vw - x) / SCROLL_ZONE);
+  }
+  
+  if (scrollX !== 0 || scrollY !== 0) {
+    startAutoScroll(scrollX, scrollY);
+  } else {
+    stopAutoScroll();
+  }
+}
+
+function startAutoScroll(scrollX, scrollY) {
+  stopAutoScroll();
+  autoScrollInterval = setInterval(() => {
+    window.scrollBy(scrollX, scrollY);
+  }, 16);
+}
+
+function stopAutoScroll() {
+  if (autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+}
+
+// Touch support for mobile drag and drop
+let touchDragEl = null;
+let touchClone = null;
+let touchStartY = 0;
+let touchStartX = 0;
+
+function handleTouchStart(e) {
+  if (e.target.closest('button, a')) return; // Don't drag when tapping buttons
+  
+  const card = e.target.closest('.appt-card');
+  if (!card) return;
+  
+  touchDragEl = card;
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  
+  draggedAppt = {
+    id: card.dataset.apptId,
+    time: card.dataset.apptTime,
+    date: card.dataset.apptDate
+  };
+}
+
+function handleTouchMove(e) {
+  if (!touchDragEl) return;
+  e.preventDefault();
+  
+  const touch = e.touches[0];
+  const moveX = touch.clientX - touchStartX;
+  const moveY = touch.clientY - touchStartY;
+  
+  // Only start drag if moved enough
+  if (!touchClone && (Math.abs(moveX) > 10 || Math.abs(moveY) > 10)) {
+    touchClone = touchDragEl.cloneNode(true);
+    touchClone.style.position = 'fixed';
+    touchClone.style.zIndex = '9999';
+    touchClone.style.pointerEvents = 'none';
+    touchClone.style.opacity = '0.9';
+    touchClone.style.width = touchDragEl.offsetWidth + 'px';
+    touchClone.classList.add('dragging');
+    document.body.appendChild(touchClone);
+    touchDragEl.style.opacity = '0.3';
+  }
+  
+  if (touchClone) {
+    touchClone.style.left = (touch.clientX - touchDragEl.offsetWidth / 2) + 'px';
+    touchClone.style.top = (touch.clientY - 30) + 'px';
+    
+    // Auto-scroll
+    const y = touch.clientY;
+    const vh = window.innerHeight;
+    if (y < SCROLL_ZONE) {
+      window.scrollBy(0, -SCROLL_SPEED);
+    } else if (y > vh - SCROLL_ZONE - 100) {
+      window.scrollBy(0, SCROLL_SPEED);
+    }
+    
+    // Highlight drop target
+    document.querySelectorAll('.slot-content').forEach(slot => {
+      const rect = slot.getBoundingClientRect();
+      if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        slot.classList.add('drag-over');
+      } else {
+        slot.classList.remove('drag-over');
+      }
+    });
+  }
+}
+
+async function handleTouchEnd(e) {
+  if (!touchDragEl) return;
+  
+  if (touchClone) {
+    const touch = e.changedTouches[0];
+    
+    // Find drop target
+    document.querySelectorAll('.slot-content').forEach(async slot => {
+      const rect = slot.getBoundingClientRect();
+      if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        
+        const newTime = slot.dataset.time;
+        const newDate = slot.dataset.date;
+        
+        if (newTime !== draggedAppt.time || newDate !== draggedAppt.date) {
+          await sb.from('sales_appointments')
+            .update({ appointment_time: newTime, appointment_date: newDate })
+            .eq('appointment_id', draggedAppt.id);
+          
+          const appt = appointments.find(a => a.appointment_id === draggedAppt.id);
+          if (appt) {
+            appt.appointment_time = newTime;
+            appt.appointment_date = newDate;
+          }
+          renderTimeline();
+        }
+      }
+      slot.classList.remove('drag-over');
+    });
+    
+    touchClone.remove();
+    touchClone = null;
+  }
+  
+  if (touchDragEl) {
+    touchDragEl.style.opacity = '1';
+  }
+  
+  touchDragEl = null;
+  draggedAppt = null;
 }
 
 function openAppointmentModal() {
