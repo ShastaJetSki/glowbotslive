@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sales Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: #0b0f14; color: #e8eef6; padding-bottom: 140px; }
+    
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0f1621;
+      border-bottom: 1px solid #223044;
+      padding: 16px;
+    }
+    
+    .page-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: #60a5fa;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .page-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #60a5fa;
+    }
+    
+    .add-btn {
+      background: #3b82f6;
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    
+    /* Date Navigation */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #0f1621;
+      border-bottom: 1px solid #223044;
+    }
+    
+    .date-nav-btn {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      color: #60a5fa;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    
+    .date-display {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e8eef6;
+      cursor: pointer;
+    }
+    
+    /* Day Tabs */
+    .day-tabs {
+      display: flex;
+      overflow-x: auto;
+      padding: 12px 16px;
+      gap: 8px;
+      background: #0b0f14;
+      border-bottom: 1px solid #223044;
+    }
+    
+    .day-tab {
+      flex-shrink: 0;
+      padding: 10px 16px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      min-width: 70px;
+    }
+    
+    .day-tab.active {
+      background: #1e3a5f;
+      border-color: #3b82f6;
+    }
+    
+    .day-tab.today {
+      border-color: #60a5fa;
+    }
+    
+    .day-name {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+    
+    .day-num {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e8eef6;
+    }
+    
+    .day-tab.active .day-name,
+    .day-tab.active .day-num {
+      color: #60a5fa;
+    }
+    
+    /* Filters */
+    .filters {
+      padding: 12px 16px;
+      background: #0b0f14;
+    }
+    
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .filter-select {
+      width: 100%;
+      padding: 10px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      color: #e8eef6;
+      font-size: 14px;
+    }
+    
+    /* Timeline */
+    .timeline {
+      padding: 16px;
+    }
+    
+    .time-slot {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      min-height: 60px;
+    }
+    
+    .time-label {
+      width: 60px;
+      flex-shrink: 0;
+      font-size: 13px;
+      color: #94a3b8;
+      text-align: right;
+      padding-top: 4px;
+    }
+    
+    .slot-content {
+      flex: 1;
+      border-left: 2px solid #223044;
+      padding-left: 12px;
+    }
+    
+    .slot-empty {
+      padding: 12px;
+      background: #0f1621;
+      border-radius: 8px;
+      border: 1px dashed #2d3f56;
+      color: #94a3b8;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    
+    .slot-empty:hover {
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+    
+    /* Appointment Card */
+    .appt-card {
+      background: #1a2535;
+      border-radius: 10px;
+      padding: 14px;
+      border-left: 4px solid #3b82f6;
+      margin-bottom: 8px;
+    }
+    
+    .appt-card.status-confirmed { border-left-color: #8b5cf6; }
+    .appt-card.status-completed { border-left-color: #10b981; }
+    .appt-card.status-cancelled { border-left-color: #ef4444; }
+    .appt-card.status-no_show { border-left-color: #ef4444; }
+    .appt-card.status-sold { border-left-color: #10b981; }
+    
+    .appt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    
+    .appt-customer {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e8eef6;
+    }
+    
+    .appt-time {
+      font-size: 13px;
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    
+    .appt-details {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    
+    .appt-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .appt-action-btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .btn-complete { background: #065f46; color: #34d399; }
+    .btn-noshow { background: #1e3a5f; color: #60a5fa; }
+    .btn-call { background: #1a2535; color: #60a5fa; border: 1px solid #2d3f56; }
+    
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+    .badge-success { background: transparent; color: #34d399; border: 1px solid rgba(52, 211, 153, 0.5); }
+    .badge-warning { background: transparent; color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.5); }
+    .badge-info { background: transparent; color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.5); }
+    .badge-danger { background: transparent; color: #f87171; border: 1px solid rgba(248, 113, 113, 0.5); }
+    
+    /* Mobile Bottom Navigation */
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0f1621;
+      border-top: 1px solid #223044;
+      padding: 8px;
+      z-index: 100;
+    }
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+    .mobile-nav-btn {
+      padding: 10px 4px;
+      font-size: 11px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      color: #94a3b8;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+    }
+    .mobile-nav-btn.active {
+      background: #1e3a5f;
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="page-header-row">
+    <button class="back-btn" onclick="location.href='dashboard-sales.html'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+      Back
+    </button>
+    <span class="page-title">Sales Scheduler</span>
+    <button class="add-btn" onclick="openAppointmentModal()">+ Appt</button>
+  </div>
+</div>
+
+<div class="date-nav">
+  <button class="date-nav-btn" onclick="prevWeek()">◀</button>
+  <span class="date-display" id="dateDisplay" onclick="goToToday()">This Week</span>
+  <button class="date-nav-btn" onclick="nextWeek()">▶</button>
+</div>
+
+<div class="day-tabs" id="dayTabs">
+  <!-- Generated by JS -->
+</div>
+
+<div class="filters">
+  <div class="filter-row">
+    <select id="statusFilter" class="filter-select" onchange="renderTimeline()">
+      <option value="all">All Status</option>
+      <option value="scheduled">Scheduled</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="completed">Completed</option>
+      <option value="sold">Sold</option>
+    </select>
+    <select id="employeeFilter" class="filter-select" onchange="renderTimeline()">
+      <option value="all">All Employees</option>
+    </select>
+  </div>
+</div>
+
+<div class="timeline" id="timeline">
+  <div class="empty-state">Loading schedule...</div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-grid">
+    <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+    <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn active">Sales</a>
+  </div>
+</div>
+
+<!-- Appointment Modal -->
+<div id="appointmentModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
+  <div style="background:#1a2535; border-radius:12px; padding:24px; max-width:500px; width:90%; margin:50px auto; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#60a5fa; font-size:18px;">New Sales Appointment</h2>
+      <button onclick="closeModal('appointmentModal')" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <form onsubmit="saveAppointment(event)">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Customer Name *</label>
+        <input type="text" id="apptName" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Phone</label>
+          <input type="tel" id="apptPhone" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Email</label>
+          <input type="email" id="apptEmail" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Date *</label>
+          <input type="date" id="apptDate" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Time *</label>
+          <input type="time" id="apptTime" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Appointment Type</label>
+        <select id="apptType" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+          <option value="Sales Consultation">Sales Consultation</option>
+          <option value="Test Drive">Test Drive</option>
+          <option value="Trade-In Appraisal">Trade-In Appraisal</option>
+          <option value="Finance Consultation">Finance Consultation</option>
+          <option value="Delivery">Delivery</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Vehicle Interest</label>
+        <input type="text" id="apptVehicle" placeholder="e.g., 2024 Honda Civic" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Assigned To</label>
+        <select id="apptAssigned" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:12px; margin-top:20px;">
+        <button type="submit" style="flex:1; padding:12px; background:#3b82f6; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer;">Save</button>
+        <button type="button" onclick="closeModal('appointmentModal')" style="padding:12px 20px; background:#1e3a5f; border:none; border-radius:8px; color:#60a5fa; cursor:pointer;">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = null;
+let appointments = [];
+let selectedDate = new Date();
+let weekStart = getWeekStart(new Date());
+
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    window.location.href = 'login.html';
+    return null;
+  }
+  return session;
+}
+
+async function loadBusinessSettings() {
+  const { data } = await sb.from('business_settings').select('*').limit(1).single();
+  if (data) {
+    tenantId = data.tenant_id;
+    document.title = `${data.business_name || 'Sales'} - Scheduler`;
+  }
+}
+
+async function loadAppointments() {
+  if (!tenantId) return;
+  
+  const { data } = await sb.from('sales_appointments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('appointment_date', { ascending: true })
+    .order('appointment_time', { ascending: true });
+  
+  appointments = data || [];
+  populateEmployeeFilter();
+  renderDayTabs();
+  renderTimeline();
+}
+
+function populateEmployeeFilter() {
+  const employees = [...new Set(appointments.filter(a => a.assigned_to).map(a => a.assigned_to))];
+  const filter = document.getElementById('employeeFilter');
+  const assignedSelect = document.getElementById('apptAssigned');
+  
+  const options = employees.map(e => `<option value="${e}">${e}</option>`).join('');
+  filter.innerHTML = '<option value="all">All Employees</option>' + options;
+  assignedSelect.innerHTML = '<option value="">Unassigned</option>' + options;
+}
+
+function renderDayTabs() {
+  const container = document.getElementById('dayTabs');
+  const today = new Date().toISOString().split('T')[0];
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const isToday = dateStr === today;
+    const isSelected = dateStr === selectedDate.toISOString().split('T')[0];
+    
+    html += `
+      <div class="day-tab ${isSelected ? 'active' : ''} ${isToday ? 'today' : ''}" onclick="selectDate('${dateStr}')">
+        <div class="day-name">${days[d.getDay()]}</div>
+        <div class="day-num">${d.getDate()}</div>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
+  updateDateDisplay();
+}
+
+function updateDateDisplay() {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const endDate = new Date(weekStart);
+  endDate.setDate(endDate.getDate() + 6);
+  
+  document.getElementById('dateDisplay').textContent = 
+    `${months[weekStart.getMonth()]} ${weekStart.getDate()} - ${months[endDate.getMonth()]} ${endDate.getDate()}`;
+}
+
+function selectDate(dateStr) {
+  selectedDate = new Date(dateStr + 'T00:00:00');
+  renderDayTabs();
+  renderTimeline();
+}
+
+function prevWeek() {
+  weekStart.setDate(weekStart.getDate() - 7);
+  selectedDate = new Date(weekStart);
+  renderDayTabs();
+  renderTimeline();
+}
+
+function nextWeek() {
+  weekStart.setDate(weekStart.getDate() + 7);
+  selectedDate = new Date(weekStart);
+  renderDayTabs();
+  renderTimeline();
+}
+
+function goToToday() {
+  const today = new Date();
+  weekStart = getWeekStart(today);
+  selectedDate = today;
+  renderDayTabs();
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const container = document.getElementById('timeline');
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  const status = document.getElementById('statusFilter').value;
+  const employee = document.getElementById('employeeFilter').value;
+  
+  let dayAppts = appointments.filter(a => a.appointment_date === dateStr);
+  
+  if (status !== 'all') {
+    dayAppts = dayAppts.filter(a => a.status === status);
+  }
+  
+  if (employee !== 'all') {
+    dayAppts = dayAppts.filter(a => a.assigned_to === employee);
+  }
+  
+  // Time slots from 8am to 6pm
+  const slots = [];
+  for (let h = 8; h <= 18; h++) {
+    const timeStr = `${h.toString().padStart(2, '0')}:00`;
+    const slotAppts = dayAppts.filter(a => {
+      const apptHour = parseInt(a.appointment_time?.split(':')[0] || '0');
+      return apptHour === h;
+    });
+    slots.push({ time: timeStr, hour: h, appointments: slotAppts });
+  }
+  
+  container.innerHTML = slots.map(slot => `
+    <div class="time-slot">
+      <div class="time-label">${formatHour(slot.hour)}</div>
+      <div class="slot-content">
+        ${slot.appointments.length ? 
+          slot.appointments.map(a => renderApptCard(a)).join('') :
+          `<div class="slot-empty" onclick="openAppointmentModalWithTime('${dateStr}', '${slot.time}')">+ Add appointment</div>`
+        }
+      </div>
+    </div>
+  `).join('');
+}
+
+function formatHour(h) {
+  if (h === 12) return '12 PM';
+  return h > 12 ? `${h - 12} PM` : `${h} AM`;
+}
+
+function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':');
+  const hour = parseInt(h);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+  return `${h12}:${m} ${ampm}`;
+}
+
+function getStatusBadge(status) {
+  const map = {
+    'scheduled': 'info',
+    'confirmed': 'info',
+    'completed': 'success',
+    'sold': 'success',
+    'cancelled': 'danger',
+    'no_show': 'danger'
+  };
+  return map[status] || 'info';
+}
+
+function renderApptCard(a) {
+  return `
+    <div class="appt-card status-${a.status}">
+      <div class="appt-header">
+        <div>
+          <div class="appt-customer">${a.customer_name}</div>
+          <div class="appt-details">${a.vehicle_interest || a.appointment_type || 'Sales'}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="appt-time">${formatTime(a.appointment_time)}</div>
+          <span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span>
+        </div>
+      </div>
+      ${a.assigned_to ? `<div class="appt-details" style="margin-top:4px;">Agent: ${a.assigned_to}</div>` : ''}
+      ${a.status === 'scheduled' || a.status === 'confirmed' ? `
+      <div class="appt-actions">
+        <button class="appt-action-btn btn-complete" onclick="updateStatus('${a.appointment_id}', 'completed')">Complete</button>
+        <button class="appt-action-btn btn-noshow" onclick="updateStatus('${a.appointment_id}', 'no_show')">No Show</button>
+        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call">Call</a>` : ''}
+      </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+async function updateStatus(id, status) {
+  await sb.from('sales_appointments')
+    .update({ status })
+    .eq('appointment_id', id);
+  await loadAppointments();
+}
+
+function openAppointmentModal() {
+  document.getElementById('apptDate').value = selectedDate.toISOString().split('T')[0];
+  document.getElementById('appointmentModal').style.display = 'block';
+}
+
+function openAppointmentModalWithTime(dateStr, timeStr) {
+  document.getElementById('apptDate').value = dateStr;
+  document.getElementById('apptTime').value = timeStr;
+  document.getElementById('appointmentModal').style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function saveAppointment(e) {
+  e.preventDefault();
+  
+  const { error } = await sb.from('sales_appointments').insert({
+    tenant_id: tenantId,
+    customer_name: document.getElementById('apptName').value,
+    customer_phone: document.getElementById('apptPhone').value || null,
+    customer_email: document.getElementById('apptEmail').value || null,
+    appointment_date: document.getElementById('apptDate').value,
+    appointment_time: document.getElementById('apptTime').value,
+    appointment_type: document.getElementById('apptType').value,
+    vehicle_interest: document.getElementById('apptVehicle').value || null,
+    assigned_to: document.getElementById('apptAssigned').value || null,
+    status: 'scheduled'
+  });
+  
+  if (error) {
+    alert('Error: ' + error.message);
+    return;
+  }
+  
+  closeModal('appointmentModal');
+  e.target.reset();
+  await loadAppointments();
+}
+
+async function init() {
+  await checkAuth();
+  await loadBusinessSettings();
+  await loadAppointments();
+}
+
+init();
+</script>
+
+</body>
+</html>
