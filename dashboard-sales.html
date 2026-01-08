@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sales Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: #0b0f14; color: #e8eef6; }
+    
+    .desktop-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0b0f14;
+      border-bottom: 1px solid #223044;
+    }
+    
+    .mobile-top-header {
+      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0f1621;
+      border-bottom: 1px solid #223044;
+    }
+
+    .mobile-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .mobile-menu-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: #6b7280;
+      font-size: 20px;
+      padding: 0;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mobile-header-center {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .mobile-header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .business-name { font-size: 12px; color: #60a5fa; }
+
+    .mobile-header-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .mobile-header-content.expanded {
+      max-height: 200px;
+    }
+
+    .mobile-header-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 8px 12px 12px;
+      background: #0b0f14;
+      border-top: 1px solid #223044;
+    }
+
+    .mobile-header-actions button {
+      padding: 10px;
+      font-size: 13px;
+      background: #1a2535;
+      border: 1px solid #3b82f6;
+      color: #e8eef6;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .accordion-icon-header {
+      font-size: 20px;
+      color: #9fb0c3;
+      transition: transform 0.2s ease;
+    }
+
+    .mobile-menu-toggle.active .accordion-icon-header {
+      transform: rotate(180deg);
+    }
+
+    .mobile-action-buttons {
+      display:none;
+      position:fixed;
+      bottom:102px;
+      left:0;
+      right:0;
+      background:#0f1621;
+      padding:8px 8px 0 8px;
+      z-index:101;
+    }
+
+    .mobile-action-grid {
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:6px;
+      margin-bottom:6px;
+    }
+
+    .mobile-action-btn {
+      padding:10px 8px;
+      border-radius:8px;
+      border:1px solid #223044;
+      background:#1a2535;
+      color:#9fb0c3;
+      font-size:12px;
+      font-weight:600;
+      cursor:pointer;
+      transition:all 0.2s;
+      white-space:nowrap;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:44px;
+      text-decoration:none;
+    }
+
+    .mobile-action-btn:active {
+      transform:scale(0.95);
+      background:#243648;
+    }
+
+    .mobile-bottom-nav {
+      display:none;
+      position:fixed;
+      bottom:0;
+      left:0;
+      right:0;
+      background:#0f1621;
+      padding:8px 8px 8px 8px;
+      z-index:100;
+    }
+
+    .mobile-nav-grid {
+      display:grid;
+      grid-template-columns:repeat(4, 1fr);
+      gap:6px;
+      margin-bottom:6px;
+    }
+
+    .mobile-nav-secondary {
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:6px;
+    }
+
+    .mobile-nav-btn {
+      padding:10px 8px;
+      border-radius:8px;
+      border:1px solid #223044;
+      background:#1a2535;
+      color:#9fb0c3;
+      font-size:12px;
+      font-weight:600;
+      cursor:pointer;
+      transition:all 0.2s;
+      white-space:nowrap;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-decoration:none;
+      min-height:44px;
+    }
+    
+    .mobile-nav-grid .mobile-nav-btn {
+      background:#1f2e40;
+    }
+
+    .mobile-nav-btn.active, 
+    .mobile-nav-btn:hover {
+      background:#3b82f6;
+      border-color:#3b82f6;
+      color:#fff;
+    }
+
+    .mobile-nav-btn:active {
+      transform:scale(0.95);
+    }
+    
+    .main { display: flex; flex-direction: column; min-height: 100vh; }
+    .content { flex: 1; padding: 20px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    
+    .top-bar { background: #1a2535; border-bottom: 1px solid #2d3f56; padding: 16px 20px; }
+    .top-bar .big-action-buttons { padding-top: 0; margin-top: 0; }
+    
+    .btn { 
+      padding: 8px 16px; 
+      border: none; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-size: 13px; 
+      min-height: 36px;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-success { background: #059669; color: white; }
+    
+    .card { background: #1a2535; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .card-title { font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 16px; }
+    
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .stat-card { 
+      background: #1a2535; 
+      padding: 16px; 
+      border-radius: 8px; 
+      border-left: 4px solid #3b82f6;
+    }
+    .stat-label { color: #94a3b8; font-size: 12px; margin-bottom: 4px; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #e8eef6; }
+    
+    .table-container { background: #1a2535; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #0f1621; padding: 12px; text-align: left; font-weight: 600; color: #94a3b8; font-size: 12px; text-transform: uppercase; }
+    td { padding: 12px; border-top: 1px solid #2d3f56; }
+    tr:hover td { background: #223044; }
+    
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-success { background: #065f46; color: #34d399; }
+    .badge-warning { background: #92400e; color: #fbbf24; }
+    .badge-info { background: #1e3a8a; color: #60a5fa; }
+    .badge-danger { background: #7f1d1d; color: #f87171; }
+    
+    .tab-nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #2d3f56;
+      padding-bottom: 8px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .tab-btn.active {
+      color: #60a5fa;
+      border-bottom-color: #60a5fa;
+    }
+    
+    .content-stats-header {
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: #1a2535;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+    
+    .content-stats-header .accordion-icon-header {
+      transition: transform 0.2s ease;
+    }
+    
+    .content-stats-header.collapsed .accordion-icon-header {
+      transform: rotate(-90deg);
+    }
+    
+    .content-stats-content {
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    
+    .content-stats-content.collapsed {
+      max-height: 0 !important;
+    }
+    
+    .big-action-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 16px 0;
+      margin-top: 8px;
+    }
+
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background: #223044; }
+    
+    @media (max-width: 768px) {
+      .desktop-header { display:none !important; }
+      .mobile-top-header { display:block; }
+      .mobile-bottom-nav { display:block !important; }
+      .mobile-action-buttons { display:block !important; }
+      .content-stats-header { display:flex !important; }
+      .big-action-buttons { display:none !important; }
+      .top-bar { display:none; }
+      
+      body { padding-bottom:165px; }
+      
+      .content { padding:12px; }
+      .top-bar { padding:12px; }
+      .top-stats { 
+        grid-template-columns:repeat(2, 1fr); 
+        gap:8px;
+        margin-bottom:0;
+      }
+      .top-stat { padding:8px; }
+      .top-stat-label { font-size:9px; }
+      .top-stat-value { font-size:16px; }
+      
+      .stats { grid-template-columns:1fr; gap:12px; }
+      .card { padding:16px; margin-bottom:16px; }
+      .table-container { overflow-x:auto; }
+      table { min-width:600px; font-size:12px; }
+      th, td { padding:8px 6px; white-space:nowrap; }
+      
+      /* Mobile: Hide blue title, reorder sections, hide reports tab */
+      .mobile-hide-title { display:none !important; }
+      .tab-btn[onclick="showSection('reports')"] { display:none !important; }
+      
+      /* Reorder dashboard sections for mobile */
+      #dashboard { display:flex; flex-direction:column; }
+      #dashboard .todays-appts-card { order:1; }
+      #dashboard .featured-inv-card { order:2; }
+      #dashboard .key-metrics-section { order:3; }
+      #dashboard .sales-overview-section { order:4; }
+      #dashboard .reports-accordion-section { order:5; display:block !important; }
+      
+      .desktop-only-reports { display:none !important; }
+    }
+    
+    @media (min-width: 769px) {
+      .mobile-top-header { display:none !important; }
+      .mobile-bottom-nav { display:none !important; }
+      .mobile-action-buttons { display:none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">
+      <span class="accordion-icon-header">☰</span>
+    </button>
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">Sales Dashboard</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
+    </div>
+    <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
+  </div>
+  
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="location.href='dashboard-service.html'">Service</button>
+      <button onclick="location.href='dashboard-parts.html'">Parts</button>
+      <button onclick="location.href='dashboard-sales.html'">Sales</button>
+    </div>
+  </div>
+</div>
+
+<div class="desktop-header">
+  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">Sales Dashboard</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
+    <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px; text-decoration:none;">Logout</a>
+  </div>
+  
+  <div style="padding:0 24px 12px;">
+    <nav style="display:flex; gap:24px; overflow-x:auto;">
+      <a href="dashboard-business.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Business</a>
+      <a href="dashboard-customer-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Customers</a>
+      <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Vehicles</a>
+      <a href="dashboard-settings.html" style="padding:12px 0; color:#9fb0c3; text-decoration:none; font-size:14px; white-space:nowrap; border-bottom:2px solid transparent;">Settings</a>
+    </nav>
+  </div>
+  
+  <div style="padding:0 24px 12px; border-top:1px solid #223044; padding-top:12px;">
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
+      <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid #223044; color:#9fb0c3; border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
+      <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid #3b82f6; color:#60a5fa; border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
+    </div>
+    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
+      <button onclick="openAppointmentModal()" class="btn btn-primary" style="padding:10px 16px; font-size:13px;">+ New Appointment</button>
+      <button onclick="showSection('inventory')" class="btn btn-primary" style="padding:10px 16px; font-size:13px;">Inventory</button>
+      <button onclick="showSection('appointments')" class="btn btn-primary" style="padding:10px 16px; font-size:13px;">Appointments</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="top-bar">
+    <div class="big-action-buttons" style="padding-top:0; margin-top:0;">
+      <button class="btn btn-primary" onclick="openAppointmentModal()" style="padding: 18px 20px; font-size: 14px; font-weight: 600;">+ New Appointment</button>
+      <button class="btn btn-primary" onclick="showSection('inventory')" style="padding: 18px 20px; font-size: 14px; font-weight: 600;">View Inventory</button>
+      <button class="btn btn-primary" onclick="showSection('appointments')" style="padding: 18px 20px; font-size: 14px; font-weight: 600;">All Appointments</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="showSection('dashboard')">Dashboard</button>
+      <button class="tab-btn" onclick="showSection('appointments')">Appointments</button>
+      <button class="tab-btn" onclick="showSection('inventory')">Inventory</button>
+      <button class="tab-btn" onclick="showSection('reports')">Reports</button>
+    </div>
+    
+    <!-- Dashboard Section -->
+    <div id="dashboard" class="section active">
+      <h2 style="color:#60a5fa; margin-bottom:16px;" class="mobile-hide-title">Sales Overview</h2>
+      
+      <!-- Today's Appointments -->
+      <div class="card todays-appts-card">
+        <div class="card-title">Today's Appointments</div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Customer</th>
+                <th>Type</th>
+                <th>Interest</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="todayApptsTable">
+              <tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">No appointments today</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Featured Inventory -->
+      <div class="card featured-inv-card">
+        <div class="card-title">Featured Inventory</div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Stock #</th>
+                <th>Year</th>
+                <th>Make</th>
+                <th>Model</th>
+                <th>Color</th>
+                <th>Asking Price</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="featuredInvTable">
+              <tr><td colspan="7" style="text-align:center; padding:40px; color:#94a3b8;">No inventory</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Key Metrics -->
+      <div class="key-metrics-section">
+        <div class="content-stats-header collapsed" onclick="toggleContentStats(this, 'contentStatsContent')">
+          <span style="font-size: 14px; font-weight: 600; color: #e8eef6;">Key Metrics</span>
+          <span class="accordion-icon-header">▼</span>
+        </div>
+        
+        <div class="content-stats-content collapsed" id="contentStatsContent">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Upcoming Appointments</div>
+              <div class="stat-value" id="upcomingAppts">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#f59e0b;">
+              <div class="stat-label">Completed This Week</div>
+              <div class="stat-value" id="completedWeek">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#10b981;">
+              <div class="stat-label">Available Units</div>
+              <div class="stat-value" id="availableUnits">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#8b5cf6;">
+              <div class="stat-label">Avg Margin</div>
+              <div class="stat-value" id="avgMargin">0%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sales Overview Stats -->
+      <div class="sales-overview-section" style="margin-top:12px;">
+        <div class="content-stats-header collapsed" onclick="toggleContentStats(this, 'salesOverviewContent')">
+          <span style="font-size: 14px; font-weight: 600; color: #e8eef6;">Sales Overview</span>
+          <span class="accordion-icon-header">▼</span>
+        </div>
+        
+        <div class="content-stats-content collapsed" id="salesOverviewContent">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Inventory Units</div>
+              <div class="stat-value" id="invUnits">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#10b981;">
+              <div class="stat-label">Total Inventory Value</div>
+              <div class="stat-value" id="invValue">$0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#f59e0b;">
+              <div class="stat-label">Sold This Month</div>
+              <div class="stat-value" id="soldMTD">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#8b5cf6;">
+              <div class="stat-label">Revenue MTD</div>
+              <div class="stat-value" id="revenueMTD">$0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#ec4899;">
+              <div class="stat-label">Avg Asking Price</div>
+              <div class="stat-value" id="avgPrice">$0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#06b6d4;">
+              <div class="stat-label">Appointments Today</div>
+              <div class="stat-value" id="apptsToday">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reports Accordion (Mobile Only) -->
+      <div class="reports-accordion-section" style="display:none; margin-top:12px;">
+        <div class="content-stats-header collapsed" onclick="toggleContentStats(this, 'reportsAccordionContent')">
+          <span style="font-size: 14px; font-weight: 600; color: #e8eef6;">Reports</span>
+          <span class="accordion-icon-header">▼</span>
+        </div>
+        
+        <div class="content-stats-content collapsed" id="reportsAccordionContent">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Total Units Sold (All Time)</div>
+              <div class="stat-value" id="totalSoldMobile">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#10b981;">
+              <div class="stat-label">Total Revenue</div>
+              <div class="stat-value" id="totalRevenueMobile">$0</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#f59e0b;">
+              <div class="stat-label">Avg Days to Sell</div>
+              <div class="stat-value">--</div>
+            </div>
+            <div class="stat-card" style="border-left-color:#8b5cf6;">
+              <div class="stat-label">Show Rate</div>
+              <div class="stat-value" id="showRateMobile">--%</div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
+            <button class="btn btn-secondary" onclick="alert('Coming soon!')" style="padding:12px; font-size:12px;">Inventory Aging</button>
+            <button class="btn btn-secondary" onclick="alert('Coming soon!')" style="padding:12px; font-size:12px;">Sales by Month</button>
+            <button class="btn btn-secondary" onclick="alert('Coming soon!')" style="padding:12px; font-size:12px;">Margin Analysis</button>
+            <button class="btn btn-secondary" onclick="alert('Coming soon!')" style="padding:12px; font-size:12px;">Appointment Report</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Appointments Section -->
+    <div id="appointments" class="section">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+        <h2 style="color:#60a5fa;">Sales Appointments</h2>
+        <div style="display:flex; gap:8px;">
+          <select id="apptFilter" class="search-box" style="padding:8px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+            <option value="all">All Appointments</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn btn-primary" onclick="openAppointmentModal()">+ New Appointment</button>
+        </div>
+      </div>
+      
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Type</th>
+              <th>Interest</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="allApptsTable">
+            <tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Inventory Section -->
+    <div id="inventory" class="section">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+        <h2 style="color:#60a5fa;">Sales Inventory</h2>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="invSearch" placeholder="Search inventory..." style="padding:8px 12px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6; width:200px;" oninput="filterInventory()">
+          <select id="invStatusFilter" style="padding:8px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;" onchange="filterInventory()">
+            <option value="all">All Status</option>
+            <option value="available">Available</option>
+            <option value="sold">Sold</option>
+            <option value="pending">Pending</option>
+          </select>
+          <button class="btn btn-primary" onclick="openInventoryModal()">+ Add Unit</button>
+        </div>
+      </div>
+      
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Stock #</th>
+              <th>Year</th>
+              <th>Make</th>
+              <th>Model</th>
+              <th>Trim</th>
+              <th>Color</th>
+              <th>Mileage</th>
+              <th>Cost</th>
+              <th>Asking</th>
+              <th>Margin</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inventoryTable">
+            <tr><td colspan="12" style="text-align:center; padding:40px; color:#94a3b8;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Reports Section -->
+    <div id="reports" class="section desktop-only-reports">
+      <h2 style="color:#60a5fa; margin-bottom:16px;">Sales Reports</h2>
+      
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">Total Units Sold (All Time)</div>
+          <div class="stat-value" id="totalSold">0</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#10b981;">
+          <div class="stat-label">Total Revenue</div>
+          <div class="stat-value" id="totalRevenue">$0</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#f59e0b;">
+          <div class="stat-label">Avg Days to Sell</div>
+          <div class="stat-value">--</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#8b5cf6;">
+          <div class="stat-label">Show Rate</div>
+          <div class="stat-value" id="showRate">--%</div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-title">Quick Reports</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+          <button class="btn btn-secondary" onclick="alert('Coming soon!')">Inventory Aging</button>
+          <button class="btn btn-secondary" onclick="alert('Coming soon!')">Sales by Month</button>
+          <button class="btn btn-secondary" onclick="alert('Coming soon!')">Margin Analysis</button>
+          <button class="btn btn-secondary" onclick="alert('Coming soon!')">Appointment Report</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Mobile Action Buttons -->
+<div class="mobile-action-buttons">
+  <div class="mobile-action-grid">
+    <button class="mobile-action-btn" onclick="openAppointmentModal()">+ Appt</button>
+    <button class="mobile-action-btn" onclick="showSection('inventory')">Inventory</button>
+    <button class="mobile-action-btn" onclick="showSection('appointments')">Appts</button>
+  </div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-grid">
+    <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+    <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn active">Sales</a>
+  </div>
+</div>
+
+<!-- New Appointment Modal -->
+<div id="appointmentModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
+  <div style="background:#1a2535; border-radius:12px; padding:24px; max-width:500px; width:90%; margin:50px auto; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#60a5fa; font-size:18px;">New Sales Appointment</h2>
+      <button onclick="closeModal('appointmentModal')" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <form onsubmit="saveAppointment(event)">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Customer Name *</label>
+        <input type="text" id="apptCustomer" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Phone</label>
+          <input type="tel" id="apptPhone" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Email</label>
+          <input type="email" id="apptEmail" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Date *</label>
+          <input type="date" id="apptDate" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Time *</label>
+          <input type="time" id="apptTime" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Appointment Type</label>
+        <select id="apptType" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+          <option>Sales Consultation</option>
+          <option>Test Drive</option>
+          <option>Trade-In Eval</option>
+          <option>Delivery</option>
+          <option>Follow Up</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Vehicle Interest</label>
+        <input type="text" id="apptInterest" placeholder="What are they interested in?" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Notes</label>
+        <textarea id="apptNotes" rows="3" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6; resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn btn-primary" style="flex:1; padding:12px;">Save Appointment</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('appointmentModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Inventory Modal -->
+<div id="inventoryModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
+  <div style="background:#1a2535; border-radius:12px; padding:24px; max-width:600px; width:90%; margin:50px auto; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#60a5fa; font-size:18px;">Add Inventory</h2>
+      <button onclick="closeModal('inventoryModal')" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <form onsubmit="saveInventory(event)">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Stock Number *</label>
+          <input type="text" id="invStock" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Year *</label>
+          <input type="number" id="invYear" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Make *</label>
+          <input type="text" id="invMake" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Model *</label>
+          <input type="text" id="invModel" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Trim</label>
+          <input type="text" id="invTrim" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Color</label>
+          <input type="text" id="invColor" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">VIN</label>
+          <input type="text" id="invVin" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Mileage</label>
+          <input type="number" id="invMileage" value="0" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Purchase Price *</label>
+          <input type="number" step="0.01" id="invCost" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Asking Price *</label>
+          <input type="number" step="0.01" id="invAsking" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Description</label>
+        <textarea id="invDesc" rows="3" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6; resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn btn-primary" style="flex:1; padding:12px;">Save</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('inventoryModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = null;
+let appointments = [];
+let inventory = [];
+
+// ============================================================================
+// UI FUNCTIONS
+// ============================================================================
+function toggleMobileMenu(button) {
+  const content = document.getElementById('mobileHeaderContent');
+  content.classList.toggle('expanded');
+  button.classList.toggle('active');
+}
+
+function toggleContentStats(header, contentId) {
+  const content = document.getElementById(contentId);
+  content.classList.toggle('collapsed');
+  header.classList.toggle('collapsed');
+  localStorage.setItem(contentId + '_collapsed', content.classList.contains('collapsed'));
+  content.style.maxHeight = content.classList.contains('collapsed') ? '0px' : content.scrollHeight + 'px';
+}
+
+function showSection(sec) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  
+  // Find and activate the right tab
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    if (btn.textContent.toLowerCase().includes(sec.substring(0, 4))) {
+      btn.classList.add('active');
+    }
+  });
+  
+  document.getElementById(sec).classList.add('active');
+}
+
+function openAppointmentModal() {
+  document.getElementById('apptDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('appointmentModal').style.display = 'block';
+}
+
+function openInventoryModal() {
+  document.getElementById('inventoryModal').style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// ============================================================================
+// LOGOUT
+// ============================================================================
+function logout() {
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('sb-')) localStorage.removeItem(key);
+  });
+  window.location.href = 'login.html?logout=1';
+}
+
+// ============================================================================
+// AUTH CHECK
+// ============================================================================
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: token,
+        refresh_token: refreshToken
+      });
+      if (error || !data.session) {
+        window.location.href = 'login.html';
+        return null;
+      }
+      return data.session;
+    }
+    window.location.href = 'login.html';
+    return null;
+  }
+  return session;
+}
+
+// ============================================================================
+// DATA LOADING
+// ============================================================================
+async function loadBusinessSettings() {
+  const { data, error } = await sb.from('business_settings').select('*').single();
+  if (error) {
+    console.error('Business settings error:', error.message);
+    return;
+  }
+  if (data) {
+    tenantId = data.tenant_id;
+    const name = data.business_name || data.company_name || 'My Business';
+    document.getElementById('desktopBusinessName').textContent = name;
+    document.getElementById('mobileBusinessName').textContent = name;
+  }
+}
+
+async function loadData() {
+  if (!tenantId) return;
+  
+  // Load appointments
+  const { data: apptData, error: apptError } = await sb
+    .from('sales_appointments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('appointment_date', { ascending: true });
+  
+  if (apptError) {
+    console.error('Appointments error:', apptError.message);
+  } else {
+    appointments = apptData || [];
+  }
+  
+  // Load inventory
+  const { data: invData, error: invError } = await sb
+    .from('sales_inventory')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
+  
+  if (invError) {
+    console.error('Inventory error:', invError.message);
+  } else {
+    inventory = invData || [];
+  }
+  
+  renderAll();
+  updateStats();
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+function renderAll() {
+  renderTodayAppointments();
+  renderAllAppointments();
+  renderFeaturedInventory();
+  renderFullInventory();
+}
+
+function renderTodayAppointments() {
+  const today = new Date().toISOString().split('T')[0];
+  const todayAppts = appointments.filter(a => a.appointment_date === today);
+  
+  const tbody = document.getElementById('todayApptsTable');
+  if (!todayAppts.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">No appointments today</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = todayAppts.map(a => `
+    <tr>
+      <td><strong>${formatTime(a.appointment_time)}</strong></td>
+      <td>${a.customer_name}</td>
+      <td>${a.appointment_type || 'Consultation'}</td>
+      <td>${a.vehicle_interest || '-'}</td>
+      <td><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></td>
+      <td>
+        <button class="btn btn-sm btn-success" onclick="updateApptStatus('${a.appointment_id}', 'completed')" style="padding:4px 8px; font-size:11px;">Complete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderAllAppointments() {
+  const tbody = document.getElementById('allApptsTable');
+  const filter = document.getElementById('apptFilter')?.value || 'all';
+  
+  let filtered = appointments;
+  if (filter !== 'all') {
+    filtered = appointments.filter(a => a.status === filter);
+  }
+  
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No appointments found</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = filtered.map(a => `
+    <tr>
+      <td>${formatDate(a.appointment_date)}</td>
+      <td>${formatTime(a.appointment_time)}</td>
+      <td><strong>${a.customer_name}</strong></td>
+      <td>${a.customer_phone || '-'}</td>
+      <td>${a.appointment_type || 'Consultation'}</td>
+      <td>${a.vehicle_interest || '-'}</td>
+      <td><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></td>
+      <td>
+        ${a.status === 'scheduled' ? `
+          <button class="btn btn-sm btn-success" onclick="updateApptStatus('${a.appointment_id}', 'completed')" style="padding:4px 8px; font-size:11px;">✓</button>
+          <button class="btn btn-sm btn-secondary" onclick="updateApptStatus('${a.appointment_id}', 'no_show')" style="padding:4px 8px; font-size:11px;">NS</button>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderFeaturedInventory() {
+  const tbody = document.getElementById('featuredInvTable');
+  const available = inventory.filter(i => i.status === 'available').slice(0, 5);
+  
+  if (!available.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#94a3b8;">No inventory available</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = available.map(i => `
+    <tr class="clickable-row" onclick="showSection('inventory')">
+      <td><strong>${i.stock_number}</strong></td>
+      <td>${i.year}</td>
+      <td>${i.make}</td>
+      <td>${i.model}</td>
+      <td>${i.color || '-'}</td>
+      <td>$${(i.asking_price || 0).toLocaleString()}</td>
+      <td><span class="badge badge-success">Available</span></td>
+    </tr>
+  `).join('');
+}
+
+function renderFullInventory() {
+  const tbody = document.getElementById('inventoryTable');
+  
+  if (!inventory.length) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:40px; color:#94a3b8;">No inventory</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = inventory.map(i => {
+    const margin = i.purchase_price > 0 ? ((i.asking_price - i.purchase_price) / i.purchase_price * 100).toFixed(0) : 0;
+    return `
+    <tr>
+      <td><strong>${i.stock_number}</strong></td>
+      <td>${i.year}</td>
+      <td>${i.make}</td>
+      <td>${i.model}</td>
+      <td>${i.trim_level || '-'}</td>
+      <td>${i.color || '-'}</td>
+      <td>${(i.mileage || 0).toLocaleString()}</td>
+      <td>$${(i.purchase_price || 0).toLocaleString()}</td>
+      <td>$${(i.asking_price || 0).toLocaleString()}</td>
+      <td>${margin}%</td>
+      <td><span class="badge badge-${i.status === 'available' ? 'success' : i.status === 'sold' ? 'info' : 'warning'}">${i.status}</span></td>
+      <td>
+        ${i.status === 'available' ? `<button class="btn btn-sm btn-success" onclick="markSold('${i.inventory_id}')" style="padding:4px 8px; font-size:11px;">Mark Sold</button>` : ''}
+      </td>
+    </tr>
+  `}).join('');
+}
+
+function filterInventory() {
+  const search = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  const status = document.getElementById('invStatusFilter')?.value || 'all';
+  
+  let filtered = inventory;
+  
+  if (status !== 'all') {
+    filtered = filtered.filter(i => i.status === status);
+  }
+  
+  if (search) {
+    filtered = filtered.filter(i => 
+      i.stock_number.toLowerCase().includes(search) ||
+      i.make.toLowerCase().includes(search) ||
+      i.model.toLowerCase().includes(search) ||
+      (i.vin && i.vin.toLowerCase().includes(search))
+    );
+  }
+  
+  const tbody = document.getElementById('inventoryTable');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:40px; color:#94a3b8;">No matching inventory</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = filtered.map(i => {
+    const margin = i.purchase_price > 0 ? ((i.asking_price - i.purchase_price) / i.purchase_price * 100).toFixed(0) : 0;
+    return `
+    <tr>
+      <td><strong>${i.stock_number}</strong></td>
+      <td>${i.year}</td>
+      <td>${i.make}</td>
+      <td>${i.model}</td>
+      <td>${i.trim_level || '-'}</td>
+      <td>${i.color || '-'}</td>
+      <td>${(i.mileage || 0).toLocaleString()}</td>
+      <td>$${(i.purchase_price || 0).toLocaleString()}</td>
+      <td>$${(i.asking_price || 0).toLocaleString()}</td>
+      <td>${margin}%</td>
+      <td><span class="badge badge-${i.status === 'available' ? 'success' : i.status === 'sold' ? 'info' : 'warning'}">${i.status}</span></td>
+      <td>
+        ${i.status === 'available' ? `<button class="btn btn-sm btn-success" onclick="markSold('${i.inventory_id}')" style="padding:4px 8px; font-size:11px;">Mark Sold</button>` : ''}
+      </td>
+    </tr>
+  `}).join('');
+}
+
+// ============================================================================
+// STATS
+// ============================================================================
+function updateStats() {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const startOfWeek = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  
+  // Inventory stats
+  const available = inventory.filter(i => i.status === 'available');
+  const sold = inventory.filter(i => i.status === 'sold');
+  const soldMTD = sold.filter(i => i.date_sold >= startOfMonth);
+  
+  document.getElementById('invUnits').textContent = available.length;
+  document.getElementById('invValue').textContent = '$' + available.reduce((sum, i) => sum + (i.asking_price || 0), 0).toLocaleString();
+  document.getElementById('soldMTD').textContent = soldMTD.length;
+  document.getElementById('revenueMTD').textContent = '$' + soldMTD.reduce((sum, i) => sum + (i.sale_price || i.asking_price || 0), 0).toLocaleString();
+  
+  const avgPrice = available.length ? available.reduce((sum, i) => sum + (i.asking_price || 0), 0) / available.length : 0;
+  document.getElementById('avgPrice').textContent = '$' + Math.round(avgPrice).toLocaleString();
+  
+  // Appointment stats
+  const todayAppts = appointments.filter(a => a.appointment_date === today);
+  document.getElementById('apptsToday').textContent = todayAppts.length;
+  
+  const upcoming = appointments.filter(a => a.appointment_date >= today && a.status === 'scheduled');
+  document.getElementById('upcomingAppts').textContent = upcoming.length;
+  
+  const completedWeek = appointments.filter(a => a.appointment_date >= startOfWeek && a.status === 'completed');
+  document.getElementById('completedWeek').textContent = completedWeek.length;
+  
+  document.getElementById('availableUnits').textContent = available.length;
+  
+  // Average margin
+  const margins = available.filter(i => i.purchase_price > 0).map(i => (i.asking_price - i.purchase_price) / i.purchase_price * 100);
+  const avgMargin = margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+  document.getElementById('avgMargin').textContent = avgMargin.toFixed(0) + '%';
+  
+  // Reports stats
+  document.getElementById('totalSold').textContent = sold.length;
+  document.getElementById('totalRevenue').textContent = '$' + sold.reduce((sum, i) => sum + (i.sale_price || i.asking_price || 0), 0).toLocaleString();
+  
+  const totalAppts = appointments.length;
+  const noShows = appointments.filter(a => a.status === 'no_show').length;
+  const showRate = totalAppts > 0 ? ((totalAppts - noShows) / totalAppts * 100).toFixed(0) : 0;
+  document.getElementById('showRate').textContent = showRate + '%';
+  
+  // Mobile reports stats
+  document.getElementById('totalSoldMobile').textContent = sold.length;
+  document.getElementById('totalRevenueMobile').textContent = '$' + sold.reduce((sum, i) => sum + (i.sale_price || i.asking_price || 0), 0).toLocaleString();
+  document.getElementById('showRateMobile').textContent = showRate + '%';
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTime(timeStr) {
+  if (!timeStr) return '-';
+  const [h, m] = timeStr.split(':');
+  const hour = parseInt(h);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${m} ${ampm}`;
+}
+
+function getStatusBadge(status) {
+  switch (status) {
+    case 'scheduled': return 'info';
+    case 'completed': return 'success';
+    case 'cancelled': return 'warning';
+    case 'no_show': return 'danger';
+    default: return 'info';
+  }
+}
+
+// ============================================================================
+// CRUD OPERATIONS
+// ============================================================================
+async function saveAppointment(e) {
+  e.preventDefault();
+  
+  const data = {
+    tenant_id: tenantId,
+    customer_name: document.getElementById('apptCustomer').value,
+    customer_phone: document.getElementById('apptPhone').value || null,
+    customer_email: document.getElementById('apptEmail').value || null,
+    appointment_date: document.getElementById('apptDate').value,
+    appointment_time: document.getElementById('apptTime').value,
+    appointment_type: document.getElementById('apptType').value,
+    vehicle_interest: document.getElementById('apptInterest').value || null,
+    notes: document.getElementById('apptNotes').value || null,
+    status: 'scheduled'
+  };
+  
+  const { error } = await sb.from('sales_appointments').insert(data);
+  
+  if (error) {
+    alert('Error saving appointment: ' + error.message);
+    return;
+  }
+  
+  closeModal('appointmentModal');
+  document.querySelector('#appointmentModal form').reset();
+  await loadData();
+}
+
+async function updateApptStatus(id, status) {
+  const { error } = await sb
+    .from('sales_appointments')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('appointment_id', id);
+  
+  if (error) {
+    alert('Error: ' + error.message);
+    return;
+  }
+  
+  await loadData();
+}
+
+async function saveInventory(e) {
+  e.preventDefault();
+  
+  const data = {
+    tenant_id: tenantId,
+    stock_number: document.getElementById('invStock').value,
+    year: parseInt(document.getElementById('invYear').value),
+    make: document.getElementById('invMake').value,
+    model: document.getElementById('invModel').value,
+    trim_level: document.getElementById('invTrim').value || null,
+    color: document.getElementById('invColor').value || null,
+    vin: document.getElementById('invVin').value || null,
+    mileage: parseInt(document.getElementById('invMileage').value) || 0,
+    purchase_price: parseFloat(document.getElementById('invCost').value),
+    asking_price: parseFloat(document.getElementById('invAsking').value),
+    description: document.getElementById('invDesc').value || null,
+    status: 'available'
+  };
+  
+  const { error } = await sb.from('sales_inventory').insert(data);
+  
+  if (error) {
+    alert('Error saving inventory: ' + error.message);
+    return;
+  }
+  
+  closeModal('inventoryModal');
+  document.querySelector('#inventoryModal form').reset();
+  await loadData();
+}
+
+async function markSold(id) {
+  if (!confirm('Mark this unit as sold?')) return;
+  
+  const { error } = await sb
+    .from('sales_inventory')
+    .update({ status: 'sold', date_sold: new Date().toISOString().split('T')[0], updated_at: new Date().toISOString() })
+    .eq('inventory_id', id);
+  
+  if (error) {
+    alert('Error: ' + error.message);
+    return;
+  }
+  
+  await loadData();
+}
+
+// ============================================================================
+// FILTER EVENT LISTENER
+// ============================================================================
+document.getElementById('apptFilter')?.addEventListener('change', renderAllAppointments);
+
+// ============================================================================
+// INIT
+// ============================================================================
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+  
+  console.log('Logged in as:', session.user.email);
+  
+  await loadBusinessSettings();
+  await loadData();
+  
+  // Mobile accordion states
+  if (window.innerWidth <= 768) {
+    // Collapse all stats sections on mobile by default
+    ['contentStatsContent', 'salesOverviewContent', 'reportsAccordionContent'].forEach(id => {
+      const content = document.getElementById(id);
+      const header = content?.previousElementSibling;
+      if (content) {
+        content.classList.add('collapsed');
+        if (header) header.classList.add('collapsed');
+        content.style.maxHeight = '0px';
+      }
+    });
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
