@@ -348,40 +348,56 @@
       
       .desktop-only-reports { display:none !important; }
       
-      /* Zoomed table styles for mobile */
+      /* Zoomed table styles for mobile - kept for potential future use */
       .table-zoomed table { min-width:unset !important; font-size:16px !important; }
       .table-zoomed th, .table-zoomed td { padding:12px 10px !important; white-space:normal !important; }
-      .table-zoomed th:nth-child(3), .table-zoomed td:nth-child(3),
-      .table-zoomed th:nth-child(4), .table-zoomed td:nth-child(4),
-      .table-zoomed th:nth-child(6), .table-zoomed td:nth-child(6) { display:none; }
-      
-      /* Show zoom toggle on mobile */
-      .zoom-toggle { display:inline-block !important; }
       
       /* Hide desktop elements, show mobile elements */
       .section-header-desktop { display:none !important; }
       .desktop-table { display:none !important; }
       .section-header-mobile { display:block !important; }
       .cards-container { display:block !important; }
+      
+      /* Today's appointments card view on mobile */
+      .todays-appts-card .table-container { display:none !important; }
+      .todays-appts-card .mobile-cards-view { display:block !important; }
     }
     
     /* Cards container - hidden on desktop by default */
     .cards-container { display:none; }
     .section-header-mobile { display:none; }
+    .mobile-cards-view { display:none; }
     
-    /* Card styles */
+    /* Base Card styles */
     .item-card {
       background: #1a2535;
       border-radius: 12px;
       padding: 16px;
       margin-bottom: 12px;
       border-left: 4px solid #3b82f6;
+      position: relative;
+    }
+    .item-card-type {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 8px;
+      border-radius: 4px;
     }
     .item-card-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 8px;
+      padding-right: 70px;
+    }
+    .item-card-icon {
+      font-size: 24px;
+      margin-right: 12px;
     }
     .item-card-title {
       font-size: 16px;
@@ -424,12 +440,48 @@
       font-weight: 600;
       cursor: pointer;
     }
-    .item-card.sold { border-left-color: #10b981; }
-    .item-card.pending { border-left-color: #f59e0b; }
-    .item-card.cancelled { border-left-color: #ef4444; }
-    .item-card.no_show { border-left-color: #ef4444; }
-    .item-card.completed { border-left-color: #10b981; }
-    .item-card.confirmed { border-left-color: #8b5cf6; }
+    
+    /* APPOINTMENT Cards - Blue theme */
+    .item-card.card-appointment {
+      border-left-color: #3b82f6;
+      background: linear-gradient(135deg, #1a2535 0%, #1a2840 100%);
+    }
+    .item-card.card-appointment .item-card-type {
+      background: #1e3a5f;
+      color: #60a5fa;
+    }
+    .item-card.card-appointment .item-card-icon { color: #60a5fa; }
+    
+    /* INVENTORY Cards - Green theme */
+    .item-card.card-inventory {
+      border-left-color: #10b981;
+      background: linear-gradient(135deg, #1a2535 0%, #1a2b2a 100%);
+    }
+    .item-card.card-inventory .item-card-type {
+      background: #134e3a;
+      color: #34d399;
+    }
+    .item-card.card-inventory .item-card-icon { color: #10b981; }
+    
+    /* CUSTOMER Cards - Purple theme (future use) */
+    .item-card.card-customer {
+      border-left-color: #8b5cf6;
+      background: linear-gradient(135deg, #1a2535 0%, #231a35 100%);
+    }
+    .item-card.card-customer .item-card-type {
+      background: #3b2d5e;
+      color: #a78bfa;
+    }
+    .item-card.card-customer .item-card-icon { color: #8b5cf6; }
+    
+    /* Status modifiers */
+    .item-card.status-sold { border-left-color: #10b981 !important; }
+    .item-card.status-pending { border-left-color: #f59e0b !important; }
+    .item-card.status-cancelled { border-left-color: #ef4444 !important; }
+    .item-card.status-no_show { border-left-color: #ef4444 !important; }
+    .item-card.status-completed { border-left-color: #10b981 !important; }
+    .item-card.status-confirmed { border-left-color: #8b5cf6 !important; }
+    .item-card.status-scheduled { border-left-color: #3b82f6 !important; }
     
     @media (min-width: 769px) {
       .mobile-top-header { display:none !important; }
@@ -516,10 +568,12 @@
       
       <!-- Today's Appointments -->
       <div class="card todays-appts-card">
-        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>Today's Appointments</span>
-          <span class="zoom-toggle" onclick="toggleTableZoom('todayApptsContainer')" style="cursor:pointer; font-size:18px; display:none;">🔍</span>
-        </div>
+        <div class="card-title">Today's Appointments</div>
+        
+        <!-- Mobile Cards View -->
+        <div class="mobile-cards-view" id="todayApptsCards"></div>
+        
+        <!-- Desktop Table View -->
         <div class="table-container" id="todayApptsContainer">
           <table>
             <thead>
@@ -1121,11 +1175,27 @@ function renderAll() {
   renderFullInventory();
   renderAppointmentCards();
   renderInventoryCards();
+  renderTodayAppointmentCards();
 }
 
 // ============================================================================
 // MOBILE CARD RENDERING
 // ============================================================================
+function renderTodayAppointmentCards() {
+  const container = document.getElementById('todayApptsCards');
+  if (!container) return;
+  
+  const today = new Date().toISOString().split('T')[0];
+  const todayAppts = appointments.filter(a => a.appointment_date === today);
+  
+  if (!todayAppts.length) {
+    container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">No appointments today</div>';
+    return;
+  }
+  
+  container.innerHTML = todayAppts.map(a => createAppointmentCard(a)).join('');
+}
+
 function renderAppointmentCards(filtered = null) {
   const container = document.getElementById('apptsCardsContainer');
   const data = filtered || appointments;
@@ -1135,14 +1205,21 @@ function renderAppointmentCards(filtered = null) {
     return;
   }
   
-  container.innerHTML = data.map(a => `
-    <div class="item-card ${a.status}">
+  container.innerHTML = data.map(a => createAppointmentCard(a)).join('');
+}
+
+function createAppointmentCard(a) {
+  return `
+    <div class="item-card card-appointment status-${a.status}">
+      <span class="item-card-type">📅 APPT</span>
       <div class="item-card-header">
-        <div>
-          <div class="item-card-title">${a.customer_name}</div>
-          <div class="item-card-subtitle">${a.vehicle_interest || 'General inquiry'}</div>
+        <div style="display:flex; align-items:flex-start;">
+          <span class="item-card-icon">👤</span>
+          <div>
+            <div class="item-card-title">${a.customer_name}</div>
+            <div class="item-card-subtitle">${a.vehicle_interest || 'General inquiry'}</div>
+          </div>
         </div>
-        <span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span>
       </div>
       <div class="item-card-details">
         <div class="item-card-detail">
@@ -1158,18 +1235,23 @@ function renderAppointmentCards(filtered = null) {
           <span class="item-card-detail-value">${a.appointment_type || 'Consultation'}</span>
         </div>
         <div class="item-card-detail">
-          <span class="item-card-detail-label">Phone: </span>
-          <span class="item-card-detail-value">${a.customer_phone || '-'}</span>
+          <span class="item-card-detail-label">Status: </span>
+          <span class="item-card-detail-value"><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></span>
         </div>
       </div>
+      ${a.customer_phone ? `
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid #2d3f56;">
+        <a href="tel:${a.customer_phone}" style="color:#60a5fa; text-decoration:none; font-size:14px;">📞 ${a.customer_phone}</a>
+      </div>
+      ` : ''}
       ${a.status === 'scheduled' || a.status === 'confirmed' ? `
       <div class="item-card-actions">
-        <button class="btn btn-success" onclick="updateApptStatus('${a.appointment_id}', 'completed')">Complete</button>
-        <button class="btn btn-secondary" onclick="updateApptStatus('${a.appointment_id}', 'no_show')">No Show</button>
+        <button class="btn btn-success" onclick="updateApptStatus('${a.appointment_id}', 'completed')">✓ Complete</button>
+        <button class="btn btn-secondary" onclick="updateApptStatus('${a.appointment_id}', 'no_show')">✗ No Show</button>
       </div>
       ` : ''}
     </div>
-  `).join('');
+  `;
 }
 
 function renderInventoryCards(filtered = null) {
@@ -1181,26 +1263,28 @@ function renderInventoryCards(filtered = null) {
     return;
   }
   
-  container.innerHTML = data.map(i => {
-    const margin = i.purchase_price > 0 ? ((i.asking_price - i.purchase_price) / i.purchase_price * 100).toFixed(0) : 0;
-    return `
-    <div class="item-card ${i.status}">
+  container.innerHTML = data.map(i => createInventoryCard(i)).join('');
+}
+
+function createInventoryCard(i) {
+  const margin = i.purchase_price > 0 ? ((i.asking_price - i.purchase_price) / i.purchase_price * 100).toFixed(0) : 0;
+  return `
+    <div class="item-card card-inventory status-${i.status}">
+      <span class="item-card-type">🏷️ UNIT</span>
       <div class="item-card-header">
-        <div>
-          <div class="item-card-title">${i.year} ${i.make} ${i.model}</div>
-          <div class="item-card-subtitle">Stock #${i.stock_number} ${i.trim_level ? '• ' + i.trim_level : ''}</div>
+        <div style="display:flex; align-items:flex-start;">
+          <span class="item-card-icon">🚗</span>
+          <div>
+            <div class="item-card-title">${i.year} ${i.make} ${i.model}</div>
+            <div class="item-card-subtitle">Stock #${i.stock_number} ${i.trim_level ? '• ' + i.trim_level : ''}</div>
+          </div>
         </div>
-        <span class="badge badge-${i.status === 'available' ? 'success' : i.status === 'sold' ? 'info' : 'warning'}">${i.status}</span>
+      </div>
+      <div style="margin:12px 0; padding:12px; background:#0f1621; border-radius:8px; text-align:center;">
+        <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Asking Price</div>
+        <div style="font-size:24px; font-weight:700; color:#10b981;">$${(i.asking_price || 0).toLocaleString()}</div>
       </div>
       <div class="item-card-details">
-        <div class="item-card-detail">
-          <span class="item-card-detail-label">Asking: </span>
-          <span class="item-card-detail-value" style="color:#10b981; font-size:16px;">$${(i.asking_price || 0).toLocaleString()}</span>
-        </div>
-        <div class="item-card-detail">
-          <span class="item-card-detail-label">Margin: </span>
-          <span class="item-card-detail-value">${margin}%</span>
-        </div>
         <div class="item-card-detail">
           <span class="item-card-detail-label">Color: </span>
           <span class="item-card-detail-value">${i.color || '-'}</span>
@@ -1209,14 +1293,22 @@ function renderInventoryCards(filtered = null) {
           <span class="item-card-detail-label">Miles: </span>
           <span class="item-card-detail-value">${(i.mileage || 0).toLocaleString()}</span>
         </div>
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Margin: </span>
+          <span class="item-card-detail-value">${margin}%</span>
+        </div>
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Status: </span>
+          <span class="item-card-detail-value"><span class="badge badge-${i.status === 'available' ? 'success' : i.status === 'sold' ? 'info' : 'warning'}">${i.status}</span></span>
+        </div>
       </div>
       ${i.status === 'available' ? `
       <div class="item-card-actions">
-        <button class="btn btn-success" onclick="markSold('${i.inventory_id}')">Mark Sold</button>
+        <button class="btn btn-success" onclick="markSold('${i.inventory_id}')">💰 Mark Sold</button>
       </div>
       ` : ''}
     </div>
-  `}).join('');
+  `;
 }
 
 function filterAppointmentsMobile() {
