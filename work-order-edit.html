@@ -279,33 +279,6 @@
       font-size: 14px;
     }
     
-    /* Status Select Buttons */
-    .status-options {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    
-    .status-option {
-      padding: 12px;
-      border-radius: 8px;
-      border: 1px solid var(--border-default);
-      background: var(--bg-secondary);
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 600;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    
-    .status-option.active {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-      color: white;
-    }
-    
     /* Action Buttons */
     .action-buttons {
       display: flex;
@@ -719,21 +692,33 @@ function renderWorkOrder() {
       <div class="section-content">
         <div class="edit-field">
           <label>Status</label>
-          <div class="status-options" id="statusOptions">
-            <div class="status-option ${status === 'scheduled' ? 'active' : ''}" onclick="selectStatus('scheduled')">Scheduled</div>
-            <div class="status-option ${status === 'in_progress' ? 'active' : ''}" onclick="selectStatus('in_progress')">In Progress</div>
-            <div class="status-option ${status === 'waiting_parts' ? 'active' : ''}" onclick="selectStatus('waiting_parts')">Waiting Parts</div>
-            <div class="status-option ${status === 'completed' ? 'active' : ''}" onclick="selectStatus('completed')">Completed</div>
-          </div>
+          <select id="statusSelect" onchange="workOrder.status = this.value">
+            <option value="scheduled" ${status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+            <option value="checked_in" ${status === 'checked_in' ? 'selected' : ''}>Checked In</option>
+            <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+            <option value="waiting_parts" ${status === 'waiting_parts' ? 'selected' : ''}>Waiting Parts</option>
+            <option value="parts_on_order" ${status === 'parts_on_order' ? 'selected' : ''}>Parts On Order</option>
+            <option value="customer_approval" ${status === 'customer_approval' ? 'selected' : ''}>Customer Approval</option>
+            <option value="approved" ${status === 'approved' ? 'selected' : ''}>Approved</option>
+            <option value="diagnosis_required" ${status === 'diagnosis_required' ? 'selected' : ''}>Diagnosis Required</option>
+            <option value="repairing" ${status === 'repairing' ? 'selected' : ''}>Repairing</option>
+            <option value="testing" ${status === 'testing' ? 'selected' : ''}>Testing</option>
+            <option value="quality_check" ${status === 'quality_check' ? 'selected' : ''}>Quality Check</option>
+            <option value="ready_for_pickup" ${status === 'ready_for_pickup' ? 'selected' : ''}>Ready for Pickup</option>
+            <option value="ready_invoice" ${status === 'ready_invoice' ? 'selected' : ''}>Ready to Invoice</option>
+            <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
+            <option value="closed" ${status === 'closed' ? 'selected' : ''}>Closed</option>
+            <option value="cancelled" ${status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+          </select>
         </div>
         <div class="edit-field">
           <label>Priority</label>
-          <div class="status-options" id="priorityOptions">
-            <div class="status-option ${priority === 'low' ? 'active' : ''}" onclick="selectPriority('low')">Low</div>
-            <div class="status-option ${priority === 'normal' ? 'active' : ''}" onclick="selectPriority('normal')">Normal</div>
-            <div class="status-option ${priority === 'high' ? 'active' : ''}" onclick="selectPriority('high')">High</div>
-            <div class="status-option ${priority === 'urgent' ? 'active' : ''}" onclick="selectPriority('urgent')">Urgent</div>
-          </div>
+          <select id="prioritySelect" onchange="workOrder.priority = this.value">
+            <option value="low" ${priority === 'low' ? 'selected' : ''}>Low</option>
+            <option value="normal" ${priority === 'normal' ? 'selected' : ''}>Normal</option>
+            <option value="high" ${priority === 'high' ? 'selected' : ''}>High</option>
+            <option value="urgent" ${priority === 'urgent' ? 'selected' : ''}>Urgent</option>
+          </select>
         </div>
       </div>
     </div>
@@ -859,10 +844,6 @@ function renderWorkOrder() {
     
     <!-- Actions Section -->
     <div class="action-buttons">
-      <button class="btn btn-primary" onclick="saveWorkOrder()">Save Changes</button>
-      ${workOrder.status !== 'completed' ? `
-        <button class="btn btn-success" onclick="updateStatus('completed')">Mark Complete</button>
-      ` : ''}
       <button class="btn btn-secondary" onclick="window.print()">Print Work Order</button>
       <button class="btn btn-danger" onclick="confirmDelete()">Delete Work Order</button>
     </div>
@@ -872,29 +853,7 @@ function renderWorkOrder() {
   document.getElementById('quickActions').style.display = 'flex';
 }
 
-// Select status
-function selectStatus(status) {
-  workOrder.status = status;
-  document.querySelectorAll('#statusOptions .status-option').forEach(opt => {
-    opt.classList.remove('active');
-    if (opt.textContent.toLowerCase().replace(' ', '_') === status) {
-      opt.classList.add('active');
-    }
-  });
-}
-
-// Select priority
-function selectPriority(priority) {
-  workOrder.priority = priority;
-  document.querySelectorAll('#priorityOptions .status-option').forEach(opt => {
-    opt.classList.remove('active');
-    if (opt.textContent.toLowerCase() === priority) {
-      opt.classList.add('active');
-    }
-  });
-}
-
-// Update status
+// Update status directly
 async function updateStatus(newStatus) {
   const { error } = await sb
     .from('work_orders')
@@ -913,14 +872,16 @@ async function updateStatus(newStatus) {
 
 // Save work order
 async function saveWorkOrder() {
+  const status = document.getElementById('statusSelect')?.value || workOrder.status;
+  const priority = document.getElementById('prioritySelect')?.value || workOrder.priority;
   const description = document.getElementById('jobDescription')?.value || '';
   const notes = document.getElementById('internalNotes')?.value || '';
   
   const { error } = await sb
     .from('work_orders')
     .update({
-      status: workOrder.status,
-      priority: workOrder.priority,
+      status: status,
+      priority: priority,
       description: description,
       notes: notes,
       updated_at: new Date().toISOString()
@@ -932,6 +893,8 @@ async function saveWorkOrder() {
     return;
   }
   
+  workOrder.status = status;
+  workOrder.priority = priority;
   showToast('Work order saved!');
 }
 
