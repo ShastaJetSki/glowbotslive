@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sales Inventory</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="theme-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: var(--bg-primary, #0b0f14); color: var(--text-primary, #e8eef6); padding-bottom: 165px; }
+    
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-secondary, #0f1621);
+      border-bottom: 1px solid var(--border-default, #223044);
+      padding: 16px;
+    }
+    
+    .page-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: var(--accent-light, #60a5fa);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .page-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #22d3ee;
+    }
+    
+    .add-btn {
+      background: var(--accent-primary, #3b82f6);
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    
+    .search-filters {
+      padding: 16px;
+      background: #0b0f14;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 14px;
+      background: var(--bg-card, #1a2535);
+      border: 1px solid var(--border-default, #2d3f56);
+      border-radius: 10px;
+      color: var(--text-primary, #e8eef6);
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+    
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .filter-select {
+      width: 100%;
+      padding: 12px;
+      background: var(--bg-card, #1a2535);
+      border: 1px solid var(--border-default, #2d3f56);
+      border-radius: 8px;
+      color: var(--text-primary, #e8eef6);
+      font-size: 14px;
+    }
+    
+    .content { padding: 0 16px 16px; }
+    
+    .cards-container { }
+    
+    /* Card styles */
+    .item-card {
+      background: var(--bg-card, #1a2535);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border-left: 4px solid #06b6d4;
+      position: relative;
+    }
+    .item-card-type {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #164e63;
+      color: #22d3ee;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .item-card-type svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+    .item-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+      padding-right: 60px;
+    }
+    .item-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      flex-shrink: 0;
+      background: #164e63;
+      color: #22d3ee;
+    }
+    .item-card-icon svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+    .item-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary, #e8eef6);
+    }
+    .item-card-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary, #94a3b8);
+      margin-top: 2px;
+    }
+    .item-card-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .item-card-detail {
+      font-size: 13px;
+    }
+    .item-card-detail-label {
+      color: var(--text-secondary, #94a3b8);
+    }
+    .item-card-detail-value {
+      color: var(--text-primary, #e8eef6);
+      font-weight: 500;
+    }
+    .item-card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #2d3f56;
+    }
+    .item-card-actions button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .badge-success { background: transparent; color: #34d399; border: 1px solid rgba(52, 211, 153, 0.5); }
+    .badge-warning { background: transparent; color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.5); }
+    .badge-info { background: transparent; color: var(--accent-light, #60a5fa); border: 1px solid rgba(96, 165, 250, 0.5); }
+    
+    .btn { padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
+    .btn-success { background: #065f46; color: #34d399; }
+    .btn-secondary { background: #1e3a5f; color: var(--accent-light, #60a5fa); }
+    
+    /* Status modifiers */
+    .item-card.status-sold { border-left-color: #10b981 !important; }
+    .item-card.status-pending { border-left-color: #f59e0b !important; }
+    
+    /* Mobile Action Buttons */
+    .mobile-action-buttons {
+      display: block;
+      position: fixed;
+      bottom: 102px;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary, #0f1621);
+      padding: 8px 8px 0 8px;
+      z-index: 101;
+    }
+
+    .mobile-action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-action-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default, #223044);
+      background: var(--bg-card, #1a2535);
+      color: var(--text-secondary, #9fb0c3);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      text-decoration: none;
+    }
+
+    .mobile-action-btn:active {
+      transform: scale(0.95);
+      background: #243648;
+    }
+
+    .mobile-action-btn.active {
+      background: var(--accent-primary, #3b82f6);
+      border-color: #3b82f6;
+      color: #fff;
+    }
+
+    /* Mobile Bottom Navigation */
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary, #0f1621);
+      padding: 8px 8px 8px 8px;
+      z-index: 100;
+    }
+    
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default, #223044);
+      background: var(--bg-card, #1a2535);
+      color: var(--text-secondary, #9fb0c3);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      min-height: 44px;
+    }
+    
+    .mobile-nav-grid .mobile-nav-btn {
+      background: var(--bg-hover, #1f2e40);
+    }
+
+    .mobile-nav-btn.active, 
+    .mobile-nav-btn:hover {
+      background: var(--accent-primary, #3b82f6);
+      border-color: #3b82f6;
+      color: #fff;
+    }
+
+    .mobile-nav-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary, #94a3b8);
+    }
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      fill: #2d3f56;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="page-header-row">
+    <button class="back-btn" onclick="location.href='dashboard-sales.html'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+      Back
+    </button>
+    <span class="page-title">Sales Inventory</span>
+    <button class="add-btn" onclick="openInventoryModal()">+ Add</button>
+  </div>
+</div>
+
+<div class="search-filters">
+  <input type="text" id="searchInput" class="search-input" placeholder="Search by stock #, make, model, VIN..." oninput="filterInventory()">
+  <div class="filter-row">
+    <select id="statusFilter" class="filter-select" onchange="filterInventory()">
+      <option value="all">All Status</option>
+      <option value="available">Available</option>
+      <option value="sold">Sold</option>
+      <option value="pending">Pending</option>
+    </select>
+    <select id="makeFilter" class="filter-select" onchange="filterInventory()">
+      <option value="all">All Makes</option>
+    </select>
+  </div>
+</div>
+
+<div class="content">
+  <div id="inventoryCards" class="cards-container">
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+      <div>Loading inventory...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Action Buttons -->
+<div class="mobile-action-buttons">
+  <div class="mobile-action-grid">
+    <button class="mobile-action-btn" onclick="location.href='dashboard-sales-scheduler.html'">+ Appt</button>
+    <button class="mobile-action-btn" onclick="location.href='dashboard-sales-scheduler.html'">Scheduler</button>
+    <button class="mobile-action-btn active" onclick="location.href='dashboard-sales-inventory.html'">Inventory</button>
+  </div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-grid">
+    <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+    <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn active">Sales</a>
+  </div>
+</div>
+
+<!-- Add Inventory Modal -->
+<div id="inventoryModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
+  <div style="background:var(--bg-card, #1a2535); border-radius:12px; padding:24px; max-width:500px; width:90%; margin:50px auto; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#22d3ee; font-size:18px;">Add Inventory</h2>
+      <button onclick="closeModal('inventoryModal')" style="background:none; border:none; color:var(--text-secondary, #94a3b8); font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <form onsubmit="saveInventory(event)">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Year *</label>
+          <input type="number" id="invYear" required style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Stock #</label>
+          <input type="text" id="invStock" style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Make *</label>
+          <input type="text" id="invMake" required style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Model *</label>
+          <input type="text" id="invModel" required style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Color</label>
+          <input type="text" id="invColor" style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Mileage</label>
+          <input type="number" id="invMileage" value="0" style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Purchase Price *</label>
+          <input type="number" step="0.01" id="invCost" required style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary, #94a3b8); font-size:13px;">Asking Price *</label>
+          <input type="number" step="0.01" id="invAsking" required style="width:100%; padding:10px; background:var(--bg-secondary, #0f1621); border:1px solid var(--border-default, #2d3f56); border-radius:6px; color:var(--text-primary, #e8eef6);">
+        </div>
+      </div>
+      <div style="display:flex; gap:12px; margin-top:20px;">
+        <button type="submit" class="btn btn-success" style="flex:1; padding:12px;">Save</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('inventoryModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = null;
+let inventory = [];
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: token,
+        refresh_token: refreshToken
+      });
+      if (error || !data.session) {
+        window.location.href = 'login.html';
+        return null;
+      }
+      return data.session;
+    }
+    window.location.href = 'login.html';
+    return null;
+  }
+  return session;
+}
+
+async function loadBusinessSettings() {
+  const { data } = await sb.from('business_settings').select('*').limit(1).single();
+  if (data) {
+    tenantId = data.tenant_id;
+    document.title = `${data.business_name || 'Sales'} - Inventory`;
+  }
+}
+
+async function loadInventory() {
+  if (!tenantId) return;
+  
+  const { data } = await sb.from('sales_inventory')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
+  
+  inventory = data || [];
+  populateMakeFilter();
+  renderInventory();
+}
+
+function populateMakeFilter() {
+  const makes = [...new Set(inventory.map(i => i.make).filter(Boolean))].sort();
+  const filter = document.getElementById('makeFilter');
+  filter.innerHTML = '<option value="all">All Makes</option>' + 
+    makes.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function filterInventory() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const status = document.getElementById('statusFilter')?.value || 'all';
+  const make = document.getElementById('makeFilter')?.value || 'all';
+  
+  let filtered = inventory;
+  
+  if (status !== 'all') {
+    filtered = filtered.filter(i => i.status === status);
+  }
+  
+  if (make !== 'all') {
+    filtered = filtered.filter(i => i.make === make);
+  }
+  
+  if (search) {
+    filtered = filtered.filter(i => 
+      i.stock_number?.toLowerCase().includes(search) ||
+      i.make?.toLowerCase().includes(search) ||
+      i.model?.toLowerCase().includes(search) ||
+      i.vin?.toLowerCase().includes(search)
+    );
+  }
+  
+  renderInventory(filtered);
+}
+
+function renderInventory(data = null) {
+  const container = document.getElementById('inventoryCards');
+  const items = data || inventory;
+  
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+        <div>No inventory found</div>
+      </div>
+    `;
+    return;
+  }
+  
+  const tagIcon = `<svg viewBox="0 0 24 24"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`;
+  const vehicleIcon = `<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>`;
+  
+  container.innerHTML = items.map(i => {
+    const margin = i.purchase_price > 0 ? ((i.asking_price - i.purchase_price) / i.purchase_price * 100).toFixed(0) : 0;
+    return `
+    <div class="item-card status-${i.status}">
+      <span class="item-card-type">${tagIcon} UNIT</span>
+      <div class="item-card-header">
+        <div style="display:flex; align-items:flex-start;">
+          <div class="item-card-icon">${vehicleIcon}</div>
+          <div>
+            <div class="item-card-title">${i.year} ${i.make} ${i.model}</div>
+            <div class="item-card-subtitle">Stock #${i.stock_number} ${i.trim_level ? '• ' + i.trim_level : ''}</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin:12px 0; padding:12px; background:var(--bg-secondary, #0f1621); border-radius:8px; text-align:center;">
+        <div style="font-size:11px; color:var(--text-secondary, #94a3b8); text-transform:uppercase;">Asking Price</div>
+        <div style="font-size:24px; font-weight:700; color:#22d3ee;">$${(i.asking_price || 0).toLocaleString()}</div>
+      </div>
+      <div class="item-card-details">
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Color: </span>
+          <span class="item-card-detail-value">${i.color || '-'}</span>
+        </div>
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Miles: </span>
+          <span class="item-card-detail-value">${(i.mileage || 0).toLocaleString()}</span>
+        </div>
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Margin: </span>
+          <span class="item-card-detail-value">${margin}%</span>
+        </div>
+        <div class="item-card-detail">
+          <span class="item-card-detail-label">Status: </span>
+          <span class="item-card-detail-value"><span class="badge badge-${i.status === 'available' ? 'success' : i.status === 'sold' ? 'info' : 'warning'}">${i.status}</span></span>
+        </div>
+      </div>
+      ${i.status === 'available' ? `
+      <div class="item-card-actions">
+        <button class="btn btn-success" onclick="markSold('${i.inventory_id}')">Mark Sold</button>
+      </div>
+      ` : ''}
+    </div>
+  `}).join('');
+}
+
+function openInventoryModal() {
+  document.getElementById('inventoryModal').style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function saveInventory(e) {
+  e.preventDefault();
+  
+  const stockNum = document.getElementById('invStock').value || `STK${Date.now().toString().slice(-6)}`;
+  
+  const { error } = await sb.from('sales_inventory').insert({
+    tenant_id: tenantId,
+    stock_number: stockNum,
+    year: parseInt(document.getElementById('invYear').value),
+    make: document.getElementById('invMake').value,
+    model: document.getElementById('invModel').value,
+    color: document.getElementById('invColor').value || null,
+    mileage: parseInt(document.getElementById('invMileage').value) || 0,
+    purchase_price: parseFloat(document.getElementById('invCost').value),
+    asking_price: parseFloat(document.getElementById('invAsking').value),
+    status: 'available'
+  });
+  
+  if (error) {
+    alert('Error saving: ' + error.message);
+    return;
+  }
+  
+  closeModal('inventoryModal');
+  e.target.reset();
+  await loadInventory();
+}
+
+async function markSold(id) {
+  if (!confirm('Mark this unit as sold?')) return;
+  
+  await sb.from('sales_inventory')
+    .update({ status: 'sold', sold_date: new Date().toISOString().split('T')[0] })
+    .eq('inventory_id', id);
+  
+  await loadInventory();
+}
+
+// Theme support
+function loadTheme() {
+  const savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+loadTheme();
+
+async function init() {
+  await checkAuth();
+  await loadBusinessSettings();
+  await loadInventory();
+}
+
+init();
+</script>
+
+</body>
+</html>
