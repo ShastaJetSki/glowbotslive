@@ -247,6 +247,38 @@
     }
     .wo-card:hover { border-left-color: var(--accent-light); }
     
+    /* Status-based border colors */
+    .wo-card.status-scheduled { border-left-color: var(--accent-primary); }
+    .wo-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .wo-card.status-waiting_parts { border-left-color: #b59410; }
+    .wo-card.status-awaiting_parts { border-left-color: #b59410; }
+    .wo-card.status-parts_on_order { border-left-color: #b59410; }
+    .wo-card.status-ready_for_pickup { border-left-color: #166534; }
+    .wo-card.status-ready_invoice { border-left-color: #166534; }
+    .wo-card.status-completed { border-left-color: #166534; }
+    .wo-card.status-cancelled { border-left-color: #7f1d1d; }
+    
+    /* Reschedule button */
+    .wo-card-actions {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-default);
+    }
+    .btn-reschedule {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #b59410;
+      background: transparent;
+      color: #d4a910;
+    }
+    .btn-reschedule:active {
+      background: rgba(181, 148, 16, 0.1);
+    }
+    
     /* Time and Icon - Top Right stacked */
     .wo-card-top-right {
       position: absolute;
@@ -302,23 +334,6 @@
       margin-top: 5px;
     }
     
-    .wo-card-details {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 14px;
-    }
-    .wo-card-detail {
-      font-size: 14px;
-    }
-    .wo-card-detail-label {
-      color: var(--text-secondary);
-    }
-    .wo-card-detail-value {
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-    
     /* Card Bottom Section - Tech/Total row, Status/Priority row */
     .wo-card-bottom {
       margin-top: 14px;
@@ -355,34 +370,6 @@
       color: var(--text-primary);
     }
     
-    /* Status & Priority - Middle Lower Right */
-    .wo-card-status-row {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 14px;
-    }
-    
-    .wo-card-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border-default);
-    }
-    .wo-card-actions button {
-      flex: 1;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-    }
-    .wo-card-actions .btn-complete { background: var(--accent-primary); color: white; }
-    .wo-card-actions .btn-progress { background: var(--accent-primary); color: white; }
-    .wo-card-actions .btn-complete:active, .wo-card-actions .btn-progress:active { opacity: 0.8; }
-    
     /* Muted outline badges - no background */
     .badge { 
       display: inline-block; 
@@ -402,16 +389,32 @@
       border: 1px solid var(--border-default);
     }
     .badge-completed { 
-      color: var(--text-secondary); 
-      border: 1px solid var(--border-default);
+      color: #4ade80; 
+      border: 1px solid #166534;
     }
     .badge-waiting_parts { 
-      color: var(--text-secondary); 
-      border: 1px solid var(--border-default);
+      color: #d4a910; 
+      border: 1px solid #b59410;
+    }
+    .badge-awaiting_parts { 
+      color: #d4a910; 
+      border: 1px solid #b59410;
+    }
+    .badge-parts_on_order { 
+      color: #d4a910; 
+      border: 1px solid #b59410;
+    }
+    .badge-ready_for_pickup { 
+      color: #4ade80; 
+      border: 1px solid #166534;
     }
     .badge-ready_invoice { 
-      color: var(--text-secondary); 
-      border: 1px solid var(--border-default);
+      color: #4ade80; 
+      border: 1px solid #166534;
+    }
+    .badge-cancelled {
+      color: #f87171;
+      border: 1px solid #7f1d1d;
     }
     .badge-priority-high {
       color: var(--text-secondary);
@@ -825,8 +828,11 @@ function createWOCard(wo, customerName, vehicleName, techName) {
   const scheduledTime = wo.scheduled_start ? formatTime(wo.scheduled_start) : '--';
   const total = wo.total_amount ? '$' + parseFloat(wo.total_amount).toLocaleString() : '$0';
   
+  // Determine if reschedule button should show
+  const showReschedule = status === 'waiting_parts' || status === 'awaiting_parts' || status === 'parts_on_order';
+  
   return `
-    <div class="wo-card" onclick="location.href='work-order-edit.html?id=${wo.work_order_id}'">
+    <div class="wo-card status-${status}" onclick="location.href='work-order-edit.html?id=${wo.work_order_id}'">
       <div class="wo-card-top-right">
         <span class="wo-card-time">${scheduledTime}</span>
         <div class="wo-card-icon">${wrenchIcon}</div>
@@ -858,6 +864,12 @@ function createWOCard(wo, customerName, vehicleName, techName) {
           </div>
         </div>
       </div>
+      
+      ${showReschedule ? `
+      <div class="wo-card-actions">
+        <button class="btn-reschedule" onclick="event.stopPropagation(); rescheduleWO('${wo.work_order_id}')">Reschedule</button>
+      </div>
+      ` : ''}
     </div>
   `;
 }
@@ -884,6 +896,11 @@ async function updateWOStatus(woId, newStatus) {
   }
   
   await loadWorkOrders();
+}
+
+function rescheduleWO(woId) {
+  // Navigate to work order edit page for rescheduling
+  location.href = 'work-order-edit.html?id=' + woId + '&reschedule=1';
 }
 
 // ============================================================================
