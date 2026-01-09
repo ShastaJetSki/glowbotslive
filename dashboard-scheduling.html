@@ -1,2332 +1,1502 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Scheduling</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sales Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="theme-system.css">
   <style>
-    * { box-sizing:border-box; margin:0; padding:0; }
-    body { 
-      font-family:system-ui,-apple-system,sans-serif;
-      background:#0b0f14;
-      color:#e8eef6;
-      min-height:100vh;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: var(--bg-primary, #0b0f14); color: var(--text-primary, #e8eef6); padding-bottom: 165px; }
+    
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0f1621;
+      border-bottom: 1px solid #223044;
+      padding: 16px;
+    }
+    
+    .page-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: #60a5fa;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .page-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #60a5fa;
+    }
+    
+    .add-btn {
+      background: #3b82f6;
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    
+    /* Date Navigation */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #0f1621;
+      border-bottom: 1px solid #223044;
+    }
+    
+    .date-nav-btn {
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      color: #60a5fa;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    
+    .date-display {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e8eef6;
+      cursor: pointer;
+    }
+    
+    /* Day Tabs */
+    .day-tabs {
+      display: flex;
+      overflow-x: auto;
+      padding: 12px 16px;
+      gap: 8px;
+      background: #0b0f14;
+      border-bottom: 1px solid #223044;
+    }
+    
+    .day-tab {
+      flex-shrink: 0;
+      padding: 10px 16px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      min-width: 70px;
+    }
+    
+    .day-tab.active {
+      background: #1e3a5f;
+      border-color: #3b82f6;
+    }
+    
+    .day-tab.today {
+      border-color: #60a5fa;
+    }
+    
+    .day-name {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+    
+    .day-num {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e8eef6;
+    }
+    
+    .day-tab.active .day-name,
+    .day-tab.active .day-num {
+      color: #60a5fa;
+    }
+    
+    /* Filters */
+    .filters {
+      padding: 12px 16px;
+      background: #0b0f14;
+    }
+    
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .filter-select {
+      width: 100%;
+      padding: 10px;
+      background: #1a2535;
+      border: 1px solid #2d3f56;
+      border-radius: 8px;
+      color: #e8eef6;
+      font-size: 14px;
+    }
+    
+    /* Timeline */
+    .timeline {
+      padding: 12px 16px 16px 8px;
+    }
+    
+    .time-slot {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      min-height: 70px;
+    }
+    
+    .time-label {
+      width: 42px;
+      flex-shrink: 0;
+      font-size: 12px;
+      color: #64748b;
+      text-align: left;
+      padding-top: 6px;
+      font-weight: 500;
+    }
+    
+    .slot-content {
+      flex: 1;
+      border-left: 1px solid #1e293b;
+      padding-left: 12px;
+      min-height: 60px;
+    }
+    
+    .slot-empty {
+      padding: 16px;
+      background: #0f1621;
+      border-radius: 8px;
+      border: 1px dashed #2d3f56;
+      color: #94a3b8;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    
+    .slot-empty:hover, .slot-content.drag-over .slot-empty {
+      border-color: #3b82f6;
+      color: #60a5fa;
+      background: #0f1a2a;
+    }
+    
+    .slot-content.drag-over {
+      background: rgba(59, 130, 246, 0.1);
+      border-radius: 8px;
+    }
+    
+    /* Appointment Card - Bigger to match vehicle cards */
+    .appt-card {
+      background: #1a2535;
+      border-radius: 12px;
+      padding: 16px;
+      border-left: 4px solid #3b82f6;
+      margin-bottom: 12px;
+      cursor: grab;
+      transition: transform 0.15s, box-shadow 0.15s;
+      user-select: none;
+      position: relative;
+    }
+    
+    .appt-card:active {
+      cursor: grabbing;
+    }
+    
+    .appt-card.dragging {
+      opacity: 0.8;
+      transform: scale(1.02);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+      z-index: 1000;
+    }
+    
+    .appt-card.status-confirmed { border-left-color: #8b5cf6; }
+    .appt-card.status-in_progress { border-left-color: #f59e0b; }
+    .appt-card.status-completed { border-left-color: #10b981; }
+    .appt-card.status-cancelled { border-left-color: #ef4444; }
+    .appt-card.status-no_show { border-left-color: #ef4444; }
+    .appt-card.status-sold { border-left-color: #10b981; }
+    
+    .appt-card-time {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #60a5fa;
+    }
+    
+    .appt-card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: #1e3a5f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+    
+    .appt-card-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: #60a5fa;
+    }
+    
+    .appt-header {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      padding-right: 70px;
+    }
+    
+    .appt-customer {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e8eef6;
+    }
+    
+    .appt-vehicle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    
+    .appt-time {
+      font-size: 14px;
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    
+    .appt-details {
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .appt-card-details {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #2d3f56;
+    }
+    
+    .appt-detail-row {
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .appt-detail-col {
+      flex: 1;
+    }
+    
+    .appt-detail-label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    
+    .appt-detail-value {
+      font-size: 14px;
+      color: #e8eef6;
+      font-weight: 500;
+    }
+    
+    .appt-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #2d3f56;
+    }
+    
+    .appt-action-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      text-align: center;
+      text-decoration: none;
+    }
+    
+    .btn-arrived { background: #7c3aed; color: #c4b5fd; }
+    .btn-complete { background: #065f46; color: #34d399; }
+    .btn-noshow { background: #7f1d1d; color: #fca5a5; }
+    .btn-text { background: #1e3a5f; color: #60a5fa; }
+    .btn-call { background: #1a2535; color: #60a5fa; border: 1px solid #2d3f56; }
+    
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+    .badge-success { background: transparent; color: #34d399; border: 1px solid rgba(52, 211, 153, 0.5); }
+    .badge-warning { background: transparent; color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.5); }
+    .badge-info { background: transparent; color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.5); }
+    .badge-danger { background: transparent; color: #f87171; border: 1px solid rgba(248, 113, 113, 0.5); }
+    
+    /* Mobile Action Buttons */
+    .mobile-action-buttons {
+      display: block;
+      position: fixed;
+      bottom: 102px;
+      left: 0;
+      right: 0;
+      background: #0f1621;
+      padding: 8px 8px 0 8px;
+      z-index: 101;
     }
 
-    /* Business name style - matching business dashboard */
-    .business-name { font-size: 14px; color: #60a5fa; font-weight: 600; }
-
-    /* Scrollbar styles to match theme */
-    * {
-      scrollbar-width: thin;
-      scrollbar-color: #223044 #0f1621;
+    .mobile-action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
     }
-
-    *::-webkit-scrollbar { width: 10px; height: 10px; }
-    *::-webkit-scrollbar-track { background: #0f1621; }
-    *::-webkit-scrollbar-thumb { background: #223044; border-radius: 5px; }
-    *::-webkit-scrollbar-thumb:hover { background: #2d3f56; }
-
-    /* Mobile Header */
-    .mobile-header {
-      display:none;
-      background:#0f1621;
-      border-bottom:1px solid #223044;
-      position:sticky;
-      top:0;
-      z-index:100;
-    }
-
-    .mobile-header-bar {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:12px;
-    }
-
-    .mobile-menu-toggle {
-      background:transparent;
-      border:1px solid transparent;
-      border-radius:6px;
-      color:#6b7280;
-      font-size:20px;
-      padding:0;
-      width:36px;
-      height:36px;
-      cursor:pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      transition:all 0.15s ease;
-    }
-
-    .mobile-menu-toggle:hover {
-      background:rgba(59,130,246,0.1);
-      border-color:#3b82f6;
-      color:#3b82f6;
-    }
-
-    .mobile-header-center { flex:1; margin-left:12px; }
-    .mobile-header-title { font-size:18px; font-weight:600; }
-
-    .mobile-header-new {
-      background:#3b82f6;
-      border:1px solid #3b82f6;
-      border-left:3px solid #2563eb;
-      color:#fff;
-      font-size:20px;
-      padding:0;
-      width:36px;
-      height:36px;
-      border-radius:6px;
-      cursor:pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      transition:all 0.2s;
-    }
-
-    .mobile-header-content {
-      max-height:0;
-      overflow:hidden;
-      transition:max-height 0.3s ease;
-    }
-
-    .mobile-header-content.expanded { max-height:400px; }
-
-    .mobile-header-nav {
-      display:flex;
-      gap:8px;
-      padding:8px 12px;
-      overflow-x:auto;
-      background:#0b0f14;
-      border-top:1px solid #223044;
-    }
-
-    .mobile-header-nav a {
-      padding:8px 12px;
-      color:#9fb0c3;
-      text-decoration:none;
-      font-size:13px;
-      white-space:nowrap;
-      border-radius:6px;
-    }
-
-    .mobile-header-nav a.active { background:#3b82f6; color:#fff; }
-
-    .mobile-header-actions {
-      display:flex;
-      gap:8px;
-      padding:8px 12px;
-      background:#0b0f14;
-      border-top:1px solid #223044;
-    }
-
-    .mobile-header-actions button {
-      flex:1;
-      padding:10px;
-      font-size:13px;
-      background:#1a2535;
-      border:1px solid #3b82f6;
-      border-left:3px solid #3b82f6;
-      border-radius:8px;
-      color:#e8eef6;
-      cursor:pointer;
-      transition:all 0.2s;
-    }
-
-    /* Mobile Bottom Nav */
-    .mobile-bottom-nav {
-      display:none;
-      position:fixed;
-      bottom:0;
-      left:0;
-      right:0;
-      background:#0f1621;
-      border-top:1px solid #223044;
-      padding:12px;
-      padding-bottom:calc(12px + env(safe-area-inset-bottom));
-      z-index:99;
-      flex-direction:column;
-      gap:8px;
-    }
-
-    .mobile-nav-row { display:flex; gap:8px; width:100%; }
-
-    .mobile-nav-arrow {
-      width:56px;
-      height:48px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:8px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:20px;
-      color:#e8eef6;
-      cursor:pointer;
-      transition:all 0.2s;
-      flex-shrink:0;
-    }
-
-    .mobile-nav-arrow.hidden { visibility:hidden; pointer-events:none; }
-    .mobile-nav-arrow:active { background:#243648; transform:scale(0.95); }
-
-    .mobile-view-btn {
-      flex:1;
-      height:48px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:8px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:13px;
-      font-weight:600;
-      color:#9fb0c3;
-      cursor:pointer;
-      transition:all 0.2s;
-    }
-
-    .mobile-view-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-    .mobile-view-btn:active { transform:scale(0.95); }
 
     .mobile-action-btn {
-      flex:1;
-      height:48px;
-      background:#1a2535;
-      border:1px solid #3b82f6;
-      border-left:3px solid #3b82f6;
-      border-radius:8px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:6px;
-      font-size:12px;
-      font-weight:600;
-      color:#e8eef6;
-      cursor:pointer;
-      transition:all 0.2s;
-      white-space:nowrap;
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      background: #1a2535;
+      color: #9fb0c3;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      text-decoration: none;
     }
 
-    .mobile-action-btn:active { background:#243648; transform:scale(0.98); }
-    .mobile-action-btn.new { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-    .mobile-action-btn.new:active { background:#2563eb; }
-    .mobile-action-btn.pickup { border-color:#34d399; border-left-color:#34d399; }
-
-    .mobile-pickup-count {
-      background:rgba(52,211,153,0.3);
-      padding:2px 8px;
-      border-radius:12px;
-      font-size:11px;
-      color:#34d399;
-      font-weight:700;
+    .mobile-action-btn:active {
+      transform: scale(0.95);
+      background: #243648;
     }
 
-    /* Date Picker Modal */
-    .date-picker-modal {
-      display:none;
-      position:fixed;
-      top:0;
-      left:0;
-      right:0;
-      bottom:0;
-      background:rgba(0,0,0,0.7);
-      z-index:2000;
-      align-items:center;
-      justify-content:center;
-      padding:20px;
+    .mobile-action-btn.active {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #fff;
     }
 
-    .date-picker-modal.active { display:flex; }
-
-    .date-picker-content {
-      background:#0f1621;
-      border:1px solid #223044;
-      border-radius:12px;
-      padding:24px;
-      max-width:320px;
-      width:100%;
-    }
-
-    .date-picker-header {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:16px;
-    }
-
-    .date-picker-title { font-size:16px; font-weight:600; color:#e8eef6; }
-
-    .date-picker-close {
-      background:transparent;
-      border:none;
-      color:#9fb0c3;
-      font-size:24px;
-      cursor:pointer;
-      padding:0;
-      width:32px;
-      height:32px;
-    }
-
-    .date-picker-content input[type="date"] {
-      width:100%;
-      padding:12px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:8px;
-      color:#e8eef6;
-      font-size:16px;
-      margin-bottom:16px;
-      color-scheme: dark;
-    }
-
-    .date-picker-content input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
-
-    .date-picker-actions { display:flex; gap:12px; }
-    .date-picker-actions button { flex:1; padding:12px; font-size:14px; }
-
-    /* Pickup Overlay Modal */
-    .pickup-overlay {
-      display:none;
-      position:fixed;
-      top:0;
-      left:0;
-      right:0;
-      bottom:0;
-      background:rgba(0,0,0,0.8);
-      z-index:1000;
-      align-items:center;
-      justify-content:center;
-      padding:20px;
-    }
-
-    .pickup-overlay.active { display:flex; }
-
-    .pickup-overlay-content {
-      background:#0f1621;
-      border:1px solid #3b82f6;
-      border-left:3px solid #3b82f6;
-      border-radius:12px;
-      padding:24px;
-      max-width:900px;
-      width:100%;
-      max-height:80vh;
-      overflow-y:auto;
-      position:relative;
-    }
-
-    .pickup-overlay-header {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:20px;
-      padding-bottom:16px;
-      border-bottom:1px solid #223044;
-    }
-
-    .pickup-overlay-title {
-      font-size:20px;
-      font-weight:700;
-      color:#e8eef6;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-    }
-
-    .pickup-overlay-count {
-      background:rgba(52,211,153,0.2);
-      padding:4px 12px;
-      border-radius:12px;
-      font-size:14px;
-      color:#34d399;
-      font-weight:700;
-      margin-left:12px;
-    }
-
-    .pickup-overlay-close {
-      background:transparent;
-      border:1px solid #223044;
-      color:#9fb0c3;
-      font-size:28px;
-      cursor:pointer;
-      padding:0;
-      width:40px;
-      height:40px;
-      border-radius:8px;
-      transition:all 0.2s;
-    }
-
-    .pickup-overlay-close:hover { background:#1a2535; border-color:#3b82f6; color:#3b82f6; }
-
-    .pickup-overlay-grid {
-      display:grid;
-      grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
-      gap:12px;
-    }
-
-    /* Details Overlay */
-    .details-overlay {
-      display:none;
-      position:fixed;
-      top:0;
-      left:0;
-      right:0;
-      bottom:0;
-      background:rgba(0,0,0,0.85);
-      z-index:2000;
-      align-items:center;
-      justify-content:center;
-      padding:20px;
-    }
-
-    .details-overlay.active { display:flex; }
-
-    .details-overlay-content {
-      background:#0f1621;
-      border:2px solid #3b82f6;
-      border-left:4px solid #3b82f6;
-      border-radius:12px;
-      padding:24px;
-      max-width:600px;
-      width:100%;
-      max-height:85vh;
-      overflow-y:auto;
-      position:relative;
-      box-shadow:0 8px 24px rgba(0,0,0,0.5);
-    }
-
-    .details-overlay-content.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .details-overlay-content.in_progress { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .details-overlay-content.awaiting_parts { border-left-color:#f59e0b; border-color:#f59e0b; }
-    .details-overlay-content.ready_for_pickup { border-left-color:#34d399; border-color:#34d399; }
-    .details-overlay-content.completed { border-left-color:#60a5fa; border-color:#60a5fa; }
-    .details-overlay-content.past-due { border-left-color:#ef4444; border-color:#ef4444; }
-
-    .details-overlay-header {
-      margin-bottom:20px;
-      padding-bottom:12px;
-      border-bottom:2px solid #223044;
-    }
-
-    .details-overlay-title {
-      font-size:14px;
-      font-weight:700;
-      color:#e8eef6;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-    }
-
-    .detail-row {
-      margin-bottom:14px;
-      padding-bottom:14px;
-      border-bottom:1px solid #223044;
-    }
-
-    .detail-row:last-child { margin-bottom:0; padding-bottom:0; border-bottom:none; }
-
-    .detail-label {
-      font-size:10px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-      color:#9fb0c3;
-      margin-bottom:4px;
-    }
-
-    .detail-value { font-size:16px; font-weight:600; color:#e8eef6; line-height:1.3; }
-    .detail-value.large { font-size:20px; font-weight:700; }
-    .detail-value-row { display:flex; justify-content:space-between; align-items:center; gap:16px; }
-    .detail-value-phone { font-size:16px; font-weight:600; color:#60a5fa; white-space:nowrap; }
-
-    .detail-value.status-badge {
-      display:inline-block;
-      padding:4px 12px;
-      border-radius:14px;
-      font-size:11px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-    }
-
-    .detail-value.status-badge.scheduled { background:rgba(59,130,246,0.2); color:#3b82f6; }
-    .detail-value.status-badge.in_progress { background:rgba(59,130,246,0.2); color:#3b82f6; }
-    .detail-value.status-badge.awaiting_parts { background:rgba(245,158,11,0.2); color:#f59e0b; }
-    .detail-value.status-badge.ready_for_pickup { background:rgba(52,211,153,0.2); color:#34d399; }
-    .detail-value.status-badge.completed { background:rgba(96,165,250,0.2); color:#60a5fa; }
-    .detail-value.status-badge.past-due { background:rgba(239,68,68,0.2); color:#ef4444; }
-
-    .detail-value.tech { color:#60a5fa; }
-    .detail-value.total { color:#34d399; font-size:22px; font-weight:700; }
-
-    .detail-totals-row {
-      display:grid;
-      grid-template-columns:repeat(3, 1fr);
-      gap:12px;
-      margin-top:16px;
-      padding-top:16px;
-      border-top:2px solid #223044;
-    }
-
-    .detail-total-item { text-align:center; }
-    .detail-total-item .detail-label { margin-bottom:6px; }
-    .detail-total-item .detail-value { font-size:16px; font-weight:700; }
-    .detail-total-item:last-child .detail-value { font-size:18px; }
-
-    .details-footer {
-      display:flex;
-      gap:12px;
-      margin-top:20px;
-      padding-top:20px;
-      border-top:2px solid #223044;
-      justify-content:flex-end;
-    }
-
-    .details-footer button {
-      padding:10px 24px;
-      border-radius:8px;
-      font-size:14px;
-      font-weight:600;
-      cursor:pointer;
-      transition:all 0.15s;
-    }
-
-    .details-pay-btn { background:#34d399; border:1px solid #34d399; color:#0f1621; }
-    .details-pay-btn:hover { background:#10b981; border-color:#10b981; }
-    .details-pay-btn:disabled { background:#1a2535; border-color:#223044; color:#6b7280; cursor:not-allowed; }
-
-    .details-edit-btn-footer { background:#3b82f6; border:1px solid #3b82f6; color:#fff; }
-    .details-edit-btn-footer:hover { background:#2563eb; }
-
-    .details-close-btn { background:transparent; border:1px solid #223044; color:#9fb0c3; }
-    .details-close-btn:hover { background:#1a2535; border-color:#3b82f6; color:#3b82f6; }
-
-    @media (max-width: 768px) {
-      .detail-totals-row { grid-template-columns:1fr; gap:8px; }
-      .detail-total-item { text-align:left; }
-    }
-
-    /* Desktop Header */
-    .desktop-header {
-      position:sticky;
-      top:0;
-      z-index:100;
-      background:#0b0f14;
-      border-bottom:1px solid #223044;
-    }
-
-    .header-top {
-      padding:16px 24px 8px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-    }
-
-    h1 { font-size:32px; font-weight:600; margin:0; }
-
-    .header-nav {
-      padding:0 24px 12px;
-      display:flex;
-      gap:24px;
-      overflow-x:auto;
-    }
-
-    .header-nav a {
-      padding:12px 0;
-      color:#9fb0c3;
-      text-decoration:none;
-      font-size:14px;
-      white-space:nowrap;
-      border-bottom:2px solid transparent;
-      transition:all 0.2s;
-    }
-
-    .header-nav a.active { color:#3b82f6; border-bottom-color:#3b82f6; }
-
-    .header-actions {
-      padding:0 24px 12px;
-      border-top:1px solid #223044;
-      padding-top:12px;
-      display:flex;
-      gap:16px;
-      justify-content:space-between;
-      align-items:center;
+    /* Mobile Bottom Navigation */
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0f1621;
+      padding: 8px 8px 8px 8px;
+      z-index: 100;
     }
     
-    .view-tabs-header {
-      display:flex;
-      gap:4px;
-      background:#0f1621;
-      border-radius:8px;
-      padding:4px;
+    .mobile-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
     }
     
-    .view-tabs-header .view-tab {
-      padding:6px 16px;
-      background:transparent;
-      border:1px solid transparent;
-      border-radius:6px;
-      color:#9fb0c3;
-      cursor:pointer;
-      font-size:13px;
-      transition:all 0.2s;
-      white-space:nowrap;
+    .mobile-nav-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
     }
     
-    .view-tabs-header .view-tab:hover { background:#1a2535; color:#e8eef6; }
-    .view-tabs-header .view-tab.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-    
-    .calendar-nav-header { display:flex; gap:12px; align-items:center; justify-content:center; }
-    
-    .calendar-nav-header .nav-arrow {
-      padding:6px 12px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:6px;
-      color:#e8eef6;
-      font-size:16px;
-      cursor:pointer;
-      transition:all 0.2s;
-      min-width:40px;
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid #223044;
+      background: #1a2535;
+      color: #9fb0c3;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      min-height: 44px;
     }
     
-    .calendar-nav-header .nav-arrow:hover { background:#243648; border-color:#3b82f6; }
-    
-    .calendar-title-header {
-      padding:6px 16px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:6px;
-      color:#e8eef6;
-      font-size:13px;
-      font-weight:600;
-      min-width:150px;
-      text-align:center;
-      cursor:pointer;
-    }
-    
-    .calendar-title-header:hover { background:#243648; border-color:#3b82f6; }
-    
-    .header-filters { display:flex; gap:12px; align-items:center; }
-    
-    .tech-filter-header { display:flex; align-items:center; }
-    
-    .tech-filter-header select {
-      padding:6px 12px;
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:6px;
-      color:#e8eef6;
-      font-size:13px;
-      cursor:pointer;
-      min-width:120px;
-    }
-    
-    .tech-filter-header select:hover { border-color:#3b82f6; }
-
-    button {
-      padding:8px 16px;
-      border-radius:8px;
-      border:1px solid #223044;
-      background:#1a2535;
-      color:#e8eef6;
-      cursor:pointer;
-      font-size:13px;
-      transition:all 0.2s;
-      white-space:nowrap;
+    .mobile-nav-grid .mobile-nav-btn {
+      background: #1f2e40;
     }
 
-    button:hover { background:#243648; border-color:#2f4461; }
-    button.primary { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-    button.primary:hover { background:#2563eb; }
-
-    /* Main Container */
-    .main-container {
-      display:flex;
-      max-width:1800px;
-      margin:0 auto;
-      gap:16px;
-      padding:24px;
-      height:calc(100vh - 200px);
+    .mobile-nav-btn.active, 
+    .mobile-nav-btn:hover {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #fff;
     }
 
-    /* Left Panel - Schedule */
-    .schedule-panel {
-      flex:1;
-      overflow-y:auto;
-      background:#0f1621;
-      border:1px solid #223044;
-      border-radius:12px;
-      padding:20px;
-    }
-
-    /* Right Panel - Pickup */
-    .side-panel {
-      width:300px;
-      flex-shrink:0;
-      display:flex;
-      flex-direction:column;
-    }
-
-    .side-panel.hidden { display:none; }
-
-    .side-column {
-      background:#0f1621;
-      border:1px solid #3b82f6;
-      border-left:3px solid #3b82f6;
-      border-radius:12px;
-      padding:16px;
-      overflow-y:auto;
-      flex:1;
-    }
-
-    .side-column.pickup-only { max-height:none; }
-
-    .side-column-header {
-      font-size:12px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:0.5px;
-      color:#e8eef6;
-      margin-bottom:12px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-    }
-
-    .pickup-stats { display:flex; align-items:center; gap:16px; }
-    .pickup-count { font-size:14px; font-weight:700; color:#e8eef6; }
-    .pickup-total { font-size:14px; font-weight:600; color:#34d399; }
-
-    /* Pickup column cards */
-    #pickupColumn .wo-card-full {
-      width:100%;
-      margin-bottom:8px;
-      min-height:auto;
-      position:relative;
-      cursor:pointer;
-    }
-
-    #pickupColumn .wo-card-full:last-child { margin-bottom:0; }
-
-    /* Pickup card collapsed state - DEFAULT COLLAPSED */
-    .wo-card-full.pickup-collapsed .wo-card-full-row-split,
-    .wo-card-full.pickup-collapsed .wo-status-progress {
-      display:none;
-    }
-
-    /* Controls */
-    .controls {
-      display:flex;
-      justify-content:flex-end;
-      align-items:center;
-      margin-bottom:20px;
-      gap:16px;
+    .mobile-nav-btn:active {
+      transform: scale(0.95);
     }
     
-    .schedule-header-row {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:20px;
-      padding:0 4px;
-    }
-    
-    .schedule-date-display {
-      font-size:24px;
-      font-weight:600;
-      color:#e8eef6;
-      letter-spacing:-0.5px;
-    }
-    /* Work Order Card styles */
-    .wo-card {
-      background:#1a2535;
-      border:1px solid #3b82f6;
-      border-left:3px solid #3b82f6;
-      border-radius:8px;
-      padding:12px;
-      cursor:move;
-      transition:all 0.2s;
-      user-select:none;
-      min-width:220px;
-    }
-
-    .wo-card:hover { background:#243648; box-shadow:0 4px 12px rgba(0,0,0,0.3); transform:translateY(-2px); }
-    .wo-card.dragging { opacity:0.5; }
-
-    .wo-card.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .wo-card.in_progress { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .wo-card.awaiting_parts { border-left-color:#f59e0b; border-color:#f59e0b; }
-    .wo-card.ready_for_pickup { border-left-color:#34d399; border-color:#34d399; }
-    .wo-card.completed { border-left-color:#60a5fa; border-color:#60a5fa; }
-    .wo-card.past-due { border-left-color:#ef4444; border-color:#ef4444; }
-
-    .wo-card-main { display:flex; flex-direction:column; gap:4px; }
-    .wo-customer { font-size:15px; font-weight:700; color:#e8eef6; line-height:1.3; }
-    .wo-vehicle { font-size:13px; color:#9fb0c3; line-height:1.3; }
-
-    .wo-card-details {
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-      margin-top:8px;
-      padding-top:8px;
-      border-top:1px solid rgba(255,255,255,0.1);
-    }
-
-    .wo-card.collapsed .wo-card-details { display:none; }
-
-    /* Full Card Style (Today View) */
-    .wo-card-full {
-      background:#1a2535;
-      border:2px solid #3b82f6;
-      border-left:4px solid #3b82f6;
-      border-radius:12px;
-      padding:12px 14px;
-      display:flex;
-      gap:12px;
-      align-items:stretch;
-      margin-bottom:12px;
-      box-shadow:0 2px 8px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
-      transition:all 0.2s;
-    }
-
-    .wo-card-full:hover { background:#243648; box-shadow:0 4px 12px rgba(0,0,0,0.4); transform:translateY(-1px); }
-
-    .wo-card-full.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .wo-card-full.in_progress { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .wo-card-full.awaiting_parts { border-left-color:#f59e0b; border-color:#f59e0b; }
-    .wo-card-full.ready_for_pickup { border-left-color:#34d399; border-color:#34d399; }
-    .wo-card-full.completed { border-left-color:#60a5fa; border-color:#60a5fa; }
-    .wo-card-full.past-due { border-left-color:#ef4444; border-color:#ef4444; }
-
-    .wo-card-full-content { flex:1; display:flex; flex-direction:column; gap:8px; min-width:0; }
-    .wo-card-full-row { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
-    .wo-card-full-left { flex:0 0 auto; min-width:0; }
-    
-    .wo-card-full-actions-top { display:flex; gap:8px; align-items:flex-start; }
-    .button-spacer { width:8px; }
-    
-    .wo-card-action-btn-top {
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:6px;
-      padding:8px;
-      cursor:pointer;
-      color:#9fb0c3;
-      transition:all 0.2s;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    
-    .wo-card-action-btn-top:hover { background:#243648; border-color:#3b82f6; color:#60a5fa; }
-    
-    .wo-card-pickup-actions {
-      position:absolute;
-      right:8px;
-      top:50%;
-      transform:translateY(-50%);
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    
-    .wo-card-pickup-btn {
-      background:#1a2535;
-      border:1px solid #223044;
-      border-radius:6px;
-      padding:10px;
-      cursor:pointer;
-      color:#9fb0c3;
-      transition:all 0.2s;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    
-    .wo-card-pickup-btn:hover { background:#243648; border-color:#3b82f6; color:#60a5fa; }
-
-    .wo-card-full-customer { font-weight:600; color:#e8eef6; font-size:18px; margin-bottom:2px; line-height:1.2; }
-    .wo-card-full-vehicle { color:#9fb0c3; font-size:16px; margin-bottom:4px; line-height:1.2; }
-    
-    .wo-status-progress { display:flex; gap:6px; margin-top:8px; margin-bottom:8px; align-items:center; }
-    
-    .status-light {
-      width:10px;
-      height:10px;
-      border-radius:50%;
-      background:#1a2535;
-      border:1px solid #223044;
-      transition:all 0.3s ease;
-    }
-    
-    .status-light.lit { background:#3b82f6; border-color:#3b82f6; box-shadow:0 0 8px rgba(59, 130, 246, 0.6); }
-    .status-light.lit.white { background:#e8eef6; border-color:#e8eef6; box-shadow:0 0 8px rgba(232, 238, 246, 0.6); }
-    .status-light.lit.light-blue { background:#60a5fa; border-color:#60a5fa; box-shadow:0 0 8px rgba(96, 165, 250, 0.6); }
-    .status-light.lit.dark-blue { background:#1e3a8a; border-color:#1e3a8a; box-shadow:0 0 8px rgba(30, 58, 138, 0.6); }
-    .status-light.lit.green { background:#34d399; border-color:#34d399; box-shadow:0 0 8px rgba(52, 211, 153, 0.6); }
-    
-    .wo-card-full-row-split { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-top:8px; }
-    
-    .wo-card-full-right { display:flex; flex-direction:column; align-items:flex-end; justify-content:flex-end; gap:6px; min-width:150px; }
-    .wo-hours-info-bottom { display:flex; gap:12px; font-size:14px; }
-    
-    .wo-progress-bar { width:150px; height:6px; background:#1a2535; border-radius:3px; overflow:hidden; border:1px solid #223044; }
-    .progress-bar-fill { height:100%; transition:width 0.3s ease; border-radius:2px; }
-    .progress-bar-fill.scheduled { background:#e8eef6; }
-    .progress-bar-fill.in_progress { background:#1e3a8a; }
-    .progress-bar-fill.completed { background:#1e3a8a; }
-    .progress-bar-fill.ready_for_pickup { background:#34d399; }
-    
-    .hours-item { display:flex; align-items:center; gap:4px; }
-    .hours-label { color:#6b7280; font-weight:600; }
-    .hours-value { color:#e8eef6; font-weight:500; }
-    .clock-indicator { margin-left:4px; font-size:10px; color:#6b7280; }
-    .clock-indicator.active { color:#34d399; animation:pulse 2s infinite; }
-    
-    @keyframes pulse { 0%, 100% { opacity:1; } 50% { opacity:0.5; } }
-
-    .wo-card-full-status { color:#60a5fa; font-size:13px; font-weight:600; margin-top:4px; text-transform:uppercase; letter-spacing:0.3px; line-height:1.1; }
-    .wo-card-full-tech { color:#9fb0c3; font-size:14px; margin-top:2px; line-height:1.2; }
-    .wo-card-full-time { color:#e8eef6; font-size:14px; font-weight:600; margin-top:2px; line-height:1.2; }
-    .wo-card-total-cost { font-size:16px; font-weight:500; color:#34d399; margin-top:6px; text-align:right; }
-
-    .wo-card-full.dragging { opacity:0.5; cursor:move; }
-
-    /* Timeline */
-    .timeline-container { position:relative; padding-left:55px; animation:slideIn 0.3s ease-out; }
-    @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
-
-    .timeline-hour { position:relative; min-height:80px; border-bottom:1px solid rgba(107, 114, 128, 0.15); transition:all 0.3s ease; }
-    .timeline-hour.collapsed-hour { min-height:8px; opacity:0.4; }
-    .timeline-hour.collapsed-hour.drag-over, .timeline-hour.collapsed-hour.expanding { min-height:80px; opacity:1; }
-    .timeline-hour.drag-over { background:rgba(59, 130, 246, 0.15); border-left:3px solid #3b82f6; }
-    .timeline-hour:last-child { border-bottom:none; }
-
-    .timeline-time { position:absolute; left:-55px; top:0; font-size:13px; color:#3b82f6; font-weight:600; width:45px; text-align:right; }
-    .timeline-hour.collapsed-hour .timeline-time { color:rgba(159, 176, 195, 0.4); font-size:10px; }
-
-    .timeline-line { position:absolute; left:0; right:0; top:0; height:1px; background:rgba(107, 114, 128, 0.1); }
-    .timeline-cards { position:relative; padding:4px 0; display:flex; flex-direction:column; gap:8px; }
-    .timeline-cards .wo-card-full { margin-bottom:0; cursor:grab; }
-    .timeline-cards .wo-card-full:active { cursor:grabbing; }
-
-    .timeline-before-hours, .timeline-after-hours { padding:8px 0 12px 0; border-bottom:1px solid rgba(107, 114, 128, 0.2); }
-    .timeline-section-label { font-size:9px; color:rgba(159, 176, 195, 0.4); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; font-weight:700; }
-    .timeline-before-hours { margin-bottom:8px; }
-    .timeline-after-hours { margin-top:8px; border-top:1px solid rgba(107, 114, 128, 0.2); border-bottom:none; }
-
-    /* Day Section */
-    .day-section { background:#0f1621; border:1px solid #223044; border-radius:12px; margin-bottom:12px; overflow:hidden; }
-    .day-header { padding:8px 4px; background:transparent; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s; user-select:none; border-bottom:1px solid #223044; }
-    .day-header:hover { background:transparent; }
-    .day-title { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-    .day-date { font-size:16px; font-weight:600; display:flex; align-items:center; gap:16px; }
-    .day-info-orders, .day-info-hours { font-size:13px; font-weight:500; color:#9fb0c3; }
-    .day-info-value { font-size:13px; font-weight:500; color:#3b82f6; }
-    .day-chevron { font-size:18px; transition:transform 0.2s; color:#9fb0c3; }
-    .day-section.collapsed .day-chevron { transform:rotate(-90deg); }
-    .day-content { max-height:2000px; overflow:hidden; transition:max-height 0.3s ease; }
-    .day-section.collapsed .day-content { max-height:0; }
-    .day-cards-container { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
-    .day-cards-container .wo-card-full { max-width:100%; width:100%; }
-
-    /* Scheduler View */
-    .scheduler-view { padding:0; }
-    .scheduler-calendar { display:flex; flex-direction:column; gap:0; background:#0f1621; border-radius:12px; overflow:hidden; }
-    .scheduler-header-row { display:grid; grid-template-columns:repeat(7, 1fr); background:#1a2535; border-bottom:2px solid #3b82f6; }
-    .scheduler-day-header { padding:12px; text-align:center; font-size:12px; font-weight:700; color:#e8eef6; text-transform:uppercase; letter-spacing:0.5px; }
-    .scheduler-week-row { display:grid; grid-template-columns:repeat(7, 1fr); border-bottom:1px solid #223044; }
-    .scheduler-week-row:last-child { border-bottom:none; }
-
-    .scheduler-day-cell {
-      min-height:120px;
-      padding:8px;
-      border-right:1px solid #223044;
-      background:#0f1621;
-      transition:all 0.2s;
-      cursor:pointer;
-      position:relative;
-    }
-    .scheduler-day-cell:nth-child(7) { border-right:none; }
-    .scheduler-day-cell.today { background:rgba(59, 130, 246, 0.05); }
-    .scheduler-day-cell.drag-over { background:rgba(59, 130, 246, 0.15); border:2px solid #3b82f6; }
-    .scheduler-day-number { font-size:14px; font-weight:700; color:#9fb0c3; margin-bottom:6px; }
-    .scheduler-day-cell.today .scheduler-day-number { color:#3b82f6; }
-    .scheduler-cards { display:flex; flex-direction:column; gap:4px; }
-
-    .scheduler-card {
-      padding:6px 8px;
-      background:#1a2535;
-      border:2px solid #3b82f6;
-      border-left:4px solid #3b82f6;
-      border-radius:6px;
-      font-size:11px;
-      cursor:move;
-      transition:all 0.15s;
-      display:flex;
-      flex-direction:column;
-      gap:2px;
-    }
-    .scheduler-card:hover { background:#243648; transform:translateY(-1px); box-shadow:0 2px 8px rgba(0,0,0,0.3); }
-    .scheduler-card.scheduled { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .scheduler-card.in_progress { border-left-color:#3b82f6; border-color:#3b82f6; }
-    .scheduler-card.awaiting_parts { border-left-color:#f59e0b; border-color:#f59e0b; }
-    .scheduler-card.ready_for_pickup { border-left-color:#34d399; border-color:#34d399; }
-    .scheduler-card.past-due { border-left-color:#ef4444; border-color:#ef4444; }
-    
-    .scheduler-card-row-1, .scheduler-card-row-3 { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-    .scheduler-card-time { font-size:10px; color:#60a5fa; font-weight:700; flex-shrink:0; }
-    .scheduler-card-customer { font-size:11px; color:#e8eef6; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
-    .scheduler-card-vehicle { font-size:10px; color:#9fb0c3; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .scheduler-card-tech { font-size:10px; color:#9fb0c3; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
-    .scheduler-card-hours { font-size:10px; color:#60a5fa; font-weight:600; flex-shrink:0; }
-
-    .wo-tech { font-size:11px; color:#60a5fa; font-weight:600; }
-    .wo-time { font-size:11px; color:#9fb0c3; font-weight:600; }
-    .wo-status { font-size:10px; font-weight:600; color:#60a5fa; text-transform:uppercase; letter-spacing:0.3px; }
-
-    .day-cards-container.drag-over, .droppable-empty.drag-over { background:rgba(59, 130, 246, 0.2); border:2px dashed #3b82f6; }
-    .droppable-empty { min-height:60px; display:flex; align-items:center; justify-content:center; border:2px dashed transparent; transition:all 0.2s; margin:12px 0; }
-    .drop-zone { border:2px dashed #3b82f6 !important; background:rgba(59,130,246,0.08) !important; }
-
-    /* Auto-scroll indicators */
-    .scroll-indicator { position:fixed; left:0; right:0; height:120px; pointer-events:none; z-index:9999; display:none; align-items:center; justify-content:center; font-size:24px; color:#3b82f6; background:rgba(59, 130, 246, 0.1); backdrop-filter:blur(2px); }
-    .scroll-indicator.active { display:flex; }
-    .scroll-indicator.top { top:0; }
-    .scroll-indicator.bottom { bottom:0; }
-    .scroll-indicator-horizontal { position:fixed; top:0; bottom:0; width:100px; pointer-events:none; z-index:9999; display:none; align-items:center; justify-content:center; font-size:14px; font-weight:600; color:#3b82f6; background:linear-gradient(90deg, rgba(59, 130, 246, 0.15), transparent); writing-mode:vertical-rl; text-orientation:mixed; }
-    .scroll-indicator-horizontal.active { display:flex; }
-    .scroll-indicator-horizontal.left { left:0; }
-    .scroll-indicator-horizontal.right { right:0; background:linear-gradient(270deg, rgba(59, 130, 246, 0.15), transparent); }
-
-    .empty-state { text-align:center; padding:40px 20px; color:#9fb0c3; font-size:14px; }
-
-    /* Mobile Styles */
-    @media (max-width: 768px) {
-      .desktop-header { display:none !important; }
-      .mobile-header { display:block !important; }
-      .mobile-bottom-nav { display:flex !important; }
-      .desktop-only { display:none !important; }
-      .controls { display:none !important; }
-      .schedule-header-row { display:none !important; }
-      .side-panel { display:none !important; }
-      
-      .main-container { flex-direction:column; padding:12px; padding-bottom:120px; height:auto; }
-      .schedule-panel { order:1; width:100%; min-height:calc(100vh - 240px); padding-bottom:140px; }
-      #scheduleView { min-height:calc(100vh - 300px); }
-      .wo-card { min-width:100%; }
-      .timeline-time { font-size:14px; }
-      .timeline-hour.collapsed-hour .timeline-time { font-size:10px; }
-
-      .day-date { font-size:18px; font-weight:700; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-      .day-info-orders, .day-info-hours { font-size:14px; }
-      .day-info-value { font-size:14px; }
-
-      .wo-card-full.collapsible-card.collapsed .wo-card-full-row:nth-child(2) { display:none; }
-      .wo-card-full.collapsible-card { cursor:pointer; }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #94a3b8;
     }
   </style>
 </head>
-
 <body>
-  <!-- Auto-scroll indicators -->
-  <div class="scroll-indicator top" id="scrollIndicatorTop">▲ Scrolling Up ▲</div>
-  <div class="scroll-indicator bottom" id="scrollIndicatorBottom">▼ Scrolling Down ▼</div>
-  <div class="scroll-indicator-horizontal left" id="scrollIndicatorLeft">◀ Previous Week</div>
-  <div class="scroll-indicator-horizontal right" id="scrollIndicatorRight">Next Week ▶</div>
 
-  <!-- Mobile Header -->
-  <div class="mobile-header">
-    <div class="mobile-header-bar">
-      <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
-      <div class="mobile-header-center">
-        <div class="mobile-header-title">Scheduling</div>
-        <div class="business-name" id="mobileBusinessName">Loading...</div>
-      </div>
-      <button class="mobile-header-new" onclick="createWorkOrder()">+</button>
-    </div>
-    
-    <div class="mobile-header-content" id="mobileHeaderContent">
-      <div class="mobile-header-nav">
-        <a href="dashboard-business.html">Dashboard</a>
-        <a href="dashboard-customer-search.html">Customers</a>
-        <a href="dashboard-vehicle-search.html">Vehicles</a>
-        <a href="dashboard-scheduling.html" class="active">Scheduling</a>
-      </div>
-      <div class="mobile-header-actions">
-        <button onclick="goToSettings()">Settings</button>
-        <button onclick="logout()">Logout</button>
-      </div>
-    </div>
+<div class="page-header">
+  <div class="page-header-row">
+    <button class="back-btn" onclick="location.href='dashboard-sales.html'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+      Back
+    </button>
+    <span class="page-title">Sales Scheduler</span>
+    <button class="add-btn" onclick="openAppointmentModal()">+ Appt</button>
   </div>
+</div>
 
-  <!-- Mobile Bottom Nav - REMOVED 30 Day button -->
-  <div class="mobile-bottom-nav">
-    <div class="mobile-nav-row">
-      <div class="mobile-view-btn active" id="mobileToday" onclick="goToToday()">Today</div>
-      <div class="mobile-view-btn" id="mobile7Day" onclick="setView('list')">List</div>
-      <div class="mobile-view-btn" id="mobileScheduler" onclick="setView('scheduler')">Scheduler</div>
-    </div>
-    <div class="mobile-nav-row">
-      <div class="mobile-nav-arrow" id="mobileLeftArrow" onclick="previousPeriod()">←</div>
-      <div class="mobile-action-btn new" onclick="createWorkOrder()">+ New</div>
-      <div class="mobile-action-btn pickup" onclick="scrollToPickup()">
-        <span>Pickup</span>
-        <span class="mobile-pickup-count" id="mobilePickupCount">0</span>
-      </div>
-      <div class="mobile-nav-arrow" id="mobileRightArrow" onclick="nextPeriod()">→</div>
-    </div>
+<div class="date-nav">
+  <button class="date-nav-btn" onclick="prevWeek()">◀</button>
+  <span class="date-display" id="dateDisplay" onclick="goToToday()">This Week</span>
+  <button class="date-nav-btn" onclick="nextWeek()">▶</button>
+</div>
+
+<div class="day-tabs" id="dayTabs">
+  <!-- Generated by JS -->
+</div>
+
+<div class="filters">
+  <div class="filter-row">
+    <select id="statusFilter" class="filter-select" onchange="renderTimeline()">
+      <option value="all">All Status</option>
+      <option value="scheduled">Scheduled</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="completed">Completed</option>
+      <option value="sold">Sold</option>
+    </select>
+    <select id="employeeFilter" class="filter-select" onchange="renderTimeline()">
+      <option value="all">All Employees</option>
+    </select>
   </div>
+</div>
 
-  <!-- Date Picker Modal -->
-  <div class="date-picker-modal" id="datePickerModal">
-    <div class="date-picker-content">
-      <div class="date-picker-header">
-        <div class="date-picker-title">Reschedule Work Order</div>
-        <button class="date-picker-close" onclick="closeDatePicker()">×</button>
-      </div>
-      <input type="date" id="newDateInput">
-      <div class="date-picker-actions">
-        <button onclick="closeDatePicker()">Cancel</button>
-        <button class="primary" onclick="saveReschedule()">Save</button>
-      </div>
-    </div>
+<div class="timeline" id="timeline">
+  <div class="empty-state">Loading schedule...</div>
+</div>
+
+<!-- Mobile Action Buttons -->
+<div class="mobile-action-buttons">
+  <div class="mobile-action-grid">
+    <button class="mobile-action-btn" onclick="openAppointmentModal()">+ Appt</button>
+    <button class="mobile-action-btn active" onclick="location.href='dashboard-sales-scheduler.html'">Scheduler</button>
+    <button class="mobile-action-btn" onclick="location.href='dashboard-sales-inventory.html'">Inventory</button>
   </div>
+</div>
 
-  <!-- Pickup Overlay Modal -->
-  <div class="pickup-overlay" id="pickupOverlay">
-    <div class="pickup-overlay-content">
-      <div class="pickup-overlay-header">
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-grid">
+    <a href="dashboard-business.html" class="mobile-nav-btn">Business</a>
+    <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
+    <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
+    <button class="mobile-nav-btn" onclick="location.href='dashboard-settings.html'">Settings</button>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn active">Sales</a>
+  </div>
+</div>
+
+<!-- Appointment Modal -->
+<div id="appointmentModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
+  <div style="background:#1a2535; border-radius:12px; padding:24px; max-width:500px; width:90%; margin:50px auto; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#60a5fa; font-size:18px;">New Sales Appointment</h2>
+      <button onclick="closeModal('appointmentModal')" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <form onsubmit="saveAppointment(event)">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Customer Name *</label>
+        <input type="text" id="apptName" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
         <div>
-          <span class="pickup-overlay-title">Ready for Pickup</span>
-          <span class="pickup-overlay-count" id="pickupOverlayCount">0</span>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Phone</label>
+          <input type="tel" id="apptPhone" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
         </div>
-        <button class="pickup-overlay-close" onclick="closePickupOverlay()">×</button>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Email</label>
+          <input type="email" id="apptEmail" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
       </div>
-      <div class="pickup-overlay-grid" id="pickupOverlayGrid"></div>
-    </div>
-  </div>
-
-  <!-- Work Order Details Overlay -->
-  <div class="details-overlay" id="detailsOverlay">
-    <div class="details-overlay-content">
-      <div class="details-overlay-header">
-        <span class="details-overlay-title" id="detailsTitle">Work Order Details</span>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Date *</label>
+          <input type="date" id="apptDate" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Time *</label>
+          <input type="time" id="apptTime" required style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+        </div>
       </div>
-      <div id="detailsContent"></div>
-      <div class="details-footer" id="detailsFooter"></div>
-    </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Appointment Type</label>
+        <select id="apptType" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+          <option value="Sales Consultation">Sales Consultation</option>
+          <option value="Test Drive">Test Drive</option>
+          <option value="Trade-In Appraisal">Trade-In Appraisal</option>
+          <option value="Finance Consultation">Finance Consultation</option>
+          <option value="Delivery">Delivery</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Vehicle Interest</label>
+        <input type="text" id="apptVehicle" placeholder="e.g., 2024 Honda Civic" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Assign to Sales Consultant</label>
+        <select id="apptAssigned" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:12px; margin-top:20px;">
+        <button type="submit" style="flex:1; padding:12px; background:#3b82f6; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer;">Save</button>
+        <button type="button" onclick="closeModal('appointmentModal')" style="padding:12px 20px; background:#1e3a5f; border:none; border-radius:8px; color:#60a5fa; cursor:pointer;">Cancel</button>
+      </div>
+    </form>
   </div>
+</div>
 
-  <!-- Desktop Header - Updated to match business dashboard -->
-  <div class="desktop-header">
-    <div class="header-top">
+<!-- Customer Profile Modal -->
+<div id="customerProfileModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1001; overflow-y:auto;">
+  <div style="background:#0f1621; border-radius:16px; max-width:600px; width:95%; margin:20px auto; max-height:95vh; overflow-y:auto;">
+    
+    <!-- Header -->
+    <div style="background:#1a2535; padding:20px; border-radius:16px 16px 0 0; position:sticky; top:0; z-index:10;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div id="cpName" style="font-size:22px; font-weight:700; color:#e8eef6;">Customer Name</div>
+          <div id="cpFunnelBadge" style="margin-top:6px;"></div>
+        </div>
+        <button onclick="closeModal('customerProfileModal')" style="background:none; border:none; color:#94a3b8; font-size:28px; cursor:pointer; line-height:1;">&times;</button>
+      </div>
+    </div>
+    
+    <!-- Quick Stats -->
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:#2d3f56; margin:0;">
+      <div style="background:#1a2535; padding:16px; text-align:center;">
+        <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Lifetime Value</div>
+        <div id="cpLifetimeSpend" style="font-size:20px; font-weight:700; color:#10b981; margin-top:4px;">$0</div>
+      </div>
+      <div style="background:#1a2535; padding:16px; text-align:center;">
+        <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Last Purchase</div>
+        <div id="cpLastSpend" style="font-size:20px; font-weight:700; color:#60a5fa; margin-top:4px;">$0</div>
+      </div>
+      <div style="background:#1a2535; padding:16px; text-align:center;">
+        <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Visits</div>
+        <div id="cpVisits" style="font-size:20px; font-weight:700; color:#f59e0b; margin-top:4px;">0</div>
+      </div>
+    </div>
+    
+    <!-- Contact Info -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Contact</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <a id="cpPhoneLink" href="tel:" style="display:flex; align-items:center; gap:10px; padding:12px; background:#0f1621; border-radius:8px; text-decoration:none; color:#60a5fa;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+          <span id="cpPhone">-</span>
+        </a>
+        <a id="cpEmailLink" href="/cdn-cgi/l/email-protection#32" style="display:flex; align-items:center; gap:10px; padding:12px; background:#0f1621; border-radius:8px; text-decoration:none; color:#60a5fa;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          <span id="cpEmail">-</span>
+        </a>
+      </div>
+      <div id="cpAddress" style="margin-top:12px; padding:12px; background:#0f1621; border-radius:8px; color:#94a3b8; font-size:14px; display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:8px;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        <span id="cpAddressText"></span>
+      </div>
+    </div>
+    
+    <!-- Today's Appointment -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Today's Appointment</div>
+      <div style="background:#0f1621; border-radius:10px; padding:14px; border-left:4px solid #3b82f6;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div id="cpApptType" style="font-size:15px; font-weight:600; color:#e8eef6;">-</div>
+            <div id="cpApptVehicle" style="font-size:13px; color:#94a3b8; margin-top:2px;">-</div>
+          </div>
+          <div id="cpApptTime" style="font-size:18px; font-weight:700; color:#60a5fa;">-</div>
+        </div>
+        <div id="cpApptAgent" style="font-size:13px; color:#94a3b8; margin-top:8px;"></div>
+        <div id="cpApptNotes" style="font-size:13px; color:#94a3b8; margin-top:8px; padding-top:8px; border-top:1px solid #2d3f56; display:none;"></div>
+      </div>
+    </div>
+    
+    <!-- Vehicles of Interest -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Vehicles of Interest</div>
+      <div id="cpVehiclesInterest" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="color:#64748b; font-size:14px;">No vehicles tracked</div>
+      </div>
+    </div>
+    
+    <!-- Purchase History -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Purchase History</div>
+      <div id="cpPurchaseHistory" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="color:#64748b; font-size:14px;">No purchase history</div>
+      </div>
+    </div>
+    
+    <!-- Service History -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Service History</div>
+      <div id="cpServiceHistory" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="color:#64748b; font-size:14px;">No service history</div>
+      </div>
+    </div>
+    
+    <!-- Communication Log -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Recent Activity</div>
+      <div id="cpActivityLog" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="color:#64748b; font-size:14px;">No recent activity</div>
+      </div>
+    </div>
+    
+    <!-- Lead Score & Notes -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+        <div style="background:#0f1621; border-radius:8px; padding:14px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Lead Score</div>
+          <div id="cpLeadScore" style="font-size:28px; font-weight:700; color:#f59e0b; margin-top:4px;">--</div>
+          <div id="cpLeadScoreLabel" style="font-size:12px; color:#94a3b8;">Not rated</div>
+        </div>
+        <div style="background:#0f1621; border-radius:8px; padding:14px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Days in Funnel</div>
+          <div id="cpDaysInFunnel" style="font-size:28px; font-weight:700; color:#60a5fa; margin-top:4px;">--</div>
+          <div id="cpFirstContact" style="font-size:12px; color:#94a3b8;">-</div>
+        </div>
+      </div>
       <div>
-        <h1 id="pageTitle">Scheduling</h1>
-        <div class="business-name" id="desktopBusinessName">Loading...</div>
+        <div style="font-size:13px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Manager Notes</div>
+        <textarea id="cpNotes" placeholder="Add notes about this customer..." style="width:100%; min-height:80px; padding:12px; background:#0f1621; border:1px solid #2d3f56; border-radius:8px; color:#e8eef6; font-size:14px; resize:vertical;"></textarea>
+        <button onclick="saveCustomerNotes()" style="margin-top:8px; padding:10px 20px; background:#3b82f6; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer;">Save Notes</button>
       </div>
-      <a onclick="logout()" style="color:#9fb0c3; cursor:pointer; font-size:14px;">Logout</a>
     </div>
     
-    <div class="header-nav">
-      <a href="dashboard-business.html">Dashboard</a>
-      <a href="dashboard-customer-search.html">Customers</a>
-      <a href="dashboard-vehicle-search.html">Vehicles</a>
-      <a href="dashboard-scheduling.html" class="active">Scheduling</a>
+    <!-- Quick Actions -->
+    <div style="padding:16px; background:#1a2535; margin-top:1px; border-radius:0 0 16px 16px;">
+      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;">
+        <button onclick="markAsHotLead()" style="padding:14px; background:#dc2626; border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer;">🔥 Mark Hot Lead</button>
+        <button onclick="scheduleFollowUp()" style="padding:14px; background:#1e3a5f; border:none; border-radius:8px; color:#60a5fa; font-weight:600; cursor:pointer;">📅 Schedule Follow-up</button>
+        <button onclick="sendToFinance()" style="padding:14px; background:#065f46; border:none; border-radius:8px; color:#34d399; font-weight:600; cursor:pointer;">💰 Send to Finance</button>
+        <button onclick="viewFullProfile()" style="padding:14px; background:#1a2535; border:1px solid #2d3f56; border-radius:8px; color:#94a3b8; font-weight:600; cursor:pointer;">👤 Full Profile</button>
+      </div>
     </div>
     
-    <div class="header-actions">
-      <!-- REMOVED 30 Day tab -->
-      <div class="view-tabs-header">
-        <div class="view-tab active" id="tabToday" onclick="goToToday()">Today</div>
-        <div class="view-tab" id="tab7Day" onclick="setView('list')">List</div>
-        <div class="view-tab" id="tabScheduler" onclick="setView('scheduler')">Scheduler</div>
-      </div>
-      
-      <div class="calendar-nav-header">
-        <button class="nav-arrow" onclick="previousPeriod()">←</button>
-        <div class="calendar-title-header" id="calendarTitleHeader" onclick="goToToday()"></div>
-        <button class="nav-arrow" onclick="nextPeriod()">→</button>
-      </div>
-      
-      <div class="header-filters">
-        <div class="tech-filter-header">
-          <label style="color:#6b7280; font-size:11px; margin-right:6px;">Tech:</label>
-          <select id="techFilterHeader" onchange="applyTechFilterHeader()">
-            <option value="">All Techs</option>
-          </select>
-        </div>
-        <div class="tech-filter-header">
-          <label style="color:#6b7280; font-size:11px; margin-right:6px;">Fleet:</label>
-          <select id="fleetFilterHeader" onchange="applyFleetFilterHeader()">
-            <option value="">All Fleets</option>
-          </select>
-        </div>
-      </div>
-      
-      <button onclick="location.href='dashboard-fleet-settings.html'" style="background:#3b82f6; border-color:#3b82f6; color:#fff;">⚙ Fleet Management</button>
-      <button onclick="goToSettings()">Settings</button>
-    </div>
   </div>
+</div>
 
-  <!-- Main Container -->
-  <div class="main-container">
-    <div class="schedule-panel">
-      <div class="schedule-header-row">
-        <div class="schedule-date-display" id="calendarTitle"></div>
-        <button class="primary" onclick="createWorkOrder()">+ New Work Order</button>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tenantId = null;
+let appointments = [];
+let selectedDate = new Date();
+let weekStart = getWeekStart(new Date());
+
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: token,
+        refresh_token: refreshToken
+      });
+      if (error || !data.session) {
+        window.location.href = 'login.html';
+        return null;
+      }
+      return data.session;
+    }
+    window.location.href = 'login.html';
+    return null;
+  }
+  return session;
+}
+
+async function loadBusinessSettings() {
+  const { data } = await sb.from('business_settings').select('*').limit(1).single();
+  if (data) {
+    tenantId = data.tenant_id;
+    document.title = `${data.business_name || 'Sales'} - Scheduler`;
+  }
+}
+
+async function loadAppointments() {
+  if (!tenantId) return;
+  
+  const { data } = await sb.from('sales_appointments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('appointment_date', { ascending: true })
+    .order('appointment_time', { ascending: true });
+  
+  appointments = data || [];
+  renderDayTabs();
+  renderTimeline();
+}
+
+let salesEmployees = [];
+
+async function loadSalesEmployees() {
+  if (!tenantId) return;
+  
+  // Load sales consultants for appointment assignment
+  const { data: sales } = await sb.from('employees')
+    .select('employee_id, first_name, last_name, role')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .in('role', ['sales_consultant', 'sales_manager', 'internet_sales', 'bdc_rep', 'bdc_manager', 'finance_manager'])
+    .order('first_name');
+  
+  salesEmployees = sales || [];
+  populateEmployeeFilter();
+}
+
+function populateEmployeeFilter() {
+  const filter = document.getElementById('employeeFilter');
+  const assignedSelect = document.getElementById('apptAssigned');
+  
+  // Build options from loaded sales employees
+  const options = salesEmployees.map(e => {
+    const name = `${e.first_name} ${e.last_name.charAt(0)}.`;
+    return `<option value="${name}">${name} (${formatRole(e.role)})</option>`;
+  }).join('');
+  
+  filter.innerHTML = '<option value="all">All Sales Staff</option>' + options;
+  assignedSelect.innerHTML = '<option value="">Unassigned</option>' + options;
+}
+
+function formatRole(role) {
+  const roleMap = {
+    'sales_consultant': 'Sales',
+    'sales_manager': 'Sales Mgr',
+    'internet_sales': 'Internet',
+    'bdc_rep': 'BDC',
+    'bdc_manager': 'BDC Mgr',
+    'finance_manager': 'F&I'
+  };
+  return roleMap[role] || role;
+}
+
+function renderDayTabs() {
+  const container = document.getElementById('dayTabs');
+  const today = new Date().toISOString().split('T')[0];
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const isToday = dateStr === today;
+    const isSelected = dateStr === selectedDate.toISOString().split('T')[0];
+    
+    html += `
+      <div class="day-tab ${isSelected ? 'active' : ''} ${isToday ? 'today' : ''}" onclick="selectDate('${dateStr}')">
+        <div class="day-name">${days[d.getDay()]}</div>
+        <div class="day-num">${d.getDate()}</div>
       </div>
-      <div id="scheduleView"></div>
-    </div>
-
-    <div class="side-panel">
-      <div class="side-column pickup-only">
-        <div class="side-column-header">
-          <span>Ready for Pickup</span>
-          <div class="pickup-stats">
-            <span class="pickup-count" id="pickupCount">0</span>
-            <span class="pickup-total" id="pickupTotal">$0.00</span>
-          </div>
-        </div>
-        <div id="pickupColumn"></div>
-      </div>
-    </div>
-  </div>
-<script>
-const PROJECT_REF = "kxqkwpkmtgvmthpafoqx";
-const API_BASE = `https://${PROJECT_REF}.supabase.co`;
-const REST_BASE = `${API_BASE}/rest/v1`;
-const ANON_KEY = document.querySelector('meta[name="supabase-anon-key"]').content;
-
-let currentDate = new Date();
-currentDate.setHours(0, 0, 0, 0);
-let workOrders = [];
-let customers = [];
-let vehicles = [];
-let employees = [];
-let fleets = [];
-let vehicleFleetAssignments = [];
-let currentView = 'today';
-let selectedTechId = '';
-let selectedFleetId = '';
-let draggedWO = null;
-let isMobile = window.innerWidth <= 768;
-let isDragging = false;
-
-const businessHours = { start: 7, end: 18 };
-const SHOP_LABOR_RATE = 150;
-
-window.addEventListener('resize', () => { isMobile = window.innerWidth <= 768; });
-
-function logout(){
-  localStorage.removeItem("sb_access_token");
-  location.replace("login.html");
+    `;
+  }
+  
+  container.innerHTML = html;
+  updateDateDisplay();
 }
 
-function goToSettings(){ location.href = "dashboard-settings.html"; }
-function createWorkOrder(){ location.href = "work-order-new.html"; }
-
-function toggleMobileMenu(){
-  document.getElementById('mobileHeaderContent').classList.toggle('expanded');
+function updateDateDisplay() {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const endDate = new Date(weekStart);
+  endDate.setDate(endDate.getDate() + 6);
+  
+  document.getElementById('dateDisplay').textContent = 
+    `${months[weekStart.getMonth()]} ${weekStart.getDate()} - ${months[endDate.getMonth()]} ${endDate.getDate()}`;
 }
 
-async function validateAuth(){
-  const token = localStorage.getItem("sb_access_token");
-  if(!token) return null;
-  const r = await fetch(`${API_BASE}/auth/v1/user`, {
-    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
-  });
-  return r.ok ? token : null;
+function selectDate(dateStr) {
+  selectedDate = new Date(dateStr + 'T00:00:00');
+  renderDayTabs();
+  renderTimeline();
 }
 
-async function fetchTable(table, token){
-  const r = await fetch(`${REST_BASE}/${table}?select=*`, {
-    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
-  });
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
+function prevWeek() {
+  weekStart.setDate(weekStart.getDate() - 7);
+  selectedDate = new Date(weekStart);
+  renderDayTabs();
+  renderTimeline();
 }
 
-async function loadBusinessSettings(token) {
-  try {
-    const r = await fetch(`${REST_BASE}/business_settings?select=*&limit=1`, {
-      headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+function nextWeek() {
+  weekStart.setDate(weekStart.getDate() + 7);
+  selectedDate = new Date(weekStart);
+  renderDayTabs();
+  renderTimeline();
+}
+
+function goToToday() {
+  const today = new Date();
+  weekStart = getWeekStart(today);
+  selectedDate = today;
+  renderDayTabs();
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const container = document.getElementById('timeline');
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  const status = document.getElementById('statusFilter').value;
+  const employee = document.getElementById('employeeFilter').value;
+  
+  let dayAppts = appointments.filter(a => a.appointment_date === dateStr);
+  
+  if (status !== 'all') {
+    dayAppts = dayAppts.filter(a => a.status === status);
+  }
+  
+  if (employee !== 'all') {
+    dayAppts = dayAppts.filter(a => a.assigned_to === employee);
+  }
+  
+  // Time slots from 8am to 6pm
+  const slots = [];
+  for (let h = 8; h <= 18; h++) {
+    const timeStr = `${h.toString().padStart(2, '0')}:00`;
+    const slotAppts = dayAppts.filter(a => {
+      const apptHour = parseInt(a.appointment_time?.split(':')[0] || '0');
+      return apptHour === h;
     });
-    if(r.ok) {
-      const data = await r.json();
-      if(data && data.length > 0) {
-        const name = data[0].business_name || data[0].company_name || '';
-        document.getElementById('desktopBusinessName').textContent = name;
-        document.getElementById('mobileBusinessName').textContent = name;
-      }
-    }
-  } catch(err) {
-    console.warn('Could not load business settings:', err);
+    slots.push({ time: timeStr, hour: h, appointments: slotAppts });
   }
+  
+  container.innerHTML = slots.map(slot => `
+    <div class="time-slot" data-hour="${slot.hour}">
+      <div class="time-label">${formatHour(slot.hour)}</div>
+      <div class="slot-content" data-time="${slot.time}" data-date="${dateStr}"
+           ondragover="handleDragOver(event)" 
+           ondragleave="handleDragLeave(event)" 
+           ondrop="handleDrop(event)">
+        ${slot.appointments.length ? 
+          slot.appointments.map(a => renderApptCard(a)).join('') :
+          `<div class="slot-empty" onclick="openAppointmentModalWithTime('${dateStr}', '${slot.time}')">+ Add</div>`
+        }
+      </div>
+    </div>
+  `).join('');
+  
+  // Initialize drag handlers after render
+  initDragHandlers();
 }
 
-function setView(view){
-  currentView = view;
-  
-  document.getElementById('tabToday').classList.toggle('active', view === 'today');
-  document.getElementById('tab7Day').classList.toggle('active', view === 'list');
-  const schedulerTab = document.getElementById('tabScheduler');
-  if(schedulerTab) schedulerTab.classList.toggle('active', view === 'scheduler');
-  
-  const mobileToday = document.getElementById('mobileToday');
-  const mobile7Day = document.getElementById('mobile7Day');
-  const mobileScheduler = document.getElementById('mobileScheduler');
-  const leftArrow = document.getElementById('mobileLeftArrow');
-  const rightArrow = document.getElementById('mobileRightArrow');
-  
-  if(mobileToday) mobileToday.classList.toggle('active', view === 'today');
-  if(mobile7Day) mobile7Day.classList.toggle('active', view === 'list');
-  if(mobileScheduler) mobileScheduler.classList.toggle('active', view === 'scheduler');
-  
-  if(leftArrow && rightArrow) {
-    if(view === 'today' || view === 'scheduler') {
-      leftArrow.classList.remove('hidden');
-      rightArrow.classList.remove('hidden');
-    } else {
-      leftArrow.classList.add('hidden');
-      rightArrow.classList.add('hidden');
-    }
-  }
-  
-  const sidePanel = document.querySelector('.side-panel');
-  if(sidePanel) sidePanel.classList.remove('hidden');
-  
-  updateTitle();
-  renderSchedule();
+function formatHour(h) {
+  if (h === 12) return '12pm';
+  return h > 12 ? `${h - 12}pm` : `${h}am`;
 }
 
-function updateTitle(){
-  const title = document.getElementById('calendarTitle');
-  const titleHeader = document.getElementById('calendarTitleHeader');
-  
-  let titleText = '';
-  
-  if(currentView === 'today'){
-    const today = new Date();
-    const current = new Date(currentDate);
-    current.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    
-    if(current.getTime() === today.getTime()) {
-      titleText = 'Today';
-    } else {
-      titleText = currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    }
-  } else if(currentView === 'list'){
-    titleText = 'Scheduled Work Orders';
-  } else if(currentView === 'scheduler'){
-    if(isMobile) {
-      titleText = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    } else {
-      const startDate = new Date(currentDate);
-      startDate.setDate(startDate.getDate() - startDate.getDay());
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 41);
-      
-      const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
-      const endMonth = endDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
-      if(startMonth === endMonth.split(' ')[0]) {
-        titleText = `${startMonth} ${startDate.getDate()} - ${endDate.getDate()}, ${endDate.getFullYear()}`;
-      } else {
-        titleText = `${startMonth} ${startDate.getDate()} - ${endMonth.split(' ')[0]} ${endDate.getDate()}, ${endDate.getFullYear()}`;
-      }
-    }
-  }
-  
-  if (title) title.textContent = titleText;
-  if (titleHeader) titleHeader.textContent = titleText;
+function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':');
+  const hour = parseInt(h);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+  return `${h12}:${m} ${ampm}`;
 }
 
-function goToToday(){
-  currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
-  setView('today');
+function getStatusBadge(status) {
+  const map = {
+    'scheduled': 'info',
+    'confirmed': 'info',
+    'in_progress': 'warning',
+    'completed': 'success',
+    'sold': 'success',
+    'cancelled': 'danger',
+    'no_show': 'danger'
+  };
+  return map[status] || 'info';
 }
 
-function previousPeriod(){
-  if(currentView === 'today'){
-    currentDate.setDate(currentDate.getDate() - 1);
-  } else if(currentView === 'scheduler'){
-    if(isMobile) {
-      currentDate.setMonth(currentDate.getMonth() - 1);
-    } else {
-      currentDate.setDate(currentDate.getDate() - 7);
-    }
-  }
-  updateTitle();
-  renderSchedule();
-}
-
-function nextPeriod(){
-  if(currentView === 'today'){
-    currentDate.setDate(currentDate.getDate() + 1);
-  } else if(currentView === 'scheduler'){
-    if(isMobile) {
-      currentDate.setMonth(currentDate.getMonth() + 1);
-    } else {
-      currentDate.setDate(currentDate.getDate() + 7);
-    }
-  }
-  updateTitle();
-  renderSchedule();
-}
-
-function renderFleetFilter(){
-  const selectHeader = document.getElementById('fleetFilterHeader');
+function renderApptCard(a) {
+  const showStatus = a.status !== 'scheduled';
+  const userIcon = `<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
   
-  const optionsHTML = '<option value="">All Fleets</option>' + 
-    fleets.filter(f => f.is_active).sort((a, b) => a.fleet_name.localeCompare(b.fleet_name))
-      .map(fleet => `<option value="${fleet.fleet_id}">${fleet.fleet_name}</option>`).join('');
-  
-  if (selectHeader) {
-    selectHeader.innerHTML = optionsHTML;
-    selectHeader.value = selectedFleetId || '';
-  }
-}
-
-function applyFleetFilterHeader(){
-  selectedFleetId = document.getElementById('fleetFilterHeader').value;
-  renderSchedule();
-}
-
-function getWorkOrdersForDate(date){
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
-  
-  let filtered = workOrders.filter(wo => {
-    if(wo.status === 'completed' || wo.status === 'closed' || wo.status === 'ready_for_pickup') return false;
-    
-    if(wo.scheduled_start) {
-      const woDate = new Date(wo.scheduled_start);
-      const woDateStr = `${woDate.getFullYear()}-${String(woDate.getMonth() + 1).padStart(2, '0')}-${String(woDate.getDate()).padStart(2, '0')}`;
-      return woDateStr === dateStr;
-    }
-    return false;
-  });
-  
-  if(selectedFleetId && vehicleFleetAssignments.length > 0) {
-    const fleetVehicleIds = vehicleFleetAssignments.filter(a => a.fleet_id === selectedFleetId).map(a => a.vehicle_id);
-    filtered = filtered.filter(wo => fleetVehicleIds.includes(wo.vehicle_id));
-  }
-  
-  if(selectedTechId) {
-    filtered = filtered.filter(wo => wo.assigned_employee_id === selectedTechId);
-  }
-  
-  return filtered;
-}
-
-function calculateWorkOrderTotal(wo) {
-  let total = 0;
-  if(wo.total_price && parseFloat(wo.total_price) > 0) return parseFloat(wo.total_price);
-  if(wo.parts_cost) total += parseFloat(wo.parts_cost) || 0;
-  if(wo.labor_cost) total += parseFloat(wo.labor_cost) || 0;
-  if(wo.fees) total += parseFloat(wo.fees) || 0;
-  if(total === 0 && wo.scheduled_start && wo.scheduled_end) {
-    const hours = (new Date(wo.scheduled_end) - new Date(wo.scheduled_start)) / (1000 * 60 * 60);
-    total = hours * SHOP_LABOR_RATE;
-  }
-  return total;
-}
-
-function createFullCard(wo, options = {}){
-  const customer = customers.find(c => c.customer_id === wo.customer_id);
-  const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
-  const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
-  
-  const customerName = customer ? (customer.full_name || 'Unknown') : 'Unknown';
-  const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : '';
-  const techName = employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned';
-  const statusDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'DRAFT';
-  
-  const now = new Date();
-  const isPastDue = wo.scheduled_end && new Date(wo.scheduled_end) < now && wo.status !== 'completed' && wo.status !== 'closed';
-  const isCompleted = wo.status === 'completed' || wo.status === 'closed';
-  const isPickup = wo.status === 'ready_for_pickup';
-  const totalCost = calculateWorkOrderTotal(wo);
-  
-  let timeDisplay = '';
-  if(wo.scheduled_start) {
-    const time = new Date(wo.scheduled_start);
-    const hours = time.getHours();
-    const minutes = time.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    timeDisplay = `${displayHours}:${minutes.toString().padStart(2, '0')}${ampm}`;
-  }
-  
-  const card = document.createElement('div');
-  const collapsibleClass = options.collapsible ? 'collapsible-card collapsed' : '';
-  // PICKUP CARDS DEFAULT COLLAPSED
-  const pickupCollapsedClass = options.pickupColumn ? 'pickup-collapsed' : '';
-  card.className = `wo-card-full ${collapsibleClass} ${pickupCollapsedClass} ${isPastDue ? 'past-due' : (wo.status || 'scheduled')}`;
-  
-  if(options.collapsible) {
-    card.draggable = true;
-    card.dataset.woId = wo.work_order_id;
-  }
-  
-  card.innerHTML = `
-    <div class="wo-card-full-content">
-      <div class="wo-card-full-row">
-        <div class="wo-card-full-left">
-          <div class="wo-card-full-customer">${customerName}</div>
-          ${vehicleInfo ? `<div class="wo-card-full-vehicle">${vehicleInfo}</div>` : ''}
-          <div class="wo-status-progress">
-            <div class="status-light ${['diagnosis_required', 'customer_approval', 'awaiting_parts', 'in_progress', 'completed', 'ready_for_pickup'].includes(wo.status) ? 'lit white' : ''}" title="Scheduled"></div>
-            <div class="status-light ${['customer_approval', 'awaiting_parts', 'in_progress', 'completed', 'ready_for_pickup'].includes(wo.status) ? 'lit white' : ''}" title="Diagnosis"></div>
-            <div class="status-light ${['awaiting_parts', 'in_progress', 'completed', 'ready_for_pickup'].includes(wo.status) ? 'lit light-blue' : ''}" title="Approval"></div>
-            <div class="status-light ${['in_progress', 'completed', 'ready_for_pickup'].includes(wo.status) ? 'lit light-blue' : ''}" title="Parts"></div>
-            <div class="status-light ${['completed', 'ready_for_pickup'].includes(wo.status) ? 'lit dark-blue' : ''}" title="Repairing"></div>
-            <div class="status-light ${wo.status === 'ready_for_pickup' ? 'lit dark-blue' : ''}" title="Complete"></div>
-            <div class="status-light ${wo.status === 'ready_for_pickup' ? 'lit green' : ''}" title="Ready for Pickup"></div>
+  return `
+    <div class="appt-card status-${a.status}" 
+         draggable="true" 
+         data-appt-id="${a.appointment_id}"
+         data-appt-time="${a.appointment_time}"
+         data-appt-date="${a.appointment_date}"
+         onclick="openCustomerProfile('${a.appointment_id}')">
+      <span class="appt-card-time">${formatTime(a.appointment_time)}</span>
+      <div class="appt-header">
+        <div class="appt-card-icon">${userIcon}</div>
+        <div>
+          <div class="appt-customer">${a.customer_name}</div>
+          <div class="appt-vehicle">${a.vehicle_interest || 'General inquiry'}</div>
+        </div>
+      </div>
+      <div class="appt-card-details">
+        <div class="appt-detail-row">
+          <div class="appt-detail-col">
+            <div class="appt-detail-label">Type</div>
+            <div class="appt-detail-value">${a.appointment_type || 'Consultation'}</div>
+          </div>
+          <div class="appt-detail-col" style="text-align:right;">
+            <div class="appt-detail-label">Agent</div>
+            <div class="appt-detail-value">${a.assigned_to || 'Unassigned'}</div>
           </div>
         </div>
-        ${options.pickupColumn ? `
-          <div class="wo-card-pickup-actions">
-            <button class="wo-card-pickup-btn" data-wo-id="${wo.work_order_id}" data-action="date-picker" title="Pick Date">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            </button>
-            <button class="wo-card-pickup-btn" data-wo-id="${wo.work_order_id}" data-action="edit" title="Edit">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            </button>
-            <button class="wo-card-pickup-btn" data-wo-id="${wo.work_order_id}" data-action="checkout" title="Checkout">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m0 0h14m-14 0a2 2 0 100-4m14 4a2 2 0 100-4"></path></svg>
-            </button>
+        ${a.customer_phone ? `
+        <div class="appt-detail-row" style="margin-top:10px;">
+          <div class="appt-detail-col">
+            <div class="appt-detail-label">Phone</div>
+            <div class="appt-detail-value">${a.customer_phone}</div>
           </div>
-        ` : !isCompleted && !isPickup ? `
-          <div class="wo-card-full-actions-top">
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="details" title="View Details">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            </button>
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="edit" title="Edit">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            </button>
-            <div class="button-spacer"></div>
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="complete" title="Mark Complete">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </button>
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="checkout" title="Checkout">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m0 0h14m-14 0a2 2 0 100-4m14 4a2 2 0 100-4"></path></svg>
-            </button>
-            <div class="button-spacer"></div>
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="tomorrow" title="Tomorrow">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg>
-            </button>
-            <button class="wo-card-action-btn-top" data-wo-id="${wo.work_order_id}" data-action="date-picker" title="Pick Date">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            </button>
+          ${showStatus ? `
+          <div class="appt-detail-col" style="text-align:right;">
+            <div class="appt-detail-label">Status</div>
+            <div class="appt-detail-value"><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></div>
           </div>
-        ` : ''}
-      </div>
-      <div class="wo-card-full-row-split">
-        <div class="wo-card-full-left">
-          <div class="wo-card-full-status">${isPastDue ? 'PAST DUE' : statusDisplay}</div>
-          <div class="wo-card-full-tech">Tech: ${techName}</div>
-          ${timeDisplay ? `<div class="wo-card-full-time">Job Time: ${timeDisplay}</div>` : ''}
-          ${isPickup ? `<div class="wo-card-total-cost">$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
+          ` : ''}
         </div>
-        ${options.showHoursProgress ? `
-          <div class="wo-card-full-right">
-            <div class="wo-hours-info-bottom">
-              <div class="hours-item"><span class="hours-label">Est:</span><span class="hours-value">${wo.estimated_hours || '0.0'}h</span></div>
-              <div class="hours-item"><span class="hours-label">Clocked:</span><span class="hours-value">${wo.total_hours_clocked || '0.0'}h</span></div>
-            </div>
-            <div class="wo-progress-bar">
-              <div class="progress-bar-fill ${wo.status || 'scheduled'}" style="width:${(wo.estimated_hours && wo.estimated_hours > 0) ? Math.min(100, Math.round((parseFloat(wo.total_hours_clocked || 0) / parseFloat(wo.estimated_hours)) * 100)) : 0}%"></div>
-            </div>
+        ` : showStatus ? `
+        <div class="appt-detail-row" style="margin-top:10px;">
+          <div class="appt-detail-col">
+            <div class="appt-detail-label">Status</div>
+            <div class="appt-detail-value"><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></div>
           </div>
+        </div>
         ` : ''}
       </div>
+      ${a.status === 'scheduled' || a.status === 'confirmed' || a.status === 'in_progress' ? `
+      <div class="appt-actions">
+        ${a.status !== 'in_progress' ? `<button class="appt-action-btn btn-arrived" onclick="event.stopPropagation(); markArrived('${a.appointment_id}')">Arrived</button>` : ''}
+        <button class="appt-action-btn btn-complete" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'completed')">Complete</button>
+        <button class="appt-action-btn btn-noshow" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'no_show')">No Show</button>
+      </div>
+      <div class="appt-actions" style="margin-top:8px; border-top:none; padding-top:0;">
+        ${a.customer_phone ? `<a href="sms:${a.customer_phone}" class="appt-action-btn btn-text" onclick="event.stopPropagation()">📱 Text</a>` : ''}
+        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call" onclick="event.stopPropagation()">📞 Call</a>` : ''}
+      </div>
+      ` : ''}
     </div>
   `;
-  
-  // Pickup column cards - click to expand/collapse
-  if(options.pickupColumn) {
-    card.style.cursor = 'pointer';
-    card.addEventListener('click', (e) => {
-      if(e.target.closest('button')) return;
-      card.classList.toggle('pickup-collapsed');
-    });
-  }
-  
-  // Wire up action buttons
-  const datePickerBtn = card.querySelector('[data-action="date-picker"]');
-  if(datePickerBtn) {
-    datePickerBtn.addEventListener('click', (e) => { e.stopPropagation(); showDatePicker(wo.work_order_id, wo.scheduled_start); });
-  }
-  
-  const tomorrowBtn = card.querySelector('[data-action="tomorrow"]');
-  if(tomorrowBtn) {
-    tomorrowBtn.addEventListener('click', (e) => { e.stopPropagation(); rescheduleToTomorrow(wo.work_order_id, wo.scheduled_start, wo.scheduled_end); });
-  }
-  
-  const checkoutBtn = card.querySelector('[data-action="checkout"]');
-  if(checkoutBtn) {
-    checkoutBtn.addEventListener('click', (e) => { e.stopPropagation(); location.href = `checkout.html?id=${wo.work_order_id}`; });
-  }
-  
-  const completeBtn = card.querySelector('[data-action="complete"]');
-  if(completeBtn) {
-    completeBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if(confirm('Mark this work order as completed?')) {
-        const token = localStorage.getItem('sb_access_token');
-        await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${wo.work_order_id}`, {
-          method: 'PATCH',
-          headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'completed' })
-        });
-        await loadWorkOrders(token);
-        renderSchedule();
-      }
-    });
-  }
-  
-  const detailsBtn = card.querySelector('[data-action="details"]');
-  if(detailsBtn) {
-    detailsBtn.addEventListener('click', (e) => { e.stopPropagation(); showDetailsOverlay(wo.work_order_id); });
-  }
-  
-  const editBtn = card.querySelector('[data-action="edit"]');
-  if(editBtn) {
-    editBtn.addEventListener('click', (e) => { e.stopPropagation(); location.href = `work-order-edit.html?id=${wo.work_order_id}`; });
-  }
-  
-  if(options.collapsible) {
+}
+
+async function updateStatus(id, status) {
+  await sb.from('sales_appointments')
+    .update({ status })
+    .eq('appointment_id', id);
+  await loadAppointments();
+}
+
+async function markArrived(id) {
+  await sb.from('sales_appointments')
+    .update({ 
+      status: 'in_progress',
+      arrived_at: new Date().toISOString()
+    })
+    .eq('appointment_id', id);
+  await loadAppointments();
+}
+
+// ============================================================================
+// DRAG AND DROP WITH AUTO-SCROLL
+// ============================================================================
+let draggedAppt = null;
+let autoScrollInterval = null;
+const SCROLL_SPEED = 8;
+const SCROLL_ZONE = 60;
+
+function initDragHandlers() {
+  document.querySelectorAll('.appt-card[draggable="true"]').forEach(card => {
     card.addEventListener('dragstart', handleDragStart);
     card.addEventListener('dragend', handleDragEnd);
-    card.addEventListener('click', (e) => {
-      if(e.target.closest('button')) return;
-      if(card.classList.contains('dragging')) return;
-      card.classList.toggle('collapsed');
-    });
-  }
-  
-  return card;
-}
-
-let currentRescheduleWoId = null;
-
-function showDatePicker(woId, currentDateVal) {
-  currentRescheduleWoId = woId;
-  const modal = document.getElementById('datePickerModal');
-  const dateInput = document.getElementById('newDateInput');
-  
-  if(currentDateVal) {
-    const date = new Date(currentDateVal);
-    dateInput.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  } else {
-    const today = new Date();
-    dateInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  }
-  
-  modal.classList.add('active');
-}
-
-function closeDatePicker() {
-  document.getElementById('datePickerModal').classList.remove('active');
-  currentRescheduleWoId = null;
-}
-
-async function saveReschedule() {
-  if(!currentRescheduleWoId) return;
-  const token = localStorage.getItem("sb_access_token");
-  const newDateStr = document.getElementById('newDateInput').value;
-  if(!newDateStr) { alert('Please select a date'); return; }
-  
-  const wo = workOrders.find(w => w.work_order_id === currentRescheduleWoId);
-  if(!wo) return;
-  
-  const [year, month, day] = newDateStr.split('-').map(Number);
-  let hour = 9, minute = 0;
-  if(wo.scheduled_start) {
-    const ct = new Date(wo.scheduled_start);
-    hour = ct.getHours();
-    minute = ct.getMinutes();
-  }
-  
-  const newDateTime = new Date(year, month - 1, day, hour, minute, 0, 0);
-  const newEndTime = new Date(newDateTime);
-  newEndTime.setHours(newEndTime.getHours() + 2);
-  
-  await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${currentRescheduleWoId}`, {
-    method: 'PATCH',
-    headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scheduled_start: newDateTime.toISOString(), scheduled_end: newEndTime.toISOString() })
+    
+    // Touch support for mobile
+    card.addEventListener('touchstart', handleTouchStart, { passive: false });
+    card.addEventListener('touchmove', handleTouchMove, { passive: false });
+    card.addEventListener('touchend', handleTouchEnd);
   });
-  
-  await loadWorkOrders(token);
-  closeDatePicker();
-  renderAll();
 }
 
-async function rescheduleToTomorrow(woId, currentStart, currentEnd) {
-  const token = localStorage.getItem("sb_access_token");
-  const wo = workOrders.find(w => w.work_order_id === woId);
-  if(!wo) return;
-  
-  const tomorrow = new Date(currentDate);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  let hour = 9, minute = 0;
-  if(currentStart) {
-    const ct = new Date(currentStart);
-    hour = ct.getHours();
-    minute = ct.getMinutes();
-  }
-  tomorrow.setHours(hour, minute, 0, 0);
-  
-  let durationHours = 2;
-  if(currentStart && currentEnd) {
-    durationHours = (new Date(currentEnd) - new Date(currentStart)) / (1000 * 60 * 60);
-  }
-  
-  const newEndTime = new Date(tomorrow);
-  newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
-  newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
-  
-  await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${woId}`, {
-    method: 'PATCH',
-    headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scheduled_start: tomorrow.toISOString(), scheduled_end: newEndTime.toISOString() })
-  });
-  
-  await loadWorkOrders(token);
-  renderAll();
-}
-function handleDragStart(e){
-  draggedWO = e.target.dataset.woId;
-  isDragging = true;
+function handleDragStart(e) {
+  draggedAppt = {
+    id: e.target.dataset.apptId,
+    time: e.target.dataset.apptTime,
+    date: e.target.dataset.apptDate
+  };
   e.target.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedAppt.id);
+  
+  // Start auto-scroll detection
+  document.addEventListener('dragover', checkAutoScroll);
 }
 
-function handleDragEnd(e){
-  isDragging = false;
+function handleDragEnd(e) {
   e.target.classList.remove('dragging');
-  document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('drop-zone'));
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  draggedAppt = null;
   stopAutoScroll();
-  stopDayNav();
+  document.removeEventListener('dragover', checkAutoScroll);
+  
+  // Remove all drag-over highlights
+  document.querySelectorAll('.slot-content.drag-over').forEach(el => {
+    el.classList.remove('drag-over');
+  });
 }
 
-function handleDragOver(e){
+function handleDragOver(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  e.currentTarget.classList.add('drop-zone');
+  e.currentTarget.classList.add('drag-over');
 }
 
-function handleDragLeave(e){ e.currentTarget.classList.remove('drop-zone'); }
-
-async function handleDrop(e, newDate, newStatus = null){
-  e.preventDefault();
-  e.currentTarget.classList.remove('drop-zone');
-  if(!draggedWO) return;
-  
-  const token = localStorage.getItem("sb_access_token");
-  const wo = workOrders.find(w => w.work_order_id === draggedWO);
-  if(!wo) return;
-  
-  const updateData = {};
-  if(newStatus) updateData.status = newStatus;
-  
-  if(newDate){
-    let ct = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
-    if(!wo.scheduled_start) ct.setHours(9, 0, 0, 0);
-    
-    const newDateTime = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate(), ct.getHours(), ct.getMinutes(), 0, 0);
-    const newEndTime = new Date(newDateTime);
-    newEndTime.setHours(newEndTime.getHours() + 2);
-    
-    updateData.scheduled_start = newDateTime.toISOString();
-    updateData.scheduled_end = newEndTime.toISOString();
-    if(wo.status === 'ready_for_pickup') updateData.status = 'scheduled';
-  }
-  
-  await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
-    method: 'PATCH',
-    headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(updateData)
-  });
-  
-  await loadWorkOrders(token);
-  renderAll();
-  draggedWO = null;
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
 }
 
-async function handleDrop7Day(e, targetDate){
+async function handleDrop(e) {
   e.preventDefault();
-  e.stopPropagation();
-  stopDayNav();
-  stopCalendarNav();
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  e.currentTarget.classList.remove('drag-over');
   
-  if(!draggedWO) return;
-  const token = localStorage.getItem("sb_access_token");
-  const wo = workOrders.find(w => w.work_order_id === draggedWO);
-  if(!wo) return;
+  if (!draggedAppt) return;
   
-  let ct = wo.scheduled_start ? new Date(wo.scheduled_start) : new Date();
-  if(!wo.scheduled_start) ct.setHours(9, 0, 0, 0);
+  const newTime = e.currentTarget.dataset.time;
+  const newDate = e.currentTarget.dataset.date;
   
-  const newDateTime = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), ct.getHours(), ct.getMinutes(), 0, 0);
+  if (newTime === draggedAppt.time && newDate === draggedAppt.date) return;
   
-  let durationHours = 2;
-  if(wo.scheduled_start && wo.scheduled_end) {
-    durationHours = (new Date(wo.scheduled_end) - new Date(wo.scheduled_start)) / (1000 * 60 * 60);
+  // Update appointment in database
+  const { error } = await sb.from('sales_appointments')
+    .update({ 
+      appointment_time: newTime,
+      appointment_date: newDate
+    })
+    .eq('appointment_id', draggedAppt.id);
+  
+  if (error) {
+    console.error('Failed to reschedule:', error);
+    return;
   }
   
-  const newEndTime = new Date(newDateTime);
-  newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
-  newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
+  // Update local data and re-render
+  const appt = appointments.find(a => a.appointment_id === draggedAppt.id);
+  if (appt) {
+    appt.appointment_time = newTime;
+    appt.appointment_date = newDate;
+  }
   
-  await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
-    method: 'PATCH',
-    headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scheduled_start: newDateTime.toISOString(), scheduled_end: newEndTime.toISOString() })
-  });
+  renderTimeline();
+}
+
+// Auto-scroll when dragging near edges
+function checkAutoScroll(e) {
+  const y = e.clientY;
+  const x = e.clientX;
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
   
-  await loadWorkOrders(token);
-  renderAll();
-  draggedWO = null;
+  let scrollX = 0;
+  let scrollY = 0;
+  
+  // Vertical scroll zones
+  if (y < SCROLL_ZONE) {
+    scrollY = -SCROLL_SPEED * (1 - y / SCROLL_ZONE);
+  } else if (y > vh - SCROLL_ZONE) {
+    scrollY = SCROLL_SPEED * (1 - (vh - y) / SCROLL_ZONE);
+  }
+  
+  // Horizontal scroll zones
+  if (x < SCROLL_ZONE) {
+    scrollX = -SCROLL_SPEED * (1 - x / SCROLL_ZONE);
+  } else if (x > vw - SCROLL_ZONE) {
+    scrollX = SCROLL_SPEED * (1 - (vw - x) / SCROLL_ZONE);
+  }
+  
+  if (scrollX !== 0 || scrollY !== 0) {
+    startAutoScroll(scrollX, scrollY);
+  } else {
+    stopAutoScroll();
+  }
+}
+
+function startAutoScroll(scrollX, scrollY) {
   stopAutoScroll();
+  autoScrollInterval = setInterval(() => {
+    window.scrollBy(scrollX, scrollY);
+  }, 16);
 }
 
-let isDropping = false;
-async function handleTimelineDrop(e, targetHour){
-  e.preventDefault();
-  e.stopPropagation();
-  if(isDropping) return;
-  isDropping = true;
-  stopDayNav();
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+function stopAutoScroll() {
+  if (autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+}
+
+// Touch support for mobile drag and drop
+let touchDragEl = null;
+let touchClone = null;
+let touchStartY = 0;
+let touchStartX = 0;
+
+function handleTouchStart(e) {
+  if (e.target.closest('button, a')) return; // Don't drag when tapping buttons
   
-  if(!draggedWO) { isDropping = false; return; }
-  const token = localStorage.getItem("sb_access_token");
-  const wo = workOrders.find(w => w.work_order_id === draggedWO);
-  if(!wo) { isDropping = false; return; }
+  const card = e.target.closest('.appt-card');
+  if (!card) return;
   
-  let durationHours = 2;
-  if(wo.scheduled_start && wo.scheduled_end) {
-    durationHours = (new Date(wo.scheduled_end) - new Date(wo.scheduled_start)) / (1000 * 60 * 60);
+  touchDragEl = card;
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  
+  draggedAppt = {
+    id: card.dataset.apptId,
+    time: card.dataset.apptTime,
+    date: card.dataset.apptDate
+  };
+}
+
+function handleTouchMove(e) {
+  if (!touchDragEl) return;
+  
+  const touch = e.touches[0];
+  const moveX = touch.clientX - touchStartX;
+  const moveY = touch.clientY - touchStartY;
+  
+  // Only start drag if moved enough - increased threshold for less sensitivity
+  if (!touchClone && (Math.abs(moveX) > 25 || Math.abs(moveY) > 25)) {
+    e.preventDefault();
+    touchClone = touchDragEl.cloneNode(true);
+    touchClone.style.position = 'fixed';
+    touchClone.style.zIndex = '9999';
+    touchClone.style.pointerEvents = 'none';
+    touchClone.style.opacity = '0.9';
+    touchClone.style.width = touchDragEl.offsetWidth + 'px';
+    touchClone.classList.add('dragging');
+    document.body.appendChild(touchClone);
+    touchDragEl.style.opacity = '0.3';
   }
   
-  const newDateTime = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), targetHour, 0, 0, 0);
-  const newEndTime = new Date(newDateTime);
-  newEndTime.setHours(newEndTime.getHours() + Math.floor(durationHours));
-  newEndTime.setMinutes(newEndTime.getMinutes() + Math.round((durationHours % 1) * 60));
-  
-  await fetch(`${REST_BASE}/work_orders?work_order_id=eq.${draggedWO}`, {
-    method: 'PATCH',
-    headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scheduled_start: newDateTime.toISOString(), scheduled_end: newEndTime.toISOString() })
-  });
-  
-  await loadWorkOrders(token);
-  setTimeout(() => { renderSchedule(); isDropping = false; }, 150);
-  draggedWO = null;
-}
-
-let autoScrollInterval = null;
-let dayNavInterval = null;
-let dayNavDirection = null;
-let calendarNavInterval = null;
-let calendarNavDirection = null;
-
-function startAutoScroll(direction, speed){
-  if(autoScrollInterval) return;
-  autoScrollInterval = setInterval(() => { window.scrollBy(0, direction === 'up' ? -speed : speed); }, 30);
-}
-
-function stopAutoScroll(){
-  if(autoScrollInterval) { clearInterval(autoScrollInterval); autoScrollInterval = null; }
-}
-
-function startDayNav(direction){
-  if(dayNavInterval && dayNavDirection === direction) return;
-  stopDayNav();
-  dayNavDirection = direction;
-  if(direction === 'prev') goToPreviousDay(); else goToNextDay();
-  dayNavInterval = setInterval(() => { if(direction === 'prev') goToPreviousDay(); else goToNextDay(); }, 800);
-}
-
-function stopDayNav(){
-  if(dayNavInterval) { clearInterval(dayNavInterval); dayNavInterval = null; dayNavDirection = null; }
-}
-
-function startCalendarNav(direction){
-  if(calendarNavInterval && calendarNavDirection === direction) return;
-  stopCalendarNav();
-  calendarNavDirection = direction;
-  if(direction === 'prev') goToPreviousWeek(); else goToNextWeek();
-  calendarNavInterval = setInterval(() => { if(direction === 'prev') goToPreviousWeek(); else goToNextWeek(); }, 600);
-}
-
-function stopCalendarNav(){
-  if(calendarNavInterval) { clearInterval(calendarNavInterval); calendarNavInterval = null; calendarNavDirection = null; }
-}
-
-function goToPreviousWeek(){ currentDate.setDate(currentDate.getDate() - 7); updateTitle(); renderSchedule(); }
-function goToNextWeek(){ currentDate.setDate(currentDate.getDate() + 7); updateTitle(); renderSchedule(); }
-function goToPreviousDay(){ currentDate.setDate(currentDate.getDate() - 1); updateTitle(); renderSchedule(); }
-function goToNextDay(){ currentDate.setDate(currentDate.getDate() + 1); updateTitle(); renderSchedule(); }
-
-function renderSchedule(){
-  const view = document.getElementById('scheduleView');
-  view.innerHTML = '';
-  
-  if(currentView === 'today') renderTodayView();
-  else if(currentView === 'list') renderListView();
-  else if(currentView === 'scheduler') renderSchedulerView();
-}
-
-function renderTodayView(){
-  const view = document.getElementById('scheduleView');
-  const dayOrders = getWorkOrdersForDate(currentDate);
-  
-  if(dayOrders.length === 0){
-    const emptyState = document.createElement('div');
-    emptyState.className = 'empty-state';
-    emptyState.textContent = 'No work orders scheduled for this day';
-    emptyState.addEventListener('dragover', (e) => { e.preventDefault(); emptyState.style.background = 'rgba(59, 130, 246, 0.1)'; });
-    emptyState.addEventListener('dragleave', () => { emptyState.style.background = ''; });
-    emptyState.addEventListener('drop', (e) => { emptyState.style.background = ''; handleTimelineDrop(e, 9); });
-    view.appendChild(emptyState);
-    return;
-  }
-  
-  dayOrders.sort((a, b) => {
-    const timeA = a.scheduled_start ? new Date(a.scheduled_start).getTime() : 0;
-    const timeB = b.scheduled_start ? new Date(b.scheduled_start).getTime() : 0;
-    return timeA - timeB;
-  });
-  
-  renderTimelineView(view, dayOrders);
-}
-
-function renderTimelineView(container, orders) {
-  const timeline = document.createElement('div');
-  timeline.className = 'timeline-container';
-  
-  const beforeHours = [];
-  const hourlyOrders = {};
-  const afterHours = [];
-  
-  for(let hour = businessHours.start; hour <= businessHours.end; hour++) hourlyOrders[hour] = [];
-  
-  orders.forEach(wo => {
-    if(!wo.scheduled_start) { beforeHours.push(wo); return; }
-    const hour = new Date(wo.scheduled_start).getHours();
-    if(hour < businessHours.start) beforeHours.push(wo);
-    else if(hour >= businessHours.end) afterHours.push(wo);
-    else hourlyOrders[hour].push(wo);
-  });
-  
-  if(beforeHours.length > 0) {
-    const beforeSection = document.createElement('div');
-    beforeSection.className = 'timeline-before-hours';
-    beforeSection.innerHTML = '<div class="timeline-section-label">Before Business Hours</div>';
-    beforeHours.forEach(wo => {
-      const card = createFullCard(wo, { showHoursProgress: !isMobile });
-      card.draggable = true;
-      card.dataset.woId = wo.work_order_id;
-      card.addEventListener('dragstart', handleDragStart);
-      card.addEventListener('dragend', handleDragEnd);
-      beforeSection.appendChild(card);
-    });
-    timeline.appendChild(beforeSection);
-  }
-  
-  for(let hour = businessHours.start; hour <= businessHours.end; hour++) {
-    const hasOrders = hourlyOrders[hour] && hourlyOrders[hour].length > 0;
-    const hourSlot = document.createElement('div');
-    hourSlot.className = 'timeline-hour' + (isMobile && !hasOrders ? ' collapsed-hour' : '');
-    hourSlot.dataset.hour = hour;
+  if (touchClone) {
+    e.preventDefault();
+    touchClone.style.left = (touch.clientX - touchDragEl.offsetWidth / 2) + 'px';
+    touchClone.style.top = (touch.clientY - 30) + 'px';
     
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
-    hourSlot.innerHTML = `<div class="timeline-time">${displayHour}${ampm}</div><div class="timeline-line"></div>`;
-    
-    const cardsContainer = document.createElement('div');
-    cardsContainer.className = 'timeline-cards';
-    
-    if(hourlyOrders[hour].length > 0) {
-      hourlyOrders[hour].forEach(wo => {
-        const card = createFullCard(wo, { showHoursProgress: !isMobile });
-        card.draggable = true;
-        card.dataset.woId = wo.work_order_id;
-        card.addEventListener('dragstart', handleDragStart);
-        card.addEventListener('dragend', handleDragEnd);
-        cardsContainer.appendChild(card);
-      });
+    // Auto-scroll
+    const y = touch.clientY;
+    const vh = window.innerHeight;
+    if (y < SCROLL_ZONE) {
+      window.scrollBy(0, -SCROLL_SPEED);
+    } else if (y > vh - SCROLL_ZONE - 100) {
+      window.scrollBy(0, SCROLL_SPEED);
     }
     
-    hourSlot.addEventListener('dragover', handleDragOver);
-    hourSlot.addEventListener('dragleave', handleDragLeave);
-    hourSlot.addEventListener('drop', (e) => handleTimelineDrop(e, hour));
-    hourSlot.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      hourSlot.classList.add('drag-over');
-      if(hourSlot.classList.contains('collapsed-hour')) hourSlot.classList.add('expanding');
-    });
-    
-    hourSlot.appendChild(cardsContainer);
-    timeline.appendChild(hourSlot);
-  }
-  
-  if(afterHours.length > 0) {
-    const afterSection = document.createElement('div');
-    afterSection.className = 'timeline-after-hours';
-    afterSection.innerHTML = '<div class="timeline-section-label">After Business Hours</div>';
-    afterHours.forEach(wo => {
-      const card = createFullCard(wo, { showHoursProgress: !isMobile });
-      card.draggable = true;
-      card.dataset.woId = wo.work_order_id;
-      card.addEventListener('dragstart', handleDragStart);
-      card.addEventListener('dragend', handleDragEnd);
-      afterSection.appendChild(card);
-    });
-    timeline.appendChild(afterSection);
-  }
-  
-  container.appendChild(timeline);
-}
-
-function renderListView(){
-  const view = document.getElementById('scheduleView');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const datesWithOrders = new Set();
-  workOrders.forEach(wo => {
-    if(wo.scheduled_start && wo.status !== 'completed' && wo.status !== 'closed' && wo.status !== 'ready_for_pickup') {
-      const date = new Date(wo.scheduled_start);
-      datesWithOrders.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
-    }
-  });
-  
-  const sortedDates = Array.from(datesWithOrders).sort();
-  
-  if(sortedDates.length === 0) {
-    view.innerHTML = '<div class="empty-state">No work orders scheduled</div>';
-    return;
-  }
-  
-  sortedDates.forEach(dateStr => {
-    const date = new Date(dateStr + 'T00:00:00');
-    let dayOrders = getWorkOrdersForDate(date);
-    if(selectedTechId) dayOrders = dayOrders.filter(wo => wo.assigned_employee_id === selectedTechId);
-    if(dayOrders.length === 0) return;
-    
-    const daySection = document.createElement('div');
-    daySection.className = 'day-section collapsed';
-    
-    let totalHours = 0;
-    dayOrders.forEach(wo => {
-      if(wo.scheduled_start && wo.scheduled_end) {
-        totalHours += (new Date(wo.scheduled_end) - new Date(wo.scheduled_start)) / (1000 * 60 * 60);
+    // Highlight drop target
+    document.querySelectorAll('.slot-content').forEach(slot => {
+      const rect = slot.getBoundingClientRect();
+      if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        slot.classList.add('drag-over');
+      } else {
+        slot.classList.remove('drag-over');
       }
     });
-    const totalValue = totalHours * SHOP_LABOR_RATE;
+  }
+}
+
+async function handleTouchEnd(e) {
+  if (!touchDragEl) return;
+  
+  if (touchClone) {
+    const touch = e.changedTouches[0];
     
-    daySection.innerHTML = `
-      <div class="day-header has-orders" onclick="this.parentElement.classList.toggle('collapsed')">
-        <div class="day-title">
-          <div class="day-date">
-            ${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-            <span class="day-info-orders">${dayOrders.length} orders</span>
-            <span class="day-info-hours">${totalHours.toFixed(1)} hrs</span>
-            <span class="day-info-value">$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-          </div>
+    // Find drop target
+    document.querySelectorAll('.slot-content').forEach(async slot => {
+      const rect = slot.getBoundingClientRect();
+      if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        
+        const newTime = slot.dataset.time;
+        const newDate = slot.dataset.date;
+        
+        if (newTime !== draggedAppt.time || newDate !== draggedAppt.date) {
+          await sb.from('sales_appointments')
+            .update({ appointment_time: newTime, appointment_date: newDate })
+            .eq('appointment_id', draggedAppt.id);
+          
+          const appt = appointments.find(a => a.appointment_id === draggedAppt.id);
+          if (appt) {
+            appt.appointment_time = newTime;
+            appt.appointment_date = newDate;
+          }
+          renderTimeline();
+        }
+      }
+      slot.classList.remove('drag-over');
+    });
+    
+    touchClone.remove();
+    touchClone = null;
+  }
+  
+  if (touchDragEl) {
+    touchDragEl.style.opacity = '1';
+  }
+  
+  touchDragEl = null;
+  draggedAppt = null;
+}
+
+function openAppointmentModal() {
+  document.getElementById('apptDate').value = selectedDate.toISOString().split('T')[0];
+  document.getElementById('appointmentModal').style.display = 'block';
+}
+
+function openAppointmentModalWithTime(dateStr, timeStr) {
+  document.getElementById('apptDate').value = dateStr;
+  document.getElementById('apptTime').value = timeStr;
+  document.getElementById('appointmentModal').style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// ============================================================================
+// CUSTOMER PROFILE
+// ============================================================================
+let currentApptId = null;
+let currentCustomerId = null;
+
+async function openCustomerProfile(apptId) {
+  currentApptId = apptId;
+  const appt = appointments.find(a => a.appointment_id === apptId);
+  if (!appt) return;
+  
+  document.getElementById('customerProfileModal').style.display = 'block';
+  
+  // Populate basic info
+  document.getElementById('cpName').textContent = appt.customer_name;
+  document.getElementById('cpPhone').textContent = appt.customer_phone || 'No phone';
+  document.getElementById('cpPhoneLink').href = appt.customer_phone ? `tel:${appt.customer_phone}` : '#';
+  document.getElementById('cpEmail').textContent = appt.customer_email || 'No email';
+  document.getElementById('cpEmailLink').href = appt.customer_email ? `mailto:${appt.customer_email}` : '#';
+  
+  document.getElementById('cpApptType').textContent = appt.appointment_type || 'Sales Consultation';
+  document.getElementById('cpApptVehicle').textContent = appt.vehicle_interest || 'General inquiry';
+  document.getElementById('cpApptTime').textContent = formatTime(appt.appointment_time);
+  document.getElementById('cpApptAgent').textContent = appt.assigned_to ? `Agent: ${appt.assigned_to}` : '';
+  
+  // Set funnel badge
+  const funnelStage = getFunnelStage(appt);
+  document.getElementById('cpFunnelBadge').innerHTML = `<span style="display:inline-block; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:600; background:${funnelStage.color}; color:#fff;">${funnelStage.label}</span>`;
+  
+  await loadCustomerDetails(appt);
+}
+
+function getFunnelStage(appt) {
+  const stages = {
+    'new': { label: '🆕 NEW LEAD', color: '#3b82f6' },
+    'qualified': { label: '✓ QUALIFIED', color: '#f59e0b' },
+    'test_drive': { label: '🚗 TEST DRIVE', color: '#06b6d4' },
+    'negotiation': { label: '💬 NEGOTIATION', color: '#ec4899' },
+    'pending_finance': { label: '💰 PENDING FINANCE', color: '#84cc16' },
+    'sold': { label: '🎉 SOLD', color: '#10b981' },
+    'lost': { label: '❌ LOST', color: '#ef4444' }
+  };
+  
+  if (appt.status === 'sold') return stages.sold;
+  if (appt.status === 'cancelled' || appt.status === 'no_show') return stages.lost;
+  if (appt.appointment_type === 'Test Drive') return stages.test_drive;
+  if (appt.appointment_type === 'Finance Consultation') return stages.pending_finance;
+  if (appt.status === 'confirmed') return stages.qualified;
+  return stages.new;
+}
+
+async function loadCustomerDetails(appt) {
+  // Load all appointments for this customer
+  let filter = '';
+  if (appt.customer_phone) filter = `customer_phone.eq.${appt.customer_phone}`;
+  else if (appt.customer_email) filter = `customer_email.eq.${appt.customer_email}`;
+  else filter = `customer_name.eq.${appt.customer_name}`;
+  
+  const { data: allAppts } = await sb.from('sales_appointments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .or(filter)
+    .order('appointment_date', { ascending: false });
+  
+  if (allAppts) {
+    document.getElementById('cpVisits').textContent = allAppts.length;
+    
+    // Days in funnel
+    const firstAppt = allAppts[allAppts.length - 1];
+    if (firstAppt) {
+      const days = Math.floor((new Date() - new Date(firstAppt.appointment_date)) / (1000 * 60 * 60 * 24));
+      document.getElementById('cpDaysInFunnel').textContent = days;
+      document.getElementById('cpFirstContact').textContent = `Since ${formatDate(firstAppt.appointment_date)}`;
+    }
+    
+    // Activity log
+    const activityHtml = allAppts.slice(0, 5).map(a => `
+      <div style="display:flex; justify-content:space-between; padding:10px; background:#0f1621; border-radius:6px;">
+        <div>
+          <div style="font-size:13px; color:#e8eef6;">${a.appointment_type || 'Appointment'}</div>
+          <div style="font-size:11px; color:#64748b;">${formatDate(a.appointment_date)}</div>
         </div>
-        <div class="day-chevron">▼</div>
+        <span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span>
       </div>
-      <div class="day-content"><div class="day-cards-container" data-date="${dateStr}"></div></div>
-    `;
+    `).join('');
+    document.getElementById('cpActivityLog').innerHTML = activityHtml || '<div style="color:#64748b;">No activity</div>';
     
-    const cardsContainer = daySection.querySelector('.day-cards-container');
-    dayOrders.sort((a, b) => (a.scheduled_start ? new Date(a.scheduled_start).getTime() : 0) - (b.scheduled_start ? new Date(b.scheduled_start).getTime() : 0));
-    dayOrders.forEach(wo => {
-      const card = createFullCard(wo, { collapsible: isMobile, showHoursProgress: !isMobile });
-      cardsContainer.appendChild(card);
-    });
+    // Vehicles of interest
+    const vehicles = [...new Set(allAppts.map(a => a.vehicle_interest).filter(Boolean))];
+    const vehiclesHtml = vehicles.map(v => `
+      <div style="display:flex; align-items:center; gap:10px; padding:10px; background:#0f1621; border-radius:6px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#22d3ee"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+        <span style="color:#e8eef6;">${v}</span>
+      </div>
+    `).join('');
+    document.getElementById('cpVehiclesInterest').innerHTML = vehiclesHtml || '<div style="color:#64748b;">No vehicles tracked</div>';
     
-    cardsContainer.addEventListener('dragover', handleDragOver);
-    cardsContainer.addEventListener('dragleave', handleDragLeave);
-    cardsContainer.addEventListener('drop', (e) => handleDrop7Day(e, date));
-    
-    view.appendChild(daySection);
-  });
-}
-
-function renderSchedulerView(){
-  const view = document.getElementById('scheduleView');
-  view.className = 'scheduler-view';
-  
-  const calendar = document.createElement('div');
-  calendar.className = 'scheduler-calendar';
-  
-  const headerRow = document.createElement('div');
-  headerRow.className = 'scheduler-header-row';
-  ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach(day => {
-    headerRow.innerHTML += `<div class="scheduler-day-header">${day}</div>`;
-  });
-  calendar.appendChild(headerRow);
-  
-  const startDate = new Date(currentDate);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
-  startDate.setHours(0, 0, 0, 0);
-  
-  for(let week = 0; week < 6; week++) {
-    const weekRow = document.createElement('div');
-    weekRow.className = 'scheduler-week-row';
-    
-    for(let day = 0; day < 7; day++) {
-      const cellDate = new Date(startDate);
-      cellDate.setDate(startDate.getDate() + (week * 7) + day);
-      
-      const dayCell = document.createElement('div');
-      dayCell.className = 'scheduler-day-cell';
-      dayCell.dataset.date = `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, '0')}-${String(cellDate.getDate()).padStart(2, '0')}`;
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if(cellDate.getTime() === today.getTime()) dayCell.classList.add('today');
-      
-      dayCell.innerHTML = `<div class="scheduler-day-number">${cellDate.getDate()}</div><div class="scheduler-cards"></div>`;
-      
-      const dayOrders = getWorkOrdersForDate(cellDate).filter(wo => wo.status !== 'ready_for_pickup');
-      const cardsContainer = dayCell.querySelector('.scheduler-cards');
-      
-      dayOrders.sort((a, b) => (a.scheduled_start ? new Date(a.scheduled_start).getTime() : 0) - (b.scheduled_start ? new Date(b.scheduled_start).getTime() : 0));
-      
-      dayOrders.forEach(wo => {
-        const customer = customers.find(c => c.customer_id === wo.customer_id);
-        const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
-        const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
-        
-        let timeText = '';
-        if(wo.scheduled_start) {
-          const time = new Date(wo.scheduled_start);
-          const hours = time.getHours();
-          const ampm = hours >= 12 ? 'PM' : 'AM';
-          timeText = `${hours % 12 || 12}:${time.getMinutes().toString().padStart(2, '0')}${ampm}`;
-        }
-        
-        let hoursText = '';
-        if(wo.scheduled_start && wo.scheduled_end) {
-          hoursText = `${((new Date(wo.scheduled_end) - new Date(wo.scheduled_start)) / (1000 * 60 * 60)).toFixed(1)}h`;
-        }
-        
-        const card = document.createElement('div');
-        card.className = `scheduler-card ${wo.status || 'scheduled'}`;
-        card.draggable = true;
-        card.dataset.woId = wo.work_order_id;
-        card.innerHTML = `
-          <div class="scheduler-card-row-1">
-            <div class="scheduler-card-customer">${customer?.full_name || 'Unknown'}</div>
-            <div class="scheduler-card-time">${timeText}</div>
-          </div>
-          <div class="scheduler-card-vehicle">${vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : ''}</div>
-          <div class="scheduler-card-row-3">
-            <div class="scheduler-card-tech">Tech: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned'}</div>
-            <div class="scheduler-card-hours">${hoursText}</div>
-          </div>
-        `;
-        
-        card.addEventListener('dragstart', handleDragStart);
-        card.addEventListener('dragend', handleDragEnd);
-        card.addEventListener('click', () => showDetailsOverlay(wo.work_order_id));
-        cardsContainer.appendChild(card);
-      });
-      
-      dayCell.addEventListener('dragover', (e) => { e.preventDefault(); dayCell.classList.add('drag-over'); });
-      dayCell.addEventListener('dragleave', (e) => { if(e.target === dayCell) dayCell.classList.remove('drag-over'); });
-      dayCell.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dayCell.classList.remove('drag-over');
-        const [year, month, day] = dayCell.dataset.date.split('-').map(Number);
-        handleDrop7Day(e, new Date(year, month - 1, day));
-      });
-      
-      weekRow.appendChild(dayCell);
-    }
-    calendar.appendChild(weekRow);
-  }
-  view.appendChild(calendar);
-}
-
-function showDetailsOverlay(woId) {
-  const wo = workOrders.find(w => w.work_order_id === woId);
-  if(!wo) return;
-
-  const customer = customers.find(c => c.customer_id === wo.customer_id);
-  const vehicle = vehicles.find(v => v.vehicle_id === wo.vehicle_id);
-  const employee = employees.find(e => e.employee_id === wo.assigned_employee_id);
-
-  const customerName = customer?.full_name || 'Unknown Customer';
-  const vehicleInfo = vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : 'No Vehicle Info';
-  const techName = employee ? `${employee.first_name} ${employee.last_name}` : 'Unassigned';
-  const statusDisplay = wo.status ? wo.status.replace(/_/g, ' ').toUpperCase() : 'DRAFT';
-  const totalCost = calculateWorkOrderTotal(wo);
-  
-  const isPastDue = wo.scheduled_end && new Date(wo.scheduled_end) < new Date() && wo.status !== 'completed' && wo.status !== 'closed';
-  const statusClass = isPastDue ? 'past-due' : (wo.status || 'scheduled');
-
-  document.getElementById('detailsContent').innerHTML = `
-    <div class="detail-row"><div class="detail-label">Customer</div><div class="detail-value large">${customerName}</div></div>
-    <div class="detail-row"><div class="detail-label">Vehicle</div><div class="detail-value">${vehicleInfo}</div></div>
-    <div class="detail-row"><div class="detail-label">Status</div><div class="detail-value status-badge ${statusClass}">${isPastDue ? 'PAST DUE' : statusDisplay}</div></div>
-    <div class="detail-row"><div class="detail-label">Technician</div><div class="detail-value tech">${techName}</div></div>
-    <div class="detail-totals-row">
-      <div class="detail-total-item"><div class="detail-label">Parts</div><div class="detail-value">$${(wo.parts_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
-      <div class="detail-total-item"><div class="detail-label">Labor</div><div class="detail-value">$${(wo.labor_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
-      <div class="detail-total-item"><div class="detail-label">Total</div><div class="detail-value total">$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
-    </div>
-  `;
-  
-  document.getElementById('detailsTitle').textContent = `Work Order Details`;
-  document.querySelector('.details-overlay-content').className = `details-overlay-content ${statusClass}`;
-  
-  document.getElementById('detailsFooter').innerHTML = `
-    ${totalCost > 0 ? '<button class="details-pay-btn" onclick="location.href=\'checkout.html?id=${woId}\'">Checkout</button>' : ''}
-    <button class="details-edit-btn-footer" onclick="location.href='work-order-edit.html?id=${woId}'">Edit</button>
-    <button class="details-close-btn" onclick="closeDetailsOverlay()">Close</button>
-  `.replace(/\${woId}/g, woId);
-
-  document.getElementById('detailsOverlay').classList.add('active');
-}
-
-function closeDetailsOverlay(){ document.getElementById('detailsOverlay').classList.remove('active'); }
-
-function renderSideColumns(){
-  const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
-  
-  let totalValue = 0;
-  pickupOrders.forEach(wo => { totalValue += calculateWorkOrderTotal(wo); });
-  
-  document.getElementById('pickupCount').textContent = pickupOrders.length;
-  document.getElementById('pickupTotal').textContent = `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-  
-  const mobilePickupCount = document.getElementById('mobilePickupCount');
-  if(mobilePickupCount) mobilePickupCount.textContent = pickupOrders.length;
-  
-  const pickupColumn = document.getElementById('pickupColumn');
-  pickupColumn.innerHTML = '';
-  
-  pickupOrders.forEach(wo => {
-    // pickupColumn: true makes cards default collapsed
-    const card = createFullCard(wo, { pickupColumn: true });
-    pickupColumn.appendChild(card);
-  });
-  
-  if(pickupOrders.length === 0){
-    pickupColumn.innerHTML = '<div class="empty-state">No orders ready</div>';
+    // Lead score
+    const score = Math.min(100, allAppts.length * 15 + (appt.status === 'confirmed' ? 20 : 0) + (vehicles.length * 10));
+    document.getElementById('cpLeadScore').textContent = score;
+    document.getElementById('cpLeadScoreLabel').textContent = score >= 70 ? 'Hot' : score >= 40 ? 'Warm' : 'Cold';
   }
   
-  pickupColumn.addEventListener('dragover', handleDragOver);
-  pickupColumn.addEventListener('dragleave', handleDragLeave);
-  pickupColumn.addEventListener('drop', (e) => handleDrop(e, null, 'ready_for_pickup'));
+  // Set placeholder values for spend (would need sales data)
+  document.getElementById('cpLifetimeSpend').textContent = '$0';
+  document.getElementById('cpLastSpend').textContent = '-';
 }
 
-function scrollToPickup(){
-  if(isMobile) {
-    showPickupOverlay();
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function saveCustomerNotes() {
+  const notes = document.getElementById('cpNotes').value;
+  // Save to appointment notes
+  if (currentApptId) {
+    await sb.from('sales_appointments')
+      .update({ notes })
+      .eq('appointment_id', currentApptId);
+    alert('Notes saved!');
+  }
+}
+
+function markAsHotLead() {
+  alert('Marked as Hot Lead! 🔥');
+}
+
+function scheduleFollowUp() {
+  closeModal('customerProfileModal');
+  openAppointmentModal();
+}
+
+function sendToFinance() {
+  alert('Sent to Finance department');
+}
+
+function viewFullProfile() {
+  if (currentCustomerId) {
+    window.location.href = `dashboard-customer-search.html?id=${currentCustomerId}`;
   } else {
-    document.getElementById('pickupColumn')?.scrollIntoView({ behavior: 'smooth' });
+    alert('Full profile not available - customer not in database');
   }
 }
 
-function showPickupOverlay(){
-  const pickupOrders = workOrders.filter(wo => wo.status === 'ready_for_pickup');
-  document.getElementById('pickupOverlayCount').textContent = pickupOrders.length;
+async function saveAppointment(e) {
+  e.preventDefault();
   
-  const grid = document.getElementById('pickupOverlayGrid');
-  grid.innerHTML = '';
-  
-  if(pickupOrders.length === 0) {
-    grid.innerHTML = '<div class="empty-state">No orders ready for pickup</div>';
-  } else {
-    pickupOrders.forEach(wo => {
-      const card = createFullCard(wo);
-      grid.appendChild(card);
-    });
-  }
-  
-  document.getElementById('pickupOverlay').classList.add('active');
-}
-
-function closePickupOverlay(){ document.getElementById('pickupOverlay').classList.remove('active'); }
-
-function renderTechFilter(){
-  const selectHeader = document.getElementById('techFilterHeader');
-  const optionsHTML = '<option value="">All Techs</option>' + 
-    employees.sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`))
-      .map(emp => `<option value="${emp.employee_id}">${emp.first_name} ${emp.last_name}</option>`).join('');
-  if (selectHeader) selectHeader.innerHTML = optionsHTML;
-}
-
-function applyTechFilterHeader() {
-  selectedTechId = document.getElementById('techFilterHeader').value;
-  renderAll();
-}
-
-function renderAll(){
-  renderSchedule();
-  renderSideColumns();
-}
-
-async function loadWorkOrders(token){
-  const r = await fetch(`${REST_BASE}/work_orders?select=*`, {
-    headers:{ apikey:ANON_KEY, Authorization:`Bearer ${token}` }
+  const { error } = await sb.from('sales_appointments').insert({
+    tenant_id: tenantId,
+    customer_name: document.getElementById('apptName').value,
+    customer_phone: document.getElementById('apptPhone').value || null,
+    customer_email: document.getElementById('apptEmail').value || null,
+    appointment_date: document.getElementById('apptDate').value,
+    appointment_time: document.getElementById('apptTime').value,
+    appointment_type: document.getElementById('apptType').value,
+    vehicle_interest: document.getElementById('apptVehicle').value || null,
+    assigned_to: document.getElementById('apptAssigned').value || null,
+    status: 'scheduled'
   });
-  if(r.ok) workOrders = await r.json();
-}
-
-async function load(){
-  const token = await validateAuth();
-  if(!token) return location.replace("login.html");
   
-  try {
-    await loadBusinessSettings(token);
-    await loadWorkOrders(token);
-    customers = await fetchTable("customers", token);
-    vehicles = await fetchTable("vehicles", token);
-    employees = await fetchTable("employees", token);
-    
-    try {
-      fleets = await fetchTable("fleets", token);
-      vehicleFleetAssignments = await fetchTable("vehicle_fleet_assignments", token);
-    } catch(e) {
-      console.warn('Fleet tables not found');
-      fleets = [];
-      vehicleFleetAssignments = [];
-    }
-    
-    renderTechFilter();
-    renderFleetFilter();
-    renderAll();
-    
-  } catch(err){
-    console.error('Load error:', err);
-    alert('Error loading scheduling data');
+  if (error) {
+    alert('Error: ' + error.message);
+    return;
   }
+  
+  closeModal('appointmentModal');
+  e.target.reset();
+  await loadAppointments();
 }
 
-load();
+async function init() {
+  await checkAuth();
+  await loadBusinessSettings();
+  await loadSalesEmployees();
+  await loadAppointments();
+}
+
+// Theme support
+function loadTheme() {
+  const savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+loadTheme();
+
+init();
 </script>
+
 </body>
 </html>
