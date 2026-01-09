@@ -27,9 +27,17 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
     }
 
     .header h1 { color: #60a5fa; font-size: 28px; font-weight: 700; }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
     .btn {
       padding: 10px 20px;
@@ -41,9 +49,27 @@
       background: #3b82f6;
       font-size: 14px;
       border: none;
+      transition: all 0.2s;
     }
 
     .btn:hover { background: #2563eb; }
+    
+    .btn-toggle {
+      background: #10b981;
+      min-width: 150px;
+    }
+    
+    .btn-toggle:hover {
+      background: #059669;
+    }
+    
+    .btn-toggle.is-expanded {
+      background: #f59e0b;
+    }
+    
+    .btn-toggle.is-expanded:hover {
+      background: #d97706;
+    }
 
     .global-stats {
       display: grid;
@@ -72,6 +98,32 @@
       margin-top: 8px;
     }
 
+    /* Search Bar */
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #2d3f56;
+      background: #0f1621;
+      color: #e8eef6;
+      font-size: 14px;
+    }
+    
+    .search-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    
+    .search-input::placeholder {
+      color: #64748b;
+    }
+
     .tables-map {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
@@ -97,6 +149,7 @@
       padding: 16px 20px;
       border-bottom: 2px solid #2d3f56;
       cursor: pointer;
+      user-select: none;
     }
 
     .table-name {
@@ -115,14 +168,15 @@
     }
 
     .table-body {
-      padding: 16px;
+      padding: 0 16px;
       max-height: 0;
       overflow: hidden;
-      transition: max-height 0.3s;
+      transition: max-height 0.3s ease-out, padding 0.3s ease-out;
     }
 
     .table-card.expanded .table-body {
       max-height: 2000px;
+      padding: 16px;
     }
 
     .section {
@@ -152,6 +206,11 @@
       border-radius: 6px;
       font-size: 13px;
       border-left: 3px solid transparent;
+      transition: background 0.2s;
+    }
+    
+    .column-item.highlight {
+      background: #1e3a5f !important;
     }
 
     .column-item.primary-key {
@@ -182,6 +241,7 @@
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
+      margin-left: 6px;
     }
 
     .badge-pk { background: #78350f; color: #fcd34d; }
@@ -246,6 +306,13 @@
       border-radius: 8px;
       border-left: 4px solid #10b981;
       font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .connection:hover {
+      background: #243648;
+      transform: translateX(4px);
     }
 
     .loading {
@@ -263,10 +330,29 @@
     .table-card.expanded .expand-icon {
       transform: rotate(180deg);
     }
+    
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+      font-size: 16px;
+      grid-column: 1 / -1;
+    }
 
     @media (max-width: 768px) {
       .tables-map {
         grid-template-columns: 1fr;
+      }
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .header-actions {
+        width: 100%;
+      }
+      .btn {
+        flex: 1;
+        text-align: center;
       }
     }
   </style>
@@ -276,9 +362,10 @@
 <div class="container">
   <div class="header">
     <h1>🗺️ Database Map - Global View</h1>
-    <div style="display: flex; gap: 12px;">
+    <div class="header-actions">
+      <button class="btn btn-toggle" id="toggleAllBtn" onclick="toggleAllTables()">📂 Expand All</button>
       <button class="btn" onclick="loadSchema()">🔄 Refresh</button>
-      <a href="admin-dashboard-collapsible.html" class="btn">← Dashboard</a>
+      <a href="dashboard-settings.html" class="btn">← Dashboard</a>
     </div>
   </div>
 
@@ -305,6 +392,10 @@
     </div>
   </div>
 
+  <div class="search-bar">
+    <input type="text" class="search-input" id="tableSearch" placeholder="🔍 Search tables or columns..." oninput="filterTables()">
+  </div>
+
   <div class="connection-map">
     <div class="map-title">🔗 Global Connections</div>
     <div id="connectionsGrid" class="connection-grid"></div>
@@ -325,6 +416,7 @@
   let columns = [];
   let relationships = [];
   let primaryKeys = [];
+  let allExpanded = false;
 
   async function loadSchema() {
     document.getElementById('loading').style.display = 'block';
@@ -390,7 +482,7 @@
       const tableFKs = relationships.filter(r => r.from_table === table.table_name);
 
       return `
-        <div class="table-card" id="table-${table.table_name}">
+        <div class="table-card" id="table-${table.table_name}" data-table="${table.table_name}">
           <div class="table-header" onclick="toggleTable('${table.table_name}')">
             <div class="table-name">${table.table_name} <span class="expand-icon">▼</span></div>
             <div class="table-summary">
@@ -412,7 +504,7 @@
                   const cssClass = isPK ? 'primary-key' : (isFK ? 'foreign-key' : '');
                   
                   return `
-                    <div class="column-item ${cssClass}">
+                    <div class="column-item ${cssClass}" data-column="${col.column_name}">
                       <div>
                         <span class="column-name">${col.column_name}</span>
                         ${isPK ? '<span class="badge badge-pk">PK</span>' : ''}
@@ -450,12 +542,16 @@
   function renderConnections() {
     const container = document.getElementById('connectionsGrid');
 
-    // Group relationships by connection
     const connections = relationships.map(rel => ({
       text: `${rel.from_table}.${rel.from_column} → ${rel.to_table}.${rel.to_column}`,
       from: rel.from_table,
       to: rel.to_table
     }));
+
+    if (connections.length === 0) {
+      container.innerHTML = '<div style="color: #64748b; font-style: italic;">No foreign key relationships found</div>';
+      return;
+    }
 
     container.innerHTML = connections.map(conn => `
       <div class="connection" onclick="highlightTables('${conn.from}', '${conn.to}')">
@@ -465,21 +561,50 @@
   }
 
   function updateStats() {
-    const totalCols = columns.length;
-    const totalRels = relationships.length;
-    const totalPKs = primaryKeys.length;
-    const totalFKs = relationships.length;
-
     document.getElementById('totalTables').textContent = tables.length;
-    document.getElementById('totalColumns').textContent = totalCols;
-    document.getElementById('totalRelationships').textContent = totalRels;
-    document.getElementById('totalPrimaryKeys').textContent = totalPKs;
-    document.getElementById('totalForeignKeys').textContent = totalFKs;
+    document.getElementById('totalColumns').textContent = columns.length;
+    document.getElementById('totalRelationships').textContent = relationships.length;
+    document.getElementById('totalPrimaryKeys').textContent = primaryKeys.length;
+    document.getElementById('totalForeignKeys').textContent = relationships.length;
   }
 
   function toggleTable(tableName) {
     const card = document.getElementById(`table-${tableName}`);
     card.classList.toggle('expanded');
+    updateToggleButton();
+  }
+
+  // ========== EXPAND / COLLAPSE ALL ==========
+  function toggleAllTables() {
+    const cards = document.querySelectorAll('.table-card:not([style*="display: none"])');
+    allExpanded = !allExpanded;
+    
+    cards.forEach(card => {
+      if (allExpanded) {
+        card.classList.add('expanded');
+      } else {
+        card.classList.remove('expanded');
+      }
+    });
+    
+    updateToggleButton();
+  }
+  
+  function updateToggleButton() {
+    const btn = document.getElementById('toggleAllBtn');
+    const visibleCards = document.querySelectorAll('.table-card:not([style*="display: none"])');
+    const expandedCount = document.querySelectorAll('.table-card.expanded:not([style*="display: none"])').length;
+    
+    // If more than half are expanded, show "Collapse All"
+    if (expandedCount > visibleCards.length / 2) {
+      btn.innerHTML = '📁 Collapse All';
+      btn.classList.add('is-expanded');
+      allExpanded = true;
+    } else {
+      btn.innerHTML = '📂 Expand All';
+      btn.classList.remove('is-expanded');
+      allExpanded = false;
+    }
   }
 
   function highlightTables(from, to) {
@@ -488,7 +613,6 @@
       card.style.borderColor = '#2d3f56';
     });
 
-    // Highlight connected tables
     const fromCard = document.getElementById(`table-${from}`);
     const toCard = document.getElementById(`table-${to}`);
 
@@ -502,6 +626,61 @@
       toCard.style.borderColor = '#3b82f6';
       toCard.classList.add('expanded');
     }
+    
+    updateToggleButton();
+  }
+  
+  // ========== SEARCH / FILTER ==========
+  function filterTables() {
+    const searchTerm = document.getElementById('tableSearch').value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.table-card');
+    let visibleCount = 0;
+    
+    cards.forEach(card => {
+      const tableName = card.dataset.table.toLowerCase();
+      const columnItems = card.querySelectorAll('.column-item');
+      
+      let tableMatches = tableName.includes(searchTerm);
+      let hasColumnMatch = false;
+      
+      // Check columns for matches
+      columnItems.forEach(col => {
+        const colName = (col.dataset.column || '').toLowerCase();
+        if (colName.includes(searchTerm) && searchTerm) {
+          hasColumnMatch = true;
+          col.classList.add('highlight');
+        } else {
+          col.classList.remove('highlight');
+        }
+      });
+      
+      // Show card if table name or any column matches
+      if (tableMatches || hasColumnMatch || !searchTerm) {
+        card.style.display = '';
+        visibleCount++;
+        
+        // Auto-expand if search found columns (not table name)
+        if (hasColumnMatch && !tableMatches && searchTerm) {
+          card.classList.add('expanded');
+        }
+      } else {
+        card.style.display = 'none';
+      }
+    });
+    
+    // Show "no results" message
+    const tablesMap = document.getElementById('tablesMap');
+    let noResults = tablesMap.querySelector('.no-results');
+    
+    if (visibleCount === 0 && searchTerm) {
+      if (!noResults) {
+        tablesMap.insertAdjacentHTML('beforeend', '<div class="no-results">No tables or columns match your search</div>');
+      }
+    } else if (noResults) {
+      noResults.remove();
+    }
+    
+    updateToggleButton();
   }
 
   // Initialize
