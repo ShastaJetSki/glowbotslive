@@ -445,6 +445,7 @@
       <button onclick="location.href='dashboard-service.html'" style="padding:8px 16px; background:var(--accent-primary); border:1px solid var(--accent-primary); color:white; border-radius:8px; cursor:pointer; font-size:14px;">Service</button>
       <button onclick="location.href='dashboard-parts.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Parts</button>
       <button onclick="location.href='dashboard-sales.html'" style="padding:8px 16px; background:transparent; border:1px solid var(--border-default); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px;">Sales</button>
+      <button onclick="location.href='dashboard-fleet-settings.html'" style="padding:8px 16px; background:var(--accent-primary); border:1px solid var(--accent-primary); color:white; border-radius:8px; cursor:pointer; font-size:14px;">Fleet</button>
     </div>
     <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
       <button onclick="location.href='dashboard-service.html'" class="btn btn-primary" style="padding:10px 16px; font-size:13px;">Back to Service</button>
@@ -515,6 +516,22 @@
             <span class="kpi-row-value" id="activeFleetWOs">0</span>
           </div>
           <div class="kpi-row">
+            <span class="kpi-row-label">Scheduled Today</span>
+            <span class="kpi-row-value" id="scheduledToday">0</span>
+          </div>
+          <div class="kpi-row">
+            <span class="kpi-row-label">In Progress</span>
+            <span class="kpi-row-value" id="inProgressWOs">0</span>
+          </div>
+          <div class="kpi-row">
+            <span class="kpi-row-label">Waiting Parts</span>
+            <span class="kpi-row-value" id="waitingPartsWOs">0</span>
+          </div>
+          <div class="kpi-row">
+            <span class="kpi-row-label">Completed Today</span>
+            <span class="kpi-row-value" id="completedToday">0</span>
+          </div>
+          <div class="kpi-row">
             <span class="kpi-row-label">Completed This Month</span>
             <span class="kpi-row-value" id="completedFleetWOs">0</span>
           </div>
@@ -536,16 +553,32 @@
             <span class="kpi-row-value" id="fleetRevenueMTD">$0</span>
           </div>
           <div class="kpi-row">
+            <span class="kpi-row-label">Revenue Today</span>
+            <span class="kpi-row-value" id="revenueToday">$0</span>
+          </div>
+          <div class="kpi-row">
             <span class="kpi-row-label">Avg per Vehicle</span>
             <span class="kpi-row-value" id="avgPerVehicle">$0</span>
+          </div>
+          <div class="kpi-row">
+            <span class="kpi-row-label">Avg per Work Order</span>
+            <span class="kpi-row-value" id="avgPerWO">$0</span>
           </div>
           <div class="kpi-row">
             <span class="kpi-row-label">Pending Invoices</span>
             <span class="kpi-row-value" id="pendingInvoices">0</span>
           </div>
           <div class="kpi-row">
+            <span class="kpi-row-label">Outstanding Balance</span>
+            <span class="kpi-row-value" id="outstandingBalance">$0</span>
+          </div>
+          <div class="kpi-row">
             <span class="kpi-row-label">Avg Turnaround</span>
             <span class="kpi-row-value" id="avgTurnaround">-- days</span>
+          </div>
+          <div class="kpi-row">
+            <span class="kpi-row-label">Labor Hours MTD</span>
+            <span class="kpi-row-value" id="laborHoursMTD">0</span>
           </div>
         </div>
       </div>
@@ -562,13 +595,13 @@
   </div>
 </div>
 
-<!-- Mobile Bottom Nav - Service AND Fleet both solid active -->
+<!-- Mobile Bottom Nav - Service highlighted in lower, Fleet in upper -->
 <div class="mobile-bottom-nav">
   <div class="mobile-nav-grid">
     <a href="dashboard-business.html" class="mobile-nav-btn">Dashboard</a>
     <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
     <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
-    <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
+    <a href="dashboard-fleet-settings.html" class="mobile-nav-btn active">Fleet</a>
   </div>
   <div class="mobile-nav-secondary">
     <a href="dashboard-service.html" class="mobile-nav-btn active">Service</a>
@@ -795,7 +828,7 @@ function renderFleets() {
           
           <div class="fleet-card-actions">
             <button class="btn btn-secondary" onclick="openFleetModal(${JSON.stringify(fleet).replace(/"/g, '&quot;')})">Edit</button>
-            <button class="btn btn-primary" onclick="viewFleetVehicles('${fleet.fleet_id}')">View Vehicles</button>
+            <button class="btn btn-secondary" onclick="viewFleetAccount('${fleet.fleet_id}')">Account Details</button>
           </div>
         </div>
       `;
@@ -835,30 +868,78 @@ function updateStats() {
   const activeWOs = workOrders.filter(wo => !['completed', 'closed', 'cancelled'].includes(wo.status)).length;
   
   const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
   const mtdStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  
+  // Work order status counts
+  const scheduledToday = workOrders.filter(wo => 
+    wo.scheduled_start && wo.scheduled_start.startsWith(todayStr) && wo.status === 'scheduled'
+  ).length;
+  
+  const inProgressWOs = workOrders.filter(wo => 
+    wo.status === 'in_progress' || wo.status === 'repairing'
+  ).length;
+  
+  const waitingPartsWOs = workOrders.filter(wo => 
+    wo.status === 'waiting_parts' || wo.status === 'awaiting_parts' || wo.status === 'parts_on_order'
+  ).length;
+  
+  const completedToday = workOrders.filter(wo => 
+    ['completed', 'closed'].includes(wo.status) && 
+    (wo.completed_at || wo.updated_at || '').startsWith(todayStr)
+  ).length;
+  
   const completedMTD = workOrders.filter(wo => 
     ['completed', 'closed'].includes(wo.status) && 
     new Date(wo.completed_at || wo.updated_at) >= mtdStart
   );
   
+  // Revenue calculations
   const revenueMTD = completedMTD.reduce((sum, wo) => sum + (parseFloat(wo.total_amount || wo.grand_total) || 0), 0);
+  
+  const completedTodayWOs = workOrders.filter(wo => 
+    ['completed', 'closed'].includes(wo.status) && 
+    (wo.completed_at || wo.updated_at || '').startsWith(todayStr)
+  );
+  const revenueToday = completedTodayWOs.reduce((sum, wo) => sum + (parseFloat(wo.total_amount || wo.grand_total) || 0), 0);
+  
   const avgPerVehicle = totalVehicles > 0 ? revenueMTD / totalVehicles : 0;
+  const avgPerWO = completedMTD.length > 0 ? revenueMTD / completedMTD.length : 0;
+  
   const pendingInvoices = workOrders.filter(wo => wo.status === 'ready_invoice' || wo.status === 'ready_for_pickup').length;
   
-  // Update KPIs
+  // Outstanding balance (active WOs total)
+  const outstandingBalance = workOrders
+    .filter(wo => !['completed', 'closed', 'cancelled'].includes(wo.status))
+    .reduce((sum, wo) => sum + (parseFloat(wo.total_amount || wo.grand_total) || 0), 0);
+  
+  // Labor hours MTD
+  const laborHoursMTD = completedMTD.reduce((sum, wo) => sum + (parseFloat(wo.actual_hours || wo.labor_hours || wo.estimated_hours) || 0), 0);
+  
+  // Update Fleet Performance KPIs
   document.getElementById('totalFleets').textContent = fleets.length;
   document.getElementById('totalFleetVehicles').textContent = totalVehicles;
   document.getElementById('activeFleetWOs').textContent = activeWOs;
+  document.getElementById('scheduledToday').textContent = scheduledToday;
+  document.getElementById('inProgressWOs').textContent = inProgressWOs;
+  document.getElementById('waitingPartsWOs').textContent = waitingPartsWOs;
+  document.getElementById('completedToday').textContent = completedToday;
   document.getElementById('completedFleetWOs').textContent = completedMTD.length;
   
+  // Update Revenue KPIs
   document.getElementById('fleetRevenueMTD').textContent = '$' + Math.round(revenueMTD).toLocaleString();
+  document.getElementById('revenueToday').textContent = '$' + Math.round(revenueToday).toLocaleString();
   document.getElementById('avgPerVehicle').textContent = '$' + Math.round(avgPerVehicle).toLocaleString();
+  document.getElementById('avgPerWO').textContent = '$' + Math.round(avgPerWO).toLocaleString();
   document.getElementById('pendingInvoices').textContent = pendingInvoices;
+  document.getElementById('outstandingBalance').textContent = '$' + Math.round(outstandingBalance).toLocaleString();
   document.getElementById('avgTurnaround').textContent = '-- days';
+  document.getElementById('laborHoursMTD').textContent = laborHoursMTD.toFixed(1);
 }
 
-function viewFleetVehicles(fleetId) {
-  alert('Vehicle management coming soon! Fleet ID: ' + fleetId);
+function viewFleetAccount(fleetId) {
+  // Navigate to fleet account details page
+  location.href = 'fleet-account-details.html?id=' + fleetId;
 }
 
 // ============================================================================
