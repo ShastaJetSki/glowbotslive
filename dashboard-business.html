@@ -549,6 +549,12 @@
   </div>
 </div>
 
+<!-- Debug Panel - Remove after fixing -->
+<div id="debugPanel" style="background:#1a1a2e; border:1px solid #f59e0b; padding:10px; margin:10px; border-radius:8px; font-size:12px; display:none;">
+  <div style="color:#f59e0b; font-weight:bold; margin-bottom:8px;">🔧 Debug Info (remove after fixing)</div>
+  <div id="debugInfo" style="color:#9ca3af; white-space:pre-wrap;"></div>
+</div>
+
 <div class="desktop-header">
   <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
     <div>
@@ -824,14 +830,9 @@ function toggleSection(sectionId) {
 // ========== INBOX / MESSAGES ==========
 async function loadInboxData() {
   try {
-    // Use cached tenant_id or fetch it
     if (!currentTenantId) {
-      const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
-      currentTenantId = userData?.tenant_id;
-    }
-    
-    if (!currentTenantId) {
-      console.error('No tenant_id found for user');
+      console.error('No tenant_id available for inbox');
+      document.getElementById('inboxList').innerHTML = '<div class="inbox-empty"><div class="inbox-empty-icon">⚠️</div><div>No tenant ID - check debug panel</div></div>';
       return;
     }
     
@@ -844,7 +845,13 @@ async function loadInboxData() {
       .order('created_at', { ascending: false })
       .limit(50);
     
-    if (error) console.error('Notifications error:', error);
+    if (error) {
+      console.error('Notifications query error:', error);
+      addDebug('Notifications ERROR: ' + error.message);
+      document.getElementById('inboxList').innerHTML = `<div class="inbox-empty"><div class="inbox-empty-icon">❌</div><div>Error: ${error.message}</div></div>`;
+      return;
+    }
+    
     allNotifications = notifications || [];
     console.log('Loaded notifications:', allNotifications.length);
     
@@ -856,7 +863,10 @@ async function loadInboxData() {
       .order('created_at', { ascending: false })
       .limit(20);
     
-    if (woError) console.error('WO Notes error:', woError);
+    if (woError) {
+      console.error('WO Notes error:', woError);
+      addDebug('WO Notes ERROR: ' + woError.message);
+    }
     
     if (woNotes && woNotes.length > 0) {
       console.log('Loaded WO notes:', woNotes.length);
@@ -869,7 +879,11 @@ async function loadInboxData() {
       allNotifications = [...noteItems, ...allNotifications];
     }
     renderInbox(); updateInboxBadge();
-  } catch (error) { console.error('Error loading inbox:', error); allNotifications = []; renderInbox(); }
+  } catch (error) { 
+    console.error('Error loading inbox:', error); 
+    allNotifications = []; 
+    document.getElementById('inboxList').innerHTML = `<div class="inbox-empty"><div class="inbox-empty-icon">❌</div><div>Error loading messages</div></div>`;
+  }
 }
 
 function renderInbox() {
@@ -925,14 +939,9 @@ function updateInboxBadge() {
 // ========== TASKS ==========
 async function loadTasksData() {
   try {
-    // Use cached tenant_id or fetch it
     if (!currentTenantId) {
-      const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
-      currentTenantId = userData?.tenant_id;
-    }
-    
-    if (!currentTenantId) {
-      console.error('No tenant_id found for user');
+      console.error('No tenant_id available for tasks');
+      document.getElementById('tasksList').innerHTML = '<div class="tasks-empty"><div class="tasks-empty-icon">⚠️</div><div>No tenant ID</div></div>';
       return;
     }
     
@@ -944,12 +953,22 @@ async function loadTasksData() {
       .eq('tenant_id', currentTenantId)
       .order('due_at', { ascending: true });
     
-    if (error) console.error('Tasks error:', error);
+    if (error) {
+      console.error('Tasks query error:', error);
+      addDebug('Tasks ERROR: ' + error.message);
+      document.getElementById('tasksList').innerHTML = `<div class="tasks-empty"><div class="tasks-empty-icon">❌</div><div>Error: ${error.message}</div></div>`;
+      return;
+    }
+    
     allTasks = tasks || [];
     console.log('Loaded tasks:', allTasks.length);
     
     renderTasks(); updateTasksBadge();
-  } catch (error) { console.error('Error loading tasks:', error); allTasks = []; renderTasks(); }
+  } catch (error) { 
+    console.error('Error loading tasks:', error); 
+    allTasks = []; 
+    document.getElementById('tasksList').innerHTML = '<div class="tasks-empty"><div class="tasks-empty-icon">❌</div><div>Error loading tasks</div></div>';
+  }
 }
 
 function renderTasks() {
@@ -1043,6 +1062,11 @@ async function saveNewTask() {
   const title = document.getElementById('taskTitle').value.trim();
   if (!title) { alert('Please enter a task title'); return; }
   
+  if (!currentTenantId) {
+    alert('Error: No tenant_id available. Check debug panel.');
+    return;
+  }
+  
   // Get user_id from selected employee
   const selectedEmpId = document.getElementById('taskAssignee').value;
   let assignedUserId = null;
@@ -1064,9 +1088,20 @@ async function saveNewTask() {
     created_by: currentUserId
   };
   
-  const { error } = await sb.from('tasks').insert(newTask);
-  if (error) { console.error('Task insert error:', error); alert('Error creating task: ' + error.message); return; }
-  closeNewTaskModal(); loadTasksData();
+  console.log('Creating task:', newTask);
+  addDebug('Creating task with tenant_id: ' + currentTenantId);
+  
+  const { data, error } = await sb.from('tasks').insert(newTask).select();
+  if (error) { 
+    console.error('Task insert error:', error); 
+    addDebug('Task insert ERROR: ' + error.message);
+    alert('Error creating task: ' + error.message); 
+    return; 
+  }
+  
+  addDebug('Task created successfully!');
+  closeNewTaskModal(); 
+  loadTasksData();
 }
 
 // ========== UTILITY ==========
@@ -1173,11 +1208,18 @@ async function checkAuth() {
 }
 
 async function loadBusinessSettings() {
-  const { data } = await sb.from('business_settings').select('*').single();
+  // If we don't have tenant yet, get from business_settings
+  const { data } = await sb.from('business_settings').select('*').limit(1).single();
   if (data) {
     const name = data.business_name || data.company_name || '';
     document.getElementById('desktopBusinessName').textContent = name;
     document.getElementById('mobileBusinessName').textContent = name;
+    
+    // Backup: set tenant_id from business_settings if we don't have it
+    if (!currentTenantId && data.tenant_id) {
+      currentTenantId = data.tenant_id;
+      console.log('Got tenant from business_settings:', currentTenantId);
+    }
   }
 }
 
@@ -1273,18 +1315,83 @@ function createSummaryChart(serviceRev, salesRev) {
   charts.summaryRevenue = new Chart(ctx, { type: 'doughnut', data: { labels: ['Service', 'Sales'], datasets: [{ data: [serviceRev || 0, salesRev || 0], backgroundColor: ['#3b82f6', '#8b5cf6'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } } } });
 }
 
+function addDebug(msg) {
+  console.log(msg);
+  const panel = document.getElementById('debugPanel');
+  const info = document.getElementById('debugInfo');
+  panel.style.display = 'block';
+  info.textContent += msg + '\n';
+}
+
 async function init() {
   const session = await checkAuth();
   if (!session) return;
   
-  // Fetch tenant_id early
-  const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
-  currentTenantId = userData?.tenant_id;
-  console.log('Current user:', currentUserId, 'Tenant:', currentTenantId);
+  addDebug('Auth User ID: ' + currentUserId);
+  
+  // Try multiple methods to get tenant_id
+  let debugLog = [];
+  
+  // Method 1: users table
+  const { data: userData, error: userError } = await sb.from('users').select('*').eq('user_id', currentUserId).single();
+  debugLog.push('Method 1 (users by user_id): ' + (userData ? JSON.stringify({tenant_id: userData.tenant_id}) : 'NOT FOUND - ' + (userError?.message || '')));
+  if (userData?.tenant_id) currentTenantId = userData.tenant_id;
+  
+  // Method 2: Try auth.uid() match differently - email lookup
+  if (!currentTenantId && session.user?.email) {
+    const { data: userByEmail } = await sb.from('users').select('*').eq('email', session.user.email).single();
+    debugLog.push('Method 2 (users by email): ' + (userByEmail ? JSON.stringify({tenant_id: userByEmail.tenant_id}) : 'NOT FOUND'));
+    if (userByEmail?.tenant_id) currentTenantId = userByEmail.tenant_id;
+  }
+  
+  // Method 3: employees table
+  if (!currentTenantId) {
+    const { data: empData } = await sb.from('employees').select('tenant_id, user_id').eq('user_id', currentUserId).single();
+    debugLog.push('Method 3 (employees): ' + (empData ? JSON.stringify(empData) : 'NOT FOUND'));
+    if (empData?.tenant_id) currentTenantId = empData.tenant_id;
+  }
+  
+  // Method 4: tenant_users table
+  if (!currentTenantId) {
+    const { data: tuData } = await sb.from('tenant_users').select('*').eq('user_id', currentUserId).single();
+    debugLog.push('Method 4 (tenant_users): ' + (tuData ? JSON.stringify(tuData) : 'NOT FOUND'));
+    if (tuData?.tenant_id) currentTenantId = tuData.tenant_id;
+  }
+  
+  // Method 5: business_settings (get the tenant for this session)
+  if (!currentTenantId) {
+    const { data: bsData } = await sb.from('business_settings').select('tenant_id, business_name').limit(1).single();
+    debugLog.push('Method 5 (business_settings): ' + (bsData ? JSON.stringify(bsData) : 'NOT FOUND'));
+    if (bsData?.tenant_id) currentTenantId = bsData.tenant_id;
+  }
+  
+  // Method 6: Just get first tenant as fallback
+  if (!currentTenantId) {
+    const { data: tenantData } = await sb.from('tenants').select('tenant_id, tenant_name').limit(1).single();
+    debugLog.push('Method 6 (first tenant): ' + (tenantData ? JSON.stringify(tenantData) : 'NOT FOUND'));
+    if (tenantData?.tenant_id) currentTenantId = tenantData.tenant_id;
+  }
+  
+  debugLog.forEach(log => addDebug(log));
+  addDebug('---');
+  addDebug('FINAL tenant_id: ' + (currentTenantId || 'NONE FOUND!'));
+  
+  if (!currentTenantId) {
+    document.getElementById('inboxList').innerHTML = '<div class="inbox-empty"><div class="inbox-empty-icon">⚠️</div><div>Could not find tenant - see debug panel</div></div>';
+    document.getElementById('tasksList').innerHTML = '<div class="tasks-empty"><div class="tasks-empty-icon">⚠️</div><div>Could not find tenant - see debug panel</div></div>';
+    return;
+  }
   
   await loadBusinessSettings();
   calculateDateRange(); updateDisplay();
+  
+  // Load data and show counts
   await Promise.all([loadDashboardData(), loadInboxData(), loadTasksData()]);
+  
+  addDebug('---');
+  addDebug('Notifications loaded: ' + allNotifications.length);
+  addDebug('Tasks loaded: ' + allTasks.length);
+  
   const messagesContent = document.getElementById('messagesContent');
   messagesContent.style.maxHeight = messagesContent.scrollHeight + 'px';
 }
