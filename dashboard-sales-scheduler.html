@@ -223,6 +223,7 @@
     }
     
     .appt-card.status-confirmed { border-left-color: #8b5cf6; }
+    .appt-card.status-in_progress { border-left-color: #f59e0b; }
     .appt-card.status-completed { border-left-color: #10b981; }
     .appt-card.status-cancelled { border-left-color: #ef4444; }
     .appt-card.status-no_show { border-left-color: #ef4444; }
@@ -334,8 +335,10 @@
       text-decoration: none;
     }
     
+    .btn-arrived { background: #7c3aed; color: #c4b5fd; }
     .btn-complete { background: #065f46; color: #34d399; }
-    .btn-noshow { background: #1e3a5f; color: #60a5fa; }
+    .btn-noshow { background: #7f1d1d; color: #fca5a5; }
+    .btn-text { background: #1e3a5f; color: #60a5fa; }
     .btn-call { background: #1a2535; color: #60a5fa; border: 1px solid #2d3f56; }
     
     .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
@@ -569,7 +572,7 @@
         <input type="text" id="apptVehicle" placeholder="e.g., 2024 Honda Civic" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
       </div>
       <div style="margin-bottom:14px;">
-        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Assigned To</label>
+        <label style="display:block; margin-bottom:4px; color:#94a3b8; font-size:13px;">Assign to Sales Consultant</label>
         <select id="apptAssigned" style="width:100%; padding:10px; background:#0f1621; border:1px solid #2d3f56; border-radius:6px; color:#e8eef6;">
           <option value="">Unassigned</option>
         </select>
@@ -775,19 +778,51 @@ async function loadAppointments() {
     .order('appointment_time', { ascending: true });
   
   appointments = data || [];
-  populateEmployeeFilter();
   renderDayTabs();
   renderTimeline();
 }
 
+let salesEmployees = [];
+
+async function loadSalesEmployees() {
+  if (!tenantId) return;
+  
+  // Load sales consultants for appointment assignment
+  const { data: sales } = await sb.from('employees')
+    .select('employee_id, first_name, last_name, role')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .in('role', ['sales_consultant', 'sales_manager', 'internet_sales', 'bdc_rep', 'bdc_manager', 'finance_manager'])
+    .order('first_name');
+  
+  salesEmployees = sales || [];
+  populateEmployeeFilter();
+}
+
 function populateEmployeeFilter() {
-  const employees = [...new Set(appointments.filter(a => a.assigned_to).map(a => a.assigned_to))];
   const filter = document.getElementById('employeeFilter');
   const assignedSelect = document.getElementById('apptAssigned');
   
-  const options = employees.map(e => `<option value="${e}">${e}</option>`).join('');
-  filter.innerHTML = '<option value="all">All Employees</option>' + options;
+  // Build options from loaded sales employees
+  const options = salesEmployees.map(e => {
+    const name = `${e.first_name} ${e.last_name.charAt(0)}.`;
+    return `<option value="${name}">${name} (${formatRole(e.role)})</option>`;
+  }).join('');
+  
+  filter.innerHTML = '<option value="all">All Sales Staff</option>' + options;
   assignedSelect.innerHTML = '<option value="">Unassigned</option>' + options;
+}
+
+function formatRole(role) {
+  const roleMap = {
+    'sales_consultant': 'Sales',
+    'sales_manager': 'Sales Mgr',
+    'internet_sales': 'Internet',
+    'bdc_rep': 'BDC',
+    'bdc_manager': 'BDC Mgr',
+    'finance_manager': 'F&I'
+  };
+  return roleMap[role] || role;
 }
 
 function renderDayTabs() {
@@ -916,6 +951,7 @@ function getStatusBadge(status) {
   const map = {
     'scheduled': 'info',
     'confirmed': 'info',
+    'in_progress': 'warning',
     'completed': 'success',
     'sold': 'success',
     'cancelled': 'danger',
@@ -976,11 +1012,15 @@ function renderApptCard(a) {
         </div>
         ` : ''}
       </div>
-      ${a.status === 'scheduled' || a.status === 'confirmed' ? `
+      ${a.status === 'scheduled' || a.status === 'confirmed' || a.status === 'in_progress' ? `
       <div class="appt-actions">
+        ${a.status !== 'in_progress' ? `<button class="appt-action-btn btn-arrived" onclick="event.stopPropagation(); markArrived('${a.appointment_id}')">Arrived</button>` : ''}
         <button class="appt-action-btn btn-complete" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'completed')">Complete</button>
         <button class="appt-action-btn btn-noshow" onclick="event.stopPropagation(); updateStatus('${a.appointment_id}', 'no_show')">No Show</button>
-        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call" onclick="event.stopPropagation()">Call</a>` : ''}
+      </div>
+      <div class="appt-actions" style="margin-top:8px; border-top:none; padding-top:0;">
+        ${a.customer_phone ? `<a href="sms:${a.customer_phone}" class="appt-action-btn btn-text" onclick="event.stopPropagation()">📱 Text</a>` : ''}
+        ${a.customer_phone ? `<a href="tel:${a.customer_phone}" class="appt-action-btn btn-call" onclick="event.stopPropagation()">📞 Call</a>` : ''}
       </div>
       ` : ''}
     </div>
@@ -990,6 +1030,16 @@ function renderApptCard(a) {
 async function updateStatus(id, status) {
   await sb.from('sales_appointments')
     .update({ status })
+    .eq('appointment_id', id);
+  await loadAppointments();
+}
+
+async function markArrived(id) {
+  await sb.from('sales_appointments')
+    .update({ 
+      status: 'in_progress',
+      arrived_at: new Date().toISOString()
+    })
     .eq('appointment_id', id);
   await loadAppointments();
 }
@@ -1433,6 +1483,7 @@ async function saveAppointment(e) {
 async function init() {
   await checkAuth();
   await loadBusinessSettings();
+  await loadSalesEmployees();
   await loadAppointments();
 }
 
