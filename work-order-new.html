@@ -1159,7 +1159,26 @@ async function validateAuth(){
   if (!res.ok) return null;
   const user = await res.json();
   
+  // Try to get tenant_id from user metadata first
   TENANT_ID = user?.user_metadata?.tenant_id || null;
+  
+  // If not in metadata, try to get from business_settings
+  if (!TENANT_ID) {
+    try {
+      const settingsRes = await fetch(`${REST_BASE}/business_settings?select=tenant_id&limit=1`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY }
+      });
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        if (settings && settings[0]?.tenant_id) {
+          TENANT_ID = settings[0].tenant_id;
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch tenant_id from business_settings');
+    }
+  }
+  
   return token;
 }
 
@@ -1407,11 +1426,14 @@ async function createWorkOrder(){
     let customerId = selectedCustomerId;
     let vehicleId = selectedVehicleId;
     
+    // Build base data object - only include tenant_id if we have one
+    const baseData = TENANT_ID ? { tenant_id: TENANT_ID } : {};
+    
     if(customerType === 'new'){
       msg.textContent = 'Creating new customer...';
       
       const customerData = {
-        tenant_id: TENANT_ID,
+        ...baseData,
         first_name: document.getElementById('new_customer_first_name').value.trim(),
         last_name: document.getElementById('new_customer_last_name').value.trim(),
         phone: document.getElementById('new_customer_phone').value.trim(),
@@ -1451,7 +1473,7 @@ async function createWorkOrder(){
       msg.textContent = 'Creating new vehicle...';
       
       const vehicleData = {
-        tenant_id: TENANT_ID,
+        ...baseData,
         customer_id: customerId,
         year: parseInt(document.getElementById('new_vehicle_year').value),
         make: document.getElementById('new_vehicle_make').value.trim(),
@@ -1493,7 +1515,7 @@ async function createWorkOrder(){
       msg.textContent = 'Adding new vehicle to customer...';
       
       const vehicleData = {
-        tenant_id: TENANT_ID,
+        ...baseData,
         customer_id: customerId,
         year: parseInt(document.getElementById('existing_customer_new_vehicle_year').value),
         make: document.getElementById('existing_customer_new_vehicle_make').value.trim(),
@@ -1530,7 +1552,7 @@ async function createWorkOrder(){
     msg.textContent = 'Creating work order...';
     
     const data = {
-      tenant_id: TENANT_ID,
+      ...baseData,
       customer_id: customerId,
       vehicle_id: vehicleId,
       status: document.getElementById('status').value || 'scheduled',
@@ -1592,12 +1614,12 @@ async function load(){
   
   try {
     const hint = document.getElementById('hint');
-    hint.textContent = 'Loading customers, vehicles, and employees...';
+    hint.textContent = 'Loading customers and vehicles...';
     
-    const [cust, veh, emp] = await Promise.all([
+    // Load customers and vehicles first (these use REST API)
+    const [cust, veh] = await Promise.all([
       fetchTable('customers', token),
-      fetchTable('vehicles', token),
-      fetchJson(`${FUNCTIONS_BASE}/employees`, token)
+      fetchTable('vehicles', token)
     ]);
     
     customers = Array.isArray(cust) ? cust : [];
@@ -1608,12 +1630,25 @@ async function load(){
     vehiclesById = {};
     vehicles.forEach(v => { if(v?.vehicle_id) vehiclesById[v.vehicle_id] = v; });
     
-    employees = Array.isArray(emp) ? emp : [];
+    // Try to load employees separately (uses Edge Function which may fail)
+    try {
+      const emp = await fetchJson(`${FUNCTIONS_BASE}/employees`, token);
+      employees = Array.isArray(emp) ? emp : [];
+    } catch (empErr) {
+      console.log('Could not load employees:', empErr.message);
+      // Try fetching from employees table directly as fallback
+      try {
+        const empDirect = await fetchTable('employees', token);
+        employees = Array.isArray(empDirect) ? empDirect : [];
+      } catch (e) {
+        employees = [];
+      }
+    }
     
     const empSelect = document.getElementById('assigned_employee_id');
     empSelect.innerHTML = '<option value="">Unassigned</option>' + 
       employees
-        .filter(e => e.role === 'technician' || e.role === 'manager')
+        .filter(e => e.role === 'technician' || e.role === 'manager' || !e.role)
         .map(e => {
           const name = `${e.first_name||''} ${e.last_name||''}`.trim() || e.name || 'Unknown';
           return `<option value="${e.employee_id}">${name}</option>`;
