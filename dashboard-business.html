@@ -559,7 +559,7 @@
   </div>
   <div style="padding:0 24px 12px;">
     <nav style="display:flex; gap:24px;">
-      <a href="dashboard-business.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Business</a>
+      <a href="dashboard-business.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Dashboard</a>
       <a href="dashboard-customer-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Customers</a>
       <a href="dashboard-vehicle-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Vehicles</a>
       <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px; border-bottom:2px solid transparent;">Settings</a>
@@ -775,7 +775,7 @@
 
 <div class="mobile-bottom-nav">
   <div class="mobile-nav-grid">
-    <a href="dashboard-business.html" class="mobile-nav-btn active">Business</a>
+    <a href="dashboard-business.html" class="mobile-nav-btn active">Dashboard</a>
     <a href="dashboard-customer-search.html" class="mobile-nav-btn">Customers</a>
     <a href="dashboard-vehicle-search.html" class="mobile-nav-btn">Vehicles</a>
     <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
@@ -794,7 +794,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentRange = '30days', currentDirection = 'past';
 let startDate = new Date(), endDate = new Date();
-let charts = {}, currentUserId = null;
+let charts = {}, currentUserId = null, currentTenantId = null;
 let currentInboxTab = 'all', currentTasksTab = 'pending';
 let allNotifications = [], allTasks = [], allEmployees = [];
 
@@ -824,11 +824,42 @@ function toggleSection(sectionId) {
 // ========== INBOX / MESSAGES ==========
 async function loadInboxData() {
   try {
-    const { data: notifications } = await sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50);
-    allNotifications = notifications || [];
+    // Use cached tenant_id or fetch it
+    if (!currentTenantId) {
+      const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
+      currentTenantId = userData?.tenant_id;
+    }
     
-    const { data: woNotes } = await sb.from('work_order_notes').select('*').eq('requires_manager_review', true).eq('is_deleted', false).order('created_at', { ascending: false }).limit(20);
+    if (!currentTenantId) {
+      console.error('No tenant_id found for user');
+      return;
+    }
+    
+    console.log('Loading notifications for tenant:', currentTenantId);
+    
+    const { data: notifications, error } = await sb
+      .from('notifications')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (error) console.error('Notifications error:', error);
+    allNotifications = notifications || [];
+    console.log('Loaded notifications:', allNotifications.length);
+    
+    const { data: woNotes, error: woError } = await sb
+      .from('work_order_notes')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .eq('requires_manager_review', true)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (woError) console.error('WO Notes error:', woError);
+    
     if (woNotes && woNotes.length > 0) {
+      console.log('Loaded WO notes:', woNotes.length);
       const noteItems = woNotes.map(note => ({
         notification_id: 'note_' + note.note_id, notification_type: 'wo_note',
         title: 'WO Note - Review Required', body: note.content,
@@ -894,8 +925,29 @@ function updateInboxBadge() {
 // ========== TASKS ==========
 async function loadTasksData() {
   try {
-    const { data: tasks } = await sb.from('tasks').select('*').order('due_at', { ascending: true });
+    // Use cached tenant_id or fetch it
+    if (!currentTenantId) {
+      const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
+      currentTenantId = userData?.tenant_id;
+    }
+    
+    if (!currentTenantId) {
+      console.error('No tenant_id found for user');
+      return;
+    }
+    
+    console.log('Loading tasks for tenant:', currentTenantId);
+    
+    const { data: tasks, error } = await sb
+      .from('tasks')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('due_at', { ascending: true });
+    
+    if (error) console.error('Tasks error:', error);
     allTasks = tasks || [];
+    console.log('Loaded tasks:', allTasks.length);
+    
     renderTasks(); updateTasksBadge();
   } catch (error) { console.error('Error loading tasks:', error); allTasks = []; renderTasks(); }
 }
@@ -966,7 +1018,11 @@ function formatDueDate(dateStr) {
 // ========== NEW TASK MODAL ==========
 async function openNewTaskModal() {
   try {
-    const { data: employees } = await sb.from('employees').select('employee_id, first_name, last_name').eq('is_active', true);
+    const { data: employees } = await sb
+      .from('employees')
+      .select('employee_id, user_id, first_name, last_name')
+      .eq('tenant_id', currentTenantId)
+      .eq('is_active', true);
     allEmployees = employees || [];
     const select = document.getElementById('taskAssignee');
     select.innerHTML = '<option value="">-- Select Employee --</option>' + allEmployees.map(e => `<option value="${e.employee_id}">${e.first_name} ${e.last_name}</option>`).join('');
@@ -987,18 +1043,29 @@ async function saveNewTask() {
   const title = document.getElementById('taskTitle').value.trim();
   if (!title) { alert('Please enter a task title'); return; }
   
+  // Get user_id from selected employee
+  const selectedEmpId = document.getElementById('taskAssignee').value;
+  let assignedUserId = null;
+  
+  if (selectedEmpId) {
+    // Look up the user_id for this employee
+    const { data: emp } = await sb.from('employees').select('user_id').eq('employee_id', selectedEmpId).single();
+    assignedUserId = emp?.user_id;
+  }
+  
   const newTask = {
-    title, description: document.getElementById('taskDescription').value.trim() || null,
-    priority: document.getElementById('taskPriority').value, status: 'pending',
+    tenant_id: currentTenantId,
+    title, 
+    description: document.getElementById('taskDescription').value.trim() || null,
+    priority: document.getElementById('taskPriority').value, 
+    status: 'pending',
     due_at: document.getElementById('taskDueDate').value ? new Date(document.getElementById('taskDueDate').value).toISOString() : null,
-    assigned_to: document.getElementById('taskAssignee').value || null, created_by: currentUserId
+    assigned_to: assignedUserId,
+    created_by: currentUserId
   };
   
-  const { data: userData } = await sb.from('users').select('tenant_id').single();
-  if (userData) newTask.tenant_id = userData.tenant_id;
-  
   const { error } = await sb.from('tasks').insert(newTask);
-  if (error) { alert('Error creating task: ' + error.message); return; }
+  if (error) { console.error('Task insert error:', error); alert('Error creating task: ' + error.message); return; }
   closeNewTaskModal(); loadTasksData();
 }
 
@@ -1209,6 +1276,12 @@ function createSummaryChart(serviceRev, salesRev) {
 async function init() {
   const session = await checkAuth();
   if (!session) return;
+  
+  // Fetch tenant_id early
+  const { data: userData } = await sb.from('users').select('tenant_id').eq('user_id', currentUserId).single();
+  currentTenantId = userData?.tenant_id;
+  console.log('Current user:', currentUserId, 'Tenant:', currentTenantId);
+  
   await loadBusinessSettings();
   calculateDateRange(); updateDisplay();
   await Promise.all([loadDashboardData(), loadInboxData(), loadTasksData()]);
