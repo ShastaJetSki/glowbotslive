@@ -143,16 +143,16 @@
     .mobile-nav-btn.active {
       background: var(--accent-primary); border-color: var(--accent-primary); color: white;
     }
-    /* Related buttons - 25% opacity accent using color-mix */
+    /* Related buttons - 15% opacity accent using color-mix */
     .mobile-nav-btn.related {
-      background: color-mix(in srgb, var(--accent-primary) 25%, transparent);
-      border-color: color-mix(in srgb, var(--accent-primary) 50%, transparent);
+      background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+      border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
       color: var(--text-primary);
     }
     /* Fallback for browsers without color-mix */
     @supports not (background: color-mix(in srgb, red 50%, blue)) {
       .mobile-nav-btn.related {
-        background: var(--bg-hover); border-color: var(--accent-primary); opacity: 0.7;
+        background: var(--bg-hover); border-color: var(--accent-primary); opacity: 0.6;
       }
     }
     
@@ -202,6 +202,9 @@
     }
     .expand-all-btn:hover { background: var(--bg-hover); color: var(--accent-light); border-color: var(--accent-light); }
     .expand-all-btn:active { transform: scale(0.95); }
+    .expand-all-btn.active {
+      background: var(--accent-primary); border-color: var(--accent-primary); color: white;
+    }
     
     .section-header-icon {
       font-size: 20px; color: var(--text-secondary); transition: transform 0.2s;
@@ -407,19 +410,19 @@
     
     <div id="dashboard" class="section active">
       
-      <!-- TODAY'S WORK ORDERS - Collapsible with dual expand modes -->
+      <!-- TODAY'S WORK ORDERS - Collapsible with expand preference toggle -->
       <div class="section-header collapsed" id="todayWOHeader">
-        <div class="section-header-title" onclick="toggleWOSection('collapsed')">
+        <div class="section-header-title" onclick="toggleWOSection(event)">
           Today's Work Orders
           <span class="count-badge" id="todayWOCount">0</span>
         </div>
         <div class="section-header-controls">
-          <!-- Expand All Button (grid icon) - opens with cards FULLY expanded -->
-          <button class="expand-all-btn" onclick="event.stopPropagation(); toggleWOSection('expanded')" title="Expand all cards">
+          <!-- Expand All Toggle - click to toggle preference (stays active until clicked again) -->
+          <button id="expandAllBtn" class="expand-all-btn" onclick="toggleExpandPreference(event)" title="Toggle expanded cards view">
             ☐
           </button>
-          <!-- Arrow - opens with cards collapsed (compact 3-line view) -->
-          <div class="section-header-icon" onclick="event.stopPropagation(); toggleWOSection('collapsed')">▼</div>
+          <!-- Arrow - toggles section open/close using current expand preference -->
+          <div class="section-header-icon" onclick="toggleWOSection(event)">▼</div>
         </div>
       </div>
       <div class="section-content collapsed" id="todayWOContent">
@@ -542,7 +545,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let workOrders = [], customers = [], vehicles = [], employees = [];
-let cardsExpandedMode = false;
+let cardsExpandedMode = false; // Persistent preference for card expand state
 
 function loadTheme() {
   const savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
@@ -565,8 +568,26 @@ function toggleSection(sectionId) {
   if (wasCollapsed) setTimeout(() => header.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
-// Special toggle for Work Orders with dual expand modes
-function toggleWOSection(mode) {
+// Toggle expand preference (square button) - persists until clicked again
+function toggleExpandPreference(event) {
+  event.stopPropagation();
+  cardsExpandedMode = !cardsExpandedMode;
+  
+  // Update button active state
+  const btn = document.getElementById('expandAllBtn');
+  btn.classList.toggle('active', cardsExpandedMode);
+  
+  // If section is currently open, re-render cards with new preference
+  const content = document.getElementById('todayWOContent');
+  if (!content.classList.contains('collapsed')) {
+    renderTodayWorkOrders();
+    setTimeout(() => { content.style.maxHeight = content.scrollHeight + 'px'; }, 50);
+  }
+}
+
+// Toggle Work Orders section open/close (uses current expand preference)
+function toggleWOSection(event) {
+  event.stopPropagation();
   const content = document.getElementById('todayWOContent');
   const header = document.getElementById('todayWOHeader');
   const wasCollapsed = content.classList.contains('collapsed');
@@ -580,7 +601,6 @@ function toggleWOSection(mode) {
   
   content.classList.remove('collapsed');
   header.classList.remove('collapsed');
-  cardsExpandedMode = (mode === 'expanded');
   renderTodayWorkOrders();
   setTimeout(() => {
     content.style.maxHeight = content.scrollHeight + 'px';
@@ -735,6 +755,7 @@ function renderTodayWorkOrders() {
   if (todayWOs.length === 0) {
     cardsContainer.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-secondary);">No work orders scheduled for today</div>';
   } else {
+    // Use cardsExpandedMode preference (false = collapsed compact view, true = expanded full view)
     const isCollapsed = !cardsExpandedMode;
     cardsContainer.innerHTML = todayWOs.map(wo => {
       const customer = customers.find(c => c.customer_id === wo.customer_id);
