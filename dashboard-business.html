@@ -969,6 +969,47 @@
       text-align: right;
     }
     
+    .schedule-day-row.past {
+      opacity: 0.6;
+    }
+    
+    /* Schedule Week Navigation */
+    .schedule-week-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: var(--bg-card, #1a2535);
+      border-radius: 8px;
+    }
+    
+    .schedule-nav-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border-default, #223044);
+      background: var(--bg-secondary, #0f1621);
+      color: var(--text-primary, #e8eef6);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    
+    .schedule-nav-btn:hover {
+      background: var(--accent-primary, #3b82f6);
+      border-color: var(--accent-primary, #3b82f6);
+    }
+    
+    .schedule-week-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary, #e8eef6);
+    }
+    
     /* Modal */
     .modal-overlay {
       display: none; position: fixed;
@@ -2176,6 +2217,7 @@ function openEmployeeViewModal(empId) {
   if (!emp) return;
   
   currentViewingEmpId = empId;
+  scheduleWeekOffset = 0; // Reset to current week
   
   const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
   const initials = `${(emp.first_name || 'U')[0]}${(emp.last_name || '')[0] || ''}`.toUpperCase();
@@ -2296,8 +2338,14 @@ function openEmployeeViewModal(empId) {
     
     <!-- SCHEDULE TAB -->
     <div class="emp-view-tab-content" id="empTabSchedule">
-      <div class="emp-detail-group-title" style="margin-bottom:12px;">This Week's Schedule</div>
-      ${weekScheduleHtml}
+      <div class="schedule-week-nav">
+        <button class="schedule-nav-btn" onclick="changeScheduleWeek(-1)">◀</button>
+        <div class="schedule-week-label" id="scheduleWeekLabel">This Week</div>
+        <button class="schedule-nav-btn" onclick="changeScheduleWeek(1)">▶</button>
+      </div>
+      <div class="week-schedule-grid" id="weekScheduleGrid">
+        ${weekScheduleHtml}
+      </div>
       ${isOwner ? `
       <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-default);">
         <div class="emp-detail-group-title" style="margin-bottom:12px;">Add/Edit Shift</div>
@@ -2453,13 +2501,49 @@ function openEmployeeViewModal(empId) {
 
 let currentViewingEmpId = null;
 let employeeScheduleCache = {};
+let scheduleWeekOffset = 0; // 0 = this week, -1 = last week, 1 = next week, etc.
 
-async function loadEmployeeWeekSchedule(empId) {
+function getWeekDates(offset = 0) {
   const today = new Date();
   const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+  startOfWeek.setDate(today.getDate() - today.getDay() + (offset * 7)); // Sunday
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+  return { startOfWeek, endOfWeek };
+}
+
+function getWeekLabel(offset) {
+  if (offset === 0) return 'This Week';
+  if (offset === -1) return 'Last Week';
+  if (offset === 1) return 'Next Week';
+  
+  const { startOfWeek, endOfWeek } = getWeekDates(offset);
+  const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' });
+  const startDay = startOfWeek.getDate();
+  const endDay = endOfWeek.getDate();
+  
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay} - ${endDay}`;
+  }
+  return `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+}
+
+async function changeScheduleWeek(direction) {
+  scheduleWeekOffset += direction;
+  
+  // Update label
+  const label = document.getElementById('scheduleWeekLabel');
+  if (label) label.textContent = getWeekLabel(scheduleWeekOffset);
+  
+  // Reload schedule for new week
+  if (currentViewingEmpId) {
+    await loadEmployeeWeekSchedule(currentViewingEmpId);
+  }
+}
+
+async function loadEmployeeWeekSchedule(empId) {
+  const { startOfWeek, endOfWeek } = getWeekDates(scheduleWeekOffset);
   
   const { data: schedules } = await sb
     .from('employee_schedules')
@@ -2472,24 +2556,20 @@ async function loadEmployeeWeekSchedule(empId) {
   employeeScheduleCache[empId] = schedules || [];
   
   // Re-render schedule section
-  const scheduleContainer = document.querySelector('#empTabSchedule .week-schedule-grid');
+  const scheduleContainer = document.getElementById('weekScheduleGrid');
   if (scheduleContainer) {
     scheduleContainer.innerHTML = renderWeekScheduleRows(empId);
   }
 }
 
 function renderWeekSchedule(empId) {
-  return `
-    <div class="week-schedule-grid">
-      ${renderWeekScheduleRows(empId)}
-    </div>
-  `;
+  return renderWeekScheduleRows(empId);
 }
 
 function renderWeekScheduleRows(empId) {
   const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay());
+  const todayStr = today.toISOString().split('T')[0];
+  const { startOfWeek } = getWeekDates(scheduleWeekOffset);
   
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const schedules = employeeScheduleCache[empId] || [];
@@ -2499,7 +2579,8 @@ function renderWeekScheduleRows(empId) {
     const date = new Date(startOfWeek);
     date.setDate(startOfWeek.getDate() + i);
     const dateStr = date.toISOString().split('T')[0];
-    const isToday = dateStr === today.toISOString().split('T')[0];
+    const isToday = dateStr === todayStr;
+    const isPast = date < new Date(todayStr);
     
     const daySchedule = schedules.find(s => s.schedule_date === dateStr);
     
@@ -2510,12 +2591,13 @@ function renderWeekScheduleRows(empId) {
       } else {
         const start = formatTimeShort(daySchedule.start_time);
         const end = formatTimeShort(daySchedule.end_time);
-        shiftText = `<span style="color:var(--text-primary);">${start} - ${end}</span>`;
+        const shiftLabel = daySchedule.shift_type !== 'regular' ? ` <span style="font-size:10px;color:var(--accent-light);">(${daySchedule.shift_type})</span>` : '';
+        shiftText = `<span style="color:var(--text-primary);">${start} - ${end}${shiftLabel}</span>`;
       }
     }
     
     html += `
-      <div class="schedule-day-row ${isToday ? 'today' : ''}">
+      <div class="schedule-day-row ${isToday ? 'today' : ''} ${isPast && !isToday ? 'past' : ''}">
         <div class="schedule-day-name">${days[i]}</div>
         <div class="schedule-day-date">${date.getMonth() + 1}/${date.getDate()}</div>
         <div class="schedule-day-shift">${shiftText}</div>
