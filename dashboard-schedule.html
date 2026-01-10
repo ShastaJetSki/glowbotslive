@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* ===== INLINE THEME DEFINITIONS ===== */
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="grey"] {
+      --bg-primary: #111111; --bg-secondary: #1a1a1a; --bg-card: #242424; --bg-hover: #2e2e2e;
+      --border-default: #333333; --text-primary: #e5e5e5; --text-secondary: #a3a3a3;
+      --accent-primary: #525252; --accent-light: #737373;
+    }
+    [data-theme="slate"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155;
+      --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8;
+      --accent-primary: #6366f1; --accent-light: #818cf8;
+    }
+    [data-theme="charcoal"] {
+      --bg-primary: #121214; --bg-secondary: #18181b; --bg-card: #27272a; --bg-hover: #3f3f46;
+      --border-default: #3f3f46; --text-primary: #fafafa; --text-secondary: #a1a1aa;
+      --accent-primary: #a1a1aa; --accent-light: #d4d4d8;
+    }
+    [data-theme="midnight"] {
+      --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228;
+      --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4;
+      --accent-primary: #8b5cf6; --accent-light: #a78bfa;
+    }
+    [data-theme="navy"] {
+      --bg-primary: #0a0e1a; --bg-secondary: #0f1526; --bg-card: #182035; --bg-hover: #1f2a45;
+      --border-default: #253352; --text-primary: #e8ecf4; --text-secondary: #9aa5bd;
+      --accent-primary: #4a7cc9; --accent-light: #6b9ae0;
+    }
+    [data-theme="graphite"] {
+      --bg-primary: #0d0d0d; --bg-secondary: #141414; --bg-card: #1f1f1f; --bg-hover: #292929;
+      --border-default: #2e2e2e; --text-primary: #e8e8e8; --text-secondary: #999999;
+      --accent-primary: #4a9eff; --accent-light: #6bb3ff;
+    }
+    [data-theme="ocean"] {
+      --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35;
+      --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5;
+      --accent-primary: #14b8a6; --accent-light: #2dd4bf;
+    }
+    [data-theme="forest"] {
+      --bg-primary: #0a100c; --bg-secondary: #0f1812; --bg-card: #16221a; --bg-hover: #1e2e24;
+      --border-default: #263830; --text-primary: #e5f0e8; --text-secondary: #8faa96;
+      --accent-primary: #22c55e; --accent-light: #4ade80;
+    }
+    [data-theme="obsidian"] {
+      --bg-primary: #050505; --bg-secondary: #0a0a0a; --bg-card: #141414; --bg-hover: #1c1c1c;
+      --border-default: #252525; --text-primary: #e0e0e0; --text-secondary: #888888;
+      --accent-primary: #0ea5e9; --accent-light: #38bdf8;
+    }
+    [data-theme="steel"] {
+      --bg-primary: #0c0f13; --bg-secondary: #12161c; --bg-card: #1a2028; --bg-hover: #242c38;
+      --border-default: #2c3644; --text-primary: #e4e8ed; --text-secondary: #8b95a5;
+      --accent-primary: #64748b; --accent-light: #94a3b8;
+    }
+    [data-theme="espresso"] {
+      --bg-primary: #0f0c0a; --bg-secondary: #161210; --bg-card: #211c18; --bg-hover: #2c2520;
+      --border-default: #382f28; --text-primary: #f0ebe5; --text-secondary: #a89e94;
+      --accent-primary: #a78b6e; --accent-light: #c4a88a;
+    }
+    [data-theme="onyx"] {
+      --bg-primary: #000000; --bg-secondary: #080808; --bg-card: #121212; --bg-hover: #1a1a1a;
+      --border-default: #222222; --text-primary: #f5f5f5; --text-secondary: #8c8c8c;
+      --accent-primary: #06b6d4; --accent-light: #22d3ee;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: var(--bg-primary); }
+    body { 
+      font-family: system-ui; 
+      background: var(--bg-primary); 
+      color: var(--text-primary);
+      padding-bottom: 165px;
+    }
+
+    /* Mobile Header with Hamburger */
+    .mobile-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .mobile-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+    }
+
+    .mobile-menu-toggle {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mobile-header-center {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .header-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .mobile-header-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .mobile-header-content.expanded {
+      max-height: 200px;
+    }
+
+    .mobile-header-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      padding: 8px 12px 12px;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--border-default);
+    }
+
+    .mobile-header-actions button {
+      padding: 10px;
+      font-size: 13px;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-primary);
+      color: var(--text-primary);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .logout-btn {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* Main Tabs */
+    .main-tabs {
+      display: flex;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-default);
+      overflow-x: auto;
+    }
+
+    .main-tab {
+      flex: 1;
+      padding: 14px 12px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      min-width: 80px;
+      transition: all 0.2s;
+    }
+
+    .main-tab.active {
+      color: var(--accent-light);
+      border-bottom-color: var(--accent-primary);
+    }
+
+    .main-tab:hover:not(.active) {
+      background: var(--bg-hover);
+    }
+
+    /* View Controls */
+    .view-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-default);
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .date-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .date-nav-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .date-nav-btn:active {
+      background: var(--bg-hover);
+    }
+
+    .current-date {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-secondary);
+      padding: 4px;
+      border-radius: 8px;
+    }
+
+    .view-btn {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .view-btn.active {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    /* Filters */
+    .filters-bar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      overflow-x: auto;
+    }
+
+    .filter-select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 13px;
+      min-width: 120px;
+    }
+
+    /* Content Area */
+    .content {
+      padding: 16px;
+      background: var(--bg-secondary);
+      min-height: calc(100vh - 300px);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Cards Container */
+    .cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ========== SCHEDULE CARDS - WITH COLLAPSED STATE ========== */
+    .schedule-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px;
+      border-left: 4px solid var(--accent-primary);
+      position: relative;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .schedule-card:hover {
+      border-left-color: var(--accent-light);
+    }
+
+    .schedule-card:active {
+      transform: scale(0.98);
+    }
+
+    /* Collapsed card - compact 3-line view */
+    .schedule-card.collapsed {
+      padding: 12px 16px;
+    }
+    .schedule-card.collapsed .card-header {
+      padding-right: 60px;
+      margin-bottom: 0;
+    }
+    .schedule-card.collapsed .card-subtitle,
+    .schedule-card.collapsed .card-id,
+    .schedule-card.collapsed .card-bottom,
+    .schedule-card.collapsed .card-icon {
+      display: none;
+    }
+    .schedule-card.collapsed .card-top-right {
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .schedule-card.collapsed .card-time {
+      font-size: 13px;
+    }
+    .schedule-card.collapsed .card-title {
+      font-size: 15px;
+    }
+    .schedule-card.collapsed .card-collapsed-info {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .schedule-card:not(.collapsed) .card-collapsed-info {
+      display: none;
+    }
+
+    /* Status-based borders */
+    .schedule-card.status-scheduled { border-left-color: var(--accent-primary); }
+    .schedule-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .schedule-card.status-waiting_parts { border-left-color: #b59410; }
+    .schedule-card.status-awaiting_parts { border-left-color: #b59410; }
+    .schedule-card.status-parts_on_order { border-left-color: #b59410; }
+    .schedule-card.status-ready_for_pickup { border-left-color: #166534; }
+    .schedule-card.status-ready_invoice { border-left-color: #166534; }
+    .schedule-card.status-completed { border-left-color: #166534; }
+    .schedule-card.status-confirmed { border-left-color: var(--accent-primary); }
+    .schedule-card.status-pending { border-left-color: #b59410; }
+    .schedule-card.status-no_show { border-left-color: #7f1d1d; }
+    .schedule-card.status-cancelled { border-left-color: #7f1d1d; }
+    .schedule-card.status-ordered { border-left-color: #b59410; }
+    .schedule-card.status-shipped { border-left-color: var(--accent-primary); }
+    .schedule-card.status-delivered { border-left-color: #166534; }
+    .schedule-card.status-working { border-left-color: var(--accent-primary); }
+    .schedule-card.status-off { border-left-color: var(--text-secondary); }
+    .schedule-card.status-vacation { border-left-color: #b59410; }
+
+    /* Card Top Right - Time + Icon */
+    .card-top-right {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .card-time {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-hover);
+      color: var(--accent-light);
+    }
+
+    .card-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* Card Header */
+    .card-header {
+      padding-right: 80px;
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .card-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 3px;
+    }
+
+    .card-id {
+      font-size: 13px;
+      color: var(--accent-light);
+      font-weight: 600;
+      margin-top: 5px;
+    }
+
+    /* Card Bottom */
+    .card-bottom {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-default);
+    }
+
+    .card-bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .card-bottom-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .card-bottom-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .card-bottom-item.align-right {
+      text-align: right;
+      align-items: flex-end;
+    }
+
+    .card-bottom-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-bottom-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+    }
+
+    .badge-sm {
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+
+    .badge-scheduled, .badge-in_progress { color: var(--text-secondary); border-color: var(--border-default); }
+    .badge-completed, .badge-ready_for_pickup, .badge-ready_invoice, .badge-delivered { color: #4ade80; border-color: #166534; }
+    .badge-waiting_parts, .badge-awaiting_parts, .badge-parts_on_order, .badge-pending, .badge-ordered, .badge-vacation { color: #d4a910; border-color: #b59410; }
+    .badge-cancelled, .badge-no_show { color: #f87171; border-color: #7f1d1d; }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .empty-state-text {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .empty-state-hint {
+      font-size: 14px;
+      opacity: 0.7;
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    /* New Button */
+    .new-btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent-primary);
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .new-btn:active {
+      opacity: 0.8;
+    }
+
+    /* ========== MOBILE ACTION BUTTONS - THEMED ========== */
+    .mobile-action-buttons {
+      display: none;
+      position: fixed;
+      bottom: 152px;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      padding: 8px 8px 0 8px;
+      z-index: 101;
+    }
+
+    .mobile-action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-action-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+      color: var(--accent-light);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+    }
+
+    .mobile-action-btn:hover {
+      background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    }
+
+    .mobile-action-btn:active {
+      transform: scale(0.95);
+      background: color-mix(in srgb, var(--accent-primary) 25%, transparent);
+    }
+
+    /* ========== MOBILE BOTTOM NAV - 3 ROW, 8 BUTTONS, THEMED ========== */
+    .mobile-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      padding: 8px;
+      z-index: 100;
+    }
+
+    .mobile-nav-row {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-nav-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .mobile-nav-row.two-col {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mobile-nav-row.three-col {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+    }
+
+    /* Active button - 60% opacity accent color */
+    .mobile-nav-btn.active {
+      background: color-mix(in srgb, var(--accent-primary) 60%, transparent);
+      border-color: var(--accent-primary);
+      color: var(--text-primary);
+    }
+
+    /* Related buttons - 10% opacity accent using color-mix */
+    .mobile-nav-btn.related {
+      background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+      border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+      color: var(--text-primary);
+    }
+
+    /* Fallback for browsers without color-mix */
+    @supports not (background: color-mix(in srgb, red 50%, blue)) {
+      .mobile-nav-btn.active {
+        background: var(--accent-primary);
+        opacity: 0.6;
+      }
+      .mobile-nav-btn.related {
+        background: var(--bg-hover);
+        border-color: var(--accent-primary);
+        opacity: 0.5;
+      }
+      .mobile-action-btn {
+        background: var(--bg-hover);
+        border-color: var(--accent-primary);
+      }
+    }
+
+    /* Mobile visibility */
+    @media (max-width: 768px) {
+      .mobile-bottom-nav {
+        display: block !important;
+      }
+      .mobile-action-buttons {
+        display: block !important;
+      }
+      body {
+        padding-bottom: 215px;
+      }
+    }
+
+    /* Desktop adjustments */
+    @media (min-width: 769px) {
+      .cards-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 16px;
+      }
+      
+      .mobile-bottom-nav {
+        display: none !important;
+      }
+      
+      .mobile-action-buttons {
+        display: none !important;
+      }
+
+      body {
+        padding-bottom: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header with Hamburger Menu -->
+<div class="mobile-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
+    <div class="mobile-header-center">
+      <div class="header-title">Scheduler</div>
+    </div>
+    <a class="logout-btn" onclick="logout()">Logout</a>
+  </div>
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="location.href='dashboard-settings.html'">Settings</button>
+      <button onclick="location.href='support.html'">Support</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Tabs -->
+<div class="main-tabs">
+  <button class="main-tab active" onclick="switchTab('service')" id="tab-service">Service</button>
+  <button class="main-tab" onclick="switchTab('sales')" id="tab-sales">Sales</button>
+  <button class="main-tab" onclick="switchTab('parts')" id="tab-parts">Parts</button>
+  <button class="main-tab" onclick="switchTab('employees')" id="tab-employees">Employees</button>
+</div>
+
+<!-- View Controls -->
+<div class="view-controls">
+  <div class="date-nav">
+    <button class="date-nav-btn" onclick="changeDate(-1)">←</button>
+    <span class="current-date" id="currentDate">Today</span>
+    <button class="date-nav-btn" onclick="changeDate(1)">→</button>
+  </div>
+  
+  <div class="view-toggle">
+    <button class="view-btn active" onclick="setView('day')" id="view-day">Day</button>
+    <button class="view-btn" onclick="setView('week')" id="view-week">Week</button>
+    <button class="view-btn" onclick="setView('month')" id="view-month">Month</button>
+  </div>
+  
+  <button class="new-btn" onclick="createNew()" id="newBtn">+ New</button>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar" id="filtersBar">
+  <select class="filter-select" id="filterTech" onchange="applyFilters()">
+    <option value="">All Technicians</option>
+  </select>
+  <select class="filter-select" id="filterStatus" onchange="applyFilters()">
+    <option value="">All Statuses</option>
+    <option value="scheduled">Scheduled</option>
+    <option value="in_progress">In Progress</option>
+    <option value="waiting_parts">Waiting Parts</option>
+    <option value="completed">Completed</option>
+  </select>
+</div>
+
+<!-- Content -->
+<div class="content">
+  <!-- Service Tab -->
+  <div class="tab-content active" id="content-service">
+    <div class="cards-container" id="serviceCards">
+      <div class="loading">Loading service schedule...</div>
+    </div>
+  </div>
+  
+  <!-- Sales Tab -->
+  <div class="tab-content" id="content-sales">
+    <div class="cards-container" id="salesCards">
+      <div class="loading">Loading sales appointments...</div>
+    </div>
+  </div>
+  
+  <!-- Parts Tab -->
+  <div class="tab-content" id="content-parts">
+    <div class="cards-container" id="partsCards">
+      <div class="loading">Loading parts orders...</div>
+    </div>
+  </div>
+  
+  <!-- Employees Tab -->
+  <div class="tab-content" id="content-employees">
+    <div class="cards-container" id="employeeCards">
+      <div class="loading">Loading employee schedules...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Action Buttons - Above Nav -->
+<div class="mobile-action-buttons">
+  <div class="mobile-action-grid">
+    <button class="mobile-action-btn" onclick="createNew()">+ New</button>
+    <button class="mobile-action-btn" onclick="location.href='work-order-new.html'">New WO</button>
+    <button class="mobile-action-btn" onclick="location.href='dashboard-fleet-settings.html'">Fleet</button>
+  </div>
+</div>
+
+<!-- Mobile Bottom Nav - 3 Row, 8 Buttons with Themed Opacity -->
+<div class="mobile-bottom-nav">
+  <!-- Row 1: Business, Search -->
+  <div class="mobile-nav-row two-col">
+    <a href="dashboard-business.html" class="mobile-nav-btn related">Business</a>
+    <a href="dashboard-search.html" class="mobile-nav-btn">Search</a>
+  </div>
+  <!-- Row 2: Scheduler (active), Settings, Support -->
+  <div class="mobile-nav-row three-col">
+    <a href="dashboard-scheduling.html" class="mobile-nav-btn active">Scheduler</a>
+    <a href="dashboard-settings.html" class="mobile-nav-btn">Settings</a>
+    <a href="support.html" class="mobile-nav-btn">Support</a>
+  </div>
+  <!-- Row 3: Service, Parts, Sales (related) -->
+  <div class="mobile-nav-row three-col">
+    <a href="dashboard-service.html" class="mobile-nav-btn related">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn related">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn related">Sales</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// State
+let currentTab = 'service';
+let currentView = 'day';
+let currentDate = new Date();
+let dataCache = {
+  service: null,
+  sales: null,
+  parts: null,
+  employees: null
+};
+let customers = {};
+let vehicles = {};
+let employees = [];
+
+// Icons - Monochromatic SVGs
+const icons = {
+  service: `<svg viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>`,
+  sales: `<svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>`,
+  parts: `<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14h-2v-4H6v-2h4V7h2v4h4v2h-4v4z"/></svg>`,
+  employees: `<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`
+};
+
+// Theme
+function loadTheme() {
+  const savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+loadTheme();
+
+// Mobile menu toggle
+function toggleMobileMenu() {
+  document.getElementById('mobileHeaderContent').classList.toggle('expanded');
+}
+
+// Auth
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refreshToken = localStorage.getItem('sb_refresh_token');
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken });
+      if (error || !data.session) {
+        window.location.href = 'login.html';
+        return null;
+      }
+      return data.session;
+    }
+    window.location.href = 'login.html';
+    return null;
+  }
+  return session;
+}
+
+function logout() {
+  sb.auth.signOut();
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  window.location.href = 'login.html';
+}
+
+// Tab switching
+function switchTab(tab) {
+  currentTab = tab;
+  
+  // Update tab buttons
+  document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${tab}`).classList.add('active');
+  
+  // Update content
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(`content-${tab}`).classList.add('active');
+  
+  // Update filters based on tab
+  updateFiltersForTab(tab);
+  
+  // Update new button text
+  const newBtn = document.getElementById('newBtn');
+  const labels = { service: '+ Work Order', sales: '+ Appointment', parts: '+ Parts Order', employees: '+ Shift' };
+  newBtn.textContent = labels[tab];
+  
+  // Load data if not cached
+  if (!dataCache[tab]) {
+    loadTabData(tab);
+  }
+}
+
+function updateFiltersForTab(tab) {
+  const filterTech = document.getElementById('filterTech');
+  const filterStatus = document.getElementById('filterStatus');
+  
+  // Update status options based on tab
+  const statusOptions = {
+    service: [
+      { value: '', label: 'All Statuses' },
+      { value: 'scheduled', label: 'Scheduled' },
+      { value: 'in_progress', label: 'In Progress' },
+      { value: 'waiting_parts', label: 'Waiting Parts' },
+      { value: 'completed', label: 'Completed' }
+    ],
+    sales: [
+      { value: '', label: 'All Statuses' },
+      { value: 'scheduled', label: 'Scheduled' },
+      { value: 'confirmed', label: 'Confirmed' },
+      { value: 'completed', label: 'Completed' },
+      { value: 'no_show', label: 'No Show' },
+      { value: 'cancelled', label: 'Cancelled' }
+    ],
+    parts: [
+      { value: '', label: 'All Statuses' },
+      { value: 'ordered', label: 'Ordered' },
+      { value: 'shipped', label: 'Shipped' },
+      { value: 'delivered', label: 'Delivered' }
+    ],
+    employees: [
+      { value: '', label: 'All Statuses' },
+      { value: 'working', label: 'Working' },
+      { value: 'off', label: 'Off' },
+      { value: 'vacation', label: 'Vacation' }
+    ]
+  };
+  
+  filterStatus.innerHTML = statusOptions[tab].map(o => 
+    `<option value="${o.value}">${o.label}</option>`
+  ).join('');
+  
+  // Show/hide tech filter
+  filterTech.style.display = (tab === 'service' || tab === 'employees') ? 'block' : 'none';
+}
+
+// Date navigation
+function changeDate(delta) {
+  if (currentView === 'day') {
+    currentDate.setDate(currentDate.getDate() + delta);
+  } else if (currentView === 'week') {
+    currentDate.setDate(currentDate.getDate() + (delta * 7));
+  } else {
+    currentDate.setMonth(currentDate.getMonth() + delta);
+  }
+  updateDateDisplay();
+  dataCache[currentTab] = null; // Clear cache
+  loadTabData(currentTab);
+}
+
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`view-${view}`).classList.add('active');
+  updateDateDisplay();
+  dataCache[currentTab] = null; // Clear cache
+  loadTabData(currentTab);
+}
+
+function updateDateDisplay() {
+  const display = document.getElementById('currentDate');
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const current = new Date(currentDate);
+  current.setHours(0,0,0,0);
+  
+  if (currentView === 'day') {
+    if (current.getTime() === today.getTime()) {
+      display.textContent = 'Today';
+    } else {
+      display.textContent = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  } else if (currentView === 'week') {
+    const weekStart = new Date(currentDate);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    display.textContent = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  } else {
+    display.textContent = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+}
+
+// Data loading
+async function loadTabData(tab) {
+  const containerId = `${tab}Cards`;
+  const container = document.getElementById(containerId);
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  
+  const dateRange = getDateRange();
+  
+  try {
+    switch(tab) {
+      case 'service':
+        await loadServiceData(dateRange);
+        break;
+      case 'sales':
+        await loadSalesData(dateRange);
+        break;
+      case 'parts':
+        await loadPartsData(dateRange);
+        break;
+      case 'employees':
+        await loadEmployeeData(dateRange);
+        break;
+    }
+  } catch (err) {
+    console.error(`Error loading ${tab} data:`, err);
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Error loading data</div><div class="empty-state-hint">${err.message}</div></div>`;
+  }
+}
+
+function getDateRange() {
+  const start = new Date(currentDate);
+  const end = new Date(currentDate);
+  
+  if (currentView === 'day') {
+    start.setHours(0,0,0,0);
+    end.setHours(23,59,59,999);
+  } else if (currentView === 'week') {
+    start.setDate(start.getDate() - start.getDay());
+    start.setHours(0,0,0,0);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23,59,59,999);
+  } else {
+    start.setDate(1);
+    start.setHours(0,0,0,0);
+    end.setMonth(end.getMonth() + 1);
+    end.setDate(0);
+    end.setHours(23,59,59,999);
+  }
+  
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+async function loadServiceData(dateRange) {
+  const { data, error } = await sb
+    .from('work_orders')
+    .select('*')
+    .gte('scheduled_start', dateRange.start)
+    .lte('scheduled_start', dateRange.end)
+    .order('scheduled_start', { ascending: true });
+  
+  if (error) throw error;
+  
+  dataCache.service = data || [];
+  await loadRelatedData(data);
+  renderServiceCards(data);
+}
+
+async function loadSalesData(dateRange) {
+  const { data, error } = await sb
+    .from('sales_appointments')
+    .select('*')
+    .gte('appointment_date', dateRange.start.split('T')[0])
+    .lte('appointment_date', dateRange.end.split('T')[0])
+    .order('appointment_date', { ascending: true });
+  
+  if (error) throw error;
+  
+  dataCache.sales = data || [];
+  await loadRelatedData(data);
+  renderSalesCards(data);
+}
+
+async function loadPartsData(dateRange) {
+  const { data, error } = await sb
+    .from('parts_orders')
+    .select('*')
+    .gte('expected_date', dateRange.start.split('T')[0])
+    .lte('expected_date', dateRange.end.split('T')[0])
+    .order('expected_date', { ascending: true });
+  
+  if (error) {
+    dataCache.parts = [];
+    renderPartsCards([]);
+    return;
+  }
+  
+  dataCache.parts = data || [];
+  renderPartsCards(data);
+}
+
+async function loadEmployeeData(dateRange) {
+  const { data: schedData, error: schedError } = await sb
+    .from('employee_schedules')
+    .select('*')
+    .gte('schedule_date', dateRange.start.split('T')[0])
+    .lte('schedule_date', dateRange.end.split('T')[0])
+    .order('schedule_date', { ascending: true });
+  
+  if (schedError) {
+    const { data: empData } = await sb.from('employees').select('*');
+    employees = empData || [];
+    dataCache.employees = employees.map(e => ({ ...e, status: 'working', schedule_date: currentDate.toISOString().split('T')[0] }));
+    renderEmployeeCards(dataCache.employees);
+    return;
+  }
+  
+  dataCache.employees = schedData || [];
+  renderEmployeeCards(schedData);
+}
+
+async function loadRelatedData(data) {
+  if (!data || data.length === 0) return;
+  
+  const customerIds = [...new Set(data.map(d => d.customer_id).filter(Boolean))];
+  if (customerIds.length > 0) {
+    const { data: custData } = await sb.from('customers').select('*').in('customer_id', customerIds);
+    (custData || []).forEach(c => { customers[c.customer_id] = c; });
+  }
+  
+  const vehicleIds = [...new Set(data.map(d => d.vehicle_id).filter(Boolean))];
+  if (vehicleIds.length > 0) {
+    const { data: vehData } = await sb.from('vehicles').select('*').in('vehicle_id', vehicleIds);
+    (vehData || []).forEach(v => { vehicles[v.vehicle_id] = v; });
+  }
+  
+  if (employees.length === 0) {
+    const { data: empData } = await sb.from('employees').select('*');
+    employees = empData || [];
+    
+    const filterTech = document.getElementById('filterTech');
+    filterTech.innerHTML = '<option value="">All Technicians</option>' + 
+      employees.map(e => `<option value="${e.employee_id}">${e.first_name || ''} ${e.last_name || ''}</option>`).join('');
+  }
+}
+
+// Format helpers
+function formatTime(dateStr) {
+  if (!dateStr) return '--';
+  const d = new Date(dateStr);
+  const hours = d.getHours();
+  const mins = d.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  return `${hours % 12 || 12}:${mins} ${ampm}`;
+}
+
+function formatCurrency(amount) {
+  return '$' + (parseFloat(amount) || 0).toLocaleString();
+}
+
+// Render functions - ALL CARDS DEFAULT COLLAPSED
+function renderServiceCards(data) {
+  const container = document.getElementById('serviceCards');
+  
+  if (!data || data.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🔧</div>
+        <div class="empty-state-text">No work orders scheduled</div>
+        <div class="empty-state-hint">Click "+ Work Order" to create one</div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = data.map(wo => {
+    const customer = customers[wo.customer_id] || {};
+    const vehicle = vehicles[wo.vehicle_id] || {};
+    const tech = employees.find(e => e.employee_id === wo.assigned_employee_id) || {};
+    
+    const customerName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown';
+    const vehicleName = `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown Vehicle';
+    const techName = `${tech.first_name || ''} ${tech.last_name || ''}`.trim() || 'Unassigned';
+    const status = wo.status || 'scheduled';
+    const priority = wo.priority || 'normal';
+    const woNum = wo.wo_number || wo.work_order_id?.slice(0,8) || '--';
+    const total = formatCurrency(wo.total_amount);
+    
+    return `
+      <div class="schedule-card status-${status} collapsed" onclick="location.href='work-order-edit.html?id=${wo.work_order_id}'">
+        <div class="card-top-right">
+          <span class="card-time">${formatTime(wo.scheduled_start)}</span>
+          <div class="card-icon">${icons.service}</div>
+        </div>
+        <div class="card-header">
+          <div class="card-title">${customerName}</div>
+          <div class="card-collapsed-info">
+            <span>${vehicleName}</span>
+            <span>•</span>
+            <span class="badge badge-${status} badge-sm">${status.replace(/_/g, ' ')}</span>
+            <span>•</span>
+            <span>${total}</span>
+          </div>
+          <div class="card-subtitle">${vehicleName}</div>
+          <div class="card-id">WO-${woNum}</div>
+        </div>
+        <div class="card-bottom">
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="card-bottom-label">Tech</span>
+              <span class="card-bottom-value">${techName}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="card-bottom-label">Total</span>
+              <span class="card-bottom-value">${total}</span>
+            </div>
+          </div>
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="badge badge-${status}">${status.replace(/_/g, ' ')}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="badge">${priority}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSalesCards(data) {
+  const container = document.getElementById('salesCards');
+  
+  if (!data || data.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">💰</div>
+        <div class="empty-state-text">No sales appointments</div>
+        <div class="empty-state-hint">Click "+ Appointment" to create one</div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = data.map(apt => {
+    const customer = customers[apt.customer_id] || {};
+    const customerName = apt.customer_name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown';
+    const status = apt.status || 'scheduled';
+    const aptType = apt.appointment_type || 'General';
+    const aptId = apt.appointment_id?.slice(0,8) || '--';
+    
+    return `
+      <div class="schedule-card status-${status} collapsed" onclick="location.href='sales-appointment-edit.html?id=${apt.appointment_id}'">
+        <div class="card-top-right">
+          <span class="card-time">${formatTime(apt.appointment_time || apt.appointment_date)}</span>
+          <div class="card-icon">${icons.sales}</div>
+        </div>
+        <div class="card-header">
+          <div class="card-title">${customerName}</div>
+          <div class="card-collapsed-info">
+            <span>${aptType}</span>
+            <span>•</span>
+            <span class="badge badge-${status} badge-sm">${status.replace(/_/g, ' ')}</span>
+            <span>•</span>
+            <span>${apt.vehicle_interest || '--'}</span>
+          </div>
+          <div class="card-subtitle">${aptType}</div>
+          <div class="card-id">APT-${aptId}</div>
+        </div>
+        <div class="card-bottom">
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="card-bottom-label">Phone</span>
+              <span class="card-bottom-value">${apt.phone || customer.phone || '--'}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="card-bottom-label">Interest</span>
+              <span class="card-bottom-value">${apt.vehicle_interest || '--'}</span>
+            </div>
+          </div>
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="badge badge-${status}">${status.replace(/_/g, ' ')}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="badge">${apt.source || 'Walk-in'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPartsCards(data) {
+  const container = document.getElementById('partsCards');
+  
+  if (!data || data.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <div class="empty-state-text">No parts orders expected</div>
+        <div class="empty-state-hint">Click "+ Parts Order" to track one</div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = data.map(order => {
+    const status = order.status || 'ordered';
+    const orderId = order.order_id?.slice(0,8) || order.po_number || '--';
+    const cost = formatCurrency(order.total_cost);
+    
+    return `
+      <div class="schedule-card status-${status} collapsed" onclick="location.href='parts-order-edit.html?id=${order.order_id}'">
+        <div class="card-top-right">
+          <span class="card-time">${order.expected_date || '--'}</span>
+          <div class="card-icon">${icons.parts}</div>
+        </div>
+        <div class="card-header">
+          <div class="card-title">${order.vendor_name || 'Unknown Vendor'}</div>
+          <div class="card-collapsed-info">
+            <span>${order.part_description || order.description || 'Parts'}</span>
+            <span>•</span>
+            <span class="badge badge-${status} badge-sm">${status}</span>
+            <span>•</span>
+            <span>${cost}</span>
+          </div>
+          <div class="card-subtitle">${order.part_description || order.description || 'Parts Order'}</div>
+          <div class="card-id">PO-${orderId}</div>
+        </div>
+        <div class="card-bottom">
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="card-bottom-label">For WO</span>
+              <span class="card-bottom-value">${order.work_order_ref || '--'}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="card-bottom-label">Cost</span>
+              <span class="card-bottom-value">${cost}</span>
+            </div>
+          </div>
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="badge badge-${status}">${status}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="badge">${order.qty || 1} items</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderEmployeeCards(data) {
+  const container = document.getElementById('employeeCards');
+  
+  if (!data || data.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">👤</div>
+        <div class="empty-state-text">No employee schedules</div>
+        <div class="empty-state-hint">Click "+ Shift" to add one</div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = data.map(emp => {
+    const status = emp.status || 'working';
+    const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+    const empId = emp.employee_id?.slice(0,8) || '--';
+    
+    return `
+      <div class="schedule-card status-${status} collapsed">
+        <div class="card-top-right">
+          <span class="card-time">${emp.start_time || '9:00 AM'}</span>
+          <div class="card-icon">${icons.employees}</div>
+        </div>
+        <div class="card-header">
+          <div class="card-title">${empName}</div>
+          <div class="card-collapsed-info">
+            <span>${emp.role || 'Technician'}</span>
+            <span>•</span>
+            <span class="badge badge-${status} badge-sm">${status}</span>
+            <span>•</span>
+            <span>${emp.hours || '8'}h</span>
+          </div>
+          <div class="card-subtitle">${emp.role || 'Technician'}</div>
+          <div class="card-id">EMP-${empId}</div>
+        </div>
+        <div class="card-bottom">
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="card-bottom-label">Shift</span>
+              <span class="card-bottom-value">${emp.shift_type || 'Full Day'}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="card-bottom-label">Hours</span>
+              <span class="card-bottom-value">${emp.hours || '8'}h</span>
+            </div>
+          </div>
+          <div class="card-bottom-row">
+            <div class="card-bottom-item">
+              <span class="badge badge-${status}">${status}</span>
+            </div>
+            <div class="card-bottom-item align-right">
+              <span class="badge">${emp.department || 'Service'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Filters
+function applyFilters() {
+  const techId = document.getElementById('filterTech').value;
+  const status = document.getElementById('filterStatus').value;
+  
+  let data = dataCache[currentTab] || [];
+  
+  if (techId) {
+    data = data.filter(d => d.assigned_employee_id === techId || d.employee_id === techId);
+  }
+  
+  if (status) {
+    data = data.filter(d => d.status === status);
+  }
+  
+  switch(currentTab) {
+    case 'service': renderServiceCards(data); break;
+    case 'sales': renderSalesCards(data); break;
+    case 'parts': renderPartsCards(data); break;
+    case 'employees': renderEmployeeCards(data); break;
+  }
+}
+
+// Create new
+function createNew() {
+  const urls = {
+    service: 'work-order-new.html',
+    sales: 'sales-appointment-new.html',
+    parts: 'parts-order-new.html',
+    employees: 'employee-schedule-new.html'
+  };
+  location.href = urls[currentTab];
+}
+
+// Init
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const tabParam = urlParams.get('tab');
+  
+  document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  
+  const targetTab = (tabParam && ['service', 'sales', 'parts', 'employees'].includes(tabParam)) ? tabParam : 'service';
+  currentTab = targetTab;
+  
+  document.getElementById(`tab-${targetTab}`).classList.add('active');
+  document.getElementById(`content-${targetTab}`).classList.add('active');
+  
+  updateFiltersForTab(targetTab);
+  
+  const newBtn = document.getElementById('newBtn');
+  const labels = { service: '+ Work Order', sales: '+ Appointment', parts: '+ Parts Order', employees: '+ Shift' };
+  newBtn.textContent = labels[targetTab];
+  
+  updateDateDisplay();
+  await loadTabData(currentTab);
+}
+
+init();
+</script>
+
+</body>
+</html>
