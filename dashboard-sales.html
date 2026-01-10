@@ -575,15 +575,8 @@
     .item-card.compact {
       padding: 10px 14px;
       border-left-width: 3px;
+      cursor: pointer;
     }
-    .item-card.compact .item-card-type,
-    .item-card.compact .item-card-time { display: none; }
-    .item-card.compact .item-card-header { padding-right: 0; margin-bottom: 0; }
-    .item-card.compact .item-card-icon { display: none; }
-    .item-card.compact .item-card-details { display: none; }
-    .item-card.compact .item-card-actions { display: none; }
-    .item-card.compact .compact-line { display: block !important; }
-    .compact-line { display: none; }
     .compact-line-1 {
       display: flex;
       justify-content: space-between;
@@ -603,6 +596,13 @@
     
     /* Today's Appointments Cards Container */
     .today-appts-cards-container {
+      background: var(--bg-card, #1a2535);
+      border-radius: 0 0 8px 8px;
+      padding: 12px;
+    }
+    
+    /* Featured Inventory Cards Container */
+    .featured-cards-container {
       background: var(--bg-card, #1a2535);
       border-radius: 0 0 8px 8px;
       padding: 12px;
@@ -667,7 +667,6 @@
       
       .mobile-hide-title { display:none !important; }
       .tab-nav { display:none !important; }
-      .featured-inv-card { display:none !important; }
       
       #dashboard { display:flex; flex-direction:column; }
       #dashboard .todays-appts-section { order:1; }
@@ -685,20 +684,12 @@
       .section-header-mobile { display:block !important; }
       .cards-container { display:block !important; }
       
-      .todays-appts-card .table-container { display:none !important; }
-      .todays-appts-card .mobile-cards-view { display:block !important; }
-      
-      .featured-inv-card .desktop-featured-table { display:none !important; }
-      .featured-inv-card .mobile-cards-view { display:block !important; }
-      
       .section { display:block !important; margin-top:24px; padding-top:16px; border-top:1px solid var(--border-default, #223044); scroll-margin-top: 70px; }
       .section:first-of-type { margin-top:0; padding-top:0; border-top:none; }
       #reports.desktop-only-reports { display:none !important; }
       
       #appointments { display:none !important; }
       #inventory { display:none !important; }
-      
-      .featured-inv-card { display:block !important; }
       
       .mobile-section-title { display:block !important; scroll-margin-top: 70px; }
       .mobile-section-header { display:flex !important; scroll-margin-top: 70px; }
@@ -728,6 +719,22 @@
         display: block !important;
       }
       .today-appts-cards-container {
+        border-radius: 0 0 8px 8px;
+      }
+      
+      /* Featured section - always visible on desktop */
+      #featuredInvHeader { display: none !important; }
+      #featuredInvTitleDesktop { display: flex !important; }
+      #featuredInvContent { 
+        max-height: none !important; 
+        margin-bottom: 0; 
+        display: block !important;
+      }
+      #featuredInvContent.collapsed { 
+        max-height: none !important; 
+        display: block !important;
+      }
+      .featured-cards-container {
         border-radius: 0 0 8px 8px;
       }
       
@@ -835,33 +842,27 @@
         </div>
       </div>
 
-      <!-- Featured Inventory -->
-      <div class="card featured-inv-card">
-        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <!-- Featured Inventory - Collapsible with dual expand modes -->
+      <div class="card" style="padding:0; margin-bottom:16px;">
+        <!-- Desktop title -->
+        <div class="card-title" style="padding:16px 16px 0; display:none; justify-content:space-between; align-items:center;" id="featuredInvTitleDesktop">
           <span>Featured & Specials</span>
           <button class="btn btn-secondary" onclick="openManageFeaturedModal()" style="padding:6px 12px; font-size:12px;">Manage</button>
         </div>
         
-        <div class="mobile-cards-view" id="featuredInvCards"></div>
-        
-        <div class="table-container desktop-featured-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Stock #</th>
-                <th>Year</th>
-                <th>Make</th>
-                <th>Model</th>
-                <th>Color</th>
-                <th>Asking Price</th>
-                <th>Promo</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="featuredInvTable">
-              <tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-secondary);">No featured inventory</td></tr>
-            </tbody>
-          </table>
+        <!-- Mobile collapsible header -->
+        <div class="section-header collapsed" onclick="toggleFeaturedSection(event)" id="featuredInvHeader">
+          <div class="section-header-title">
+            Featured & Specials <span class="count-badge" id="featuredInvCount">0</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="expand-all-btn" onclick="toggleFeaturedExpandPreference(event)" title="Toggle card size">☐</button>
+            <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openManageFeaturedModal()" style="padding:6px 12px; font-size:12px;">Manage</button>
+            <div class="section-header-icon">▼</div>
+          </div>
+        </div>
+        <div class="section-content collapsed" id="featuredInvContent">
+          <div class="featured-cards-container" id="featuredInvCards"></div>
         </div>
       </div>
 
@@ -1450,6 +1451,67 @@ function openApptDetailFromCard(apptId) {
   }
 }
 
+// Featured inventory expand preference (compact 3-line vs full)
+let featuredExpandedMode = false;
+
+function toggleFeaturedExpandPreference(event) {
+  event.stopPropagation();
+  featuredExpandedMode = !featuredExpandedMode;
+  
+  // Update button active state
+  const btn = event.currentTarget;
+  if (featuredExpandedMode) {
+    btn.classList.add('active');
+  } else {
+    btn.classList.remove('active');
+  }
+  
+  // Re-render cards if section is open
+  const content = document.getElementById('featuredInvContent');
+  if (!content.classList.contains('collapsed')) {
+    renderFeaturedInventoryCards();
+    content.style.maxHeight = content.scrollHeight + 'px';
+  }
+}
+
+function toggleFeaturedSection(event) {
+  // Don't toggle if clicking buttons
+  if (event.target.closest('.expand-all-btn') || event.target.closest('.btn')) return;
+  
+  const content = document.getElementById('featuredInvContent');
+  const header = document.getElementById('featuredInvHeader');
+  const wasCollapsed = content.classList.contains('collapsed');
+  
+  content.classList.toggle('collapsed');
+  header.classList.toggle('collapsed');
+  
+  if (wasCollapsed) {
+    // Opening - render cards with current preference
+    renderFeaturedInventoryCards();
+    content.style.maxHeight = content.scrollHeight + 'px';
+    setTimeout(() => header.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  } else {
+    content.style.maxHeight = '0px';
+  }
+}
+
+function openFeaturedDetailFromCard(inventoryId) {
+  // For compact card clicks - just expand the section to full view
+  const item = inventory.find(i => i.inventory_id === inventoryId);
+  if (!item) return;
+  
+  // Toggle to expanded mode and re-render
+  featuredExpandedMode = true;
+  const btn = document.querySelector('#featuredInvHeader .expand-all-btn');
+  if (btn) btn.classList.add('active');
+  
+  renderFeaturedInventoryCards();
+  const content = document.getElementById('featuredInvContent');
+  if (content && !content.classList.contains('collapsed')) {
+    content.style.maxHeight = content.scrollHeight + 'px';
+  }
+}
+
 function openInventoryModal() {
   document.getElementById('inventoryModal').style.display = 'block';
 }
@@ -1500,7 +1562,6 @@ async function toggleFeatured(inventoryId) {
     await sb.from('sales_inventory').update({ is_featured: newFeatured, promo_type: newFeatured ? promoType : null }).eq('inventory_id', inventoryId);
   } catch (e) { console.log('Featured update:', e); }
   renderAvailableForFeatured(document.getElementById('featuredSearchInput')?.value || '');
-  renderFeaturedInventory();
   renderFeaturedInventoryCards();
 }
 
@@ -1553,7 +1614,6 @@ async function loadData() {
 function renderAll() {
   renderTodayAppointmentCards();
   renderAllAppointments();
-  renderFeaturedInventory();
   renderFeaturedInventoryCards();
   renderFullInventory();
   populateEmployeeDropdown();
@@ -1565,17 +1625,65 @@ function renderFeaturedInventoryCards() {
   const container = document.getElementById('featuredInvCards');
   if (!container) return;
   const featured = inventory.filter(i => i.is_featured && i.status === 'available');
+  
+  // Update count badge
+  const countBadge = document.getElementById('featuredInvCount');
+  if (countBadge) countBadge.textContent = featured.length;
+  
   if (!featured.length) {
     container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-secondary);">No featured inventory. Tap "Manage" to add specials.</div>';
     return;
   }
-  container.innerHTML = featured.map(i => createFeaturedCard(i)).join('');
+  
+  // On desktop always show full cards, on mobile use featuredExpandedMode preference
+  const isMobile = window.innerWidth <= 768;
+  const useCompact = isMobile ? !featuredExpandedMode : false;
+  
+  container.innerHTML = featured.map(i => createFeaturedCard(i, useCompact)).join('');
 }
 
-function createFeaturedCard(i) {
+function createFeaturedCard(i, compact = false) {
   const vehicleIcon = `<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>`;
   const promoLabel = { 'featured': 'FEATURED', 'special': 'SPECIAL DEAL', 'sale': 'ON SALE', 'clearance': 'CLEARANCE' }[i.promo_type] || 'FEATURED';
-  return `<div class="item-card card-inventory" style="border-left-color:#f59e0b;"><span class="item-card-type" style="background:#92400e; color:#fbbf24;">${promoLabel}</span><div class="item-card-header"><div style="display:flex; align-items:flex-start;"><div class="item-card-icon" style="background:#164e63; color:#22d3ee;">${vehicleIcon}</div><div><div class="item-card-title">${i.year} ${i.make} ${i.model}</div><div class="item-card-subtitle">Stock #${i.stock_number} ${i.trim_level ? '• ' + i.trim_level : ''}</div></div></div></div><div style="margin:12px 0; padding:12px; background:var(--bg-secondary); border-radius:8px; text-align:center;"><div style="font-size:11px; color:var(--text-secondary); text-transform:uppercase;">Special Price</div><div style="font-size:24px; font-weight:700; color:#fbbf24;">$${(i.asking_price || 0).toLocaleString()}</div></div><div class="item-card-details"><div class="item-card-detail"><span class="item-card-detail-label">Color: </span><span class="item-card-detail-value">${i.color || '-'}</span></div><div class="item-card-detail"><span class="item-card-detail-label">Miles: </span><span class="item-card-detail-value">${(i.mileage || 0).toLocaleString()}</span></div></div></div>`;
+  
+  if (compact) {
+    // Compact 3-line card
+    return `<div class="item-card card-inventory compact" style="border-left-color:#f59e0b;" onclick="openFeaturedDetailFromCard('${i.inventory_id}')">
+      <div class="compact-line-1">
+        <span class="name">${i.year} ${i.make} ${i.model}</span>
+        <span class="time" style="color:#fbbf24;">$${(i.asking_price || 0).toLocaleString()}</span>
+      </div>
+      <div class="compact-line-2">
+        <span>Stock #${i.stock_number}</span>
+        <span>•</span>
+        <span class="badge badge-warning">${promoLabel}</span>
+        <span>•</span>
+        <span>${i.color || '-'}</span>
+      </div>
+    </div>`;
+  }
+  
+  // Full expanded card
+  return `<div class="item-card card-inventory" style="border-left-color:#f59e0b;">
+    <span class="item-card-type" style="background:#92400e; color:#fbbf24;">${promoLabel}</span>
+    <div class="item-card-header">
+      <div style="display:flex; align-items:flex-start;">
+        <div class="item-card-icon" style="background:#164e63; color:#22d3ee;">${vehicleIcon}</div>
+        <div>
+          <div class="item-card-title">${i.year} ${i.make} ${i.model}</div>
+          <div class="item-card-subtitle">Stock #${i.stock_number} ${i.trim_level ? '• ' + i.trim_level : ''}</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin:12px 0; padding:12px; background:var(--bg-secondary); border-radius:8px; text-align:center;">
+      <div style="font-size:11px; color:var(--text-secondary); text-transform:uppercase;">Special Price</div>
+      <div style="font-size:24px; font-weight:700; color:#fbbf24;">$${(i.asking_price || 0).toLocaleString()}</div>
+    </div>
+    <div class="item-card-details">
+      <div class="item-card-detail"><span class="item-card-detail-label">Color: </span><span class="item-card-detail-value">${i.color || '-'}</span></div>
+      <div class="item-card-detail"><span class="item-card-detail-label">Miles: </span><span class="item-card-detail-value">${(i.mileage || 0).toLocaleString()}</span></div>
+    </div>
+  </div>`;
 }
 
 function renderTodayAppointmentCards() {
@@ -1614,25 +1722,26 @@ function renderAppointmentCards(filtered = null) {
 function createAppointmentCard(a, compact = false) {
   const userIcon = `<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
   const phoneIcon = `<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>`;
-  const compactClass = compact ? ' compact' : '';
   
-  // Compact 3-line view
-  const compactLines = `
-    <div class="compact-line compact-line-1">
-      <span class="name">${a.customer_name}</span>
-      <span class="time">${formatTime(a.appointment_time)}</span>
-    </div>
-    <div class="compact-line compact-line-2">
-      <span>${a.vehicle_interest || 'General inquiry'}</span>
-      <span>•</span>
-      <span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span>
-      <span>•</span>
-      <span>${a.appointment_type || 'Consultation'}</span>
-    </div>
-  `;
+  if (compact) {
+    // Compact 3-line card - completely different structure
+    return `<div class="item-card card-appointment status-${a.status} compact" onclick="openApptDetailFromCard('${a.appointment_id}')">
+      <div class="compact-line-1">
+        <span class="name">${a.customer_name}</span>
+        <span class="time">${formatTime(a.appointment_time)}</span>
+      </div>
+      <div class="compact-line-2">
+        <span>${a.vehicle_interest || 'General inquiry'}</span>
+        <span>•</span>
+        <span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span>
+        <span>•</span>
+        <span>${a.appointment_type || 'Consultation'}</span>
+      </div>
+    </div>`;
+  }
   
-  return `<div class="item-card card-appointment status-${a.status}${compactClass}" onclick="${compact ? `openApptDetailFromCard('${a.appointment_id}')` : ''}">
-    ${compactLines}
+  // Full expanded card
+  return `<div class="item-card card-appointment status-${a.status}">
     <span class="item-card-time">${formatTime(a.appointment_time)}</span>
     <div class="item-card-header">
       <div style="display:flex; align-items:flex-start;">
@@ -1717,14 +1826,6 @@ function renderAllAppointments() {
   if (filter !== 'all') filtered = appointments.filter(a => a.status === filter);
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-secondary);">No appointments found</td></tr>'; return; }
   tbody.innerHTML = filtered.map(a => `<tr><td>${formatDate(a.appointment_date)}</td><td>${formatTime(a.appointment_time)}</td><td><strong>${a.customer_name}</strong></td><td>${a.customer_phone || '-'}</td><td>${a.appointment_type || 'Consultation'}</td><td>${a.vehicle_interest || '-'}</td><td><span class="badge badge-${getStatusBadge(a.status)}">${a.status}</span></td><td>${a.status === 'scheduled' ? `<button class="btn btn-sm btn-success" onclick="updateApptStatus('${a.appointment_id}', 'completed')" style="padding:4px 8px; font-size:11px;">✓</button><button class="btn btn-sm btn-secondary" onclick="updateApptStatus('${a.appointment_id}', 'no_show')" style="padding:4px 8px; font-size:11px;">NS</button>` : ''}</td></tr>`).join('');
-}
-
-function renderFeaturedInventory() {
-  const tbody = document.getElementById('featuredInvTable');
-  const featured = inventory.filter(i => i.is_featured && i.status === 'available');
-  if (!featured.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-secondary);">No featured inventory. Click "Manage" to add specials.</td></tr>'; return; }
-  const promoLabels = { 'featured': 'Featured', 'special': 'Special Deal', 'sale': 'On Sale', 'clearance': 'Clearance' };
-  tbody.innerHTML = featured.map(i => `<tr><td><strong>${i.stock_number}</strong></td><td>${i.year}</td><td>${i.make}</td><td>${i.model}</td><td>${i.color || '-'}</td><td>$${(i.asking_price || 0).toLocaleString()}</td><td><span class="badge badge-warning">${promoLabels[i.promo_type] || 'Featured'}</span></td><td><span class="badge badge-success">Available</span></td></tr>`).join('');
 }
 
 function renderFullInventory() {
@@ -1834,9 +1935,14 @@ async function init() {
   // Re-render cards on window resize to switch between compact/full modes
   window.addEventListener('resize', () => {
     renderTodayAppointmentCards();
-    const content = document.getElementById('todayApptsContent');
-    if (content && !content.classList.contains('collapsed')) {
-      content.style.maxHeight = content.scrollHeight + 'px';
+    renderFeaturedInventoryCards();
+    const todayContent = document.getElementById('todayApptsContent');
+    if (todayContent && !todayContent.classList.contains('collapsed')) {
+      todayContent.style.maxHeight = todayContent.scrollHeight + 'px';
+    }
+    const featuredContent = document.getElementById('featuredInvContent');
+    if (featuredContent && !featuredContent.classList.contains('collapsed')) {
+      featuredContent.style.maxHeight = featuredContent.scrollHeight + 'px';
     }
   });
 }
