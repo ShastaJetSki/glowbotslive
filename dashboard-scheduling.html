@@ -122,6 +122,32 @@
       color: var(--accent-primary);
     }
 
+    .view-style-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border-default);
+    }
+
+    .view-style-btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .view-style-btn.active {
+      background: var(--accent-primary);
+      color: white;
+    }
+
     .accordion-icon-header {
       font-size: 20px;
       color: var(--text-secondary);
@@ -692,6 +718,11 @@
       <div class="mobile-header-title">Scheduler</div>
       <div class="business-name" id="businessName">Loading...</div>
     </div>
+    <div class="view-style-toggle">
+      <button class="view-style-btn active" id="styleLanes" onclick="setViewStyle('lanes')">Lanes</button>
+      <button class="view-style-btn" id="styleStack" onclick="setViewStyle('stack')">Stack</button>
+      <button class="view-style-btn" id="styleGrid" onclick="setViewStyle('grid')">Grid</button>
+    </div>
   </div>
   
   <div class="mobile-header-content" id="mobileHeaderContent">
@@ -752,10 +783,18 @@ var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+var tenantId = null;
+
 var technicians = [
   { id: 'mike', name: 'Mike Rodriguez', role: 'Master Tech', bay: 'Bay 1', initials: 'MR', color: '' },
   { id: 'tom', name: 'Tom Jackson', role: 'Senior Tech', bay: 'Bay 2', initials: 'TJ', color: 'green' },
   { id: 'alex', name: 'Alex Lee', role: 'Technician', bay: 'Bay 3', initials: 'AL', color: 'orange' },
+  { id: 'unassigned', name: 'Unassigned', role: 'Drag to assign', bay: '', initials: '?', color: 'purple' }
+];
+
+var salespeople = [
+  { id: 'john', name: 'John Smith', role: 'Sales Rep', initials: 'JS', color: '' },
+  { id: 'sarah', name: 'Sarah Davis', role: 'Sales Rep', initials: 'SD', color: 'green' },
   { id: 'unassigned', name: 'Unassigned', role: 'Drag to assign', bay: '', initials: '?', color: 'purple' }
 ];
 
@@ -788,14 +827,18 @@ var fleetJobs = [
   { id: 'FL-1011', customer: 'XYZ Logistics', vehicle: 'Van #22', time: '10:00 AM', status: 'scheduled', tech: 'tom', amount: '$450', date: 1, fleet: true }
 ];
 
-var salesAppointments = [
-  { id: 'SA-501', customer: 'Mark Johnson', time: '9:00 AM', type: 'Test Drive', vehicle: '2024 Honda Accord', salesperson: 'John Smith', status: 'confirmed', date: 0 },
-  { id: 'SA-502', customer: 'Linda Williams', time: '10:30 AM', type: 'New Purchase', vehicle: '2024 Toyota RAV4', salesperson: 'Sarah Davis', status: 'confirmed', date: 0 },
-  { id: 'SA-503', customer: 'Steve Rogers', time: '1:00 PM', type: 'Trade-In', vehicle: '2024 Ford Bronco', salesperson: 'John Smith', status: 'scheduled', date: 0 },
-  { id: 'SA-504', customer: 'Nancy Drew', time: '3:00 PM', type: 'Financing', vehicle: '2024 Chevy Equinox', salesperson: 'Sarah Davis', status: 'scheduled', date: 0 }
+var salesJobs = [
+  { id: 'SA-501', customer: 'Mark Johnson', vehicle: '2024 Honda Accord', time: '9:00 AM', status: 'confirmed', tech: 'john', amount: '$32,500', date: 0, fleet: false, type: 'Test Drive' },
+  { id: 'SA-502', customer: 'Linda Williams', vehicle: '2024 Toyota RAV4', time: '10:30 AM', status: 'confirmed', tech: 'sarah', amount: '$38,900', date: 0, fleet: false, type: 'New Purchase' },
+  { id: 'SA-503', customer: 'Steve Rogers', vehicle: '2024 Ford Bronco', time: '1:00 PM', status: 'scheduled', tech: 'john', amount: '$45,000', date: 0, fleet: false, type: 'Trade-In' },
+  { id: 'SA-504', customer: 'Nancy Drew', vehicle: '2024 Chevy Equinox', time: '3:00 PM', status: 'scheduled', tech: 'sarah', amount: '$29,500', date: 0, fleet: false, type: 'Financing' },
+  { id: 'SA-505', customer: 'Peter Parker', vehicle: '2024 Mazda CX-5', time: '11:00 AM', status: 'scheduled', tech: 'john', amount: '$35,200', date: 1, fleet: false, type: 'Test Drive' },
+  { id: 'SA-506', customer: 'Bruce Wayne', vehicle: '2024 BMW X5', time: '2:00 PM', status: 'scheduled', tech: 'sarah', amount: '$68,000', date: 1, fleet: false, type: 'New Purchase' },
+  { id: 'SA-507', customer: 'Clark Kent', vehicle: '2024 Ford F-150', time: '10:00 AM', status: 'scheduled', tech: 'unassigned', amount: '$52,000', date: 0, fleet: false, type: 'Trade-In' }
 ];
 
 var currentTab = 'service';
+var currentViewStyle = 'lanes';
 var selectedDate = 0;
 var currentFilter = 'all';
 var lanesExpanded = false;
@@ -811,6 +854,11 @@ loadTheme();
 var savedExpand = localStorage.getItem('lanes-expanded');
 if (savedExpand === 'true') lanesExpanded = true;
 
+var savedStyle = localStorage.getItem('scheduler-view-style');
+if (savedStyle && ['lanes', 'stack', 'grid'].indexOf(savedStyle) !== -1) {
+  currentViewStyle = savedStyle;
+}
+
 // Mobile menu toggle
 function toggleMobileMenu(button) {
   var content = document.getElementById('mobileHeaderContent');
@@ -818,25 +866,65 @@ function toggleMobileMenu(button) {
   button.classList.toggle('active');
 }
 
-// Load business settings from Supabase
+// Auth check - matching sales page
+async function checkAuth() {
+  var session = null;
+  try {
+    var result = await sb.auth.getSession();
+    session = result.data.session;
+  } catch (e) {
+    console.log('Auth check failed');
+  }
+  
+  if (!session) {
+    var token = localStorage.getItem('sb_access_token');
+    var refreshToken = localStorage.getItem('sb_refresh_token');
+    if (token && refreshToken) {
+      try {
+        var result = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken });
+        if (result.data && result.data.session) {
+          return result.data.session;
+        }
+      } catch (e) {
+        console.log('Token refresh failed');
+      }
+    }
+    // No redirect - just continue without auth for demo
+    return null;
+  }
+  return session;
+}
+
+// Load business settings from Supabase - matching sales page exactly
 async function loadBusinessSettings() {
   try {
-    var { data, error } = await sb.from('business_settings').select('business_name, company_name').single();
-    if (error) {
-      console.log('Business settings: using default name');
+    var result = await sb.from('business_settings').select('*').single();
+    if (result.error) {
+      console.log('Using default business name');
       document.getElementById('businessName').textContent = 'Moto MX';
       return;
     }
-    if (data) {
-      var name = data.business_name || data.company_name || 'Moto MX';
+    if (result.data) {
+      tenantId = result.data.tenant_id;
+      var name = result.data.business_name || result.data.company_name || 'Moto MX';
       document.getElementById('businessName').textContent = name;
     } else {
       document.getElementById('businessName').textContent = 'Moto MX';
     }
   } catch (e) {
-    console.log('Business settings: using default name');
+    console.log('Using default business name');
     document.getElementById('businessName').textContent = 'Moto MX';
   }
+}
+
+// View style toggle
+function setViewStyle(style) {
+  currentViewStyle = style;
+  document.querySelectorAll('.view-style-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('style' + style.charAt(0).toUpperCase() + style.slice(1)).classList.add('active');
+  localStorage.setItem('scheduler-view-style', style);
+  renderAll();
+  showToast(style.charAt(0).toUpperCase() + style.slice(1) + ' view');
 }
 
 function switchTab(tab) {
@@ -983,17 +1071,25 @@ function getJobsForDateOffset(offset) {
     jobs = serviceJobs.filter(function(j) { return j.date === offset; });
   } else if (currentTab === 'fleet') {
     jobs = fleetJobs.filter(function(j) { return j.date === offset; });
-  } else {
-    jobs = salesAppointments.filter(function(a) { return a.date === offset; });
+  } else if (currentTab === 'sales') {
+    jobs = salesJobs.filter(function(j) { return j.date === offset; });
   }
   return jobs;
 }
 
-function getTechById(id) {
-  for (var i = 0; i < technicians.length; i++) {
-    if (technicians[i].id === id) return technicians[i];
+function getCurrentStaff() {
+  if (currentTab === 'sales') {
+    return salespeople;
   }
-  return { id: id, name: id, initials: '?', color: 'purple' };
+  return technicians;
+}
+
+function getTechById(id) {
+  var staff = getCurrentStaff();
+  for (var i = 0; i < staff.length; i++) {
+    if (staff[i].id === id) return staff[i];
+  }
+  return { id: id, name: id, initials: '?', color: 'purple', role: '' };
 }
 
 var statusLabels = { 'in_progress': 'Active', 'waiting': 'Parts', 'completed': 'Done', 'urgent': 'Urgent', 'scheduled': 'Scheduled', 'confirmed': 'Confirmed' };
@@ -1009,33 +1105,37 @@ function renderLanesView(dateOffset) {
     jobs = jobs.filter(function(j) { return j.status === currentFilter; });
   }
   
-  if (jobs.length === 0) return '<div class="empty-state"><div class="empty-state-icon">🔧</div><div class="empty-state-text">No jobs for ' + getDateLabel(dateOffset) + '</div></div>';
+  var emptyIcon = currentTab === 'sales' ? '📅' : (currentTab === 'fleet' ? '🚛' : '🔧');
+  if (jobs.length === 0) return '<div class="empty-state"><div class="empty-state-icon">' + emptyIcon + '</div><div class="empty-state-text">No jobs for ' + getDateLabel(dateOffset) + '</div></div>';
   
+  var staff = getCurrentStaff();
   var html = '<div class="lanes-container">';
-  technicians.forEach(function(tech) {
-    var techJobs = jobs.filter(function(j) { return j.tech === tech.id; });
-    var hours = (techJobs.length * 1.5).toFixed(1);
+  
+  staff.forEach(function(person) {
+    var personJobs = jobs.filter(function(j) { return j.tech === person.id; });
+    var hours = (personJobs.length * 1.5).toFixed(1);
     var expandedClass = lanesExpanded ? ' expanded' : '';
     
-    html += '<div class="tech-lane' + expandedClass + '" id="lane-' + tech.id + '-' + dateOffset + '" data-tech="' + tech.id + '" data-date="' + dateOffset + '">';
-    html += '<div class="lane-header" onclick="toggleLane(\'' + tech.id + '\', ' + dateOffset + ')">';
+    html += '<div class="tech-lane' + expandedClass + '" id="lane-' + person.id + '-' + dateOffset + '" data-tech="' + person.id + '" data-date="' + dateOffset + '">';
+    html += '<div class="lane-header" onclick="toggleLane(\'' + person.id + '\', ' + dateOffset + ')">';
     html += '<div class="lane-info">';
-    html += '<div class="tech-avatar ' + tech.color + '">' + tech.initials + '</div>';
-    html += '<div class="tech-details"><h3>' + tech.name + '</h3><span>' + tech.role + (tech.bay ? ' • ' + tech.bay : '') + '</span></div></div>';
+    html += '<div class="tech-avatar ' + person.color + '">' + person.initials + '</div>';
+    html += '<div class="tech-details"><h3>' + person.name + '</h3><span>' + person.role + (person.bay ? ' • ' + person.bay : '') + '</span></div></div>';
     html += '<div class="lane-header-right">';
-    html += '<div class="lane-stats"><div class="stat-item"><div class="stat-value">' + techJobs.length + '</div><div class="stat-label">Jobs</div></div>';
+    html += '<div class="lane-stats"><div class="stat-item"><div class="stat-value">' + personJobs.length + '</div><div class="stat-label">Jobs</div></div>';
     html += '<div class="stat-item"><div class="stat-value">' + hours + 'h</div><div class="stat-label">Booked</div></div></div>';
     html += '<span class="lane-expand-icon">▼</span>';
     html += '</div></div>';
     html += '<div class="lane-cards-wrapper"><div class="lane-cards">';
-    techJobs.forEach(function(j) {
+    personJobs.forEach(function(j) {
       html += '<div class="wo-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '" data-tech="' + j.tech + '" data-date="' + j.date + '">';
       html += '<div class="card-time">' + j.time + '</div><div class="card-customer">' + j.customer + '</div>';
       html += '<div class="card-info-row"><span class="card-vehicle">' + j.vehicle + '</span><span class="card-dot"></span>';
       html += '<span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span>';
       html += '<span class="card-amount">' + j.amount + '</span></div></div>';
     });
-    html += '<div class="add-card" onclick="event.stopPropagation(); location.href=\'work-order-new.html\'"><div class="add-card-icon">+</div><span>Add</span></div>';
+    var addLabel = currentTab === 'sales' ? 'Appt' : 'Add';
+    html += '<div class="add-card" onclick="event.stopPropagation(); location.href=\'work-order-new.html\'"><div class="add-card-icon">+</div><span>' + addLabel + '</span></div>';
     html += '</div></div></div>';
   });
   html += '</div>';
@@ -1376,6 +1476,7 @@ function findDropTarget(x, y) {
 }
 
 function updateJobAssignment(jobId, newTech, newDate) {
+  // Check service jobs
   for (var i = 0; i < serviceJobs.length; i++) {
     if (serviceJobs[i].id === jobId) {
       serviceJobs[i].tech = newTech;
@@ -1384,10 +1485,20 @@ function updateJobAssignment(jobId, newTech, newDate) {
     }
   }
   
+  // Check fleet jobs
   for (var i = 0; i < fleetJobs.length; i++) {
     if (fleetJobs[i].id === jobId) {
       fleetJobs[i].tech = newTech;
       fleetJobs[i].date = newDate;
+      return;
+    }
+  }
+  
+  // Check sales jobs
+  for (var i = 0; i < salesJobs.length; i++) {
+    if (salesJobs[i].id === jobId) {
+      salesJobs[i].tech = newTech;
+      salesJobs[i].date = newDate;
       return;
     }
   }
@@ -1400,9 +1511,26 @@ function showToast(msg) {
   setTimeout(function() { t.classList.remove('show'); }, 2000);
 }
 
-function init() {
+async function init() {
+  // Check auth (but don't require it for demo)
+  await checkAuth();
+  
   // Load business name from Supabase
-  loadBusinessSettings();
+  await loadBusinessSettings();
+  
+  // Check URL params for tab
+  var urlParams = new URLSearchParams(window.location.search);
+  var tabParam = urlParams.get('tab');
+  if (tabParam && ['service', 'sales', 'fleet'].indexOf(tabParam) !== -1) {
+    currentTab = tabParam;
+    document.querySelectorAll('.main-tab').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab' + tabParam.charAt(0).toUpperCase() + tabParam.slice(1)).classList.add('active');
+  }
+  
+  // Restore view style button state
+  document.querySelectorAll('.view-style-btn').forEach(function(b) { b.classList.remove('active'); });
+  var styleBtn = document.getElementById('style' + currentViewStyle.charAt(0).toUpperCase() + currentViewStyle.slice(1));
+  if (styleBtn) styleBtn.classList.add('active');
   
   renderAll();
   
