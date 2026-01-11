@@ -414,18 +414,23 @@
 
     .lane-cards-wrapper {
       max-height: 0;
-      overflow: hidden;
+      overflow: clip;
       transition: max-height 0.3s ease;
     }
 
-    .tech-lane.expanded .lane-cards-wrapper { max-height: 500px; }
+    .tech-lane.expanded .lane-cards-wrapper { 
+      max-height: 500px; 
+      overflow: visible;
+    }
 
     .lane-cards {
       display: flex;
       gap: 10px;
-      overflow-x: auto;
+      overflow-x: scroll;
+      overflow-y: hidden;
       padding: 0 16px 12px;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
       touch-action: pan-x;
     }
     .lane-cards::-webkit-scrollbar { display: none; }
@@ -441,6 +446,10 @@
       cursor: grab;
       position: relative;
       border-left: 4px solid var(--accent-primary);
+      touch-action: pan-x pan-y;
+    }
+    
+    .wo-card.dragging {
       touch-action: none;
     }
 
@@ -1027,95 +1036,67 @@ function animateToDate(newDate, direction) {
   showToast(getDateLabel(newDate));
 }
 
-// Swipe handling
+// Swipe handling - Tinder style (no snap back)
 var contentArea = document.getElementById('contentArea');
-var currentPage = document.getElementById('currentPage');
 var swipeStartX = 0;
 var swipeStartY = 0;
-var swipeCurrentX = 0;
 var isSwiping = false;
-var swipeThreshold = 80;
-var isInsideLaneCards = false;
+var swipeThreshold = 50;
+var insideLaneCards = false;
+
+function checkInsideExpandedLaneCards(element) {
+  while (element && element !== document.body) {
+    if (element.classList && element.classList.contains('lane-cards')) {
+      var lane = element.closest('.tech-lane');
+      if (lane && lane.classList.contains('expanded')) {
+        return true;
+      }
+    }
+    element = element.parentElement;
+  }
+  return false;
+}
 
 contentArea.addEventListener('touchstart', function(e) {
   if (isDragging) return;
   
-  // Check if touch started inside lane-cards (expanded tech row)
-  var target = e.target;
-  isInsideLaneCards = false;
-  while (target && target !== contentArea) {
-    if (target.classList && target.classList.contains('lane-cards')) {
-      // Check if parent lane is expanded
-      var lane = target.closest('.tech-lane');
-      if (lane && lane.classList.contains('expanded')) {
-        isInsideLaneCards = true;
-        break;
-      }
-    }
-    target = target.parentElement;
-  }
-  
-  if (isInsideLaneCards) return; // Let native scroll handle it
+  // Check if inside expanded lane-cards - if so, don't handle swipe at all
+  insideLaneCards = checkInsideExpandedLaneCards(e.target);
+  if (insideLaneCards) return;
   
   swipeStartX = e.touches[0].clientX;
   swipeStartY = e.touches[0].clientY;
-  swipeCurrentX = swipeStartX;
   isSwiping = true;
-  
-  currentPage.classList.add('dragging');
 }, { passive: true });
 
 contentArea.addEventListener('touchmove', function(e) {
-  if (!isSwiping || isDragging || isInsideLaneCards) return;
+  if (isDragging || insideLaneCards || !isSwiping) return;
   
   var touchX = e.touches[0].clientX;
   var touchY = e.touches[0].clientY;
+  var deltaX = touchX - swipeStartX;
+  var deltaY = touchY - swipeStartY;
   
-  // Check if vertical scroll is dominant
-  var deltaX = Math.abs(touchX - swipeStartX);
-  var deltaY = Math.abs(touchY - swipeStartY);
-  
-  if (deltaY > deltaX && deltaY > 10) {
-    // Vertical scroll - cancel swipe
+  // If vertical movement is dominant, cancel swipe (allow page scroll)
+  if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
     isSwiping = false;
-    currentPage.classList.remove('dragging');
-    currentPage.style.transform = '';
-    currentPage.style.opacity = '';
     return;
   }
   
-  swipeCurrentX = touchX;
-  var diff = swipeCurrentX - swipeStartX;
-  
-  // Apply transform with resistance
-  var resistance = 0.4;
-  currentPage.style.transform = 'translateX(' + (diff * resistance) + 'px)';
-  currentPage.style.opacity = 1 - Math.abs(diff) / window.innerWidth * 0.3;
+  // Tinder style - once threshold crossed, immediately animate
+  if (deltaX > swipeThreshold) {
+    isSwiping = false;
+    animateToDate(selectedDate - 1, 'right');
+  } else if (deltaX < -swipeThreshold) {
+    isSwiping = false;
+    animateToDate(selectedDate + 1, 'left');
+  }
 }, { passive: true });
 
 contentArea.addEventListener('touchend', function(e) {
-  if (!isSwiping || isDragging || isInsideLaneCards) {
-    isInsideLaneCards = false;
-    return;
-  }
-  
   isSwiping = false;
-  currentPage.classList.remove('dragging');
-  
-  var diff = swipeCurrentX - swipeStartX;
-  
-  // Reset styles
-  currentPage.style.transform = '';
-  currentPage.style.opacity = '';
-  
-  if (diff > swipeThreshold) {
-    // Swipe right - go to previous day
-    animateToDate(selectedDate - 1, 'right');
-  } else if (diff < -swipeThreshold) {
-    // Swipe left - go to next day
-    animateToDate(selectedDate + 1, 'left');
-  }
-});
+  insideLaneCards = false;
+}, { passive: true });
 
 // Drag and Drop
 var isDragging = false;
@@ -1129,7 +1110,7 @@ var currentDragDate = 0;
 function setupDragAndDrop() {
   var cards = document.querySelectorAll('.wo-card');
   cards.forEach(function(card) {
-    card.addEventListener('touchstart', onDragStart, { passive: false });
+    card.addEventListener('touchstart', onDragStart, { passive: true });
   });
 }
 
@@ -1150,6 +1131,7 @@ function onDragStart(e) {
     currentDragDate = selectedDate;
     
     card.classList.add('dragging');
+    card.style.touchAction = 'none';
     
     dragGhost = card.cloneNode(true);
     dragGhost.classList.add('drag-ghost');
@@ -1163,7 +1145,8 @@ function onDragStart(e) {
   
   var moveHandler = function(ev) {
     var t = ev.touches[0];
-    if (Math.abs(t.clientX - dragStartX) > 10 || Math.abs(t.clientY - dragStartY) > 10) {
+    // Allow some movement for scrolling, only cancel if moved significantly
+    if (Math.abs(t.clientX - dragStartX) > 15 || Math.abs(t.clientY - dragStartY) > 15) {
       clearTimeout(holdTimer);
       card.removeEventListener('touchmove', moveHandler);
     }
@@ -1220,7 +1203,10 @@ document.addEventListener('touchend', function(e) {
   }
   
   var draggingCards = document.querySelectorAll('.wo-card.dragging');
-  draggingCards.forEach(function(c) { c.classList.remove('dragging'); });
+  draggingCards.forEach(function(c) { 
+    c.classList.remove('dragging');
+    c.style.touchAction = '';
+  });
   
   isDragging = false;
   draggedJob = null;
