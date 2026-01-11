@@ -1,0 +1,2074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+      --month-alt-bg: #0d1218;
+    }
+    [data-theme="dark-blue"] {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+      --month-alt-bg: #0d1218;
+    }
+    [data-theme="grey"] {
+      --bg-primary: #111111; --bg-secondary: #1a1a1a; --bg-card: #242424; --bg-hover: #2e2e2e;
+      --border-default: #333333; --text-primary: #e5e5e5; --text-secondary: #a3a3a3;
+      --accent-primary: #525252; --accent-light: #737373;
+      --month-alt-bg: #161616;
+    }
+    [data-theme="slate"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155;
+      --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8;
+      --accent-primary: #6366f1; --accent-light: #818cf8;
+      --month-alt-bg: #141c2e;
+    }
+    [data-theme="midnight"] {
+      --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228;
+      --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4;
+      --accent-primary: #8b5cf6; --accent-light: #a78bfa;
+      --month-alt-bg: #0c0c0f;
+    }
+    [data-theme="navy"] {
+      --bg-primary: #0a0e1a; --bg-secondary: #0f1526; --bg-card: #182035; --bg-hover: #1f2a45;
+      --border-default: #253352; --text-primary: #e8ecf4; --text-secondary: #9aa5bd;
+      --accent-primary: #4a7cc9; --accent-light: #6b9ae0;
+      --month-alt-bg: #0c111e;
+    }
+    [data-theme="graphite"] {
+      --bg-primary: #0d0d0d; --bg-secondary: #141414; --bg-card: #1f1f1f; --bg-hover: #292929;
+      --border-default: #2e2e2e; --text-primary: #e8e8e8; --text-secondary: #999999;
+      --accent-primary: #4a9eff; --accent-light: #6bb3ff;
+      --month-alt-bg: #101010;
+    }
+    [data-theme="ocean"] {
+      --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35;
+      --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5;
+      --accent-primary: #14b8a6; --accent-light: #2dd4bf;
+      --month-alt-bg: #0c1517;
+    }
+    [data-theme="forest"] {
+      --bg-primary: #0a100c; --bg-secondary: #0f1812; --bg-card: #16221a; --bg-hover: #1e2e24;
+      --border-default: #263830; --text-primary: #e5f0e8; --text-secondary: #8faa96;
+      --accent-primary: #22c55e; --accent-light: #4ade80;
+      --month-alt-bg: #0c130e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body { padding-bottom: 165px; }
+
+    /* Mobile Header - matching sales page */
+    .mobile-top-header {
+      display: block;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .mobile-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .mobile-menu-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: 20px;
+      padding: 0;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-appearance: none;
+    }
+
+    .mobile-header-center {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .mobile-header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .business-name {
+      font-size: 12px;
+      color: var(--accent-primary);
+    }
+
+    .view-style-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border-default);
+    }
+
+    .view-style-btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .view-style-btn.active {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    .accordion-icon-header {
+      font-size: 20px;
+      color: var(--text-secondary);
+      transition: transform 0.2s ease;
+    }
+
+    .mobile-menu-toggle.active .accordion-icon-header {
+      transform: rotate(180deg);
+    }
+
+    .mobile-header-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .mobile-header-content.expanded {
+      max-height: 200px;
+    }
+
+    .mobile-header-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      padding: 8px 12px 12px;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--border-default);
+    }
+
+    .mobile-header-actions button {
+      padding: 10px;
+      font-size: 13px;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-primary);
+      color: var(--text-primary);
+      border-radius: 8px;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .main-tabs {
+      display: flex;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .main-tab {
+      flex: 1;
+      padding: 14px 12px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .main-tab.active { color: var(--accent-light); border-bottom-color: var(--accent-primary); }
+
+    .date-nav-container {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .lanes-date-nav { padding: 12px 0; }
+
+    .lanes-controls-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px 12px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .lanes-controls-row::-webkit-scrollbar { display: none; }
+
+    .lanes-today-btn {
+      flex-shrink: 0;
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--accent-primary);
+      background: var(--accent-primary);
+      color: white;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .lanes-filter-btn {
+      flex-shrink: 0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      -webkit-appearance: none;
+    }
+
+    .lanes-filter-btn.active {
+      background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+      border-color: var(--accent-primary);
+      color: var(--accent-light);
+    }
+
+    .lanes-filter-btn .count {
+      background: var(--bg-hover);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+
+    .expand-toggle-btn {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      -webkit-appearance: none;
+    }
+
+    .expand-toggle-btn.expanded {
+      background: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+      border-color: var(--accent-primary);
+      color: var(--accent-light);
+    }
+
+    .lanes-date-chips {
+      display: flex;
+      gap: 6px;
+      padding: 0 16px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      overscroll-behavior-x: contain;
+    }
+    .lanes-date-chips::-webkit-scrollbar { display: none; }
+
+    .month-section {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 12px;
+      margin-right: 4px;
+      flex-shrink: 0;
+    }
+
+    .month-section.even { background: var(--bg-secondary); }
+    .month-section.odd { background: var(--month-alt-bg); }
+
+    .month-label {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      transform: rotate(180deg);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 4px 2px;
+      opacity: 0.7;
+    }
+
+    .month-days { display: flex; gap: 6px; }
+
+    .lanes-date-chip {
+      flex-shrink: 0;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 48px;
+      -webkit-appearance: none;
+      scroll-snap-align: center;
+    }
+
+    .lanes-date-chip.active { background: var(--accent-primary); border-color: var(--accent-primary); color: white; }
+    .lanes-date-chip.today:not(.active) { border-color: var(--accent-light); border-width: 2px; }
+    .lanes-date-chip .day-name { font-size: 9px; text-transform: uppercase; opacity: 0.8; }
+    .lanes-date-chip .day-num { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .lanes-date-chip .job-count { font-size: 8px; margin-top: 2px; opacity: 0.8; }
+
+    /* Swipe container - TRUE Tinder style */
+    .content-area {
+      position: relative;
+      overflow: hidden;
+      min-height: calc(100vh - 350px);
+    }
+
+    .swipe-page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      min-height: 100%;
+      will-change: transform, opacity;
+    }
+
+    .swipe-page.current { 
+      transform: translateX(0); 
+      opacity: 1; 
+      z-index: 2; 
+    }
+    .swipe-page.prev { 
+      transform: translateX(-100%); 
+      opacity: 0; 
+      z-index: 1; 
+    }
+    .swipe-page.next { 
+      transform: translateX(100%); 
+      opacity: 0; 
+      z-index: 1; 
+    }
+    
+    /* Animation classes */
+    .swipe-page.animating {
+      transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    }
+
+    /* Edge indicators */
+    .edge-indicator {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 60px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--accent-light);
+      background: linear-gradient(90deg, var(--accent-primary), transparent);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 200;
+      border-radius: 0 12px 12px 0;
+    }
+
+    .edge-indicator.left { left: 0; }
+    .edge-indicator.right { 
+      right: 0; 
+      background: linear-gradient(-90deg, var(--accent-primary), transparent);
+      border-radius: 12px 0 0 12px;
+    }
+    .edge-indicator.active { opacity: 0.9; }
+    .edge-indicator .date-preview { font-size: 11px; font-weight: 700; text-align: center; line-height: 1.3; }
+
+    /* Lanes */
+    .lanes-container { padding: 12px 0; }
+    
+    .tech-lane {
+      margin-bottom: 8px;
+      background: var(--bg-card);
+      margin: 0 12px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--border-default);
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .tech-lane.drop-target {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-primary);
+    }
+
+    .lane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      cursor: pointer;
+    }
+
+    .lane-header:active { background: var(--bg-hover); }
+    .lane-info { display: flex; align-items: center; gap: 12px; }
+
+    .tech-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+    }
+    .tech-avatar.green { background: #22c55e; }
+    .tech-avatar.orange { background: #f97316; }
+    .tech-avatar.purple { background: #8b5cf6; }
+
+    .tech-details h3 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .tech-details span { font-size: 12px; color: var(--text-secondary); }
+
+    .lane-header-right { display: flex; align-items: center; gap: 16px; }
+    .lane-stats { display: flex; gap: 16px; }
+    .stat-item { text-align: center; }
+    .stat-value { font-size: 16px; font-weight: 700; }
+    .stat-label { font-size: 9px; color: var(--text-secondary); text-transform: uppercase; }
+
+    .lane-expand-icon { font-size: 14px; color: var(--text-secondary); transition: transform 0.2s; }
+    .tech-lane.expanded .lane-expand-icon { transform: rotate(180deg); }
+
+    .lane-cards-wrapper {
+      max-height: 0;
+      overflow: clip;
+      transition: max-height 0.3s ease;
+    }
+
+    .tech-lane.expanded .lane-cards-wrapper { 
+      max-height: 500px; 
+      overflow: visible;
+    }
+
+    .lane-cards {
+      display: flex;
+      gap: 10px;
+      overflow-x: scroll;
+      overflow-y: hidden;
+      padding: 0 16px 12px;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
+    }
+    .lane-cards::-webkit-scrollbar { display: none; }
+
+    /* Work Order Card */
+    .wo-card {
+      flex-shrink: 0;
+      width: 200px;
+      background: var(--bg-secondary);
+      border-radius: 10px;
+      border: 1px solid var(--border-default);
+      padding: 10px 12px;
+      cursor: grab;
+      position: relative;
+      border-left: 4px solid var(--accent-primary);
+      touch-action: pan-x pan-y;
+    }
+
+    .wo-card:active { cursor: grabbing; }
+    .wo-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .wo-card.status-waiting { border-left-color: #eab308; }
+    .wo-card.status-completed { border-left-color: #22c55e; }
+    .wo-card.status-urgent { border-left-color: #ef4444; }
+
+    .wo-card.fleet::after {
+      content: 'FLEET';
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 7px;
+      font-weight: 700;
+      padding: 2px 4px;
+      border-radius: 3px;
+      background: #14b8a6;
+      color: white;
+    }
+
+    .wo-card.dragging { 
+      opacity: 0.5; 
+      transform: scale(0.95); 
+      touch-action: none;
+    }
+
+    .card-time { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+    .card-customer {
+      font-size: 14px; font-weight: 600; margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      padding-right: 35px;
+    }
+
+    .card-info-row { display: flex; align-items: center; gap: 6px; }
+    .card-vehicle {
+      font-size: 11px; color: var(--text-secondary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70px;
+    }
+    .card-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-secondary); }
+
+    .card-status {
+      font-size: 9px; font-weight: 600; text-transform: uppercase;
+      padding: 2px 5px; border-radius: 4px;
+    }
+    .card-status.in_progress { background: rgba(59,130,246,0.2); color: var(--accent-light); }
+    .card-status.waiting { background: rgba(234,179,8,0.15); color: #eab308; }
+    .card-status.completed { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .card-status.urgent { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .card-status.scheduled { background: var(--bg-hover); color: var(--text-secondary); }
+
+    .card-amount { font-size: 12px; font-weight: 700; margin-left: auto; }
+
+    .add-card {
+      flex-shrink: 0;
+      width: 70px;
+      min-height: 60px;
+      background: var(--bg-primary);
+      border-radius: 10px;
+      border: 2px dashed var(--border-default);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .add-card-icon {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: var(--bg-hover);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .add-card span { font-size: 9px; color: var(--text-secondary); }
+
+    /* Drag ghost */
+    .drag-ghost {
+      position: fixed;
+      z-index: 1000;
+      pointer-events: none;
+      opacity: 0.9;
+      transform: scale(1.05) rotate(2deg);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+
+    /* Empty State */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    .empty-state-text { font-size: 16px; }
+
+    /* Stack View Styles */
+    .stack-container {
+      padding: 12px;
+    }
+
+    .stack-date-header {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent-light);
+      padding: 8px 4px 16px;
+      text-align: center;
+    }
+
+    .stack-card {
+      display: flex;
+      align-items: center;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border-default);
+      border-left: 4px solid var(--accent-primary);
+      padding: 12px;
+      margin-bottom: 10px;
+      gap: 12px;
+      position: relative;
+    }
+
+    .stack-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .stack-card.status-waiting { border-left-color: #eab308; }
+    .stack-card.status-completed { border-left-color: #22c55e; }
+    .stack-card.status-urgent { border-left-color: #ef4444; }
+    .stack-card.status-confirmed { border-left-color: #8b5cf6; }
+
+    .stack-card.fleet::after {
+      content: 'FLEET';
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 7px;
+      font-weight: 700;
+      padding: 2px 4px;
+      border-radius: 3px;
+      background: #14b8a6;
+      color: white;
+    }
+
+    .stack-card-left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 50px;
+    }
+
+    .stack-time {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-light);
+    }
+
+    .stack-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+    }
+    .stack-avatar.green { background: #22c55e; }
+    .stack-avatar.orange { background: #f97316; }
+    .stack-avatar.purple { background: #8b5cf6; }
+
+    .stack-card-center {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .stack-customer {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stack-vehicle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stack-person {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .stack-card-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .stack-amount {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    /* Calendar/Grid View Styles */
+    .calendar-container {
+      padding: 12px;
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0 16px;
+    }
+
+    .calendar-nav-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-appearance: none;
+    }
+
+    .calendar-nav-btn:active {
+      background: var(--bg-hover);
+    }
+
+    .calendar-month-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent-light);
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid var(--border-default);
+    }
+
+    .calendar-day-header {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 8px 0;
+      text-transform: uppercase;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 6px 2px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: var(--bg-secondary);
+      min-height: 50px;
+    }
+
+    .calendar-day:active {
+      background: var(--bg-hover);
+    }
+
+    .calendar-day.empty {
+      background: transparent;
+      cursor: default;
+    }
+
+    .calendar-day.today {
+      border: 2px solid var(--accent-primary);
+    }
+
+    .calendar-day.selected {
+      background: var(--accent-primary);
+    }
+
+    .calendar-day.selected .calendar-day-num {
+      color: white;
+    }
+
+    .calendar-day-num {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .calendar-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      justify-content: center;
+      max-width: 100%;
+    }
+
+    .calendar-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+    }
+
+    .calendar-more {
+      font-size: 8px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .calendar-day-detail {
+      margin-top: 16px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border-default);
+      overflow: hidden;
+    }
+
+    .calendar-detail-header {
+      padding: 12px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent-light);
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .calendar-no-jobs {
+      padding: 24px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .calendar-job-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-default);
+      border-left: 3px solid var(--accent-primary);
+    }
+
+    .calendar-job-item:last-child {
+      border-bottom: none;
+    }
+
+    .calendar-job-item.status-in_progress { border-left-color: var(--accent-primary); }
+    .calendar-job-item.status-waiting { border-left-color: #eab308; }
+    .calendar-job-item.status-completed { border-left-color: #22c55e; }
+    .calendar-job-item.status-urgent { border-left-color: #ef4444; }
+    .calendar-job-item.status-confirmed { border-left-color: #8b5cf6; }
+
+    .calendar-job-time {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-light);
+      min-width: 70px;
+    }
+
+    .calendar-job-customer {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .calendar-job-person {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* Mobile buttons */
+    .mobile-action-buttons {
+      position: fixed;
+      bottom: 102px;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-default);
+      padding: 8px 8px 0 8px;
+      z-index: 101;
+    }
+
+    .mobile-action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mobile-action-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+      color: var(--accent-light);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-appearance: none;
+    }
+    .mobile-action-btn.active {
+      background: color-mix(in srgb, var(--accent-primary) 60%, transparent);
+      border-color: var(--accent-primary);
+      color: var(--text-primary);
+    }
+
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-default);
+      padding: 8px;
+      z-index: 100;
+    }
+
+    .mobile-nav-top { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
+    .mobile-nav-secondary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+    .mobile-nav-btn {
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      min-height: 44px;
+    }
+
+    .mobile-nav-btn.related {
+      background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+      border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+      color: var(--text-primary);
+    }
+
+    @supports not (background: color-mix(in srgb, red 50%, blue)) {
+      .mobile-nav-btn.related, .mobile-action-btn { background: var(--bg-hover); }
+      .lanes-filter-btn.active { background: var(--bg-hover); }
+      .expand-toggle-btn.expanded { background: var(--accent-primary); }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 200px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-card);
+      border: 1px solid var(--accent-primary);
+      color: var(--text-primary);
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      display: none;
+    }
+    .toast.show { display: block; animation: toastIn 0.3s ease; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Mobile Header matching sales page -->
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">
+      <span class="accordion-icon-header">☰</span>
+    </button>
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">Scheduler</div>
+      <div class="business-name" id="businessName">Loading...</div>
+    </div>
+    <div class="view-style-toggle">
+      <button class="view-style-btn active" id="styleLanes" onclick="setViewStyle('lanes')">Lanes</button>
+      <button class="view-style-btn" id="styleStack" onclick="setViewStyle('stack')">Stack</button>
+      <button class="view-style-btn" id="styleGrid" onclick="setViewStyle('grid')">Grid</button>
+    </div>
+  </div>
+  
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="location.href='dashboard-settings.html'">Settings</button>
+      <button onclick="location.href='support.html'">Support</button>
+    </div>
+  </div>
+</div>
+
+<div class="main-tabs">
+  <button class="main-tab active" id="tabService" onclick="switchTab('service')">Service</button>
+  <button class="main-tab" id="tabSales" onclick="switchTab('sales')">Sales</button>
+  <button class="main-tab" id="tabFleet" onclick="switchTab('fleet')">Fleet</button>
+</div>
+
+<div class="date-nav-container" id="lanesDateNav">
+  <div class="lanes-date-nav">
+    <div class="lanes-controls-row" id="lanesControlsRow"></div>
+    <div class="lanes-date-chips" id="lanesDateChips"></div>
+  </div>
+</div>
+
+<div class="edge-indicator left" id="edgeLeft"><div class="date-preview" id="edgeLeftPreview">←</div></div>
+<div class="edge-indicator right" id="edgeRight"><div class="date-preview" id="edgeRightPreview">→</div></div>
+
+<div class="content-area" id="contentArea">
+  <div class="swipe-page current" id="currentPage"></div>
+  <div class="swipe-page prev" id="prevPage"></div>
+  <div class="swipe-page next" id="nextPage"></div>
+</div>
+
+<div class="mobile-action-buttons">
+  <div class="mobile-action-grid">
+    <button class="mobile-action-btn" onclick="location.href='work-order-new.html'">+ Work Order</button>
+    <button class="mobile-action-btn active">Scheduler</button>
+    <button class="mobile-action-btn" onclick="location.href='appointment-new.html'">+ Appointment</button>
+  </div>
+</div>
+
+<nav class="mobile-bottom-nav">
+  <div class="mobile-nav-top">
+    <a href="dashboard-business.html" class="mobile-nav-btn related">Business</a>
+    <a href="dashboard-search.html" class="mobile-nav-btn">Search</a>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-service.html" class="mobile-nav-btn related">Service</a>
+    <a href="dashboard-parts.html" class="mobile-nav-btn related">Parts</a>
+    <a href="dashboard-sales.html" class="mobile-nav-btn related">Sales</a>
+  </div>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Supabase setup
+var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+var tenantId = null;
+
+var technicians = [
+  { id: 'mike', name: 'Mike Rodriguez', role: 'Master Tech', bay: 'Bay 1', initials: 'MR', color: '' },
+  { id: 'tom', name: 'Tom Jackson', role: 'Senior Tech', bay: 'Bay 2', initials: 'TJ', color: 'green' },
+  { id: 'alex', name: 'Alex Lee', role: 'Technician', bay: 'Bay 3', initials: 'AL', color: 'orange' },
+  { id: 'unassigned', name: 'Unassigned', role: 'Drag to assign', bay: '', initials: '?', color: 'purple' }
+];
+
+var salespeople = [
+  { id: 'john', name: 'John Smith', role: 'Sales Rep', initials: 'JS', color: '' },
+  { id: 'sarah', name: 'Sarah Davis', role: 'Sales Rep', initials: 'SD', color: 'green' },
+  { id: 'unassigned', name: 'Unassigned', role: 'Drag to assign', bay: '', initials: '?', color: 'purple' }
+];
+
+var serviceJobs = [
+  { id: 'WO-2847', customer: 'James Wilson', vehicle: 'Ford F-150', time: '8:00 AM', status: 'in_progress', tech: 'mike', amount: '$485', date: 0, fleet: false },
+  { id: 'WO-2851', customer: 'Sarah Chen', vehicle: 'Tesla Model Y', time: '10:30 AM', status: 'waiting', tech: 'mike', amount: '$890', date: 0, fleet: false },
+  { id: 'WO-2856', customer: 'Robert Martinez', vehicle: 'Chevy Silverado', time: '1:00 PM', status: 'scheduled', tech: 'mike', amount: '$245', date: 0, fleet: false },
+  { id: 'WO-2860', customer: 'Emily Thompson', vehicle: 'Honda CR-V', time: '3:30 PM', status: 'scheduled', tech: 'mike', amount: '$320', date: 0, fleet: false },
+  { id: 'WO-2845', customer: 'David Kim', vehicle: 'BMW X5', time: '8:00 AM', status: 'completed', tech: 'tom', amount: '$125', date: 0, fleet: false },
+  { id: 'WO-2849', customer: 'Maria Garcia', vehicle: 'Toyota Camry', time: '9:30 AM', status: 'in_progress', tech: 'tom', amount: '$1,250', date: 0, fleet: false },
+  { id: 'WO-2862', customer: "Kevin O'Brien", vehicle: 'Jeep Wrangler', time: '2:00 PM', status: 'urgent', tech: 'tom', amount: 'TBD', date: 0, fleet: false },
+  { id: 'WO-2844', customer: 'Lisa Brown', vehicle: 'Mazda CX-5', time: '8:30 AM', status: 'completed', tech: 'alex', amount: '$185', date: 0, fleet: false },
+  { id: 'WO-2853', customer: 'Chris Taylor', vehicle: 'Audi Q7', time: '11:00 AM', status: 'in_progress', tech: 'alex', amount: '$395', date: 0, fleet: false },
+  { id: 'WO-2858', customer: 'Amanda White', vehicle: 'Hyundai Tucson', time: '2:30 PM', status: 'scheduled', tech: 'alex', amount: '$0', date: 0, fleet: false },
+  { id: 'WO-2864', customer: 'Michael Chang', vehicle: 'Kia Telluride', time: 'TBD', status: 'scheduled', tech: 'unassigned', amount: '$220', date: 0, fleet: false },
+  { id: 'WO-2865', customer: 'Jennifer Lopez', vehicle: 'Lexus RX', time: 'TBD', status: 'waiting', tech: 'unassigned', amount: '$400', date: 0, fleet: false },
+  { id: 'WO-2870', customer: 'Tom Hanks', vehicle: 'Mercedes GLE', time: '9:00 AM', status: 'scheduled', tech: 'mike', amount: '$550', date: 1, fleet: false },
+  { id: 'WO-2871', customer: 'Jane Doe', vehicle: 'Volvo XC90', time: '10:00 AM', status: 'scheduled', tech: 'tom', amount: '$320', date: 1, fleet: false },
+  { id: 'WO-2875', customer: 'Bob Smith', vehicle: 'Porsche Cayenne', time: '8:00 AM', status: 'scheduled', tech: 'alex', amount: '$780', date: 2, fleet: false },
+  { id: 'WO-2880', customer: 'Alice Wonder', vehicle: 'Subaru Outback', time: '9:00 AM', status: 'scheduled', tech: 'mike', amount: '$290', date: 3, fleet: false },
+  { id: 'WO-2881', customer: 'John Wick', vehicle: 'Ford Mustang', time: '11:00 AM', status: 'scheduled', tech: 'tom', amount: '$650', date: 5, fleet: false }
+];
+
+var fleetJobs = [
+  { id: 'FL-1001', customer: 'ABC Trucking', vehicle: 'Freightliner #101', time: '7:00 AM', status: 'in_progress', tech: 'mike', amount: '$1,200', date: 0, fleet: true },
+  { id: 'FL-1002', customer: 'ABC Trucking', vehicle: 'Freightliner #102', time: '8:00 AM', status: 'scheduled', tech: 'tom', amount: '$850', date: 0, fleet: true },
+  { id: 'FL-1003', customer: 'City Transit', vehicle: 'Bus #45', time: '9:00 AM', status: 'waiting', tech: 'alex', amount: '$2,100', date: 0, fleet: true },
+  { id: 'FL-1004', customer: 'ABC Trucking', vehicle: 'Freightliner #103', time: '1:00 PM', status: 'scheduled', tech: 'unassigned', amount: '$950', date: 0, fleet: true },
+  { id: 'FL-1010', customer: 'City Transit', vehicle: 'Bus #46', time: '8:00 AM', status: 'scheduled', tech: 'mike', amount: '$1,800', date: 1, fleet: true },
+  { id: 'FL-1011', customer: 'XYZ Logistics', vehicle: 'Van #22', time: '10:00 AM', status: 'scheduled', tech: 'tom', amount: '$450', date: 1, fleet: true }
+];
+
+var salesJobs = [
+  { id: 'SA-501', customer: 'Mark Johnson', vehicle: '2024 Honda Accord', time: '9:00 AM', status: 'confirmed', tech: 'john', amount: '$32,500', date: 0, fleet: false, type: 'Test Drive' },
+  { id: 'SA-502', customer: 'Linda Williams', vehicle: '2024 Toyota RAV4', time: '10:30 AM', status: 'confirmed', tech: 'sarah', amount: '$38,900', date: 0, fleet: false, type: 'New Purchase' },
+  { id: 'SA-503', customer: 'Steve Rogers', vehicle: '2024 Ford Bronco', time: '1:00 PM', status: 'scheduled', tech: 'john', amount: '$45,000', date: 0, fleet: false, type: 'Trade-In' },
+  { id: 'SA-504', customer: 'Nancy Drew', vehicle: '2024 Chevy Equinox', time: '3:00 PM', status: 'scheduled', tech: 'sarah', amount: '$29,500', date: 0, fleet: false, type: 'Financing' },
+  { id: 'SA-505', customer: 'Peter Parker', vehicle: '2024 Mazda CX-5', time: '11:00 AM', status: 'scheduled', tech: 'john', amount: '$35,200', date: 1, fleet: false, type: 'Test Drive' },
+  { id: 'SA-506', customer: 'Bruce Wayne', vehicle: '2024 BMW X5', time: '2:00 PM', status: 'scheduled', tech: 'sarah', amount: '$68,000', date: 1, fleet: false, type: 'New Purchase' },
+  { id: 'SA-507', customer: 'Clark Kent', vehicle: '2024 Ford F-150', time: '10:00 AM', status: 'scheduled', tech: 'unassigned', amount: '$52,000', date: 0, fleet: false, type: 'Trade-In' }
+];
+
+var currentTab = 'service';
+var currentViewStyle = 'lanes';
+var selectedDate = 0;
+var currentFilter = 'all';
+var lanesExpanded = false;
+var isAnimating = false;
+
+// Theme support
+function loadTheme() {
+  var savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+loadTheme();
+
+var savedExpand = localStorage.getItem('lanes-expanded');
+if (savedExpand === 'true') lanesExpanded = true;
+
+var savedStyle = localStorage.getItem('scheduler-view-style');
+if (savedStyle && ['lanes', 'stack', 'grid'].indexOf(savedStyle) !== -1) {
+  currentViewStyle = savedStyle;
+}
+
+// Mobile menu toggle
+function toggleMobileMenu(button) {
+  var content = document.getElementById('mobileHeaderContent');
+  content.classList.toggle('expanded');
+  button.classList.toggle('active');
+}
+
+// Auth check - matching sales page
+async function checkAuth() {
+  var session = null;
+  try {
+    var result = await sb.auth.getSession();
+    session = result.data.session;
+  } catch (e) {
+    console.log('Auth check failed');
+  }
+  
+  if (!session) {
+    var token = localStorage.getItem('sb_access_token');
+    var refreshToken = localStorage.getItem('sb_refresh_token');
+    if (token && refreshToken) {
+      try {
+        var result = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken });
+        if (result.data && result.data.session) {
+          return result.data.session;
+        }
+      } catch (e) {
+        console.log('Token refresh failed');
+      }
+    }
+    // No redirect - just continue without auth for demo
+    return null;
+  }
+  return session;
+}
+
+// Load business settings from Supabase - matching sales page exactly
+async function loadBusinessSettings() {
+  try {
+    var result = await sb.from('business_settings').select('*').single();
+    if (result.error) {
+      console.log('Using default business name');
+      document.getElementById('businessName').textContent = 'Moto MX';
+      return;
+    }
+    if (result.data) {
+      tenantId = result.data.tenant_id;
+      var name = result.data.business_name || result.data.company_name || 'Moto MX';
+      document.getElementById('businessName').textContent = name;
+    } else {
+      document.getElementById('businessName').textContent = 'Moto MX';
+    }
+  } catch (e) {
+    console.log('Using default business name');
+    document.getElementById('businessName').textContent = 'Moto MX';
+  }
+}
+
+// View style toggle
+function setViewStyle(style) {
+  currentViewStyle = style;
+  document.querySelectorAll('.view-style-btn').forEach(function(b) { b.classList.remove('active'); });
+  var btn = document.getElementById('style' + style.charAt(0).toUpperCase() + style.slice(1));
+  if (btn) btn.classList.add('active');
+  localStorage.setItem('scheduler-view-style', style);
+  
+  // If switching to grid, reset to current month
+  if (style === 'grid') {
+    // Keep selectedDate but make sure we're showing the right month
+  }
+  
+  renderAll();
+  showToast(style.charAt(0).toUpperCase() + style.slice(1) + ' view');
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.main-tab').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  currentFilter = 'all';
+  renderAll();
+}
+
+function toggleExpandPreference() {
+  lanesExpanded = !lanesExpanded;
+  localStorage.setItem('lanes-expanded', lanesExpanded ? 'true' : 'false');
+  renderLanesControls();
+  renderPages();
+}
+
+function renderLanesControls() {
+  var jobs = getJobsForDateOffset(selectedDate);
+  var all = jobs.length;
+  var waiting = jobs.filter(function(j) { return j.status === 'waiting'; }).length;
+  var done = jobs.filter(function(j) { return j.status === 'completed'; }).length;
+  
+  var expandIcon = lanesExpanded ? '▼' : '☐';
+  var expandClass = lanesExpanded ? ' expanded' : '';
+  
+  var html = '<button class="lanes-today-btn" onclick="goToToday()">Today</button>';
+  html += '<button class="lanes-filter-btn ' + (currentFilter === 'all' ? 'active' : '') + '" onclick="setFilter(\'all\')">All <span class="count">' + all + '</span></button>';
+  html += '<button class="lanes-filter-btn ' + (currentFilter === 'waiting' ? 'active' : '') + '" onclick="setFilter(\'waiting\')">Waiting <span class="count">' + waiting + '</span></button>';
+  html += '<button class="lanes-filter-btn ' + (currentFilter === 'completed' ? 'active' : '') + '" onclick="setFilter(\'completed\')">Done <span class="count">' + done + '</span></button>';
+  html += '<button class="expand-toggle-btn' + expandClass + '" onclick="toggleExpandPreference()">' + expandIcon + '</button>';
+  
+  document.getElementById('lanesControlsRow').innerHTML = html;
+}
+
+function goToToday() {
+  if (selectedDate === 0) {
+    if (currentViewStyle !== 'grid') {
+      centerOnToday();
+    }
+    return;
+  }
+  
+  if (currentViewStyle === 'grid') {
+    selectedDate = 0;
+    renderAll();
+    showToast('Today');
+  } else {
+    var direction = selectedDate > 0 ? 'right' : 'left';
+    selectedDate = 0;
+    animatePageTransition(direction);
+    setTimeout(centerOnToday, 350);
+    showToast('Today');
+  }
+}
+
+function centerOnToday() {
+  var container = document.getElementById('lanesDateChips');
+  var todayChip = document.getElementById('today-chip');
+  if (todayChip && container) {
+    var containerWidth = container.offsetWidth;
+    var chipLeft = todayChip.offsetLeft;
+    var chipWidth = todayChip.offsetWidth;
+    var scrollTarget = chipLeft - (containerWidth / 2) + (chipWidth / 2);
+    container.scrollLeft = scrollTarget;
+  }
+}
+
+function renderLanesDateChips() {
+  var container = document.getElementById('lanesDateChips');
+  var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var today = new Date();
+  var startOffset = -60;
+  var endOffset = 120;
+  var monthGroups = {};
+  var monthOrder = [];
+  
+  for (var i = startOffset; i < endOffset; i++) {
+    var d = new Date(today);
+    d.setDate(d.getDate() + i);
+    var monthKey = d.getFullYear() + '-' + d.getMonth();
+    
+    if (!monthGroups[monthKey]) {
+      monthGroups[monthKey] = { month: d.getMonth(), year: d.getFullYear(), label: months[d.getMonth()], days: [] };
+      monthOrder.push(monthKey);
+    }
+    
+    monthGroups[monthKey].days.push({ offset: i, date: d, dayName: days[d.getDay()], dayNum: d.getDate(), isToday: i === 0 });
+  }
+  
+  var html = '';
+  var monthIndex = 0;
+  
+  for (var k = 0; k < monthOrder.length; k++) {
+    var key = monthOrder[k];
+    var group = monthGroups[key];
+    var evenOdd = monthIndex % 2 === 0 ? 'even' : 'odd';
+    
+    html += '<div class="month-section ' + evenOdd + '">';
+    html += '<div class="month-label">' + group.label + '</div>';
+    html += '<div class="month-days">';
+    
+    for (var j = 0; j < group.days.length; j++) {
+      var day = group.days[j];
+      var jobCount = getJobsForDateOffset(day.offset).length;
+      var isActive = day.offset === selectedDate;
+      var classes = 'lanes-date-chip';
+      if (isActive) classes += ' active';
+      if (day.isToday) classes += ' today';
+      var idAttr = day.isToday ? ' id="today-chip"' : '';
+      
+      html += '<button class="' + classes + '"' + idAttr + ' onclick="selectDate(' + day.offset + ')">';
+      html += '<span class="day-name">' + day.dayName + '</span>';
+      html += '<span class="day-num">' + day.dayNum + '</span>';
+      if (jobCount > 0) html += '<span class="job-count">' + jobCount + '</span>';
+      html += '</button>';
+    }
+    
+    html += '</div></div>';
+    monthIndex++;
+  }
+  
+  container.innerHTML = html;
+}
+
+function selectDate(offset) {
+  if (offset === selectedDate || isAnimating) return;
+  
+  if (currentViewStyle === 'grid') {
+    selectedDate = offset;
+    renderAll();
+    showToast(getDateLabel(selectedDate));
+  } else {
+    var direction = offset > selectedDate ? 'left' : 'right';
+    selectedDate = offset;
+    animatePageTransition(direction);
+  }
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  renderLanesControls();
+  renderPages();
+}
+
+function getDateLabel(offset) {
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Tomorrow';
+  if (offset === -1) return 'Yesterday';
+  var today = new Date();
+  var d = new Date(today);
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function getJobsForDateOffset(offset) {
+  var jobs = [];
+  if (currentTab === 'service') {
+    jobs = serviceJobs.filter(function(j) { return j.date === offset; });
+  } else if (currentTab === 'fleet') {
+    jobs = fleetJobs.filter(function(j) { return j.date === offset; });
+  } else if (currentTab === 'sales') {
+    jobs = salesJobs.filter(function(j) { return j.date === offset; });
+  }
+  return jobs;
+}
+
+function getCurrentStaff() {
+  if (currentTab === 'sales') {
+    return salespeople;
+  }
+  return technicians;
+}
+
+function getTechById(id) {
+  var staff = getCurrentStaff();
+  for (var i = 0; i < staff.length; i++) {
+    if (staff[i].id === id) return staff[i];
+  }
+  return { id: id, name: id, initials: '?', color: 'purple', role: '' };
+}
+
+var statusLabels = { 'in_progress': 'Active', 'waiting': 'Parts', 'completed': 'Done', 'urgent': 'Urgent', 'scheduled': 'Scheduled', 'confirmed': 'Confirmed' };
+
+function toggleLane(techId, dateOffset) {
+  var lane = document.getElementById('lane-' + techId + '-' + dateOffset);
+  if (lane) lane.classList.toggle('expanded');
+}
+
+function renderLanesView(dateOffset) {
+  var jobs = getJobsForDateOffset(dateOffset);
+  if (currentFilter !== 'all') {
+    jobs = jobs.filter(function(j) { return j.status === currentFilter; });
+  }
+  
+  var emptyIcon = currentTab === 'sales' ? '📅' : (currentTab === 'fleet' ? '🚛' : '🔧');
+  if (jobs.length === 0) return '<div class="empty-state"><div class="empty-state-icon">' + emptyIcon + '</div><div class="empty-state-text">No jobs for ' + getDateLabel(dateOffset) + '</div></div>';
+  
+  var staff = getCurrentStaff();
+  var html = '<div class="lanes-container">';
+  
+  staff.forEach(function(person) {
+    var personJobs = jobs.filter(function(j) { return j.tech === person.id; });
+    var hours = (personJobs.length * 1.5).toFixed(1);
+    var expandedClass = lanesExpanded ? ' expanded' : '';
+    
+    html += '<div class="tech-lane' + expandedClass + '" id="lane-' + person.id + '-' + dateOffset + '" data-tech="' + person.id + '" data-date="' + dateOffset + '">';
+    html += '<div class="lane-header" onclick="toggleLane(\'' + person.id + '\', ' + dateOffset + ')">';
+    html += '<div class="lane-info">';
+    html += '<div class="tech-avatar ' + person.color + '">' + person.initials + '</div>';
+    html += '<div class="tech-details"><h3>' + person.name + '</h3><span>' + person.role + (person.bay ? ' • ' + person.bay : '') + '</span></div></div>';
+    html += '<div class="lane-header-right">';
+    html += '<div class="lane-stats"><div class="stat-item"><div class="stat-value">' + personJobs.length + '</div><div class="stat-label">Jobs</div></div>';
+    html += '<div class="stat-item"><div class="stat-value">' + hours + 'h</div><div class="stat-label">Booked</div></div></div>';
+    html += '<span class="lane-expand-icon">▼</span>';
+    html += '</div></div>';
+    html += '<div class="lane-cards-wrapper"><div class="lane-cards">';
+    personJobs.forEach(function(j) {
+      html += '<div class="wo-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '" data-tech="' + j.tech + '" data-date="' + j.date + '">';
+      html += '<div class="card-time">' + j.time + '</div><div class="card-customer">' + j.customer + '</div>';
+      html += '<div class="card-info-row"><span class="card-vehicle">' + j.vehicle + '</span><span class="card-dot"></span>';
+      html += '<span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span>';
+      html += '<span class="card-amount">' + j.amount + '</span></div></div>';
+    });
+    var addLabel = currentTab === 'sales' ? 'Appt' : 'Add';
+    html += '<div class="add-card" onclick="event.stopPropagation(); location.href=\'work-order-new.html\'"><div class="add-card-icon">+</div><span>' + addLabel + '</span></div>';
+    html += '</div></div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderPages() {
+  if (currentViewStyle === 'lanes') {
+    document.getElementById('currentPage').innerHTML = renderLanesView(selectedDate);
+    document.getElementById('prevPage').innerHTML = renderLanesView(selectedDate - 1);
+    document.getElementById('nextPage').innerHTML = renderLanesView(selectedDate + 1);
+  } else if (currentViewStyle === 'stack') {
+    document.getElementById('currentPage').innerHTML = renderStackView(selectedDate);
+    document.getElementById('prevPage').innerHTML = renderStackView(selectedDate - 1);
+    document.getElementById('nextPage').innerHTML = renderStackView(selectedDate + 1);
+  } else if (currentViewStyle === 'grid') {
+    document.getElementById('currentPage').innerHTML = renderGridView();
+    document.getElementById('prevPage').innerHTML = '';
+    document.getElementById('nextPage').innerHTML = '';
+  }
+  setupDragAndDrop();
+}
+
+// Stack View - All jobs stacked by time
+function renderStackView(dateOffset) {
+  var jobs = getJobsForDateOffset(dateOffset);
+  if (currentFilter !== 'all') {
+    jobs = jobs.filter(function(j) { return j.status === currentFilter; });
+  }
+  
+  var emptyIcon = currentTab === 'sales' ? '📅' : (currentTab === 'fleet' ? '🚛' : '🔧');
+  if (jobs.length === 0) {
+    return '<div class="empty-state"><div class="empty-state-icon">' + emptyIcon + '</div><div class="empty-state-text">No jobs for ' + getDateLabel(dateOffset) + '</div></div>';
+  }
+  
+  // Sort by time
+  jobs.sort(function(a, b) {
+    return (a.time || '').localeCompare(b.time || '');
+  });
+  
+  var html = '<div class="stack-container">';
+  html += '<div class="stack-date-header">' + getDateLabel(dateOffset) + '</div>';
+  
+  jobs.forEach(function(j) {
+    var person = getTechById(j.tech);
+    html += '<div class="stack-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '" data-tech="' + j.tech + '" data-date="' + j.date + '">';
+    html += '<div class="stack-card-left">';
+    html += '<div class="stack-time">' + j.time + '</div>';
+    html += '<div class="stack-avatar ' + person.color + '">' + person.initials + '</div>';
+    html += '</div>';
+    html += '<div class="stack-card-center">';
+    html += '<div class="stack-customer">' + j.customer + '</div>';
+    html += '<div class="stack-vehicle">' + j.vehicle + '</div>';
+    html += '<div class="stack-person">' + person.name + '</div>';
+    html += '</div>';
+    html += '<div class="stack-card-right">';
+    html += '<div class="stack-amount">' + j.amount + '</div>';
+    html += '<span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+  
+  html += '</div>';
+  return html;
+}
+
+// Grid/Calendar View
+function renderGridView() {
+  var today = new Date();
+  var currentMonth = today.getMonth();
+  var currentYear = today.getFullYear();
+  
+  // Adjust based on selectedDate offset
+  var viewDate = new Date(today);
+  viewDate.setDate(viewDate.getDate() + selectedDate);
+  var viewMonth = viewDate.getMonth();
+  var viewYear = viewDate.getFullYear();
+  
+  var firstDay = new Date(viewYear, viewMonth, 1);
+  var lastDay = new Date(viewYear, viewMonth + 1, 0);
+  var startDayOfWeek = firstDay.getDay();
+  var daysInMonth = lastDay.getDate();
+  
+  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  var html = '<div class="calendar-container">';
+  html += '<div class="calendar-header">';
+  html += '<button class="calendar-nav-btn" onclick="changeMonth(-1)">◀</button>';
+  html += '<span class="calendar-month-title">' + months[viewMonth] + ' ' + viewYear + '</span>';
+  html += '<button class="calendar-nav-btn" onclick="changeMonth(1)">▶</button>';
+  html += '</div>';
+  
+  html += '<div class="calendar-grid">';
+  
+  // Day headers
+  days.forEach(function(day) {
+    html += '<div class="calendar-day-header">' + day + '</div>';
+  });
+  
+  // Empty cells before first day
+  for (var i = 0; i < startDayOfWeek; i++) {
+    html += '<div class="calendar-day empty"></div>';
+  }
+  
+  // Days of month
+  for (var day = 1; day <= daysInMonth; day++) {
+    var cellDate = new Date(viewYear, viewMonth, day);
+    var dayOffset = Math.floor((cellDate - today) / (1000 * 60 * 60 * 24));
+    var jobs = getJobsForDateOffset(dayOffset);
+    
+    var isToday = dayOffset === 0;
+    var isSelected = dayOffset === selectedDate;
+    var classes = 'calendar-day';
+    if (isToday) classes += ' today';
+    if (isSelected) classes += ' selected';
+    
+    html += '<div class="' + classes + '" onclick="selectDateFromCalendar(' + dayOffset + ')">';
+    html += '<span class="calendar-day-num">' + day + '</span>';
+    
+    if (jobs.length > 0) {
+      html += '<div class="calendar-dots">';
+      // Show up to 4 dots
+      var dotCount = Math.min(jobs.length, 4);
+      for (var d = 0; d < dotCount; d++) {
+        var dotColor = getStatusColor(jobs[d].status);
+        html += '<span class="calendar-dot" style="background:' + dotColor + '"></span>';
+      }
+      if (jobs.length > 4) {
+        html += '<span class="calendar-more">+' + (jobs.length - 4) + '</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  
+  // Show selected day's jobs below calendar
+  html += '<div class="calendar-day-detail">';
+  html += '<div class="calendar-detail-header">' + getDateLabel(selectedDate) + '</div>';
+  var selectedJobs = getJobsForDateOffset(selectedDate);
+  if (currentFilter !== 'all') {
+    selectedJobs = selectedJobs.filter(function(j) { return j.status === currentFilter; });
+  }
+  
+  if (selectedJobs.length === 0) {
+    html += '<div class="calendar-no-jobs">No jobs scheduled</div>';
+  } else {
+    selectedJobs.forEach(function(j) {
+      var person = getTechById(j.tech);
+      html += '<div class="calendar-job-item status-' + j.status + '">';
+      html += '<span class="calendar-job-time">' + j.time + '</span>';
+      html += '<span class="calendar-job-customer">' + j.customer + '</span>';
+      html += '<span class="calendar-job-person">' + person.initials + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  
+  html += '</div>';
+  return html;
+}
+
+function getStatusColor(status) {
+  switch(status) {
+    case 'in_progress': return 'var(--accent-primary)';
+    case 'waiting': return '#eab308';
+    case 'completed': return '#22c55e';
+    case 'urgent': return '#ef4444';
+    case 'confirmed': return '#8b5cf6';
+    default: return 'var(--text-secondary)';
+  }
+}
+
+function selectDateFromCalendar(offset) {
+  selectedDate = offset;
+  renderAll();
+}
+
+function changeMonth(direction) {
+  // Move selectedDate by ~30 days
+  selectedDate += direction * 30;
+  renderAll();
+  
+  // Show toast with month name
+  var today = new Date();
+  var viewDate = new Date(today);
+  viewDate.setDate(viewDate.getDate() + selectedDate);
+  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  showToast(months[viewDate.getMonth()] + ' ' + viewDate.getFullYear());
+}
+
+function renderAll() {
+  renderLanesControls();
+  
+  // Show/hide date chips based on view style
+  var dateChipsContainer = document.getElementById('lanesDateChips');
+  if (currentViewStyle === 'grid') {
+    dateChipsContainer.style.display = 'none';
+  } else {
+    dateChipsContainer.style.display = 'flex';
+    renderLanesDateChips();
+  }
+  
+  renderPages();
+}
+
+// TRUE Tinder-style animation - page slides off, doesn't come back
+function animatePageTransition(direction) {
+  if (isAnimating) return;
+  isAnimating = true;
+  
+  var currentPage = document.getElementById('currentPage');
+  var prevPage = document.getElementById('prevPage');
+  var nextPage = document.getElementById('nextPage');
+  
+  // Add animation class
+  currentPage.classList.add('animating');
+  prevPage.classList.add('animating');
+  nextPage.classList.add('animating');
+  
+  if (direction === 'left') {
+    // Swiping left - going to next day
+    // Current slides out left, next slides in from right
+    currentPage.style.transform = 'translateX(-100%)';
+    currentPage.style.opacity = '0';
+    nextPage.style.transform = 'translateX(0)';
+    nextPage.style.opacity = '1';
+  } else {
+    // Swiping right - going to previous day
+    // Current slides out right, prev slides in from left
+    currentPage.style.transform = 'translateX(100%)';
+    currentPage.style.opacity = '0';
+    prevPage.style.transform = 'translateX(0)';
+    prevPage.style.opacity = '1';
+  }
+  
+  // After animation completes, reset and re-render
+  setTimeout(function() {
+    // Remove animation class
+    currentPage.classList.remove('animating');
+    prevPage.classList.remove('animating');
+    nextPage.classList.remove('animating');
+    
+    // Reset positions instantly
+    currentPage.style.transform = '';
+    currentPage.style.opacity = '';
+    prevPage.style.transform = '';
+    prevPage.style.opacity = '';
+    nextPage.style.transform = '';
+    nextPage.style.opacity = '';
+    
+    // Reset classes
+    currentPage.className = 'swipe-page current';
+    prevPage.className = 'swipe-page prev';
+    nextPage.className = 'swipe-page next';
+    
+    // Update content
+    renderAll();
+    
+    // Scroll date chips to show selected
+    scrollToActiveChip();
+    
+    isAnimating = false;
+  }, 300);
+  
+  showToast(getDateLabel(selectedDate));
+}
+
+function scrollToActiveChip() {
+  var container = document.getElementById('lanesDateChips');
+  var activeChip = container.querySelector('.lanes-date-chip.active');
+  if (activeChip) {
+    var containerWidth = container.offsetWidth;
+    var chipLeft = activeChip.offsetLeft;
+    var chipWidth = activeChip.offsetWidth;
+    var scrollTarget = chipLeft - (containerWidth / 2) + (chipWidth / 2);
+    container.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+  }
+}
+
+// Swipe handling - TRUE Tinder style
+var contentArea = document.getElementById('contentArea');
+var swipeStartX = 0;
+var swipeStartY = 0;
+var isSwiping = false;
+var swipeThreshold = 50;
+var insideLaneCards = false;
+
+function checkInsideExpandedLaneCards(element) {
+  while (element && element !== document.body) {
+    if (element.classList && element.classList.contains('lane-cards')) {
+      var lane = element.closest('.tech-lane');
+      if (lane && lane.classList.contains('expanded')) {
+        return true;
+      }
+    }
+    element = element.parentElement;
+  }
+  return false;
+}
+
+contentArea.addEventListener('touchstart', function(e) {
+  if (isDragging || isAnimating) return;
+  
+  // Check if inside expanded lane-cards
+  insideLaneCards = checkInsideExpandedLaneCards(e.target);
+  if (insideLaneCards) return;
+  
+  swipeStartX = e.touches[0].clientX;
+  swipeStartY = e.touches[0].clientY;
+  isSwiping = true;
+}, { passive: true });
+
+contentArea.addEventListener('touchmove', function(e) {
+  if (isDragging || insideLaneCards || !isSwiping || isAnimating) return;
+  
+  var touchX = e.touches[0].clientX;
+  var touchY = e.touches[0].clientY;
+  var deltaX = touchX - swipeStartX;
+  var deltaY = touchY - swipeStartY;
+  
+  // If vertical movement is dominant, cancel swipe
+  if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
+    isSwiping = false;
+    return;
+  }
+  
+  // TRUE Tinder style - once threshold crossed, immediately animate and change day
+  if (Math.abs(deltaX) > swipeThreshold) {
+    isSwiping = false;
+    
+    if (currentViewStyle === 'grid') {
+      // Grid view - change months
+      if (deltaX > 0) {
+        changeMonth(-1);
+      } else {
+        changeMonth(1);
+      }
+    } else {
+      // Lanes/Stack view - change days
+      if (deltaX > 0) {
+        selectedDate--;
+        animatePageTransition('right');
+      } else {
+        selectedDate++;
+        animatePageTransition('left');
+      }
+    }
+  }
+}, { passive: true });
+
+contentArea.addEventListener('touchend', function(e) {
+  isSwiping = false;
+  insideLaneCards = false;
+}, { passive: true });
+
+// Drag and Drop
+var isDragging = false;
+var draggedJob = null;
+var dragGhost = null;
+var dragStartX = 0;
+var dragStartY = 0;
+var edgeScrollInterval = null;
+var currentDragDate = 0;
+
+function setupDragAndDrop() {
+  var cards = document.querySelectorAll('.wo-card');
+  cards.forEach(function(card) {
+    card.addEventListener('touchstart', onDragStart, { passive: true });
+  });
+}
+
+function onDragStart(e) {
+  var card = e.currentTarget;
+  var touch = e.touches[0];
+  
+  dragStartX = touch.clientX;
+  dragStartY = touch.clientY;
+  
+  var holdTimer = setTimeout(function() {
+    isDragging = true;
+    draggedJob = {
+      id: card.dataset.jobId,
+      tech: card.dataset.tech,
+      date: parseInt(card.dataset.date)
+    };
+    currentDragDate = selectedDate;
+    
+    card.classList.add('dragging');
+    
+    dragGhost = card.cloneNode(true);
+    dragGhost.classList.add('drag-ghost');
+    dragGhost.style.width = card.offsetWidth + 'px';
+    document.body.appendChild(dragGhost);
+    
+    positionGhost(touch.clientX, touch.clientY);
+    
+    navigator.vibrate && navigator.vibrate(50);
+  }, 400);
+  
+  var moveHandler = function(ev) {
+    var t = ev.touches[0];
+    if (Math.abs(t.clientX - dragStartX) > 15 || Math.abs(t.clientY - dragStartY) > 15) {
+      clearTimeout(holdTimer);
+      card.removeEventListener('touchmove', moveHandler);
+    }
+  };
+  
+  card.addEventListener('touchmove', moveHandler, { passive: true });
+  
+  card.addEventListener('touchend', function endHandler() {
+    clearTimeout(holdTimer);
+    card.removeEventListener('touchmove', moveHandler);
+    card.removeEventListener('touchend', endHandler);
+  });
+}
+
+document.addEventListener('touchmove', function(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  
+  var touch = e.touches[0];
+  positionGhost(touch.clientX, touch.clientY);
+  
+  checkEdgeScroll(touch.clientX);
+  highlightDropTarget(touch.clientX, touch.clientY);
+}, { passive: false });
+
+document.addEventListener('touchend', function(e) {
+  if (!isDragging) return;
+  
+  clearInterval(edgeScrollInterval);
+  edgeScrollInterval = null;
+  
+  document.getElementById('edgeLeft').classList.remove('active');
+  document.getElementById('edgeRight').classList.remove('active');
+  
+  var lanes = document.querySelectorAll('.tech-lane');
+  lanes.forEach(function(l) { l.classList.remove('drop-target'); });
+  
+  var touch = e.changedTouches[0];
+  var dropTarget = findDropTarget(touch.clientX, touch.clientY);
+  
+  if (dropTarget && draggedJob) {
+    var newTech = dropTarget.dataset.tech;
+    var newDate = currentDragDate;
+    
+    if (newTech !== draggedJob.tech || newDate !== draggedJob.date) {
+      updateJobAssignment(draggedJob.id, newTech, newDate);
+      showToast('Moved to ' + getTechById(newTech).name + ' on ' + getDateLabel(newDate));
+    }
+  }
+  
+  if (dragGhost) {
+    dragGhost.remove();
+    dragGhost = null;
+  }
+  
+  var draggingCards = document.querySelectorAll('.wo-card.dragging');
+  draggingCards.forEach(function(c) { c.classList.remove('dragging'); });
+  
+  isDragging = false;
+  draggedJob = null;
+  
+  renderAll();
+});
+
+function positionGhost(x, y) {
+  if (!dragGhost) return;
+  dragGhost.style.left = (x - 100) + 'px';
+  dragGhost.style.top = (y - 40) + 'px';
+}
+
+function checkEdgeScroll(x) {
+  var screenWidth = window.innerWidth;
+  var edgeZone = 60;
+  var leftEdge = document.getElementById('edgeLeft');
+  var rightEdge = document.getElementById('edgeRight');
+  
+  if (x < edgeZone) {
+    leftEdge.classList.add('active');
+    document.getElementById('edgeLeftPreview').innerHTML = getDateLabel(currentDragDate - 1);
+    
+    if (!edgeScrollInterval) {
+      edgeScrollInterval = setInterval(function() {
+        currentDragDate--;
+        document.getElementById('edgeLeftPreview').innerHTML = getDateLabel(currentDragDate - 1);
+        navigator.vibrate && navigator.vibrate(20);
+      }, 500);
+    }
+  } else if (x > screenWidth - edgeZone) {
+    rightEdge.classList.add('active');
+    document.getElementById('edgeRightPreview').innerHTML = getDateLabel(currentDragDate + 1);
+    
+    if (!edgeScrollInterval) {
+      edgeScrollInterval = setInterval(function() {
+        currentDragDate++;
+        document.getElementById('edgeRightPreview').innerHTML = getDateLabel(currentDragDate + 1);
+        navigator.vibrate && navigator.vibrate(20);
+      }, 500);
+    }
+  } else {
+    leftEdge.classList.remove('active');
+    rightEdge.classList.remove('active');
+    if (edgeScrollInterval) {
+      clearInterval(edgeScrollInterval);
+      edgeScrollInterval = null;
+    }
+  }
+}
+
+function highlightDropTarget(x, y) {
+  var lanes = document.querySelectorAll('.tech-lane');
+  lanes.forEach(function(lane) {
+    var rect = lane.getBoundingClientRect();
+    if (y >= rect.top && y <= rect.bottom) {
+      lane.classList.add('drop-target');
+    } else {
+      lane.classList.remove('drop-target');
+    }
+  });
+}
+
+function findDropTarget(x, y) {
+  var lanes = document.querySelectorAll('.tech-lane');
+  for (var i = 0; i < lanes.length; i++) {
+    var rect = lanes[i].getBoundingClientRect();
+    if (y >= rect.top && y <= rect.bottom) {
+      return lanes[i];
+    }
+  }
+  return null;
+}
+
+function updateJobAssignment(jobId, newTech, newDate) {
+  // Check service jobs
+  for (var i = 0; i < serviceJobs.length; i++) {
+    if (serviceJobs[i].id === jobId) {
+      serviceJobs[i].tech = newTech;
+      serviceJobs[i].date = newDate;
+      return;
+    }
+  }
+  
+  // Check fleet jobs
+  for (var i = 0; i < fleetJobs.length; i++) {
+    if (fleetJobs[i].id === jobId) {
+      fleetJobs[i].tech = newTech;
+      fleetJobs[i].date = newDate;
+      return;
+    }
+  }
+  
+  // Check sales jobs
+  for (var i = 0; i < salesJobs.length; i++) {
+    if (salesJobs[i].id === jobId) {
+      salesJobs[i].tech = newTech;
+      salesJobs[i].date = newDate;
+      return;
+    }
+  }
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2000);
+}
+
+async function init() {
+  // Check auth (but don't require it for demo)
+  await checkAuth();
+  
+  // Load business name from Supabase
+  await loadBusinessSettings();
+  
+  // Check URL params for tab
+  var urlParams = new URLSearchParams(window.location.search);
+  var tabParam = urlParams.get('tab');
+  if (tabParam && ['service', 'sales', 'fleet'].indexOf(tabParam) !== -1) {
+    currentTab = tabParam;
+    document.querySelectorAll('.main-tab').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab' + tabParam.charAt(0).toUpperCase() + tabParam.slice(1)).classList.add('active');
+  }
+  
+  // Restore view style button state
+  document.querySelectorAll('.view-style-btn').forEach(function(b) { b.classList.remove('active'); });
+  var styleBtn = document.getElementById('style' + currentViewStyle.charAt(0).toUpperCase() + currentViewStyle.slice(1));
+  if (styleBtn) styleBtn.classList.add('active');
+  
+  renderAll();
+  
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      centerOnToday();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>
