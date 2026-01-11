@@ -399,29 +399,65 @@
       position: fixed;
       top: 50%;
       transform: translateY(-50%);
-      width: 60px;
-      height: 120px;
+      width: 70px;
+      height: 150px;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 8px;
       font-size: 24px;
-      color: var(--accent-light);
-      background: linear-gradient(90deg, var(--accent-primary), transparent);
+      color: white;
+      background: linear-gradient(90deg, rgba(59,130,246,0.9), transparent);
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
-      z-index: 200;
-      border-radius: 0 12px 12px 0;
+      z-index: 500;
+      border-radius: 0 16px 16px 0;
     }
 
     .edge-indicator.left { left: 0; }
     .edge-indicator.right { 
       right: 0; 
-      background: linear-gradient(-90deg, var(--accent-primary), transparent);
-      border-radius: 12px 0 0 12px;
+      background: linear-gradient(-90deg, rgba(59,130,246,0.9), transparent);
+      border-radius: 16px 0 0 16px;
     }
-    .edge-indicator.active { opacity: 0.9; }
-    .edge-indicator .date-preview { font-size: 11px; font-weight: 700; text-align: center; line-height: 1.3; }
+    .edge-indicator.active { 
+      opacity: 1; 
+      animation: edgePulse 0.6s ease-in-out infinite;
+    }
+    .edge-indicator .date-preview { 
+      font-size: 12px; 
+      font-weight: 700; 
+      text-align: center; 
+      line-height: 1.3; 
+      padding: 0 8px;
+    }
+    .edge-indicator .edge-arrow {
+      font-size: 28px;
+      animation: arrowBounce 0.6s ease-in-out infinite;
+    }
+    .edge-indicator.left .edge-arrow {
+      animation: arrowBounceLeft 0.6s ease-in-out infinite;
+    }
+    .edge-indicator.right .edge-arrow {
+      animation: arrowBounceRight 0.6s ease-in-out infinite;
+    }
+
+    @keyframes edgePulse {
+      0%, 100% { opacity: 0.85; }
+      50% { opacity: 1; }
+    }
+
+    @keyframes arrowBounceLeft {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-5px); }
+    }
+
+    @keyframes arrowBounceRight {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(5px); }
+    }
 
     /* Lanes */
     .lanes-container { padding: 12px 0; }
@@ -593,7 +629,7 @@
     /* Drag ghost */
     .drag-ghost {
       position: fixed;
-      z-index: 1000;
+      z-index: 1001;
       pointer-events: none;
       opacity: 0.9;
       transform: scale(1.05) rotate(2deg);
@@ -1172,8 +1208,8 @@
   </div>
 </div>
 
-<div class="edge-indicator left" id="edgeLeft"><div class="date-preview" id="edgeLeftPreview">←</div></div>
-<div class="edge-indicator right" id="edgeRight"><div class="date-preview" id="edgeRightPreview">→</div></div>
+<div class="edge-indicator left" id="edgeLeft"><span class="edge-arrow">◀</span><div class="date-preview" id="edgeLeftPreview"></div></div>
+<div class="edge-indicator right" id="edgeRight"><span class="edge-arrow">▶</span><div class="date-preview" id="edgeRightPreview"></div></div>
 
 <div class="content-area" id="contentArea">
   <div class="swipe-page current" id="currentPage"></div>
@@ -1481,7 +1517,7 @@ function renderLanesDateChips() {
       if (day.isToday) classes += ' today';
       var idAttr = day.isToday ? ' id="today-chip"' : '';
       
-      html += '<button class="' + classes + '"' + idAttr + ' onclick="selectDate(' + day.offset + ')">';
+      html += '<button class="' + classes + '"' + idAttr + ' data-offset="' + day.offset + '" onclick="selectDate(' + day.offset + ')">';
       html += '<span class="day-name">' + day.dayName + '</span>';
       html += '<span class="day-num">' + day.dayNum + '</span>';
       if (jobCount > 0) html += '<span class="job-count">' + jobCount + '</span>';
@@ -2210,8 +2246,7 @@ document.addEventListener('touchmove', function(e) {
 document.addEventListener('touchend', function(e) {
   if (!isDragging) return;
   
-  clearInterval(edgeScrollInterval);
-  edgeScrollInterval = null;
+  clearEdgeScrollTimers();
   
   document.getElementById('edgeLeft').classList.remove('active');
   document.getElementById('edgeRight').classList.remove('active');
@@ -2240,10 +2275,19 @@ document.addEventListener('touchend', function(e) {
   var draggingCards = document.querySelectorAll('.wo-card.dragging');
   draggingCards.forEach(function(c) { c.classList.remove('dragging'); });
   
+  // Sync selectedDate with where we ended up dragging
+  if (currentDragDate !== selectedDate) {
+    selectedDate = currentDragDate;
+  }
+  
   isDragging = false;
   draggedJob = null;
   
+  // Full re-render to show updated state
   renderAll();
+  
+  // Re-center on the current date
+  setTimeout(scrollToActiveChip, 100);
 });
 
 function positionGhost(x, y) {
@@ -2252,49 +2296,163 @@ function positionGhost(x, y) {
   dragGhost.style.top = (y - 40) + 'px';
 }
 
+var edgeScrollTimeout = null;
+
 function checkEdgeScroll(x) {
   var screenWidth = window.innerWidth;
-  var edgeZone = 60;
+  var edgeZone = 70;
   var leftEdge = document.getElementById('edgeLeft');
   var rightEdge = document.getElementById('edgeRight');
   
   if (x < edgeZone) {
     leftEdge.classList.add('active');
+    rightEdge.classList.remove('active');
     document.getElementById('edgeLeftPreview').innerHTML = getDateLabel(currentDragDate - 1);
     
-    if (!edgeScrollInterval) {
-      edgeScrollInterval = setInterval(function() {
+    if (!edgeScrollInterval && !edgeScrollTimeout) {
+      // Initial delay before starting auto-scroll
+      edgeScrollTimeout = setTimeout(function() {
+        // First scroll immediately
         currentDragDate--;
         document.getElementById('edgeLeftPreview').innerHTML = getDateLabel(currentDragDate - 1);
-        navigator.vibrate && navigator.vibrate(20);
-      }, 500);
+        animateDragScroll('right');
+        navigator.vibrate && navigator.vibrate(30);
+        
+        // Then start interval for subsequent scrolls
+        edgeScrollInterval = setInterval(function() {
+          currentDragDate--;
+          document.getElementById('edgeLeftPreview').innerHTML = getDateLabel(currentDragDate - 1);
+          animateDragScroll('right');
+          navigator.vibrate && navigator.vibrate(20);
+        }, 700);
+      }, 400);
     }
   } else if (x > screenWidth - edgeZone) {
     rightEdge.classList.add('active');
+    leftEdge.classList.remove('active');
     document.getElementById('edgeRightPreview').innerHTML = getDateLabel(currentDragDate + 1);
     
-    if (!edgeScrollInterval) {
-      edgeScrollInterval = setInterval(function() {
+    if (!edgeScrollInterval && !edgeScrollTimeout) {
+      // Initial delay before starting auto-scroll
+      edgeScrollTimeout = setTimeout(function() {
+        // First scroll immediately
         currentDragDate++;
         document.getElementById('edgeRightPreview').innerHTML = getDateLabel(currentDragDate + 1);
-        navigator.vibrate && navigator.vibrate(20);
-      }, 500);
+        animateDragScroll('left');
+        navigator.vibrate && navigator.vibrate(30);
+        
+        // Then start interval for subsequent scrolls
+        edgeScrollInterval = setInterval(function() {
+          currentDragDate++;
+          document.getElementById('edgeRightPreview').innerHTML = getDateLabel(currentDragDate + 1);
+          animateDragScroll('left');
+          navigator.vibrate && navigator.vibrate(20);
+        }, 700);
+      }, 400);
     }
   } else {
     leftEdge.classList.remove('active');
     rightEdge.classList.remove('active');
-    if (edgeScrollInterval) {
-      clearInterval(edgeScrollInterval);
-      edgeScrollInterval = null;
-    }
+    clearEdgeScrollTimers();
   }
+}
+
+function clearEdgeScrollTimers() {
+  if (edgeScrollInterval) {
+    clearInterval(edgeScrollInterval);
+    edgeScrollInterval = null;
+  }
+  if (edgeScrollTimeout) {
+    clearTimeout(edgeScrollTimeout);
+    edgeScrollTimeout = null;
+  }
+}
+
+// Animate page content while dragging (without ending drag)
+function animateDragScroll(direction) {
+  var currentPage = document.getElementById('currentPage');
+  
+  // Add transition for smooth animation
+  currentPage.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+  
+  if (direction === 'left') {
+    // Content sliding left (going to next day)
+    currentPage.style.transform = 'translateX(-100%)';
+    currentPage.style.opacity = '0.3';
+  } else {
+    // Content sliding right (going to prev day)
+    currentPage.style.transform = 'translateX(100%)';
+    currentPage.style.opacity = '0.3';
+  }
+  
+  setTimeout(function() {
+    // Instantly move to opposite side
+    currentPage.style.transition = 'none';
+    currentPage.style.transform = direction === 'left' ? 'translateX(100%)' : 'translateX(-100%)';
+    
+    // Render new content
+    currentPage.innerHTML = renderLanesView(currentDragDate);
+    
+    // Setup drop targets on new content
+    setupDropTargetsOnly();
+    
+    // Force reflow
+    currentPage.offsetHeight;
+    
+    // Animate back to center
+    currentPage.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+    currentPage.style.transform = 'translateX(0)';
+    currentPage.style.opacity = '1';
+    
+    // Update date chips to show current drag date
+    updateDateChipsForDrag();
+    
+    setTimeout(function() {
+      currentPage.style.transition = '';
+    }, 300);
+  }, 300);
+  
+  // Show toast
+  showToast(getDateLabel(currentDragDate));
+}
+
+// Update date chips highlight during drag
+function updateDateChipsForDrag() {
+  var chips = document.querySelectorAll('.lanes-date-chip');
+  
+  chips.forEach(function(chip) {
+    chip.classList.remove('active');
+    var chipOffset = parseInt(chip.getAttribute('data-offset'));
+    if (chipOffset === currentDragDate) {
+      chip.classList.add('active');
+    }
+  });
+  
+  // Scroll chips to show active
+  var container = document.getElementById('lanesDateChips');
+  var activeChip = container.querySelector('.lanes-date-chip.active');
+  if (activeChip) {
+    var containerWidth = container.offsetWidth;
+    var chipLeft = activeChip.offsetLeft;
+    var chipWidth = activeChip.offsetWidth;
+    var scrollTarget = chipLeft - (containerWidth / 2) + (chipWidth / 2);
+    container.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+  }
+}
+
+// Setup drop targets without full drag setup
+function setupDropTargetsOnly() {
+  var lanes = document.querySelectorAll('.tech-lane');
+  lanes.forEach(function(lane) {
+    lane.classList.remove('drop-target');
+  });
 }
 
 function highlightDropTarget(x, y) {
   var lanes = document.querySelectorAll('.tech-lane');
   lanes.forEach(function(lane) {
     var rect = lane.getBoundingClientRect();
-    if (y >= rect.top && y <= rect.bottom) {
+    if (y >= rect.top && y <= rect.bottom && x > 60 && x < window.innerWidth - 60) {
       lane.classList.add('drop-target');
     } else {
       lane.classList.remove('drop-target');
@@ -2303,6 +2461,11 @@ function highlightDropTarget(x, y) {
 }
 
 function findDropTarget(x, y) {
+  // Don't find drop target if we're in edge zones
+  if (x < 60 || x > window.innerWidth - 60) {
+    return null;
+  }
+  
   var lanes = document.querySelectorAll('.tech-lane');
   for (var i = 0; i < lanes.length; i++) {
     var rect = lanes[i].getBoundingClientRect();
