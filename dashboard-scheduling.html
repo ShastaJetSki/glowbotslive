@@ -1347,18 +1347,23 @@ async function loadAllData() {
   document.getElementById('currentPage').innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-text">Loading...</div></div>';
   
   try {
+    // Load staff first
     await Promise.all([
       loadTechnicians(),
       loadSalespeople()
     ]);
     
-    await Promise.all([
-      loadServiceJobs(),
-      loadSalesJobs(),
-      loadFleetJobs()
-    ]);
+    // Then load jobs (loadServiceJobs also loads fleet jobs)
+    await loadServiceJobs();
+    await loadSalesJobs();
     
-    console.log('Data loaded - Techs:', technicians.length, 'Sales:', salespeople.length, 'Service:', serviceJobs.length, 'Sales Appts:', salesJobs.length, 'Fleet:', fleetJobs.length);
+    console.log('=== DATA LOAD SUMMARY ===');
+    console.log('Techs:', technicians.length, technicians.map(function(t) { return t.name; }));
+    console.log('Sales:', salespeople.length, salespeople.map(function(s) { return s.name; }));
+    console.log('Service Jobs:', serviceJobs.length);
+    console.log('Sales Appts:', salesJobs.length);
+    console.log('Fleet Jobs:', fleetJobs.length);
+    console.log('=========================');
     
     renderAll();
   } catch (e) {
@@ -1370,16 +1375,32 @@ async function loadAllData() {
 // Load technicians/service employees
 async function loadTechnicians() {
   try {
+    // Get employees who are technicians by department OR by role
     var result = await sb.from('employees')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('department', 'service')
       .eq('is_active', true);
     
     if (result.data && result.data.length > 0) {
-      technicians = result.data.map(function(emp, index) {
-        var name = emp.first_name + ' ' + emp.last_name;
-        var initials = (emp.first_name[0] + emp.last_name[0]).toUpperCase();
+      // Filter for service techs - check department OR role
+      var serviceTechs = result.data.filter(function(emp) {
+        var dept = (emp.department || '').toLowerCase();
+        var role = (emp.role || '').toLowerCase();
+        return dept === 'service' || 
+               role === 'technician' || 
+               role === 'master_tech' || 
+               role === 'lube_tech' ||
+               role === 'mechanic' ||
+               role.includes('tech');
+      });
+      
+      technicians = serviceTechs.map(function(emp, index) {
+        var name = (emp.first_name || '') + ' ' + (emp.last_name || '');
+        name = name.trim() || 'Unknown';
+        var initials = '??';
+        if (emp.first_name && emp.last_name) {
+          initials = (emp.first_name[0] + emp.last_name[0]).toUpperCase();
+        }
         return {
           id: emp.employee_id,
           name: name,
@@ -1402,7 +1423,7 @@ async function loadTechnicians() {
     color: 'purple'
   });
   
-  console.log('Loaded technicians:', technicians.length);
+  console.log('Loaded technicians:', technicians.length, technicians.map(function(t) { return t.name; }));
 }
 
 // Load salespeople
@@ -1411,13 +1432,27 @@ async function loadSalespeople() {
     var result = await sb.from('employees')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('department', 'sales')
       .eq('is_active', true);
     
     if (result.data && result.data.length > 0) {
-      salespeople = result.data.map(function(emp, index) {
-        var name = emp.first_name + ' ' + emp.last_name;
-        var initials = (emp.first_name[0] + emp.last_name[0]).toUpperCase();
+      // Filter for sales staff - check department OR role
+      var salesStaff = result.data.filter(function(emp) {
+        var dept = (emp.department || '').toLowerCase();
+        var role = (emp.role || '').toLowerCase();
+        return dept === 'sales' || 
+               role === 'sales_manager' || 
+               role === 'sales_consultant' || 
+               role === 'salesperson' ||
+               role.includes('sales');
+      });
+      
+      salespeople = salesStaff.map(function(emp, index) {
+        var name = (emp.first_name || '') + ' ' + (emp.last_name || '');
+        name = name.trim() || 'Unknown';
+        var initials = '??';
+        if (emp.first_name && emp.last_name) {
+          initials = (emp.first_name[0] + emp.last_name[0]).toUpperCase();
+        }
         return {
           id: emp.employee_id,
           name: name,
@@ -1440,7 +1475,7 @@ async function loadSalespeople() {
     color: 'purple'
   });
   
-  console.log('Loaded salespeople:', salespeople.length);
+  console.log('Loaded salespeople:', salespeople.length, salespeople.map(function(s) { return s.name; }));
 }
 
 // Format role for display
@@ -1458,30 +1493,72 @@ async function loadServiceJobs() {
   endDate.setDate(endDate.getDate() + 60);
   
   try {
+    // Get work orders
     var result = await sb.from('work_orders')
-      .select('*, customers(full_name, phone), vehicles(make, model, year)')
+      .select('*')
       .eq('tenant_id', tenantId)
-      .is('fleet_id', null)
       .eq('deleted', false)
       .gte('scheduled_start', startDate.toISOString())
       .lte('scheduled_start', endDate.toISOString())
       .order('scheduled_start', { ascending: true });
     
+    console.log('Work orders query result:', result);
+    
+    if (result.error) {
+      console.log('Work orders error:', result.error);
+      return;
+    }
+    
     if (result.data && result.data.length > 0) {
-      serviceJobs = result.data.map(function(wo) {
+      // Get unique customer IDs and vehicle IDs to fetch names
+      var customerIds = [...new Set(result.data.map(function(wo) { return wo.customer_id; }).filter(Boolean))];
+      var vehicleIds = [...new Set(result.data.map(function(wo) { return wo.vehicle_id; }).filter(Boolean))];
+      
+      // Fetch customer names
+      var customersMap = {};
+      if (customerIds.length > 0) {
+        var custResult = await sb.from('customers')
+          .select('customer_id, full_name')
+          .in('customer_id', customerIds);
+        if (custResult.data) {
+          custResult.data.forEach(function(c) {
+            customersMap[c.customer_id] = c.full_name;
+          });
+        }
+      }
+      
+      // Fetch vehicle info
+      var vehiclesMap = {};
+      if (vehicleIds.length > 0) {
+        var vehResult = await sb.from('vehicles')
+          .select('vehicle_id, make, model, year')
+          .in('vehicle_id', vehicleIds);
+        if (vehResult.data) {
+          vehResult.data.forEach(function(v) {
+            vehiclesMap[v.vehicle_id] = (v.year || '') + ' ' + (v.make || '') + ' ' + (v.model || '');
+          });
+        }
+      }
+      
+      // Filter out fleet jobs (those with fleet_id)
+      var nonFleetJobs = result.data.filter(function(wo) {
+        return !wo.fleet_id;
+      });
+      
+      serviceJobs = nonFleetJobs.map(function(wo) {
         var jobDate = new Date(wo.scheduled_start);
         var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         var jobDayStart = new Date(jobDate.getFullYear(), jobDate.getMonth(), jobDate.getDate());
         var dayOffset = Math.round((jobDayStart - todayStart) / (1000 * 60 * 60 * 24));
         
-        var customerName = wo.customers ? wo.customers.full_name : 'Unknown';
-        var vehicle = wo.vehicles ? (wo.vehicles.year + ' ' + wo.vehicles.make + ' ' + wo.vehicles.model) : 'Vehicle';
+        var customerName = customersMap[wo.customer_id] || 'WO #' + wo.wo_number;
+        var vehicleInfo = vehiclesMap[wo.vehicle_id] || wo.summary || 'Service';
         
         return {
           id: wo.work_order_id,
           wo_number: wo.wo_number,
           customer: customerName,
-          vehicle: vehicle,
+          vehicle: vehicleInfo.trim(),
           time: formatTimeFromTimestamp(wo.scheduled_start),
           status: mapStatus(wo.status),
           tech: wo.assigned_employee_id || 'unassigned',
@@ -1491,47 +1568,40 @@ async function loadServiceJobs() {
           priority: wo.priority
         };
       });
-    }
-  } catch (e) {
-    console.log('Could not load service jobs:', e);
-  }
-  
-  console.log('Loaded service jobs:', serviceJobs.length);
-}
-
-// Load fleet work orders
-async function loadFleetJobs() {
-  var today = new Date();
-  var startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 7);
-  var endDate = new Date(today);
-  endDate.setDate(endDate.getDate() + 60);
-  
-  try {
-    var result = await sb.from('work_orders')
-      .select('*, customers(full_name, phone), vehicles(make, model, year), fleets(fleet_name)')
-      .eq('tenant_id', tenantId)
-      .not('fleet_id', 'is', null)
-      .eq('deleted', false)
-      .gte('scheduled_start', startDate.toISOString())
-      .lte('scheduled_start', endDate.toISOString())
-      .order('scheduled_start', { ascending: true });
-    
-    if (result.data && result.data.length > 0) {
-      fleetJobs = result.data.map(function(wo) {
+      
+      // Also store fleet jobs
+      var fleetJobsData = result.data.filter(function(wo) {
+        return wo.fleet_id;
+      });
+      
+      // Fetch fleet names
+      var fleetIds = [...new Set(fleetJobsData.map(function(wo) { return wo.fleet_id; }).filter(Boolean))];
+      var fleetsMap = {};
+      if (fleetIds.length > 0) {
+        var fleetResult = await sb.from('fleets')
+          .select('fleet_id, fleet_name')
+          .in('fleet_id', fleetIds);
+        if (fleetResult.data) {
+          fleetResult.data.forEach(function(f) {
+            fleetsMap[f.fleet_id] = f.fleet_name;
+          });
+        }
+      }
+      
+      fleetJobs = fleetJobsData.map(function(wo) {
         var jobDate = new Date(wo.scheduled_start);
         var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         var jobDayStart = new Date(jobDate.getFullYear(), jobDate.getMonth(), jobDate.getDate());
         var dayOffset = Math.round((jobDayStart - todayStart) / (1000 * 60 * 60 * 24));
         
-        var fleetName = wo.fleets ? wo.fleets.fleet_name : 'Fleet';
-        var vehicle = wo.vehicles ? (wo.vehicles.year + ' ' + wo.vehicles.make + ' ' + wo.vehicles.model) : 'Vehicle';
+        var fleetName = fleetsMap[wo.fleet_id] || 'Fleet WO #' + wo.wo_number;
+        var vehicleInfo = vehiclesMap[wo.vehicle_id] || wo.summary || 'Fleet Service';
         
         return {
           id: wo.work_order_id,
           wo_number: wo.wo_number,
           customer: fleetName,
-          vehicle: vehicle,
+          vehicle: vehicleInfo.trim(),
           time: formatTimeFromTimestamp(wo.scheduled_start),
           status: mapStatus(wo.status),
           tech: wo.assigned_employee_id || 'unassigned',
@@ -1543,10 +1613,18 @@ async function loadFleetJobs() {
       });
     }
   } catch (e) {
-    console.log('Could not load fleet jobs:', e);
+    console.log('Could not load service jobs:', e);
   }
   
+  console.log('Loaded service jobs:', serviceJobs.length);
   console.log('Loaded fleet jobs:', fleetJobs.length);
+}
+
+// Load fleet work orders - now handled in loadServiceJobs
+async function loadFleetJobs() {
+  // Fleet jobs are now loaded in loadServiceJobs
+  // This function kept for compatibility
+  console.log('Fleet jobs already loaded:', fleetJobs.length);
 }
 
 // Load sales appointments
@@ -1565,13 +1643,20 @@ async function loadSalesJobs() {
       .lte('appointment_date', endDate.toISOString().split('T')[0])
       .order('appointment_date', { ascending: true });
     
+    console.log('Sales appointments query result:', result);
+    
+    if (result.error) {
+      console.log('Sales appointments error:', result.error);
+      return;
+    }
+    
     if (result.data && result.data.length > 0) {
       salesJobs = result.data.map(function(appt) {
         var apptDate = new Date(appt.appointment_date + 'T00:00:00');
         var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         var dayOffset = Math.round((apptDate - todayStart) / (1000 * 60 * 60 * 24));
         
-        // Find matching salesperson ID
+        // Find matching salesperson ID by name
         var techId = 'unassigned';
         if (appt.assigned_to) {
           var found = salespeople.find(function(sp) { 
