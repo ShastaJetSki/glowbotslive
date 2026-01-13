@@ -373,10 +373,15 @@
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="apptNotes" placeholder="Additional notes..."></textarea></div>
     </div>
     <div class="modal-footer">
-      <div class="modal-footer-buttons">
+      <div class="modal-footer-buttons" id="apptFooterButtons">
         <button class="btn-primary" id="apptCreateBtn" onclick="createQuickAppointment()"><span id="apptCreateText">Set Appt</span><span id="apptCreateLoading" class="btn-loading" style="display:none;"></span></button>
         <button class="btn-outline" onclick="editApptCustomerProfile()">Edit Profile</button>
         <button class="btn-secondary" onclick="closeQuickApptModal()">Cancel</button>
+      </div>
+      <div class="modal-footer-buttons" id="apptEditFooterButtons" style="display:none;">
+        <button class="btn-primary" id="apptSaveBtn" onclick="createQuickAppointment()"><span id="apptSaveText">Save Changes</span><span id="apptSaveLoading" class="btn-loading" style="display:none;"></span></button>
+        <button class="btn-outline" onclick="editApptCustomerProfile()">Edit Profile</button>
+        <button class="btn-secondary" style="background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444;" onclick="deleteAppointment()">Delete</button>
       </div>
     </div>
   </div>
@@ -481,7 +486,6 @@ function openQuickApptModal(){
   editingAppointmentId=null;
   apptCreatedCustomerId=null;
   document.querySelector('#quickApptModal .modal-title').textContent='Quick Appointment';
-  document.getElementById('apptCreateText').textContent='Set Appt';
   document.getElementById('apptCustomerName').value='';
   document.getElementById('apptOrganization').value='';
   document.getElementById('apptPhone').value='';
@@ -493,6 +497,9 @@ function openQuickApptModal(){
   td.setDate(td.getDate()+selectedDate);
   document.getElementById('apptDate').value=td.toISOString().split('T')[0];
   document.getElementById('apptTime').value='10:00';
+  // Show create footer, hide edit footer
+  document.getElementById('apptFooterButtons').style.display='grid';
+  document.getElementById('apptEditFooterButtons').style.display='none';
   document.getElementById('quickApptModal').classList.add('active');
 }
 async function editSalesAppointment(appointmentId){
@@ -501,7 +508,6 @@ async function editSalesAppointment(appointmentId){
   var appt = r.data;
   editingAppointmentId = appointmentId;
   document.querySelector('#quickApptModal .modal-title').textContent='Edit Appointment';
-  document.getElementById('apptCreateText').textContent='Save Changes';
   document.getElementById('apptCustomerName').value = appt.customer_name || '';
   document.getElementById('apptOrganization').value = appt.organization || '';
   document.getElementById('apptPhone').value = appt.customer_phone || '';
@@ -530,14 +536,40 @@ async function editSalesAppointment(appointmentId){
       if(sp) spSelect.value = sp.id;
     }
   }
+  // Show edit footer, hide create footer
+  document.getElementById('apptFooterButtons').style.display='none';
+  document.getElementById('apptEditFooterButtons').style.display='grid';
   document.getElementById('quickApptModal').classList.add('active');
 }
 function closeQuickApptModal(){
   document.getElementById('quickApptModal').classList.remove('active');
+  // Reset create button state
   document.getElementById('apptCreateText').style.display='inline';
   document.getElementById('apptCreateLoading').style.display='none';
   document.getElementById('apptCreateBtn').disabled=false;
+  // Reset edit button state
+  document.getElementById('apptSaveText').style.display='inline';
+  document.getElementById('apptSaveLoading').style.display='none';
+  document.getElementById('apptSaveBtn').disabled=false;
+  // Reset footer buttons
+  document.getElementById('apptFooterButtons').style.display='grid';
+  document.getElementById('apptEditFooterButtons').style.display='none';
   editingAppointmentId=null;
+}
+async function deleteAppointment(){
+  if(!editingAppointmentId){showToast('No appointment selected');return;}
+  if(!confirm('Delete this appointment?\n\nThis will NOT delete the customer.')){return;}
+  try{
+    var r = await sb.from('sales_appointments').delete().eq('appointment_id', editingAppointmentId);
+    if(r.error) throw r.error;
+    closeQuickApptModal();
+    showToast('Appointment deleted');
+    await loadSalesJobs();
+    renderAll();
+  }catch(e){
+    showToast('Error deleting appointment');
+    console.error(e);
+  }
 }
 async function editApptCustomerProfile(){var cn=document.getElementById('apptCustomerName').value.trim();var ph=document.getElementById('apptPhone').value.trim();var org=document.getElementById('apptOrganization').value.trim();if(!cn&&!ph){showToast('Enter name or phone first');return;}var existingCustomer=null;if(ph){var r=await sb.from('customers').select('customer_id').eq('tenant_id',tenantId).eq('phone',ph).limit(1);if(r.data&&r.data.length>0)existingCustomer=r.data[0];}if(!existingCustomer&&cn){var r=await sb.from('customers').select('customer_id').eq('tenant_id',tenantId).ilike('full_name',cn).limit(1);if(r.data&&r.data.length>0)existingCustomer=r.data[0];}if(existingCustomer){window.location.href='customer-profile.html?id='+existingCustomer.customer_id;}else{var names=cn.split(' ');var fn=names[0]||'';var ln=names.slice(1).join(' ')||'';try{var cr=await sb.from('customers').insert({tenant_id:tenantId,full_name:cn,first_name:fn,last_name:ln,phone:ph||null,organization_name:org||null,customer_type:'sales',created_at:new Date().toISOString()}).select().single();if(cr.error)throw cr.error;window.location.href='customer-profile.html?id='+cr.data.customer_id;}catch(e){showToast('Error creating customer');}}}
 async function createQuickAppointment(){
@@ -551,9 +583,16 @@ async function createQuickAppointment(){
   if(!ph){showToast('Please enter phone number');return;}
   if(!ad){showToast('Please select a date');return;}
   if(!at){showToast('Please select a time');return;}
-  document.getElementById('apptCreateText').style.display='none';
-  document.getElementById('apptCreateLoading').style.display='inline-block';
-  document.getElementById('apptCreateBtn').disabled=true;
+  // Handle loading state for both create and edit buttons
+  if(isEditing){
+    document.getElementById('apptSaveText').style.display='none';
+    document.getElementById('apptSaveLoading').style.display='inline-block';
+    document.getElementById('apptSaveBtn').disabled=true;
+  } else {
+    document.getElementById('apptCreateText').style.display='none';
+    document.getElementById('apptCreateLoading').style.display='inline-block';
+    document.getElementById('apptCreateBtn').disabled=true;
+  }
   try{
     var apt=document.getElementById('apptType').value,
         vi=document.getElementById('apptVehicleInterest').value.trim(),
@@ -589,9 +628,15 @@ async function createQuickAppointment(){
     renderAll();
   } catch(e) {
     showToast('Error: ' + (e.message || 'Failed to save appointment'));
-    document.getElementById('apptCreateText').style.display='inline';
-    document.getElementById('apptCreateLoading').style.display='none';
-    document.getElementById('apptCreateBtn').disabled=false;
+    if(isEditing){
+      document.getElementById('apptSaveText').style.display='inline';
+      document.getElementById('apptSaveLoading').style.display='none';
+      document.getElementById('apptSaveBtn').disabled=false;
+    } else {
+      document.getElementById('apptCreateText').style.display='inline';
+      document.getElementById('apptCreateLoading').style.display='none';
+      document.getElementById('apptCreateBtn').disabled=false;
+    }
   }
 }
 document.addEventListener('click',function(e){if(!e.target.closest('.search-container'))document.querySelectorAll('.search-results').forEach(function(el){el.classList.remove('show');});});
