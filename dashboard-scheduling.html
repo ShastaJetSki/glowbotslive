@@ -708,13 +708,14 @@ async function editApptCustomerProfile(){
   }
 }
 async function createQuickAppointment(){
-  var cn, org, ph;
+  var cn, org, ph, customerId = null;
   
   // Get customer info from selected customer or new customer fields
   if(apptSelectedCustomer){
     cn = apptSelectedCustomer.full_name || '';
     ph = apptSelectedCustomer.phone || '';
-    org = ''; // Could fetch from customer record if needed
+    org = '';
+    customerId = apptSelectedCustomer.customer_id;
   } else if(apptIsNewCustomer){
     cn = document.getElementById('apptCustomerName').value.trim();
     org = document.getElementById('apptOrganization').value.trim();
@@ -743,17 +744,51 @@ async function createQuickAppointment(){
     document.getElementById('apptCreateLoading').style.display='inline-block';
     document.getElementById('apptCreateBtn').disabled=true;
   }
+  
   try{
+    // If new customer, create customer record first
+    if(apptIsNewCustomer && !customerId){
+      var names = cn.split(' ');
+      var firstName = names[0] || '';
+      var lastName = names.slice(1).join(' ') || '';
+      
+      var customerData = {
+        tenant_id: tenantId,
+        full_name: cn,
+        first_name: firstName,
+        last_name: lastName,
+        phone: ph || null,
+        organization_name: org || null,
+        customer_type: 'sales',
+        created_at: new Date().toISOString()
+      };
+      
+      var cr = await sb.from('customers').insert(customerData).select().single();
+      if(cr.error) throw cr.error;
+      customerId = cr.data.customer_id;
+      
+      // Add to local cache so search finds them immediately
+      allCustomers.push({
+        customer_id: customerId,
+        full_name: cn,
+        phone: ph
+      });
+      
+      console.log('Created new customer:', customerId, cn);
+    }
+    
     var apt=document.getElementById('apptType').value,
         vi=document.getElementById('apptVehicleInterest').value.trim(),
         spid=document.getElementById('apptSalesperson').value,
         nt=document.getElementById('apptNotes').value.trim();
     var ato=null;
     if(spid){var sp=salespeople.find(function(s){return s.id===spid;});if(sp)ato=sp.name;}
+    
     var appointmentData = {
       customer_name: cn,
       organization: org || null,
       customer_phone: ph,
+      customer_id: customerId,
       appointment_date: ad,
       appointment_time: at,
       appointment_type: apt,
@@ -762,6 +797,7 @@ async function createQuickAppointment(){
       notes: nt || null,
       updated_at: new Date().toISOString()
     };
+    
     var ar;
     if(isEditing){
       ar = await sb.from('sales_appointments').update(appointmentData).eq('appointment_id', editingAppointmentId).select().single();
