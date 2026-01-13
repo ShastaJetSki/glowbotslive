@@ -914,9 +914,9 @@
             <option value="admin">Admin</option>
           </select>
           <select id="employeeFilterStatus" onchange="filterEmployees()" style="width:auto;">
+            <option value="">All Status</option>
             <option value="active">Active Only</option>
             <option value="inactive">Inactive Only</option>
-            <option value="">All Status</option>
           </select>
         </div>
         
@@ -1004,8 +1004,8 @@
               <input type="text" id="aptTypeName" placeholder="Test Drive" style="width:100%;" />
             </div>
             <div>
-              <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">Duration (minutes)</label>
-              <input type="number" id="aptTypeDuration" min="5" step="5" placeholder="30" style="width:100%;" />
+              <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">Duration (minutes) <span style="opacity:0.6;">optional</span></label>
+              <input type="number" id="aptTypeDuration" min="5" step="5" placeholder="e.g. 30" style="width:100%;" />
             </div>
             <div>
               <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">Color</label>
@@ -1797,34 +1797,52 @@ loadTheme();
 // =====================================================
 
 async function loadEmployeesSection() {
-  const supabaseUrl = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
-  const supabaseKey = document.querySelector('meta[name="supabase-anon-key"]').content;
-  const token = localStorage.getItem('sb_access_token');
-  
-  if (!token) return;
-  
-  const sb = supabase.createClient(supabaseUrl, supabaseKey, {
-    global: { headers: { Authorization: 'Bearer ' + token } }
-  });
-  
-  const { data: settings } = await sb.from('business_settings').select('tenant_id').limit(1).single();
-  if (!settings) return;
-  
-  const tenantId = settings.tenant_id;
-  
-  const { data: employees, error } = await sb.from('employees')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('last_name', { ascending: true });
-  
-  if (error) {
-    console.error('Error loading employees:', error);
-    document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Error loading employees</div>';
-    return;
-  }
+  try {
+    const supabaseUrl = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+    const supabaseKey = document.querySelector('meta[name="supabase-anon-key"]')?.content;
+    const token = localStorage.getItem('sb_access_token');
+    
+    console.log('Loading employees...', { hasKey: !!supabaseKey, hasToken: !!token });
+    
+    if (!supabaseKey || !token) {
+      console.error('Missing supabase key or token');
+      document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Authentication required. Please refresh the page.</div>';
+      return;
+    }
+    
+    const sb = supabase.createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: 'Bearer ' + token } }
+    });
+    
+    const { data: settings, error: settingsError } = await sb.from('business_settings').select('tenant_id').limit(1).single();
+    if (settingsError) {
+      console.error('Error loading settings:', settingsError);
+      document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Error loading settings</div>';
+      return;
+    }
+    if (!settings) {
+      console.error('No settings found');
+      return;
+    }
+    
+    const tenantId = settings.tenant_id;
+    console.log('Tenant ID:', tenantId);
+    
+    const { data: employees, error } = await sb.from('employees')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('last_name', { ascending: true });
+    
+    console.log('Employees result:', { count: employees?.length, error });
+    
+    if (error) {
+      console.error('Error loading employees:', error);
+      document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Error loading employees: ' + error.message + '</div>';
+      return;
+    }
   
   const total = employees ? employees.length : 0;
-  const active = employees ? employees.filter(e => e.is_active).length : 0;
+  const active = employees ? employees.filter(e => e.is_active === true).length : 0;
   const serviceTechs = employees ? employees.filter(e => {
     const dept = (e.department || '').toLowerCase();
     const role = (e.role || '').toLowerCase();
@@ -1849,7 +1867,7 @@ async function loadEmployeesSection() {
   }
   
   const deptFilter = document.getElementById('employeeFilterDept')?.value || '';
-  const statusFilter = document.getElementById('employeeFilterStatus')?.value || 'active';
+  const statusFilter = document.getElementById('employeeFilterStatus')?.value || '';
   
   let filtered = employees;
   
@@ -1858,10 +1876,11 @@ async function loadEmployeesSection() {
   }
   
   if (statusFilter === 'active') {
-    filtered = filtered.filter(e => e.is_active);
+    filtered = filtered.filter(e => e.is_active === true);
   } else if (statusFilter === 'inactive') {
-    filtered = filtered.filter(e => !e.is_active);
+    filtered = filtered.filter(e => e.is_active === false);
   }
+  // empty string '' shows all employees
   
   if (filtered.length === 0) {
     grid.innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">No employees match the current filters.</div>';
@@ -1902,6 +1921,10 @@ async function loadEmployeesSection() {
       </div>
     `;
   }).join('');
+  } catch (err) {
+    console.error('Error in loadEmployeesSection:', err);
+    document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Error: ' + err.message + '</div>';
+  }
 }
 
 function filterEmployees() {
@@ -1956,12 +1979,14 @@ function renderAppointmentTypes() {
     return;
   }
   
-  container.innerHTML = appointmentTypes.map(type => `
+  container.innerHTML = appointmentTypes.map(type => {
+    const durationText = type.duration_minutes ? `${type.duration_minutes} min` : 'No duration set';
+    return `
     <div class="appointment-type-row">
       <div style="width:8px; height:40px; border-radius:4px; background:${type.color || '#3b82f6'}; flex-shrink:0;"></div>
       <div style="flex:1; min-width:0;">
         <div style="font-weight:600; font-size:14px;">${type.name}</div>
-        <div style="font-size:12px; color:var(--text-secondary);">${type.description || 'No description'} &bull; ${type.duration_minutes || 30} min</div>
+        <div style="font-size:12px; color:var(--text-secondary);">${type.description || 'No description'} &bull; ${durationText}</div>
       </div>
       <div style="display:flex; gap:6px; flex-shrink:0;" class="apt-type-actions">
         <button onclick="editAppointmentType('${type.id}')" style="padding:6px 12px; font-size:12px;">Edit</button>
@@ -1969,14 +1994,14 @@ function renderAppointmentTypes() {
         <button onclick="deleteAppointmentType('${type.id}')" style="padding:6px 12px; font-size:12px; color:#ef4444; border-color:#ef4444;">Delete</button>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 function showAddAppointmentTypeForm() {
   document.getElementById('appointmentTypeFormTitle').textContent = 'Add Appointment Type';
   document.getElementById('editingAppointmentTypeId').value = '';
   document.getElementById('aptTypeName').value = '';
-  document.getElementById('aptTypeDuration').value = '30';
+  document.getElementById('aptTypeDuration').value = '';
   document.getElementById('aptTypeColor').value = '#3b82f6';
   document.getElementById('aptTypeDescription').value = '';
   document.getElementById('appointmentTypeForm').style.display = 'block';
@@ -1989,7 +2014,7 @@ function editAppointmentType(id) {
   document.getElementById('appointmentTypeFormTitle').textContent = 'Edit Appointment Type';
   document.getElementById('editingAppointmentTypeId').value = id;
   document.getElementById('aptTypeName').value = type.name || '';
-  document.getElementById('aptTypeDuration').value = type.duration_minutes || 30;
+  document.getElementById('aptTypeDuration').value = type.duration_minutes || '';
   document.getElementById('aptTypeColor').value = type.color || '#3b82f6';
   document.getElementById('aptTypeDescription').value = type.description || '';
   document.getElementById('appointmentTypeForm').style.display = 'block';
@@ -2006,7 +2031,8 @@ async function saveAppointmentType() {
   
   const id = document.getElementById('editingAppointmentTypeId').value;
   const name = document.getElementById('aptTypeName').value.trim();
-  const duration = parseInt(document.getElementById('aptTypeDuration').value) || 30;
+  const durationVal = document.getElementById('aptTypeDuration').value;
+  const duration = durationVal ? parseInt(durationVal) : null;
   const color = document.getElementById('aptTypeColor').value;
   const description = document.getElementById('aptTypeDescription').value.trim();
   
@@ -2016,10 +2042,18 @@ async function saveAppointmentType() {
   }
   
   try {
-    const { data: settings } = await sb.from('business_settings').select('tenant_id').limit(1).single();
-    if (!settings?.tenant_id) throw new Error('No tenant found');
+    // Get tenant_id - try multiple approaches
+    const { data: settingsArr } = await sb.from('business_settings').select('tenant_id').limit(1);
+    let tenantId = settingsArr?.[0]?.tenant_id;
     
-    const tenantId = settings.tenant_id;
+    // If no tenant from business_settings, try to get from user's auth
+    if (!tenantId) {
+      const { data: { user } } = await sb.auth.getUser();
+      tenantId = user?.id;
+    }
+    
+    if (!tenantId) throw new Error('No tenant found');
+    
     const data = { name, duration_minutes: duration, color, description: description || null, is_active: true };
     
     let result;
