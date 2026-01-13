@@ -419,8 +419,75 @@ function showNewVehicleFields(){woIsNewVehicle=true;woSelectedVehicle=null;docum
 async function createQuickWorkOrder(){var cid=null,vid=null;if(woIsNewCustomer){var fn=document.getElementById('woNewFirstName').value.trim(),ln=document.getElementById('woNewLastName').value.trim(),ph=document.getElementById('woNewPhone').value.trim();if(!fn||!ln||!ph){showToast('Please fill in customer name and phone');return;}try{var cr=await sb.from('customers').insert({tenant_id:tenantId,full_name:fn+' '+ln,first_name:fn,last_name:ln,phone:ph,created_at:new Date().toISOString()}).select().single();if(cr.error)throw cr.error;cid=cr.data.customer_id;lastCreatedCustomerId=cid;}catch(e){showToast('Error creating customer');return;}}else if(woSelectedCustomer){cid=woSelectedCustomer.customer_id;}else{showToast('Please select or add a customer');return;}if(woIsNewVehicle){var y=document.getElementById('woNewVehYear').value.trim(),mk=document.getElementById('woNewVehMake').value.trim(),md=document.getElementById('woNewVehModel').value.trim();if(!y&&!mk&&!md){showToast('Please enter vehicle information');return;}try{var vr=await sb.from('vehicles').insert({tenant_id:tenantId,customer_id:cid,year:y||null,make:mk||null,model:md||null,created_at:new Date().toISOString()}).select().single();if(vr.error)throw vr.error;vid=vr.data.vehicle_id;}catch(e){showToast('Error creating vehicle');return;}}else if(woSelectedVehicle){vid=woSelectedVehicle.vehicle_id;}else{showToast('Please select or add a vehicle');return;}document.getElementById('woCreateText').style.display='none';document.getElementById('woCreateLoading').style.display='inline-block';document.getElementById('woCreateBtn').disabled=true;try{var wnr=await sb.from('work_orders').select('wo_number').eq('tenant_id',tenantId).order('wo_number',{ascending:false}).limit(1);var nwn=1001;if(wnr.data&&wnr.data.length>0&&wnr.data[0].wo_number)nwn=parseInt(wnr.data[0].wo_number)+1;var sd=document.getElementById('woDate').value,st=document.getElementById('woTime').value||'09:00',ss=new Date(sd+'T'+st+':00');var tid=document.getElementById('woTechnician').value||null,desc=document.getElementById('woDescription').value.trim();var wor=await sb.from('work_orders').insert({tenant_id:tenantId,wo_number:nwn,customer_id:cid,vehicle_id:vid,summary:desc||'Service',status:'scheduled',scheduled_start:ss.toISOString(),assigned_employee_id:tid,created_at:new Date().toISOString(),deleted:false}).select().single();if(wor.error)throw wor.error;closeQuickWOModal();showToast('Work Order #'+nwn+' created!');setTimeout(function(){window.location.href='work-order-edit.html?id='+wor.data.work_order_id;},500);}catch(e){showToast('Error creating work order');document.getElementById('woCreateText').style.display='inline';document.getElementById('woCreateLoading').style.display='none';document.getElementById('woCreateBtn').disabled=false;}}
 // Quick Appointment Modal
 var apptCreatedCustomerId=null;
-function openQuickApptModal(){apptCreatedCustomerId=null;document.getElementById('apptCustomerName').value='';document.getElementById('apptOrganization').value='';document.getElementById('apptPhone').value='';document.getElementById('apptType').value='test_drive';document.getElementById('apptVehicleInterest').value='';document.getElementById('apptSalesperson').value='';document.getElementById('apptNotes').value='';var td=new Date();td.setDate(td.getDate()+selectedDate);document.getElementById('apptDate').value=td.toISOString().split('T')[0];document.getElementById('quickApptModal').classList.add('active');}
-function closeQuickApptModal(){document.getElementById('quickApptModal').classList.remove('active');}
+var editingAppointmentId=null; // Track if we're editing an existing appointment
+function openQuickApptModal(){
+  editingAppointmentId=null;
+  apptCreatedCustomerId=null;
+  document.querySelector('#quickApptModal .modal-title').textContent='Quick Appointment';
+  document.getElementById('apptCreateText').textContent='Set Appt';
+  document.getElementById('apptCustomerName').value='';
+  document.getElementById('apptOrganization').value='';
+  document.getElementById('apptPhone').value='';
+  document.getElementById('apptType').value='test_drive';
+  document.getElementById('apptVehicleInterest').value='';
+  document.getElementById('apptSalesperson').value='';
+  document.getElementById('apptNotes').value='';
+  var td=new Date();
+  td.setDate(td.getDate()+selectedDate);
+  document.getElementById('apptDate').value=td.toISOString().split('T')[0];
+  document.getElementById('apptTime').value='10:00';
+  document.getElementById('quickApptModal').classList.add('active');
+}
+
+async function editSalesAppointment(appointmentId){
+  console.log('Editing appointment:', appointmentId);
+  
+  // Fetch appointment data
+  var r = await sb.from('sales_appointments').select('*').eq('appointment_id', appointmentId).single();
+  
+  if(r.error || !r.data){
+    showToast('Could not load appointment');
+    console.error('Error loading appointment:', r.error);
+    return;
+  }
+  
+  var appt = r.data;
+  console.log('Loaded appointment:', appt);
+  
+  editingAppointmentId = appointmentId;
+  document.querySelector('#quickApptModal .modal-title').textContent='Edit Appointment';
+  document.getElementById('apptCreateText').textContent='Save Changes';
+  
+  // Pre-fill form
+  document.getElementById('apptCustomerName').value = appt.customer_name || '';
+  document.getElementById('apptOrganization').value = appt.organization || '';
+  document.getElementById('apptPhone').value = appt.customer_phone || '';
+  document.getElementById('apptDate').value = appt.appointment_date || '';
+  document.getElementById('apptTime').value = appt.appointment_time || '10:00';
+  document.getElementById('apptType').value = appt.appointment_type || 'consultation';
+  document.getElementById('apptVehicleInterest').value = appt.vehicle_interest || '';
+  document.getElementById('apptNotes').value = appt.notes || '';
+  
+  // Set salesperson dropdown
+  var spSelect = document.getElementById('apptSalesperson');
+  spSelect.value = '';
+  if(appt.assigned_to){
+    // Find matching salesperson
+    for(var i=0; i<spSelect.options.length; i++){
+      var sp = salespeople.find(function(s){ return s.name === appt.assigned_to; });
+      if(sp) spSelect.value = sp.id;
+    }
+  }
+  
+  document.getElementById('quickApptModal').classList.add('active');
+}
+function closeQuickApptModal(){
+  document.getElementById('quickApptModal').classList.remove('active');
+  document.getElementById('apptCreateText').style.display='inline';
+  document.getElementById('apptCreateLoading').style.display='none';
+  document.getElementById('apptCreateBtn').disabled=false;
+  editingAppointmentId=null;
+}
 async function editApptCustomerProfile(){var cn=document.getElementById('apptCustomerName').value.trim();var ph=document.getElementById('apptPhone').value.trim();var org=document.getElementById('apptOrganization').value.trim();if(!cn&&!ph){showToast('Enter name or phone first');return;}var existingCustomer=null;if(ph){var r=await sb.from('customers').select('customer_id').eq('tenant_id',tenantId).eq('phone',ph).limit(1);if(r.data&&r.data.length>0)existingCustomer=r.data[0];}if(!existingCustomer&&cn){var r=await sb.from('customers').select('customer_id').eq('tenant_id',tenantId).ilike('full_name',cn).limit(1);if(r.data&&r.data.length>0)existingCustomer=r.data[0];}if(existingCustomer){window.location.href='customer-profile.html?id='+existingCustomer.customer_id;}else{var names=cn.split(' ');var fn=names[0]||'';var ln=names.slice(1).join(' ')||'';try{var cr=await sb.from('customers').insert({tenant_id:tenantId,full_name:cn,first_name:fn,last_name:ln,phone:ph||null,organization_name:org||null,customer_type:'sales',created_at:new Date().toISOString()}).select().single();if(cr.error)throw cr.error;window.location.href='customer-profile.html?id='+cr.data.customer_id;}catch(e){showToast('Error creating customer');}}}
 async function createQuickAppointment(){
   var cn=document.getElementById('apptCustomerName').value.trim(),
@@ -429,7 +496,8 @@ async function createQuickAppointment(){
       ad=document.getElementById('apptDate').value,
       at=document.getElementById('apptTime').value;
   
-  console.log('Creating appointment:', {cn, org, ph, ad, at});
+  var isEditing = !!editingAppointmentId;
+  console.log(isEditing ? 'Updating appointment:' : 'Creating appointment:', {cn, org, ph, ad, at});
   
   if(!cn){showToast('Please enter customer name');return;}
   if(!ph){showToast('Please enter phone number');return;}
@@ -448,10 +516,7 @@ async function createQuickAppointment(){
     var ato=null;
     if(spid){var sp=salespeople.find(function(s){return s.id===spid;});if(sp)ato=sp.name;}
     
-    console.log('Inserting appointment to database...');
-    
-    var insertData = {
-      tenant_id: tenantId,
+    var appointmentData = {
       customer_name: cn,
       organization: org || null,
       customer_phone: ph,
@@ -461,15 +526,22 @@ async function createQuickAppointment(){
       vehicle_interest: vi || null,
       assigned_to: ato,
       notes: nt || null,
-      status: 'confirmed',
-      created_at: new Date().toISOString()
+      updated_at: new Date().toISOString()
     };
     
-    console.log('Insert data:', insertData);
+    var ar;
+    if(isEditing){
+      console.log('Updating appointment:', editingAppointmentId, appointmentData);
+      ar = await sb.from('sales_appointments').update(appointmentData).eq('appointment_id', editingAppointmentId).select().single();
+    } else {
+      appointmentData.tenant_id = tenantId;
+      appointmentData.status = 'confirmed';
+      appointmentData.created_at = new Date().toISOString();
+      console.log('Inserting appointment:', appointmentData);
+      ar = await sb.from('sales_appointments').insert(appointmentData).select().single();
+    }
     
-    var ar = await sb.from('sales_appointments').insert(insertData).select().single();
-    
-    console.log('Insert result:', ar);
+    console.log('Result:', ar);
     
     if(ar.error) {
       console.error('Database error:', ar.error);
@@ -477,17 +549,15 @@ async function createQuickAppointment(){
     }
     
     closeQuickApptModal();
-    showToast('Appointment created!');
-    console.log('Appointment created successfully:', ar.data);
+    showToast(isEditing ? 'Appointment updated!' : 'Appointment created!');
     
-    // Reload the page to show new appointment
-    setTimeout(function(){
-      window.location.href = 'scheduler.html?tab=sales';
-    }, 500);
+    // Reload data to show changes
+    await loadSalesJobs();
+    renderAll();
     
   } catch(e) {
-    console.error('Error creating appointment:', e);
-    showToast('Error: ' + (e.message || 'Failed to create appointment'));
+    console.error('Error saving appointment:', e);
+    showToast('Error: ' + (e.message || 'Failed to save appointment'));
     document.getElementById('apptCreateText').style.display='inline';
     document.getElementById('apptCreateLoading').style.display='none';
     document.getElementById('apptCreateBtn').disabled=false;
@@ -509,7 +579,15 @@ function getCurrentStaff(){return currentTab==='sales'?salespeople:technicians;}
 function getTechById(id){var st=getCurrentStaff();for(var i=0;i<st.length;i++)if(st[i].id===id)return st[i];return{id:id,name:id,initials:'?',color:'purple',role:''};}
 var statusLabels={'in_progress':'Active','waiting':'Parts','completed':'Done','urgent':'Urgent','scheduled':'Scheduled','confirmed':'Confirmed'};
 function toggleLane(tid,dof){var l=document.getElementById('lane-'+tid+'-'+dof);if(l)l.classList.toggle('expanded');}
-function renderLanesView(dof){var jobs=getJobsForDateOffset(dof);if(currentFilter!=='all')jobs=jobs.filter(function(j){return j.status===currentFilter;});var staff=getCurrentStaff(),swj=staff.filter(function(p){return jobs.some(function(j){return j.tech===p.id;});});if(swj.length===0)return'<div class="empty-state"><div class="empty-state-text">No jobs for '+getDateLabel(dof)+'</div></div>';var h='<div class="lanes-container">';swj.forEach(function(p){var pj=jobs.filter(function(j){return j.tech===p.id;}),hrs=(pj.length*1.5).toFixed(1),ec=lanesExpanded?' expanded':'';h+='<div class="tech-lane'+ec+'" id="lane-'+p.id+'-'+dof+'" data-tech="'+p.id+'" data-date="'+dof+'"><div class="lane-header" onclick="toggleLane(\''+p.id+'\','+dof+')"><div class="lane-info"><div class="tech-avatar '+p.color+'">'+p.initials+'</div><div class="tech-details"><h3>'+p.name+'</h3><span>'+p.role+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+pj.length+'</div><div class="stat-label">Jobs</div></div><div class="stat-item"><div class="stat-value">'+hrs+'h</div><div class="stat-label">Booked</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';pj.forEach(function(j){h+='<div class="wo-card status-'+j.status+(j.fleet?' fleet':'')+'" data-job-id="'+j.id+'"><div class="card-time">'+j.time+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-vehicle">'+j.vehicle+'</span><span class="card-dot"></span><span class="card-status '+j.status+'">'+(statusLabels[j.status]||j.status)+'</span><span class="card-amount">'+j.amount+'</span></div></div>';});var al=currentTab==='sales'?'Appt':'Add';h+='<div class="add-card" onclick="event.stopPropagation();'+(currentTab==='sales'?'openQuickApptModal()':'openQuickWOModal()')+'"><div class="add-card-icon">+</div><span>'+al+'</span></div></div></div></div>';});h+='</div>';return h;}
+function renderLanesView(dof){var jobs=getJobsForDateOffset(dof);if(currentFilter!=='all')jobs=jobs.filter(function(j){return j.status===currentFilter;});var staff=getCurrentStaff(),swj=staff.filter(function(p){return jobs.some(function(j){return j.tech===p.id;});});if(swj.length===0)return'<div class="empty-state"><div class="empty-state-text">No jobs for '+getDateLabel(dof)+'</div></div>';var h='<div class="lanes-container">';swj.forEach(function(p){var pj=jobs.filter(function(j){return j.tech===p.id;}),hrs=(pj.length*1.5).toFixed(1),ec=lanesExpanded?' expanded':'';h+='<div class="tech-lane'+ec+'" id="lane-'+p.id+'-'+dof+'" data-tech="'+p.id+'" data-date="'+dof+'"><div class="lane-header" onclick="toggleLane(\''+p.id+'\','+dof+')"><div class="lane-info"><div class="tech-avatar '+p.color+'">'+p.initials+'</div><div class="tech-details"><h3>'+p.name+'</h3><span>'+p.role+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+pj.length+'</div><div class="stat-label">Jobs</div></div><div class="stat-item"><div class="stat-value">'+hrs+'h</div><div class="stat-label">Booked</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';pj.forEach(function(j){
+  var clickHandler = '';
+  if(currentTab === 'sales'){
+    clickHandler = ' onclick="editSalesAppointment(\''+j.id+'\')" style="cursor:pointer;"';
+  } else {
+    clickHandler = ' onclick="window.location.href=\'work-order-edit.html?id='+j.id+'\'" style="cursor:pointer;"';
+  }
+  h+='<div class="wo-card status-'+j.status+(j.fleet?' fleet':'')+'" data-job-id="'+j.id+'"'+clickHandler+'><div class="card-time">'+j.time+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-vehicle">'+j.vehicle+'</span><span class="card-dot"></span><span class="card-status '+j.status+'">'+(statusLabels[j.status]||j.status)+'</span><span class="card-amount">'+j.amount+'</span></div></div>';
+});var al=currentTab==='sales'?'Appt':'Add';h+='<div class="add-card" onclick="event.stopPropagation();'+(currentTab==='sales'?'openQuickApptModal()':'openQuickWOModal()')+'"><div class="add-card-icon">+</div><span>'+al+'</span></div></div></div></div>';});h+='</div>';return h;}
 function renderPages(){document.getElementById('currentPage').innerHTML=renderLanesView(selectedDate);document.getElementById('prevPage').innerHTML='';document.getElementById('nextPage').innerHTML='';}
 function renderAll(){renderLanesControls();var dc=document.getElementById('lanesDateChips');dc.style.display='flex';renderLanesDateChips();renderPages();}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
