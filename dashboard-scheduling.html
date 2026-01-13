@@ -136,7 +136,7 @@
     .tech-lane.expanded .lane-cards-wrapper { max-height: 500px; overflow: visible; }
     .lane-cards { display: flex; gap: 10px; overflow-x: scroll; overflow-y: hidden; padding: 0 16px 12px; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x; }
     .lane-cards::-webkit-scrollbar { display: none; }
-    .wo-card { flex-shrink: 0; width: 200px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border-default); padding: 10px 12px; cursor: grab; position: relative; border-left: 4px solid var(--accent-primary); touch-action: pan-x pan-y; }
+    .wo-card { flex-shrink: 0; width: 200px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border-default); padding: 10px 12px 32px 12px; cursor: grab; position: relative; border-left: 4px solid var(--accent-primary); touch-action: pan-x pan-y; }
     .wo-card:active { cursor: grabbing; }
     .wo-card.status-in_progress { border-left-color: var(--accent-primary); }
     .wo-card.status-waiting { border-left-color: #eab308; }
@@ -159,6 +159,8 @@
     .add-card { flex-shrink: 0; width: 70px; min-height: 60px; background: var(--bg-primary); border-radius: 10px; border: 2px dashed var(--border-default); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
     .add-card-icon { width: 22px; height: 22px; border-radius: 6px; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
     .add-card span { font-size: 9px; color: var(--text-secondary); }
+    .card-details-btn { position: absolute; bottom: 8px; right: 8px; padding: 4px 8px; font-size: 10px; font-weight: 600; background: var(--accent-primary); color: white; border: none; border-radius: 4px; cursor: pointer; opacity: 0; transition: opacity 0.2s; }
+    .wo-card:hover .card-details-btn { opacity: 1; }
     .drag-ghost { position: fixed; z-index: 1001; pointer-events: none; opacity: 0.9; transform: scale(1.05) rotate(2deg); box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
     .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
     .empty-state-text { font-size: 16px; }
@@ -579,15 +581,114 @@ function getCurrentStaff(){return currentTab==='sales'?salespeople:technicians;}
 function getTechById(id){var st=getCurrentStaff();for(var i=0;i<st.length;i++)if(st[i].id===id)return st[i];return{id:id,name:id,initials:'?',color:'purple',role:''};}
 var statusLabels={'in_progress':'Active','waiting':'Parts','completed':'Done','urgent':'Urgent','scheduled':'Scheduled','confirmed':'Confirmed'};
 function toggleLane(tid,dof){var l=document.getElementById('lane-'+tid+'-'+dof);if(l)l.classList.toggle('expanded');}
-function renderLanesView(dof){var jobs=getJobsForDateOffset(dof);if(currentFilter!=='all')jobs=jobs.filter(function(j){return j.status===currentFilter;});var staff=getCurrentStaff(),swj=staff.filter(function(p){return jobs.some(function(j){return j.tech===p.id;});});if(swj.length===0)return'<div class="empty-state"><div class="empty-state-text">No jobs for '+getDateLabel(dof)+'</div></div>';var h='<div class="lanes-container">';swj.forEach(function(p){var pj=jobs.filter(function(j){return j.tech===p.id;}),hrs=(pj.length*1.5).toFixed(1),ec=lanesExpanded?' expanded':'';h+='<div class="tech-lane'+ec+'" id="lane-'+p.id+'-'+dof+'" data-tech="'+p.id+'" data-date="'+dof+'"><div class="lane-header" onclick="toggleLane(\''+p.id+'\','+dof+')"><div class="lane-info"><div class="tech-avatar '+p.color+'">'+p.initials+'</div><div class="tech-details"><h3>'+p.name+'</h3><span>'+p.role+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+pj.length+'</div><div class="stat-label">Jobs</div></div><div class="stat-item"><div class="stat-value">'+hrs+'h</div><div class="stat-label">Booked</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';pj.forEach(function(j){
-  var clickHandler = '';
+
+// Drag and Drop functions
+var draggedJobId = null;
+function onDragStart(e, jobId){
+  draggedJobId = jobId;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragEnd(e){
+  e.target.classList.remove('dragging');
+  draggedJobId = null;
+  document.querySelectorAll('.tech-lane').forEach(function(l){ l.classList.remove('drop-target'); });
+}
+function onDragOver(e){
+  e.preventDefault();
+  e.currentTarget.classList.add('drop-target');
+}
+function onDragLeave(e){
+  e.currentTarget.classList.remove('drop-target');
+}
+async function onDrop(e, techId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-target');
+  if(!draggedJobId) return;
+  
+  console.log('Dropping job', draggedJobId, 'to tech', techId);
+  
+  // Find the job to determine if it's a sales appointment or work order
+  var job = null;
   if(currentTab === 'sales'){
-    clickHandler = ' onclick="editSalesAppointment(\''+j.id+'\')" style="cursor:pointer;"';
+    job = salesJobs.find(function(j){ return j.id === draggedJobId; });
+    if(job){
+      var assignedName = null;
+      if(techId !== 'unassigned'){
+        var sp = salespeople.find(function(s){ return s.id === techId; });
+        if(sp) assignedName = sp.name;
+      }
+      var r = await sb.from('sales_appointments').update({ assigned_to: assignedName, updated_at: new Date().toISOString() }).eq('appointment_id', draggedJobId);
+      if(r.error){ showToast('Error assigning'); console.error(r.error); return; }
+      showToast('Assigned to ' + (assignedName || 'Unassigned'));
+    }
   } else {
-    clickHandler = ' onclick="window.location.href=\'work-order-edit.html?id='+j.id+'\'" style="cursor:pointer;"';
+    job = serviceJobs.find(function(j){ return j.id === draggedJobId; }) || fleetJobs.find(function(j){ return j.id === draggedJobId; });
+    if(job){
+      var empId = techId === 'unassigned' ? null : techId;
+      var r = await sb.from('work_orders').update({ assigned_employee_id: empId, updated_at: new Date().toISOString() }).eq('work_order_id', draggedJobId);
+      if(r.error){ showToast('Error assigning'); console.error(r.error); return; }
+      var techName = techId === 'unassigned' ? 'Unassigned' : technicians.find(function(t){ return t.id === techId; })?.name || 'Tech';
+      showToast('Assigned to ' + techName);
+    }
   }
-  h+='<div class="wo-card status-'+j.status+(j.fleet?' fleet':'')+'" data-job-id="'+j.id+'"'+clickHandler+'><div class="card-time">'+j.time+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-vehicle">'+j.vehicle+'</span><span class="card-dot"></span><span class="card-status '+j.status+'">'+(statusLabels[j.status]||j.status)+'</span><span class="card-amount">'+j.amount+'</span></div></div>';
-});var al=currentTab==='sales'?'Appt':'Add';h+='<div class="add-card" onclick="event.stopPropagation();'+(currentTab==='sales'?'openQuickApptModal()':'openQuickWOModal()')+'"><div class="add-card-icon">+</div><span>'+al+'</span></div></div></div></div>';});h+='</div>';return h;}
+  
+  // Reload and re-render
+  if(currentTab === 'sales'){ await loadSalesJobs(); } else { await loadServiceJobs(); }
+  renderAll();
+}
+
+function renderLanesView(dof){
+  var jobs = getJobsForDateOffset(dof);
+  if(currentFilter !== 'all') jobs = jobs.filter(function(j){ return j.status === currentFilter; });
+  
+  var staff = getCurrentStaff();
+  
+  // Sort staff: those with appointments first (by count desc), then those without
+  var staffSorted = staff.slice().map(function(p){
+    var jobCount = jobs.filter(function(j){ return j.tech === p.id; }).length;
+    return { person: p, jobCount: jobCount };
+  }).sort(function(a, b){
+    if(a.jobCount > 0 && b.jobCount > 0) return b.jobCount - a.jobCount;
+    if(a.jobCount > 0 && b.jobCount === 0) return -1;
+    if(a.jobCount === 0 && b.jobCount > 0) return 1;
+    return 0;
+  });
+  
+  if(staffSorted.length === 0) return '<div class="empty-state"><div class="empty-state-text">No staff available</div></div>';
+  
+  var h = '<div class="lanes-container">';
+  staffSorted.forEach(function(item){
+    var p = item.person;
+    var pj = jobs.filter(function(j){ return j.tech === p.id; });
+    var hrs = (pj.length * 1.5).toFixed(1);
+    var ec = lanesExpanded ? ' expanded' : '';
+    var hasJobs = pj.length > 0;
+    var laneStyle = hasJobs ? '' : ' style="opacity:0.5;"';
+    
+    h += '<div class="tech-lane' + ec + '" id="lane-' + p.id + '-' + dof + '" data-tech="' + p.id + '" data-date="' + dof + '"' + laneStyle + ' ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,\'' + p.id + '\')">';
+    h += '<div class="lane-header" onclick="toggleLane(\'' + p.id + '\',' + dof + ')"><div class="lane-info"><div class="tech-avatar ' + p.color + '">' + p.initials + '</div><div class="tech-details"><h3>' + p.name + '</h3><span>' + p.role + '</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">' + pj.length + '</div><div class="stat-label">Jobs</div></div><div class="stat-item"><div class="stat-value">' + hrs + 'h</div><div class="stat-label">Booked</div></div></div><span class="lane-expand-icon">▼</span></div></div>';
+    h += '<div class="lane-cards-wrapper"><div class="lane-cards">';
+    
+    pj.forEach(function(j){
+      var detailsBtn = currentTab === 'sales' 
+        ? '<button class="card-details-btn" onclick="event.stopPropagation();editSalesAppointment(\'' + j.id + '\')">Details</button>' 
+        : '<button class="card-details-btn" onclick="event.stopPropagation();window.location.href=\'work-order-edit.html?id=' + j.id + '\'">Details</button>';
+      h += '<div class="wo-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '" draggable="true" ondragstart="onDragStart(event,\'' + j.id + '\')" ondragend="onDragEnd(event)">';
+      h += '<div class="card-time">' + j.time + '</div>';
+      h += '<div class="card-customer">' + j.customer + '</div>';
+      h += '<div class="card-info-row"><span class="card-vehicle">' + j.vehicle + '</span><span class="card-dot"></span><span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span><span class="card-amount">' + j.amount + '</span></div>';
+      h += detailsBtn;
+      h += '</div>';
+    });
+    
+    var al = currentTab === 'sales' ? 'Appt' : 'Add';
+    h += '<div class="add-card" onclick="event.stopPropagation();' + (currentTab === 'sales' ? 'openQuickApptModal()' : 'openQuickWOModal()') + '"><div class="add-card-icon">+</div><span>' + al + '</span></div>';
+    h += '</div></div></div>';
+  });
+  h += '</div>';
+  return h;
+}
 function renderPages(){document.getElementById('currentPage').innerHTML=renderLanesView(selectedDate);document.getElementById('prevPage').innerHTML='';document.getElementById('nextPage').innerHTML='';}
 function renderAll(){renderLanesControls();var dc=document.getElementById('lanesDateChips');dc.style.display='flex';renderLanesDateChips();renderPages();}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
