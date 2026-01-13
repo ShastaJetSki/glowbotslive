@@ -1913,24 +1913,32 @@ function filterEmployees() {
 // =====================================================
 
 let appointmentTypes = [];
-const supabaseUrl = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
-const supabaseKey = document.querySelector('meta[name="supabase-anon-key"]')?.content;
+
+async function getSupabaseClient() {
+  const supabaseUrl = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const supabaseKey = document.querySelector('meta[name="supabase-anon-key"]').content;
+  const token = localStorage.getItem('sb_access_token');
+  
+  if (!token) return null;
+  
+  return supabase.createClient(supabaseUrl, supabaseKey, {
+    global: { headers: { Authorization: 'Bearer ' + token } }
+  });
+}
 
 async function loadAppointmentTypes() {
-  const token = localStorage.getItem('sb_access_token');
-  if (!token) return;
+  const sb = await getSupabaseClient();
+  if (!sb) return;
   
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/appointment_types?order=sort_order.asc,name.asc`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': supabaseKey
-      }
-    });
+    const { data, error } = await sb.from('appointment_types')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
     
-    if (!response.ok) throw new Error('Failed to load');
+    if (error) throw error;
     
-    appointmentTypes = await response.json();
+    appointmentTypes = data || [];
     renderAppointmentTypes();
     
   } catch (err) {
@@ -1993,8 +2001,8 @@ function cancelAppointmentTypeForm() {
 }
 
 async function saveAppointmentType() {
-  const token = localStorage.getItem('sb_access_token');
-  if (!token) return;
+  const sb = await getSupabaseClient();
+  if (!sb) return;
   
   const id = document.getElementById('editingAppointmentTypeId').value;
   const name = document.getElementById('aptTypeName').value.trim();
@@ -2008,36 +2016,23 @@ async function saveAppointmentType() {
   }
   
   try {
-    const settingsRes = await fetch(`${supabaseUrl}/rest/v1/business_settings?select=tenant_id&limit=1`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey }
-    });
-    const settings = await settingsRes.json();
-    const tenantId = settings[0]?.tenant_id;
+    const { data: settings } = await sb.from('business_settings').select('tenant_id').limit(1).single();
+    if (!settings?.tenant_id) throw new Error('No tenant found');
     
-    if (!tenantId) throw new Error('No tenant found');
-    
+    const tenantId = settings.tenant_id;
     const data = { name, duration_minutes: duration, color, description: description || null, is_active: true };
     
-    let response;
+    let result;
     
     if (id) {
-      response = await fetch(`${supabaseUrl}/rest/v1/appointment_types?id=eq.${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey },
-        body: JSON.stringify(data)
-      });
+      result = await sb.from('appointment_types').update(data).eq('id', id);
     } else {
       data.tenant_id = tenantId;
       data.sort_order = appointmentTypes.length;
-      
-      response = await fetch(`${supabaseUrl}/rest/v1/appointment_types`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey, 'Prefer': 'return=representation' },
-        body: JSON.stringify(data)
-      });
+      result = await sb.from('appointment_types').insert(data);
     }
     
-    if (!response.ok) throw new Error('Failed to save');
+    if (result.error) throw result.error;
     
     document.getElementById('appointmentTypeFormMessage').innerHTML = '<span class="success">Saved!</span>';
     setTimeout(() => { cancelAppointmentTypeForm(); loadAppointmentTypes(); }, 500);
@@ -2048,15 +2043,11 @@ async function saveAppointmentType() {
 }
 
 async function toggleAppointmentType(id, isActive) {
-  const token = localStorage.getItem('sb_access_token');
-  if (!token) return;
+  const sb = await getSupabaseClient();
+  if (!sb) return;
   
   try {
-    await fetch(`${supabaseUrl}/rest/v1/appointment_types?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey },
-      body: JSON.stringify({ is_active: isActive })
-    });
+    await sb.from('appointment_types').update({ is_active: isActive }).eq('id', id);
     loadAppointmentTypes();
   } catch (err) {
     console.error('Toggle error:', err);
@@ -2066,14 +2057,11 @@ async function toggleAppointmentType(id, isActive) {
 async function deleteAppointmentType(id) {
   if (!confirm('Delete this appointment type?')) return;
   
-  const token = localStorage.getItem('sb_access_token');
-  if (!token) return;
+  const sb = await getSupabaseClient();
+  if (!sb) return;
   
   try {
-    await fetch(`${supabaseUrl}/rest/v1/appointment_types?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey }
-    });
+    await sb.from('appointment_types').delete().eq('id', id);
     loadAppointmentTypes();
   } catch (err) {
     alert('Error deleting');
@@ -2086,43 +2074,43 @@ async function loadIndustryPreset() {
   
   if (!confirm(`Load ${names[industry]} preset?\n\nThis will add new types. Existing types will not be deleted.`)) return;
   
-  const token = localStorage.getItem('sb_access_token');
-  if (!token) return;
+  const sb = await getSupabaseClient();
+  if (!sb) return;
   
   try {
-    const presetsRes = await fetch(`${supabaseUrl}/rest/v1/appointment_type_presets?industry=eq.${industry}&order=sort_order.asc`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey }
-    });
-    const presets = await presetsRes.json();
+    // Get presets for the selected industry
+    const { data: presets, error: presetsError } = await sb.from('appointment_type_presets')
+      .select('*')
+      .eq('industry', industry)
+      .order('sort_order', { ascending: true });
     
+    if (presetsError) throw presetsError;
     if (!presets || presets.length === 0) { alert('No presets found'); return; }
     
-    const settingsRes = await fetch(`${supabaseUrl}/rest/v1/business_settings?select=tenant_id&limit=1`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey }
-    });
-    const settings = await settingsRes.json();
-    const tenantId = settings[0]?.tenant_id;
+    // Get tenant_id
+    const { data: settings } = await sb.from('business_settings').select('tenant_id').limit(1).single();
+    if (!settings?.tenant_id) throw new Error('No tenant found');
     
-    if (!tenantId) throw new Error('No tenant found');
+    const tenantId = settings.tenant_id;
     
     let added = 0;
     for (const preset of presets) {
       try {
-        const res = await fetch(`${supabaseUrl}/rest/v1/appointment_types`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey },
-          body: JSON.stringify({ tenant_id: tenantId, name: preset.name, description: preset.description, duration_minutes: preset.duration_minutes, color: preset.color, sort_order: preset.sort_order, is_active: true })
+        const { error } = await sb.from('appointment_types').insert({
+          tenant_id: tenantId,
+          name: preset.name,
+          description: preset.description,
+          duration_minutes: preset.duration_minutes,
+          color: preset.color,
+          sort_order: preset.sort_order,
+          is_active: true
         });
-        if (res.ok) added++;
-      } catch (e) { /* duplicate */ }
+        if (!error) added++;
+      } catch (e) { /* duplicate or other error */ }
     }
     
     // Update business_settings with selected industry preset
-    await fetch(`${supabaseUrl}/rest/v1/business_settings?tenant_id=eq.${tenantId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': supabaseKey },
-      body: JSON.stringify({ industry_preset: industry })
-    });
+    await sb.from('business_settings').update({ industry_preset: industry }).eq('tenant_id', tenantId);
     
     alert(`Loaded ${added} new appointment types!`);
     loadAppointmentTypes();
