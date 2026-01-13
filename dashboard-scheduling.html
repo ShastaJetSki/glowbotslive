@@ -161,6 +161,36 @@
     .add-card span { font-size: 9px; color: var(--text-secondary); }
     .card-details-btn { position: absolute; bottom: 8px; right: 8px; padding: 4px 8px; font-size: 10px; font-weight: 600; background: var(--accent-primary); color: white; border: none; border-radius: 4px; cursor: pointer; opacity: 0; transition: opacity 0.2s; }
     .wo-card:hover .card-details-btn { opacity: 1; }
+    /* Stack View */
+    .stack-container { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .stack-card { background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-default); border-left: 4px solid var(--accent-primary); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; position: relative; }
+    .stack-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .stack-card.status-waiting { border-left-color: #eab308; }
+    .stack-card.status-completed { border-left-color: #22c55e; }
+    .stack-card.status-urgent { border-left-color: #ef4444; }
+    .stack-card-left { flex: 1; }
+    .stack-time { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+    .stack-customer { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .stack-vehicle { font-size: 12px; color: var(--text-secondary); }
+    .stack-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-right: 60px; }
+    .stack-assignee { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .stack-card:hover .card-details-btn { opacity: 1; }
+    /* Grid View */
+    .grid-container { padding: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .grid-card { background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-default); border-left: 4px solid var(--accent-primary); padding: 12px 16px 40px 16px; position: relative; }
+    .grid-card.status-in_progress { border-left-color: var(--accent-primary); }
+    .grid-card.status-waiting { border-left-color: #eab308; }
+    .grid-card.status-completed { border-left-color: #22c55e; }
+    .grid-card.status-urgent { border-left-color: #ef4444; }
+    .grid-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .grid-time { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .grid-customer { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .grid-vehicle { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+    .grid-card-footer { display: flex; justify-content: space-between; align-items: center; }
+    .grid-assignee { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .grid-amount { font-size: 14px; font-weight: 700; }
+    .grid-card:hover .card-details-btn { opacity: 1; }
+    .tech-avatar.small { width: 24px; height: 24px; font-size: 10px; border-radius: 6px; }
     .drag-ghost { position: fixed; z-index: 1001; pointer-events: none; opacity: 0.9; transform: scale(1.05) rotate(2deg); box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
     .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
     .empty-state-text { font-size: 16px; }
@@ -566,6 +596,22 @@ async function createQuickAppointment(){
   }
 }
 document.addEventListener('click',function(e){if(!e.target.closest('.search-container'))document.querySelectorAll('.search-results').forEach(function(el){el.classList.remove('show');});});
+
+// Global drag handlers for auto-scroll
+document.addEventListener('dragover', function(e){
+  if(!draggedJobId) return;
+  var y = e.clientY;
+  var vh = window.innerHeight;
+  var scrollZone = 100;
+  if(y < scrollZone){
+    startAutoScroll('up');
+  } else if(y > vh - scrollZone){
+    startAutoScroll('down');
+  } else {
+    stopAutoScroll();
+  }
+});
+document.addEventListener('dragend', function(){ stopAutoScroll(); });
 function setViewStyle(s){currentViewStyle=s;document.querySelectorAll('.view-style-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('style'+s.charAt(0).toUpperCase()+s.slice(1)).classList.add('active');localStorage.setItem('scheduler-view-style',s);renderAll();showToast(s.charAt(0).toUpperCase()+s.slice(1)+' view');}
 function switchTab(t){currentTab=t;document.querySelectorAll('.main-tab').forEach(function(b){b.classList.remove('active');});document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('active');currentFilter='all';renderAll();}
 function toggleExpandPreference(){lanesExpanded=!lanesExpanded;localStorage.setItem('lanes-expanded',lanesExpanded?'true':'false');renderLanesControls();renderPages();}
@@ -584,20 +630,41 @@ function toggleLane(tid,dof){var l=document.getElementById('lane-'+tid+'-'+dof);
 
 // Drag and Drop functions
 var draggedJobId = null;
+var autoScrollInterval = null;
+
 function onDragStart(e, jobId){
   draggedJobId = jobId;
   e.target.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
 }
+
 function onDragEnd(e){
   e.target.classList.remove('dragging');
   draggedJobId = null;
   document.querySelectorAll('.tech-lane').forEach(function(l){ l.classList.remove('drop-target'); });
+  stopAutoScroll();
 }
+
+function startAutoScroll(direction){
+  if(autoScrollInterval) return;
+  var speed = direction === 'up' ? -10 : 10;
+  autoScrollInterval = setInterval(function(){
+    window.scrollBy(0, speed);
+  }, 16);
+}
+
+function stopAutoScroll(){
+  if(autoScrollInterval){
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+}
+
 function onDragOver(e){
   e.preventDefault();
   e.currentTarget.classList.add('drop-target');
 }
+
 function onDragLeave(e){
   e.currentTarget.classList.remove('drop-target');
 }
@@ -664,7 +731,7 @@ function renderLanesView(dof){
     var hrs = (pj.length * 1.5).toFixed(1);
     var ec = lanesExpanded ? ' expanded' : '';
     var hasJobs = pj.length > 0;
-    var laneStyle = hasJobs ? '' : ' style="opacity:0.5;"';
+    var laneStyle = hasJobs ? '' : ' style="opacity:0.25;"';
     
     h += '<div class="tech-lane' + ec + '" id="lane-' + p.id + '-' + dof + '" data-tech="' + p.id + '" data-date="' + dof + '"' + laneStyle + ' ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,\'' + p.id + '\')">';
     h += '<div class="lane-header" onclick="toggleLane(\'' + p.id + '\',' + dof + ')"><div class="lane-info"><div class="tech-avatar ' + p.color + '">' + p.initials + '</div><div class="tech-details"><h3>' + p.name + '</h3><span>' + p.role + '</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">' + pj.length + '</div><div class="stat-label">Jobs</div></div><div class="stat-item"><div class="stat-value">' + hrs + 'h</div><div class="stat-label">Booked</div></div></div><span class="lane-expand-icon">▼</span></div></div>';
@@ -689,7 +756,93 @@ function renderLanesView(dof){
   h += '</div>';
   return h;
 }
-function renderPages(){document.getElementById('currentPage').innerHTML=renderLanesView(selectedDate);document.getElementById('prevPage').innerHTML='';document.getElementById('nextPage').innerHTML='';}
+function renderStackView(dof){
+  var jobs = getJobsForDateOffset(dof);
+  if(currentFilter !== 'all') jobs = jobs.filter(function(j){ return j.status === currentFilter; });
+  
+  if(jobs.length === 0) return '<div class="empty-state"><div class="empty-state-text">No jobs for ' + getDateLabel(dof) + '</div></div>';
+  
+  // Sort jobs by time
+  jobs.sort(function(a,b){ return a.time.localeCompare(b.time); });
+  
+  var h = '<div class="stack-container">';
+  jobs.forEach(function(j){
+    var staff = getCurrentStaff();
+    var assignee = staff.find(function(s){ return s.id === j.tech; });
+    var assigneeName = assignee ? assignee.name : 'Unassigned';
+    var assigneeInitials = assignee ? assignee.initials : '?';
+    var assigneeColor = assignee ? assignee.color : 'purple';
+    
+    var detailsBtn = currentTab === 'sales' 
+      ? '<button class="card-details-btn" onclick="event.stopPropagation();editSalesAppointment(\'' + j.id + '\')">Details</button>' 
+      : '<button class="card-details-btn" onclick="event.stopPropagation();window.location.href=\'work-order-edit.html?id=' + j.id + '\'">Details</button>';
+    
+    h += '<div class="stack-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '">';
+    h += '<div class="stack-card-left">';
+    h += '<div class="stack-time">' + j.time + '</div>';
+    h += '<div class="stack-customer">' + j.customer + '</div>';
+    h += '<div class="stack-vehicle">' + j.vehicle + '</div>';
+    h += '</div>';
+    h += '<div class="stack-card-right">';
+    h += '<div class="stack-assignee"><div class="tech-avatar small ' + assigneeColor + '">' + assigneeInitials + '</div><span>' + assigneeName + '</span></div>';
+    h += '<span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span>';
+    h += detailsBtn;
+    h += '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function renderGridView(dof){
+  var jobs = getJobsForDateOffset(dof);
+  if(currentFilter !== 'all') jobs = jobs.filter(function(j){ return j.status === currentFilter; });
+  
+  if(jobs.length === 0) return '<div class="empty-state"><div class="empty-state-text">No jobs for ' + getDateLabel(dof) + '</div></div>';
+  
+  var h = '<div class="grid-container">';
+  jobs.forEach(function(j){
+    var staff = getCurrentStaff();
+    var assignee = staff.find(function(s){ return s.id === j.tech; });
+    var assigneeName = assignee ? assignee.name : 'Unassigned';
+    var assigneeInitials = assignee ? assignee.initials : '?';
+    var assigneeColor = assignee ? assignee.color : 'purple';
+    
+    var detailsBtn = currentTab === 'sales' 
+      ? '<button class="card-details-btn" onclick="event.stopPropagation();editSalesAppointment(\'' + j.id + '\')">Details</button>' 
+      : '<button class="card-details-btn" onclick="event.stopPropagation();window.location.href=\'work-order-edit.html?id=' + j.id + '\'">Details</button>';
+    
+    h += '<div class="grid-card status-' + j.status + (j.fleet ? ' fleet' : '') + '" data-job-id="' + j.id + '">';
+    h += '<div class="grid-card-header">';
+    h += '<span class="grid-time">' + j.time + '</span>';
+    h += '<span class="card-status ' + j.status + '">' + (statusLabels[j.status] || j.status) + '</span>';
+    h += '</div>';
+    h += '<div class="grid-customer">' + j.customer + '</div>';
+    h += '<div class="grid-vehicle">' + j.vehicle + '</div>';
+    h += '<div class="grid-card-footer">';
+    h += '<div class="grid-assignee"><div class="tech-avatar small ' + assigneeColor + '">' + assigneeInitials + '</div><span>' + assigneeName + '</span></div>';
+    if(j.amount) h += '<span class="grid-amount">' + j.amount + '</span>';
+    h += '</div>';
+    h += detailsBtn;
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function renderPages(){
+  var content = '';
+  if(currentViewStyle === 'stack'){
+    content = renderStackView(selectedDate);
+  } else if(currentViewStyle === 'grid'){
+    content = renderGridView(selectedDate);
+  } else {
+    content = renderLanesView(selectedDate);
+  }
+  document.getElementById('currentPage').innerHTML = content;
+  document.getElementById('prevPage').innerHTML = '';
+  document.getElementById('nextPage').innerHTML = '';
+}
 function renderAll(){renderLanesControls();var dc=document.getElementById('lanesDateChips');dc.style.display='flex';renderLanesDateChips();renderPages();}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
 async function init(){var s=await checkAuth();if(!s)return;await loadBusinessSettings();await loadAllData();var up=new URLSearchParams(window.location.search),tp=up.get('tab');if(tp&&['service','sales','fleet'].indexOf(tp)!==-1){currentTab=tp;document.querySelectorAll('.main-tab').forEach(function(b){b.classList.remove('active');});document.getElementById('tab'+tp.charAt(0).toUpperCase()+tp.slice(1)).classList.add('active');}document.querySelectorAll('.view-style-btn').forEach(function(b){b.classList.remove('active');});document.getElementById('style'+currentViewStyle.charAt(0).toUpperCase()+currentViewStyle.slice(1)).classList.add('active');renderAll();requestAnimationFrame(function(){requestAnimationFrame(centerOnToday);});}
