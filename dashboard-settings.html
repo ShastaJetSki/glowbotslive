@@ -9,6 +9,7 @@
     content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4" />
 
   <link rel="stylesheet" href="theme-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     body { margin:0; padding:0; font-family:system-ui; background:var(--bg-primary, #0b0f14); color:var(--text-primary, #e8eef6); padding-bottom: 165px; }
@@ -1683,6 +1684,127 @@ function saveMediaSettings() {
 
 // Load theme on page load
 loadTheme();
+
+// Load employees for the new Employees section
+async function loadEmployeesSection() {
+  const supabaseUrl = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const supabaseKey = document.querySelector('meta[name="supabase-anon-key"]').content;
+  const token = localStorage.getItem('sb_access_token');
+  
+  if (!token) return;
+  
+  const sb = supabase.createClient(supabaseUrl, supabaseKey, {
+    global: { headers: { Authorization: 'Bearer ' + token } }
+  });
+  
+  // Get tenant_id from business_settings
+  const { data: settings } = await sb.from('business_settings').select('tenant_id').limit(1).single();
+  if (!settings) return;
+  
+  const tenantId = settings.tenant_id;
+  
+  // Load employees
+  const { data: employees, error } = await sb.from('employees')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('last_name', { ascending: true });
+  
+  if (error) {
+    console.error('Error loading employees:', error);
+    document.getElementById('employeeAvatars').innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">Error loading employees</div>';
+    return;
+  }
+  
+  // Update stats
+  const total = employees ? employees.length : 0;
+  const active = employees ? employees.filter(e => e.is_active).length : 0;
+  const serviceTechs = employees ? employees.filter(e => {
+    const dept = (e.department || '').toLowerCase();
+    const role = (e.role || '').toLowerCase();
+    return dept === 'service' || role.includes('tech') || role.includes('mechanic');
+  }).length : 0;
+  const salesStaff = employees ? employees.filter(e => {
+    const dept = (e.department || '').toLowerCase();
+    const role = (e.role || '').toLowerCase();
+    return dept === 'sales' || role.includes('sales');
+  }).length : 0;
+  
+  document.getElementById('totalEmployees').textContent = total;
+  document.getElementById('activeEmployees').textContent = active;
+  document.getElementById('serviceTechs').textContent = serviceTechs;
+  document.getElementById('salesStaff').textContent = salesStaff;
+  
+  // Render employee grid
+  const grid = document.getElementById('employeeAvatars');
+  
+  if (!employees || employees.length === 0) {
+    grid.innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">No employees found. Click "+ Add Employee" to create one.</div>';
+    return;
+  }
+  
+  // Apply filters
+  const deptFilter = document.getElementById('employeeFilterDept')?.value || '';
+  const statusFilter = document.getElementById('employeeFilterStatus')?.value || 'active';
+  
+  let filtered = employees;
+  
+  if (deptFilter) {
+    filtered = filtered.filter(e => (e.department || '').toLowerCase() === deptFilter);
+  }
+  
+  if (statusFilter === 'active') {
+    filtered = filtered.filter(e => e.is_active);
+  } else if (statusFilter === 'inactive') {
+    filtered = filtered.filter(e => !e.is_active);
+  }
+  
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">No employees match the current filters.</div>';
+    return;
+  }
+  
+  const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#14b8a6', '#ec4899'];
+  
+  grid.innerHTML = filtered.map((emp, i) => {
+    const name = ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim() || 'Unknown';
+    const initials = emp.first_name && emp.last_name 
+      ? (emp.first_name[0] + emp.last_name[0]).toUpperCase() 
+      : '??';
+    const role = (emp.role || 'Staff').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const color = colors[i % colors.length];
+    const avatarStyle = emp.avatar_url 
+      ? `background-image:url('${emp.avatar_url}'); background-size:cover;` 
+      : `background:${color};`;
+    const avatarContent = emp.avatar_url ? '' : initials;
+    
+    return `
+      <div class="employee-card" onclick="location.href='employee-edit.html?id=${emp.employee_id}'">
+        <div class="employee-avatar-preview" style="${avatarStyle}">
+          ${avatarContent}
+        </div>
+        <div class="employee-name">${name}</div>
+        <div class="employee-role">${role}</div>
+        <div class="employee-stats">
+          <div class="stat-row">
+            <span class="stat-label">Department</span>
+            <span class="stat-value">${emp.department || 'N/A'}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Status</span>
+            <span class="stat-value">${emp.is_active ? 'Active' : 'Inactive'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterEmployees() {
+  loadEmployeesSection();
+}
+
+// Load employees when page loads (after a small delay to let auth initialize)
+setTimeout(loadEmployeesSection, 500);
 </script>
 </body>
 </html>
