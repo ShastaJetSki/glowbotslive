@@ -628,8 +628,7 @@
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">To *</label>
-        <select class="form-select" id="msgRecipient" multiple style="min-height:80px;"></select>
-        <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Hold Ctrl/Cmd to select multiple</div>
+        <select class="form-select" id="msgRecipient"></select>
       </div>
       <div class="form-group">
         <label class="form-label">Subject *</label>
@@ -1042,11 +1041,12 @@ function openComposeModal() {
   document.getElementById('msgBody').value = '';
   document.getElementById('msgFileList').innerHTML = '';
   
-  // Populate recipients using employee_id (for read receipts)
+  // Populate recipients dropdown using employee_id
   const select = document.getElementById('msgRecipient');
-  select.innerHTML = allEmployeesData.map(e => 
-    `<option value="${e.employee_id}">${e.first_name} ${e.last_name} (${e.role || 'Staff'})</option>`
-  ).join('');
+  select.innerHTML = '<option value="">-- Select Recipient --</option>' + 
+    allEmployeesData.map(e => 
+      `<option value="${e.employee_id}">${e.first_name} ${e.last_name} (${e.role || 'Staff'})</option>`
+    ).join('');
   
   document.getElementById('composeModal').classList.add('active');
 }
@@ -1075,11 +1075,11 @@ function renderFileList() {
 function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
 
 async function sendMessage() {
-  const recipientEmployeeIds = Array.from(document.getElementById('msgRecipient').selectedOptions).map(o => o.value);
+  const recipientEmployeeId = document.getElementById('msgRecipient').value;
   const subject = document.getElementById('msgSubject').value.trim();
   const content = document.getElementById('msgBody').value.trim();
   
-  if (recipientEmployeeIds.length === 0) { alert('Please select at least one recipient'); return; }
+  if (!recipientEmployeeId) { alert('Please select a recipient'); return; }
   if (!subject) { alert('Please enter a subject'); return; }
   if (!content) { alert('Please enter a message'); return; }
   
@@ -1128,7 +1128,7 @@ async function sendMessage() {
       message_type: 'text',
       content: content,
       attachments: attachments.length > 0 ? attachments : [],
-      mentions: recipientEmployeeIds.map(id => ({ employee_id: id })),
+      mentions: [{ employee_id: recipientEmployeeId }],
       created_at: now,
       updated_at: now
     };
@@ -1136,29 +1136,26 @@ async function sendMessage() {
     const { error: msgError } = await sb.from('messages').insert(message);
     if (msgError) throw msgError;
     
-    // STEP 3: Create notification for each recipient
-    for (const recipientEmpId of recipientEmployeeIds) {
-      // Get the user_id for the recipient employee (notifications use user_id as recipient_id)
-      const recipientEmp = allEmployeesData.find(e => e.employee_id === recipientEmpId);
-      const recipientUserId = recipientEmp?.user_id;
-      
-      if (recipientUserId) {
-        const notification = {
-          tenant_id: currentTenantId,
-          recipient_id: recipientUserId,
-          sender_id: currentUserId,
-          notification_type: 'message',
-          title: `New Message: ${subject}`,
-          body: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-          source_type: 'message',
-          source_id: messageId,
-          priority: 'normal',
-          is_read: false,
-          delivered_in_app: true,
-          created_at: now
-        };
-        await sb.from('notifications').insert(notification);
-      }
+    // STEP 3: Create notification for recipient
+    const recipientEmp = allEmployeesData.find(e => e.employee_id === recipientEmployeeId);
+    const recipientUserId = recipientEmp?.user_id;
+    
+    if (recipientUserId) {
+      const notification = {
+        tenant_id: currentTenantId,
+        recipient_id: recipientUserId,
+        sender_id: currentUserId,
+        notification_type: 'message',
+        title: `New Message: ${subject}`,
+        body: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+        source_type: 'message',
+        source_id: messageId,
+        priority: 'normal',
+        is_read: false,
+        delivered_in_app: true,
+        created_at: now
+      };
+      await sb.from('notifications').insert(notification);
     }
     
     closeComposeModal();
@@ -1225,9 +1222,7 @@ function replyToMessage() {
   // Select the original sender as recipient
   const senderEmp = allEmployeesData.find(e => e.user_id === message.sender_id || e.employee_id === message.sender_id);
   if (senderEmp) {
-    Array.from(document.getElementById('msgRecipient').options).forEach(opt => { 
-      opt.selected = opt.value === senderEmp.employee_id; 
-    });
+    document.getElementById('msgRecipient').value = senderEmp.employee_id;
   }
 }
 
@@ -1416,13 +1411,15 @@ function openTaskModal(taskId = null) {
   editingTaskId = taskId;
   
   // Build assignee select with user_id values (FK references users.user_id)
-  // Only show employees that have a user_id linked
+  // Show all employees that have a user_id linked
   const assigneeSelect = document.getElementById('taskAssignee');
+  const employeesWithUserId = allEmployeesData.filter(e => e.user_id);
+  
+  console.log('All employees:', allEmployeesData.length);
+  console.log('Employees with user_id:', employeesWithUserId.length);
+  
   assigneeSelect.innerHTML = '<option value="">-- Select Employee --</option>' + 
-    allEmployeesData
-      .filter(e => e.user_id) // Only employees with linked user accounts
-      .map(e => `<option value="${e.user_id}">${e.first_name} ${e.last_name}</option>`)
-      .join('');
+    employeesWithUserId.map(e => `<option value="${e.user_id}">${e.first_name} ${e.last_name}</option>`).join('');
   
   if (taskId) {
     const task = allTasks.find(t => t.task_id === taskId);
@@ -1457,6 +1454,7 @@ function openTaskModal(taskId = null) {
     document.getElementById('taskOrganization').value = '';
     document.getElementById('taskPriority').value = 'normal';
     document.getElementById('taskNotes').value = '';
+    assigneeSelect.value = '';
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('taskDueDate').value = tomorrow.toISOString().split('T')[0];
     currentTaskStatus = 'open';
@@ -1989,7 +1987,12 @@ async function init() {
   await loadBusinessSettings();
   calculateDateRange();
   updateDisplay();
-  await Promise.all([loadDashboardData(), loadEmployeesData(), loadTasksData(), loadInboxData()]);
+  
+  // Load employees FIRST since tasks and messages need employee data
+  await loadEmployeesData();
+  
+  // Then load other data in parallel
+  await Promise.all([loadDashboardData(), loadTasksData(), loadInboxData()]);
 }
 
 init();
