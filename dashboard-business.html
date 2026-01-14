@@ -209,7 +209,7 @@
     .task-priority.high { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
     .task-priority.urgent { background: rgba(239, 68, 68, 0.2); color: #f87171; }
     .task-status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
-    .task-status-badge.pending { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .task-status-badge.pending, .task-status-badge.open { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
     .task-status-badge.in_progress { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
     .task-status-badge.review { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
     .task-status-badge.completed { background: rgba(16, 185, 129, 0.2); color: #34d399; }
@@ -471,7 +471,7 @@
         </div>
         <div class="inbox-list" id="inboxList">
           <div class="inbox-empty">
-            <div class="inbox-empty-icon"></div>
+            <div class="inbox-empty-icon">📭</div>
             <div>No messages yet</div>
           </div>
         </div>
@@ -494,7 +494,7 @@
       <div class="tasks-container">
         <div class="tasks-header">
           <div class="tasks-tabs">
-            <button class="tasks-tab active" data-tab="pending" onclick="switchTasksTab('pending', this)">Pending</button>
+            <button class="tasks-tab active" data-tab="open" onclick="switchTasksTab('open', this)">Open</button>
             <button class="tasks-tab" data-tab="in_progress" onclick="switchTasksTab('in_progress', this)">In Progress</button>
             <button class="tasks-tab" data-tab="review" onclick="switchTasksTab('review', this)">Review</button>
             <button class="tasks-tab" data-tab="completed" onclick="switchTasksTab('completed', this)">Done</button>
@@ -508,7 +508,7 @@
         <div id="tasksListContainer">
           <div class="tasks-list" id="tasksList">
             <div class="tasks-empty">
-              <div class="tasks-empty-icon"></div>
+              <div class="tasks-empty-icon">✓</div>
               <div>No tasks</div>
             </div>
           </div>
@@ -538,7 +538,7 @@
         </div>
         <div class="employees-list" id="employeesList">
           <div class="employees-empty">
-            <div class="employees-empty-icon"></div>
+            <div class="employees-empty-icon">👥</div>
             <div>Loading employees...</div>
           </div>
         </div>
@@ -642,7 +642,7 @@
       <div class="form-group">
         <label class="form-label">Attachments</label>
         <div class="file-upload-area" id="msgFileUploadArea" onclick="document.getElementById('msgFileInput').click()">
-          <div class="file-upload-icon"></div>
+          <div class="file-upload-icon">📎</div>
           <div class="file-upload-text">Click or drag files here to upload</div>
           <div class="file-upload-hint">Images, PDFs, Documents (Max 10MB each)</div>
         </div>
@@ -684,7 +684,7 @@
       <div class="form-group" id="taskStatusPipelineGroup" style="display:none;">
         <label class="form-label">Status</label>
         <div class="status-pipeline" id="taskStatusPipeline">
-          <div class="status-step" data-status="pending" onclick="setTaskStatus('pending')">Pending</div>
+          <div class="status-step" data-status="open" onclick="setTaskStatus('open')">Open</div>
           <div class="status-step" data-status="in_progress" onclick="setTaskStatus('in_progress')">In Progress</div>
           <div class="status-step" data-status="review" onclick="setTaskStatus('review')">Review</div>
           <div class="status-step" data-status="completed" onclick="setTaskStatus('completed')">Completed</div>
@@ -839,12 +839,13 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let currentRange = '30days', currentDirection = 'past';
 let startDate = new Date(), endDate = new Date();
 let charts = {}, currentUserId = null, currentTenantId = null;
-let currentInboxTab = 'all', currentTasksTab = 'pending', currentTasksView = 'list';
-let allNotifications = [], allMessages = [], allTasks = [], allEmployeesData = [];
+let currentInboxTab = 'all', currentTasksTab = 'open', currentTasksView = 'list';
+let allNotifications = [], allMessages = [], allConversations = [], allTasks = [], allEmployeesData = [];
 let timeClockData = [], scheduleData = [], allOrganizations = [];
 let currentUserRole = null, isOwner = false;
-let editingTaskId = null, selectedFiles = [], viewingMessageId = null;
-let currentTaskStatus = 'pending';
+let editingTaskId = null, selectedFiles = [], viewingMessageId = null, viewingConversationId = null;
+let currentTaskStatus = 'open';
+let currentEmployeeId = null; // The employee_id of the logged-in user
 
 // Theme system
 var themes = ['dark-blue', 'grey', 'slate', 'midnight', 'light-blue'];
@@ -862,35 +863,77 @@ function toggleSection(sectionId) { const content = document.getElementById(sect
 function toggleSummarySection(event) { const content = document.getElementById('summaryContent'); const header = document.getElementById('summaryHeader'); const filterBar = document.getElementById('filterBarFixed'); const wasCollapsed = content.classList.contains('collapsed'); content.classList.toggle('collapsed'); header.classList.toggle('collapsed'); content.style.maxHeight = content.classList.contains('collapsed') ? '0px' : content.scrollHeight + 'px'; if (wasCollapsed) { filterBar.classList.add('visible'); document.body.classList.add('filter-bar-open'); setTimeout(() => header.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); } else { filterBar.classList.remove('visible'); document.body.classList.remove('filter-bar-open'); } }
 function toggleDeptCard(event, deptId) { event.stopPropagation(); event.currentTarget.classList.toggle('collapsed'); setTimeout(() => document.getElementById('summaryContent').style.maxHeight = document.getElementById('summaryContent').scrollHeight + 'px', 50); }
 
-// ========== MESSAGING SYSTEM ==========
-// Uses existing tables: messages (conversation_id, topic, content, sender_id, attachments)
-// message_read_receipts (message_id, employee_id, read_at)
-// notifications (recipient_id, is_read, title, body)
+// ========== MESSAGING SYSTEM (FIXED FOR ACTUAL DB STRUCTURE) ==========
+// conversations: conversation_id, tenant_id, conversation_type, title, created_by, etc.
+// messages: message_id, tenant_id, conversation_id (FK), sender_id, content, attachments, created_at
+// message_read_receipts: receipt_id, message_id, employee_id, read_at
 
 async function loadInboxData() {
   try {
     if (!currentTenantId) return;
     
     // Load notifications for current user
-    const { data: notifications } = await sb.from('notifications').select('*').eq('tenant_id', currentTenantId).or(`recipient_id.eq.${currentUserId},recipient_id.is.null`).order('created_at', { ascending: false }).limit(50);
+    const { data: notifications } = await sb.from('notifications')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .or(`recipient_id.eq.${currentUserId},recipient_id.is.null`)
+      .order('created_at', { ascending: false })
+      .limit(50);
     allNotifications = notifications || [];
     
-    // Load messages - get latest message per conversation
-    const { data: messages } = await sb.from('messages').select('*').eq('tenant_id', currentTenantId).order('inserted_at', { ascending: false }).limit(100);
+    // Load conversations with their latest message
+    const { data: conversations } = await sb.from('conversations')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(50);
+    allConversations = conversations || [];
+    
+    // Load recent messages
+    const { data: messages } = await sb.from('messages')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('created_at', { ascending: false })
+      .limit(100);
     allMessages = messages || [];
     
-    // Load read receipts for current user to determine read status
-    const messageIds = allMessages.map(m => m.message_id);
-    if (messageIds.length > 0) {
-      const { data: readReceipts } = await sb.from('message_read_receipts').select('message_id, read_at').eq('employee_id', currentUserId).in('message_id', messageIds);
+    // Load read receipts for current employee to determine read status
+    if (currentEmployeeId && allMessages.length > 0) {
+      const messageIds = allMessages.map(m => m.message_id);
+      const { data: readReceipts } = await sb.from('message_read_receipts')
+        .select('message_id, read_at')
+        .eq('employee_id', currentEmployeeId)
+        .in('message_id', messageIds);
       const readMap = new Map((readReceipts || []).map(r => [r.message_id, r.read_at]));
       allMessages = allMessages.map(m => ({ ...m, is_read: readMap.has(m.message_id) }));
     }
     
+    // Attach conversation title to messages
+    const convMap = new Map(allConversations.map(c => [c.conversation_id, c]));
+    allMessages = allMessages.map(m => ({
+      ...m,
+      conversation_title: convMap.get(m.conversation_id)?.title || 'No Subject'
+    }));
+    
     // Load WO notes requiring review
-    const { data: woNotes } = await sb.from('work_order_notes').select('*').eq('tenant_id', currentTenantId).eq('requires_manager_review', true).order('created_at', { ascending: false }).limit(20);
+    const { data: woNotes } = await sb.from('work_order_notes')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .eq('requires_manager_review', true)
+      .order('created_at', { ascending: false })
+      .limit(20);
     if (woNotes && woNotes.length > 0) {
-      const noteItems = woNotes.map(note => ({ notification_id: 'note_' + note.note_id, notification_type: 'wo_note', title: 'WO Note - Review Required', body: note.content, priority: 'high', is_read: false, created_at: note.created_at, source_type: 'work_order_note', source_id: note.work_order_id }));
+      const noteItems = woNotes.map(note => ({
+        notification_id: 'note_' + note.note_id,
+        notification_type: 'wo_note',
+        title: 'WO Note - Review Required',
+        body: note.content,
+        priority: 'high',
+        is_read: false,
+        created_at: note.created_at,
+        source_type: 'work_order_note',
+        source_id: note.work_order_id
+      }));
       allNotifications = [...noteItems, ...allNotifications];
     }
     
@@ -906,11 +949,11 @@ function renderInbox() {
   if (currentInboxTab === 'all') {
     const msgItems = allMessages.map(m => ({ ...m, itemType: 'message' }));
     const notifItems = allNotifications.map(n => ({ ...n, itemType: 'notification' }));
-    items = [...msgItems, ...notifItems].sort((a, b) => new Date(b.inserted_at || b.created_at) - new Date(a.inserted_at || a.created_at));
+    items = [...msgItems, ...notifItems].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   } else if (currentInboxTab === 'unread') {
     const msgItems = allMessages.filter(m => !m.is_read).map(m => ({ ...m, itemType: 'message' }));
     const notifItems = allNotifications.filter(n => !n.is_read).map(n => ({ ...n, itemType: 'notification' }));
-    items = [...msgItems, ...notifItems].sort((a, b) => new Date(b.inserted_at || b.created_at) - new Date(a.inserted_at || a.created_at));
+    items = [...msgItems, ...notifItems].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   } else if (currentInboxTab === 'messages') {
     items = allMessages.map(m => ({ ...m, itemType: 'message' }));
   } else if (currentInboxTab === 'wo_notes') {
@@ -918,7 +961,7 @@ function renderInbox() {
   }
   
   if (items.length === 0) {
-    container.innerHTML = `<div class="inbox-empty"><div class="inbox-empty-icon"></div><div>No ${currentInboxTab === 'unread' ? 'unread ' : ''}messages</div></div>`;
+    container.innerHTML = `<div class="inbox-empty"><div class="inbox-empty-icon">📭</div><div>No ${currentInboxTab === 'unread' ? 'unread ' : ''}messages</div></div>`;
     return;
   }
   
@@ -927,22 +970,22 @@ function renderInbox() {
       const sender = allEmployeesData.find(e => e.employee_id === item.sender_id || e.user_id === item.sender_id);
       const senderName = sender ? `${sender.first_name} ${sender.last_name}` : (item.sender_type || 'Unknown');
       const hasAttachments = item.attachments && (Array.isArray(item.attachments) ? item.attachments.length > 0 : Object.keys(item.attachments).length > 0);
-      const timeAgo = formatTimeAgo(item.inserted_at || item.created_at);
+      const timeAgo = formatTimeAgo(item.created_at);
       
-      return `<div class="inbox-item ${item.is_read ? '' : 'unread'}" onclick="openViewMessage('${item.message_id}')">
-        <div class="inbox-item-icon"></div>
+      return `<div class="inbox-item ${item.is_read ? '' : 'unread'}" onclick="openViewMessage('${item.message_id}', '${item.conversation_id}')">
+        <div class="inbox-item-icon">💬</div>
         <div class="inbox-item-content">
           <div class="inbox-item-from">From: ${senderName}</div>
           <div class="inbox-item-header">
-            <div class="inbox-item-title">${item.topic || 'No Subject'}</div>
+            <div class="inbox-item-title">${item.conversation_title}</div>
             <div class="inbox-item-time">${timeAgo}</div>
           </div>
           <div class="inbox-item-body">${item.content || ''}</div>
-          ${hasAttachments ? `<div class="inbox-item-attachments"><span class="inbox-attachment-badge"> Attachments</span></div>` : ''}
+          ${hasAttachments ? `<div class="inbox-item-attachments"><span class="inbox-attachment-badge">📎 Attachments</span></div>` : ''}
         </div>
       </div>`;
     } else {
-      const icon = item.notification_type === 'wo_note' ? '' : '';
+      const icon = item.notification_type === 'wo_note' ? '📋' : '🔔';
       return `<div class="inbox-item ${item.is_read ? '' : 'unread'}" onclick="handleInboxClick('${item.notification_id}', '${item.source_type || ''}', '${item.source_id || ''}')">
         <div class="inbox-item-icon">${icon}</div>
         <div class="inbox-item-content">
@@ -960,18 +1003,21 @@ function renderInbox() {
 
 function switchInboxTab(tab, btn) { currentInboxTab = tab; document.querySelectorAll('.inbox-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active'); renderInbox(); }
 async function handleInboxClick(id, sourceType, sourceId) { if (!id.startsWith('note_')) await sb.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('notification_id', id); if (sourceType === 'work_order_note' || sourceType === 'work_order') window.location.href = `work-order-edit.html?id=${sourceId}`; loadInboxData(); }
+
 async function markAllNotificationsRead() { 
   // Mark notifications as read
-  await sb.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('is_read', false).eq('tenant_id', currentTenantId).or(`recipient_id.eq.${currentUserId},recipient_id.is.null`);
+  await sb.from('notifications').update({ is_read: true, read_at: new Date().toISOString() })
+    .eq('is_read', false)
+    .eq('tenant_id', currentTenantId)
+    .or(`recipient_id.eq.${currentUserId},recipient_id.is.null`);
   
-  // Mark messages as read via read receipts
-  const currentEmp = allEmployeesData.find(e => e.user_id === currentUserId);
-  if (currentEmp && allMessages.length > 0) {
+  // Mark messages as read via read receipts (uses employee_id, not user_id)
+  if (currentEmployeeId && allMessages.length > 0) {
     const unreadMessages = allMessages.filter(m => !m.is_read);
     for (const msg of unreadMessages) {
       await sb.from('message_read_receipts').upsert({
         message_id: msg.message_id,
-        employee_id: currentEmp.employee_id,
+        employee_id: currentEmployeeId,
         read_at: new Date().toISOString()
       }, { onConflict: 'message_id,employee_id' });
     }
@@ -989,15 +1035,18 @@ function updateInboxBadge() {
   else { badge.style.display = 'none'; } 
 }
 
-// Compose Message
+// Compose Message - FIXED: Creates conversation first, then message
 function openComposeModal() {
   selectedFiles = [];
   document.getElementById('msgSubject').value = '';
   document.getElementById('msgBody').value = '';
   document.getElementById('msgFileList').innerHTML = '';
   
+  // Populate recipients using employee_id (for read receipts)
   const select = document.getElementById('msgRecipient');
-  select.innerHTML = allEmployeesData.map(e => `<option value="${e.employee_id}">${e.first_name} ${e.last_name} (${e.role || 'Staff'})</option>`).join('');
+  select.innerHTML = allEmployeesData.map(e => 
+    `<option value="${e.employee_id}">${e.first_name} ${e.last_name} (${e.role || 'Staff'})</option>`
+  ).join('');
   
   document.getElementById('composeModal').classList.add('active');
 }
@@ -1017,7 +1066,7 @@ function renderFileList() {
   const container = document.getElementById('msgFileList');
   if (selectedFiles.length === 0) { container.innerHTML = ''; return; }
   container.innerHTML = selectedFiles.map((file, idx) => {
-    const icon = file.type.startsWith('image/') ? '' : '';
+    const icon = file.type.startsWith('image/') ? '🖼️' : '📄';
     const size = (file.size / 1024).toFixed(1) + ' KB';
     return `<div class="file-item"><span class="file-item-icon">${icon}</span><span class="file-item-name">${file.name}</span><span class="file-item-size">${size}</span><button class="file-item-remove" onclick="removeFile(${idx})">&times;</button></div>`;
   }).join('');
@@ -1026,12 +1075,12 @@ function renderFileList() {
 function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
 
 async function sendMessage() {
-  const recipients = Array.from(document.getElementById('msgRecipient').selectedOptions).map(o => o.value);
-  const topic = document.getElementById('msgSubject').value.trim();
+  const recipientEmployeeIds = Array.from(document.getElementById('msgRecipient').selectedOptions).map(o => o.value);
+  const subject = document.getElementById('msgSubject').value.trim();
   const content = document.getElementById('msgBody').value.trim();
   
-  if (recipients.length === 0) { alert('Please select at least one recipient'); return; }
-  if (!topic) { alert('Please enter a subject'); return; }
+  if (recipientEmployeeIds.length === 0) { alert('Please select at least one recipient'); return; }
+  if (!subject) { alert('Please enter a subject'); return; }
   if (!content) { alert('Please enter a message'); return; }
   
   try {
@@ -1046,50 +1095,70 @@ async function sendMessage() {
       }
     }
     
-    // Generate conversation_id for this thread
-    const conversationId = crypto.randomUUID();
-    const messageId = crypto.randomUUID();
     const now = new Date().toISOString();
     
-    // Create message using existing table structure
-    const message = {
-      message_id: messageId,
-      id: messageId,
-      tenant_id: currentTenantId,
+    // STEP 1: Create conversation first (required by FK constraint)
+    const conversationId = crypto.randomUUID();
+    const conversation = {
       conversation_id: conversationId,
-      topic: topic,
-      content: content,
-      sender_id: currentUserId,
-      sender_type: 'employee',
-      message_type: 'direct',
-      extension: 'internal',
-      attachments: attachments.length > 0 ? attachments : null,
-      mentions: recipients.map(r => ({ employee_id: r })),
-      private: false,
-      inserted_at: now,
+      tenant_id: currentTenantId,
+      conversation_type: 'direct',
+      title: subject,
+      description: content.substring(0, 200),
+      created_by: currentUserId,
+      message_count: 1,
+      last_message_at: now,
+      last_message_preview: content.substring(0, 100),
+      last_message_sender_id: currentUserId,
+      created_at: now,
       updated_at: now
     };
     
-    const { error } = await sb.from('messages').insert(message);
-    if (error) throw error;
+    const { error: convError } = await sb.from('conversations').insert(conversation);
+    if (convError) throw convError;
     
-    // Create notification for each recipient
-    for (const recipientId of recipients) {
-      const notification = {
-        tenant_id: currentTenantId,
-        recipient_id: recipientId,
-        sender_id: currentUserId,
-        notification_type: 'message',
-        title: `New Message: ${topic}`,
-        body: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-        source_type: 'message',
-        source_id: messageId,
-        priority: 'normal',
-        is_read: false,
-        delivered_in_app: true,
-        created_at: now
-      };
-      await sb.from('notifications').insert(notification);
+    // STEP 2: Create message referencing the conversation
+    const messageId = crypto.randomUUID();
+    const message = {
+      message_id: messageId,
+      tenant_id: currentTenantId,
+      conversation_id: conversationId,
+      sender_id: currentUserId,
+      sender_type: 'employee',
+      message_type: 'text',
+      content: content,
+      attachments: attachments.length > 0 ? attachments : [],
+      mentions: recipientEmployeeIds.map(id => ({ employee_id: id })),
+      created_at: now,
+      updated_at: now
+    };
+    
+    const { error: msgError } = await sb.from('messages').insert(message);
+    if (msgError) throw msgError;
+    
+    // STEP 3: Create notification for each recipient
+    for (const recipientEmpId of recipientEmployeeIds) {
+      // Get the user_id for the recipient employee (notifications use user_id as recipient_id)
+      const recipientEmp = allEmployeesData.find(e => e.employee_id === recipientEmpId);
+      const recipientUserId = recipientEmp?.user_id;
+      
+      if (recipientUserId) {
+        const notification = {
+          tenant_id: currentTenantId,
+          recipient_id: recipientUserId,
+          sender_id: currentUserId,
+          notification_type: 'message',
+          title: `New Message: ${subject}`,
+          body: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+          source_type: 'message',
+          source_id: messageId,
+          priority: 'normal',
+          is_read: false,
+          delivered_in_app: true,
+          created_at: now
+        };
+        await sb.from('notifications').insert(notification);
+      }
     }
     
     closeComposeModal();
@@ -1098,21 +1167,19 @@ async function sendMessage() {
   } catch (err) { console.error('Error sending message:', err); alert('Error: ' + err.message); }
 }
 
-async function openViewMessage(messageId) {
+async function openViewMessage(messageId, conversationId) {
   viewingMessageId = messageId;
+  viewingConversationId = conversationId;
   const message = allMessages.find(m => m.message_id === messageId);
   if (!message) return;
   
-  // Mark as read by inserting/updating read receipt
-  if (!message.is_read) {
-    const currentEmp = allEmployeesData.find(e => e.user_id === currentUserId);
-    if (currentEmp) {
-      await sb.from('message_read_receipts').upsert({
-        message_id: messageId,
-        employee_id: currentEmp.employee_id,
-        read_at: new Date().toISOString()
-      }, { onConflict: 'message_id,employee_id' });
-    }
+  // Mark as read by inserting/updating read receipt (uses employee_id)
+  if (!message.is_read && currentEmployeeId) {
+    await sb.from('message_read_receipts').upsert({
+      message_id: messageId,
+      employee_id: currentEmployeeId,
+      read_at: new Date().toISOString()
+    }, { onConflict: 'message_id,employee_id' });
     message.is_read = true;
     updateInboxBadge();
   }
@@ -1127,16 +1194,16 @@ async function openViewMessage(messageId) {
       <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Attachments:</div>
       ${attachList.map(a => {
         if (a.type && a.type.startsWith('image/')) return `<img src="${a.url}" class="message-image" onclick="window.open('${a.url}', '_blank')" alt="${a.name}">`;
-        return `<a href="${a.url}" target="_blank" class="message-attachment"> ${a.name}</a>`;
+        return `<a href="${a.url}" target="_blank" class="message-attachment">📄 ${a.name}</a>`;
       }).join('')}
     </div>`;
   }
   
-  document.getElementById('viewMsgSubject').textContent = message.topic || 'No Subject';
+  document.getElementById('viewMsgSubject').textContent = message.conversation_title || 'No Subject';
   document.getElementById('viewMsgBody').innerHTML = `
     <div style="margin-bottom:16px;">
       <div style="font-size:12px; color:var(--text-secondary);">From: <span style="color:var(--accent-light);">${senderName}</span></div>
-      <div style="font-size:12px; color:var(--text-secondary);">Date: ${new Date(message.inserted_at || message.created_at).toLocaleString()}</div>
+      <div style="font-size:12px; color:var(--text-secondary);">Date: ${new Date(message.created_at).toLocaleString()}</div>
     </div>
     <div style="font-size:14px; color:var(--text-primary); white-space:pre-wrap; line-height:1.6;">${message.content}</div>
     ${attachmentsHtml}
@@ -1148,11 +1215,20 @@ function closeViewMessageModal() { document.getElementById('viewMessageModal').c
 
 function replyToMessage() {
   const message = allMessages.find(m => m.message_id === viewingMessageId);
+  const conversation = allConversations.find(c => c.conversation_id === viewingConversationId);
   if (!message) return;
   closeViewMessageModal();
   openComposeModal();
-  document.getElementById('msgSubject').value = message.topic?.startsWith('Re: ') ? message.topic : 'Re: ' + (message.topic || '');
-  Array.from(document.getElementById('msgRecipient').options).forEach(opt => { opt.selected = opt.value === message.sender_id; });
+  const title = conversation?.title || message.conversation_title || '';
+  document.getElementById('msgSubject').value = title.startsWith('Re: ') ? title : 'Re: ' + title;
+  
+  // Select the original sender as recipient
+  const senderEmp = allEmployeesData.find(e => e.user_id === message.sender_id || e.employee_id === message.sender_id);
+  if (senderEmp) {
+    Array.from(document.getElementById('msgRecipient').options).forEach(opt => { 
+      opt.selected = opt.value === senderEmp.employee_id; 
+    });
+  }
 }
 
 // Drag and drop
@@ -1170,17 +1246,25 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// ========== ENHANCED TASKS SYSTEM ==========
+// ========== TASKS SYSTEM (FIXED: assigned_to uses user_id) ==========
 async function loadTasksData() {
   try {
     if (!currentTenantId) return;
-    const { data: tasks } = await sb.from('tasks').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false });
+    const { data: tasks } = await sb.from('tasks')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('created_at', { ascending: false });
     allTasks = tasks || [];
     
     // Load organizations for autocomplete
-    const { data: customers } = await sb.from('customers').select('customer_id, full_name, organization_name').eq('tenant_id', currentTenantId);
+    const { data: customers } = await sb.from('customers')
+      .select('customer_id, full_name, organization_name')
+      .eq('tenant_id', currentTenantId);
     const orgs = new Set();
-    (customers || []).forEach(c => { if (c.organization_name) orgs.add(c.organization_name); if (c.full_name) orgs.add(c.full_name); });
+    (customers || []).forEach(c => { 
+      if (c.organization_name) orgs.add(c.organization_name); 
+      if (c.full_name) orgs.add(c.full_name); 
+    });
     allOrganizations = Array.from(orgs).sort();
     
     renderTasks();
@@ -1198,14 +1282,15 @@ function renderTasksList() {
   const now = new Date();
   let filtered = allTasks;
   
-  if (currentTasksTab === 'pending') filtered = allTasks.filter(t => t.status === 'pending' || t.status === 'todo' || !t.status);
+  // Default status is 'open' per DB schema
+  if (currentTasksTab === 'open') filtered = allTasks.filter(t => t.status === 'open' || t.status === 'pending' || !t.status);
   else if (currentTasksTab === 'in_progress') filtered = allTasks.filter(t => t.status === 'in_progress');
   else if (currentTasksTab === 'review') filtered = allTasks.filter(t => t.status === 'review');
   else if (currentTasksTab === 'overdue') filtered = allTasks.filter(t => t.status !== 'completed' && t.due_at && new Date(t.due_at) < now);
   else if (currentTasksTab === 'completed') filtered = allTasks.filter(t => t.status === 'completed');
   
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="tasks-list"><div class="tasks-empty"><div class="tasks-empty-icon"></div><div>No tasks</div></div></div>`;
+    container.innerHTML = `<div class="tasks-list"><div class="tasks-empty"><div class="tasks-empty-icon">✓</div><div>No tasks</div></div></div>`;
     return;
   }
   
@@ -1221,20 +1306,21 @@ function renderTasksList() {
     const isCompleted = task.status === 'completed';
     const isOverdue = task.due_at && new Date(task.due_at) < now && !isCompleted;
     const dueText = task.due_at ? formatDueDate(task.due_at) : '';
-    const assignee = allEmployeesData.find(e => e.employee_id === task.assigned_to || e.user_id === task.assigned_to);
+    // assigned_to is user_id, find employee by user_id
+    const assignee = allEmployeesData.find(e => e.user_id === task.assigned_to);
     const assigneeName = assignee ? `${assignee.first_name} ${assignee.last_name}` : '';
     
     return `<div class="task-item ${isCompleted ? 'completed' : ''}" onclick="openTaskModal('${task.task_id}')">
-      <div class="task-checkbox ${isCompleted ? 'completed' : ''}" onclick="event.stopPropagation(); toggleTaskComplete('${task.task_id}', ${!isCompleted})">${isCompleted ? 'x' : ''}</div>
+      <div class="task-checkbox ${isCompleted ? 'completed' : ''}" onclick="event.stopPropagation(); toggleTaskComplete('${task.task_id}', ${!isCompleted})">${isCompleted ? '✓' : ''}</div>
       <div class="task-content">
         <div class="task-title">${task.title}</div>
-        ${task.organization ? `<div class="task-org">${task.organization}</div>` : ''}
+        ${task.organization ? `<div class="task-org">🏢 ${task.organization}</div>` : ''}
         ${task.description ? `<div class="task-description">${task.description}</div>` : ''}
         <div class="task-meta">
           <span class="task-priority ${task.priority || 'normal'}">${task.priority || 'normal'}</span>
-          <span class="task-status-badge ${task.status || 'pending'}">${(task.status || 'pending').replace('_', ' ')}</span>
-          ${dueText ? `<span class="task-meta-item ${isOverdue ? 'overdue' : ''}"> ${dueText}</span>` : ''}
-          ${assigneeName ? `<span class="task-meta-item"> ${assigneeName}</span>` : ''}
+          <span class="task-status-badge ${task.status || 'open'}">${(task.status || 'open').replace('_', ' ')}</span>
+          ${dueText ? `<span class="task-meta-item ${isOverdue ? 'overdue' : ''}">📅 ${dueText}</span>` : ''}
+          ${assigneeName ? `<span class="task-meta-item">👤 ${assigneeName}</span>` : ''}
         </div>
       </div>
     </div>`;
@@ -1246,16 +1332,16 @@ function renderTasksKanban() {
   const now = new Date();
   
   const columns = {
-    pending: allTasks.filter(t => t.status === 'pending' || t.status === 'todo' || !t.status),
+    open: allTasks.filter(t => t.status === 'open' || t.status === 'pending' || !t.status),
     in_progress: allTasks.filter(t => t.status === 'in_progress'),
     review: allTasks.filter(t => t.status === 'review'),
     completed: allTasks.filter(t => t.status === 'completed')
   };
   
   container.innerHTML = `<div class="tasks-kanban">
-    ${['pending', 'in_progress', 'review', 'completed'].map(status => {
+    ${['open', 'in_progress', 'review', 'completed'].map(status => {
       const tasks = columns[status];
-      const labels = { pending: 'Pending', in_progress: 'In Progress', review: 'Review', completed: 'Completed' };
+      const labels = { open: 'Open', in_progress: 'In Progress', review: 'Review', completed: 'Completed' };
       return `<div class="kanban-column">
         <div class="kanban-column-header"><span>${labels[status]}</span><span class="kanban-count">${tasks.length}</span></div>
         ${tasks.map(task => {
@@ -1263,8 +1349,8 @@ function renderTasksKanban() {
           const dueText = task.due_at ? formatDueDate(task.due_at) : '';
           return `<div class="kanban-task priority-${task.priority || 'normal'}" onclick="openTaskModal('${task.task_id}')">
             <div class="kanban-task-title">${task.title}</div>
-            ${task.organization ? `<div class="kanban-task-org">${task.organization}</div>` : ''}
-            ${dueText ? `<div class="kanban-task-due ${isOverdue ? 'overdue' : ''}"> ${dueText}</div>` : ''}
+            ${task.organization ? `<div class="kanban-task-org">🏢 ${task.organization}</div>` : ''}
+            ${dueText ? `<div class="kanban-task-due ${isOverdue ? 'overdue' : ''}">📅 ${dueText}</div>` : ''}
           </div>`;
         }).join('')}
       </div>`;
@@ -1274,9 +1360,39 @@ function renderTasksKanban() {
 
 function setTasksView(view, btn) { currentTasksView = view; document.querySelectorAll('.tasks-view-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderTasks(); }
 function switchTasksTab(tab, btn) { currentTasksTab = tab; document.querySelectorAll('.tasks-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active'); if (currentTasksView === 'list') renderTasksList(); }
-async function toggleTaskComplete(taskId, completed) { await sb.from('tasks').update({ status: completed ? 'completed' : 'pending', completed_at: completed ? new Date().toISOString() : null }).eq('task_id', taskId); loadTasksData(); }
-function updateTasksBadge() { const now = new Date(); const overdueCount = allTasks.filter(t => t.status !== 'completed' && t.due_at && new Date(t.due_at) < now).length; const pendingCount = allTasks.filter(t => t.status !== 'completed').length; const badge = document.getElementById('tasksBadge'); if (overdueCount > 0) { badge.textContent = overdueCount; badge.style.display = 'inline-block'; badge.classList.add('warning'); } else if (pendingCount > 0) { badge.textContent = pendingCount > 99 ? '99+' : pendingCount; badge.style.display = 'inline-block'; badge.classList.remove('warning'); } else { badge.style.display = 'none'; } }
-function formatDueDate(dateStr) { const date = new Date(dateStr), now = new Date(); const days = Math.ceil((date - now) / (1000 * 60 * 60 * 24)); if (days < 0) return `${Math.abs(days)} days overdue`; if (days === 0) return 'Due today'; if (days === 1) return 'Due tomorrow'; if (days <= 7) return `Due in ${days} days`; return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+async function toggleTaskComplete(taskId, completed) { 
+  await sb.from('tasks').update({ 
+    status: completed ? 'completed' : 'open', 
+    completed_at: completed ? new Date().toISOString() : null 
+  }).eq('task_id', taskId); 
+  loadTasksData(); 
+}
+function updateTasksBadge() { 
+  const now = new Date(); 
+  const overdueCount = allTasks.filter(t => t.status !== 'completed' && t.due_at && new Date(t.due_at) < now).length; 
+  const openCount = allTasks.filter(t => t.status !== 'completed').length; 
+  const badge = document.getElementById('tasksBadge'); 
+  if (overdueCount > 0) { 
+    badge.textContent = overdueCount; 
+    badge.style.display = 'inline-block'; 
+    badge.classList.add('warning'); 
+  } else if (openCount > 0) { 
+    badge.textContent = openCount > 99 ? '99+' : openCount; 
+    badge.style.display = 'inline-block'; 
+    badge.classList.remove('warning'); 
+  } else { 
+    badge.style.display = 'none'; 
+  } 
+}
+function formatDueDate(dateStr) { 
+  const date = new Date(dateStr), now = new Date(); 
+  const days = Math.ceil((date - now) / (1000 * 60 * 60 * 24)); 
+  if (days < 0) return `${Math.abs(days)} days overdue`; 
+  if (days === 0) return 'Due today'; 
+  if (days === 1) return 'Due tomorrow'; 
+  if (days <= 7) return `Due in ${days} days`; 
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); 
+}
 
 // Organization autocomplete
 let orgSearchTimeout = null;
@@ -1295,13 +1411,18 @@ function searchOrganizations(query) {
 function selectOrganization(org) { document.getElementById('taskOrganization').value = org; document.getElementById('orgAutocompleteResults').classList.remove('show'); }
 document.addEventListener('click', (e) => { if (!e.target.closest('.autocomplete-container')) document.querySelectorAll('.autocomplete-results').forEach(r => r.classList.remove('show')); });
 
-// Task Modal
+// Task Modal - FIXED: Uses user_id for assigned_to (FK constraint)
 function openTaskModal(taskId = null) {
   editingTaskId = taskId;
   
-  // Build assignee select with employee_id values
+  // Build assignee select with user_id values (FK references users.user_id)
+  // Only show employees that have a user_id linked
   const assigneeSelect = document.getElementById('taskAssignee');
-  assigneeSelect.innerHTML = '<option value="">-- Select Employee --</option>' + allEmployeesData.map(e => `<option value="${e.employee_id}">${e.first_name} ${e.last_name}</option>`).join('');
+  assigneeSelect.innerHTML = '<option value="">-- Select Employee --</option>' + 
+    allEmployeesData
+      .filter(e => e.user_id) // Only employees with linked user accounts
+      .map(e => `<option value="${e.user_id}">${e.first_name} ${e.last_name}</option>`)
+      .join('');
   
   if (taskId) {
     const task = allTasks.find(t => t.task_id === taskId);
@@ -1318,9 +1439,9 @@ function openTaskModal(taskId = null) {
     document.getElementById('taskPriority').value = task.priority || 'normal';
     document.getElementById('taskDueDate').value = task.due_at ? task.due_at.split('T')[0] : '';
     document.getElementById('taskNotes').value = task.notes || '';
-    setTaskStatus(task.status || 'pending');
+    setTaskStatus(task.status || 'open');
     
-    // Set assignee - match by employee_id
+    // Set assignee - assigned_to is user_id
     if (task.assigned_to) {
       assigneeSelect.value = task.assigned_to;
     }
@@ -1338,7 +1459,7 @@ function openTaskModal(taskId = null) {
     document.getElementById('taskNotes').value = '';
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('taskDueDate').value = tomorrow.toISOString().split('T')[0];
-    currentTaskStatus = 'pending';
+    currentTaskStatus = 'open';
   }
   
   document.getElementById('taskModal').classList.add('active');
@@ -1350,7 +1471,7 @@ function setTaskStatus(status) {
   currentTaskStatus = status;
   document.querySelectorAll('.status-step').forEach(step => {
     step.classList.remove('active', 'completed');
-    const statusOrder = ['pending', 'in_progress', 'review', 'completed'];
+    const statusOrder = ['open', 'in_progress', 'review', 'completed'];
     const currentIdx = statusOrder.indexOf(status);
     const stepIdx = statusOrder.indexOf(step.dataset.status);
     if (step.dataset.status === status) step.classList.add('active');
@@ -1362,7 +1483,7 @@ async function saveTask() {
   const title = document.getElementById('taskTitle').value.trim();
   if (!title) { alert('Please enter a task title'); return; }
   
-  const assignedTo = document.getElementById('taskAssignee').value;
+  const assignedToUserId = document.getElementById('taskAssignee').value || null;
   
   const taskData = {
     tenant_id: currentTenantId,
@@ -1370,10 +1491,11 @@ async function saveTask() {
     description: document.getElementById('taskDescription').value.trim() || null,
     organization: document.getElementById('taskOrganization').value.trim() || null,
     priority: document.getElementById('taskPriority').value,
-    status: editingTaskId ? currentTaskStatus : 'pending',
+    status: editingTaskId ? currentTaskStatus : 'open', // Default status is 'open'
     due_at: document.getElementById('taskDueDate').value ? new Date(document.getElementById('taskDueDate').value).toISOString() : null,
-    assigned_to: assignedTo && assignedTo.length > 0 ? assignedTo : null,
-    notes: document.getElementById('taskNotes').value.trim() || null
+    assigned_to: assignedToUserId, // This is user_id per FK constraint
+    notes: document.getElementById('taskNotes').value.trim() || null,
+    updated_at: new Date().toISOString()
   };
   
   try {
@@ -1381,7 +1503,7 @@ async function saveTask() {
       const { error } = await sb.from('tasks').update(taskData).eq('task_id', editingTaskId);
       if (error) throw error;
     } else {
-      taskData.created_by = currentUserId;
+      taskData.created_by = currentUserId; // Also user_id per FK constraint
       taskData.created_at = new Date().toISOString();
       const { error } = await sb.from('tasks').insert(taskData);
       if (error) throw error;
@@ -1406,19 +1528,32 @@ async function deleteTask() {
 async function loadEmployeesData() {
   try {
     if (!currentTenantId) return;
-    const { data: employees } = await sb.from('employees').select('*').eq('tenant_id', currentTenantId).order('department').order('last_name');
+    const { data: employees } = await sb.from('employees')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .order('department')
+      .order('last_name');
     allEmployeesData = employees || [];
     
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
-    const { data: timeClock } = await sb.from('time_clock').select('*').eq('tenant_id', currentTenantId).gte('clock_in', todayStr + 'T00:00:00').lte('clock_in', todayStr + 'T23:59:59');
+    const { data: timeClock } = await sb.from('time_clock')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .gte('clock_in', todayStr + 'T00:00:00')
+      .lte('clock_in', todayStr + 'T23:59:59');
     timeClockData = timeClock || [];
     
-    const { data: schedules } = await sb.from('employee_schedules').select('*').eq('tenant_id', currentTenantId).eq('schedule_date', todayStr);
+    const { data: schedules } = await sb.from('employee_schedules')
+      .select('*')
+      .eq('tenant_id', currentTenantId)
+      .eq('schedule_date', todayStr);
     scheduleData = schedules || [];
     
+    // Find current user's employee record
     const userEmail = (await sb.auth.getUser()).data?.user?.email;
     const currentEmp = allEmployeesData.find(e => e.user_id === currentUserId || e.email === userEmail);
+    currentEmployeeId = currentEmp?.employee_id || null;
     currentUserRole = currentEmp?.role || null;
     isOwner = currentUserRole === 'owner';
     
@@ -1438,20 +1573,36 @@ function getEmployeeStatus(employee) {
   if (schedule) {
     const startTime = schedule.start_time ? parseInt(schedule.start_time.split(':')[0]) : null;
     const endTime = schedule.end_time ? parseInt(schedule.end_time.split(':')[0]) : null;
-    if (startTime !== null && currentHour >= startTime && (endTime === null || currentHour < endTime)) return { status: 'no-show', label: 'No Show', dot: 'red', isNoShow: true };
-    if (startTime !== null && currentHour < startTime) return { status: 'scheduled', label: `Scheduled ${formatScheduleTime(schedule.start_time)}`, dot: 'yellow' };
+    if (startTime !== null && currentHour >= startTime && (endTime === null || currentHour < endTime)) 
+      return { status: 'no-show', label: 'No Show', dot: 'red', isNoShow: true };
+    if (startTime !== null && currentHour < startTime) 
+      return { status: 'scheduled', label: `Scheduled ${formatScheduleTime(schedule.start_time)}`, dot: 'yellow' };
   }
   return { status: 'off', label: 'Off Today', dot: 'gray' };
 }
 
-function formatScheduleTime(timeStr) { if (!timeStr) return ''; const [hours, mins] = timeStr.split(':'); const h = parseInt(hours); const ampm = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return `${h12}:${mins} ${ampm}`; }
+function formatScheduleTime(timeStr) { 
+  if (!timeStr) return ''; 
+  const [hours, mins] = timeStr.split(':'); 
+  const h = parseInt(hours); 
+  const ampm = h >= 12 ? 'PM' : 'AM'; 
+  const h12 = h % 12 || 12; 
+  return `${h12}:${mins} ${ampm}`; 
+}
 
 function renderEmployees() {
   const container = document.getElementById('employeesList');
-  if (allEmployeesData.length === 0) { container.innerHTML = `<div class="employees-empty"><div class="employees-empty-icon"></div><div>No employees found</div></div>`; return; }
+  if (allEmployeesData.length === 0) { 
+    container.innerHTML = `<div class="employees-empty"><div class="employees-empty-icon">👥</div><div>No employees found</div></div>`; 
+    return; 
+  }
   
   const employeesWithStatus = allEmployeesData.map(emp => ({ ...emp, statusInfo: getEmployeeStatus(emp) }));
-  employeesWithStatus.sort((a, b) => { if (a.statusInfo.isNoShow && !b.statusInfo.isNoShow) return -1; if (!a.statusInfo.isNoShow && b.statusInfo.isNoShow) return 1; return (a.department || 'zzz').localeCompare(b.department || 'zzz'); });
+  employeesWithStatus.sort((a, b) => { 
+    if (a.statusInfo.isNoShow && !b.statusInfo.isNoShow) return -1; 
+    if (!a.statusInfo.isNoShow && b.statusInfo.isNoShow) return 1; 
+    return (a.department || 'zzz').localeCompare(b.department || 'zzz'); 
+  });
   
   const clockedIn = employeesWithStatus.filter(e => e.statusInfo.status === 'clocked-in').length;
   const scheduledLater = employeesWithStatus.filter(e => e.statusInfo.status === 'scheduled').length;
@@ -1464,13 +1615,22 @@ function renderEmployees() {
   const noShows = employeesWithStatus.filter(e => e.statusInfo.isNoShow);
   const others = employeesWithStatus.filter(e => !e.statusInfo.isNoShow);
   const departments = {};
-  others.forEach(emp => { const dept = emp.department || 'Unassigned'; if (!departments[dept]) departments[dept] = []; departments[dept].push(emp); });
+  others.forEach(emp => { 
+    const dept = emp.department || 'Unassigned'; 
+    if (!departments[dept]) departments[dept] = []; 
+    departments[dept].push(emp); 
+  });
   
   let html = '';
-  if (noShows.length > 0) html += `<div class="dept-group"><div class="dept-header" style="background:rgba(239,68,68,0.2); color:#f87171;"> No Shows</div>${noShows.map(emp => renderEmployeeStrip(emp)).join('')}</div>`;
+  if (noShows.length > 0) html += `<div class="dept-group"><div class="dept-header" style="background:rgba(239,68,68,0.2); color:#f87171;">⚠️ No Shows</div>${noShows.map(emp => renderEmployeeStrip(emp)).join('')}</div>`;
   
   const deptOrder = ['management', 'service', 'parts', 'sales', 'admin', 'Unassigned'];
-  deptOrder.forEach(dept => { if (departments[dept] && departments[dept].length > 0) { const deptLabel = dept.charAt(0).toUpperCase() + dept.slice(1); html += `<div class="dept-group"><div class="dept-header">${deptLabel} (${departments[dept].length})</div>${departments[dept].map(emp => renderEmployeeStrip(emp)).join('')}</div>`; } });
+  deptOrder.forEach(dept => { 
+    if (departments[dept] && departments[dept].length > 0) { 
+      const deptLabel = dept.charAt(0).toUpperCase() + dept.slice(1); 
+      html += `<div class="dept-group"><div class="dept-header">${deptLabel} (${departments[dept].length})</div>${departments[dept].map(emp => renderEmployeeStrip(emp)).join('')}</div>`; 
+    } 
+  });
   
   container.innerHTML = html;
 }
@@ -1481,7 +1641,18 @@ function renderEmployeeStrip(emp) {
   const phone = emp.phone || emp.phone_number || '--';
   const statusInfo = emp.statusInfo;
   const avatarContent = emp.avatar_url ? `<img src="${emp.avatar_url}" alt="${name}">` : initials;
-  return `<div class="emp-strip ${statusInfo.isNoShow ? 'no-show' : ''}" onclick="openEmployeeViewModal('${emp.employee_id}')"><div class="emp-strip-header"><div class="emp-avatar">${avatarContent}</div><div class="emp-info"><div class="emp-name">${name}</div><div class="emp-phone">${phone}</div></div><div class="emp-status ${statusInfo.status}"><span class="status-dot ${statusInfo.dot}"></span>${statusInfo.label}</div></div></div>`;
+  return `<div class="emp-strip ${statusInfo.isNoShow ? 'no-show' : ''}" onclick="openEmployeeViewModal('${emp.employee_id}')">
+    <div class="emp-strip-header">
+      <div class="emp-avatar">${avatarContent}</div>
+      <div class="emp-info">
+        <div class="emp-name">${name}</div>
+        <div class="emp-phone">${phone}</div>
+      </div>
+      <div class="emp-status ${statusInfo.status}">
+        <span class="status-dot ${statusInfo.dot}"></span>${statusInfo.label}
+      </div>
+    </div>
+  </div>`;
 }
 
 function openEmployeeViewModal(empId) {
@@ -1490,19 +1661,96 @@ function openEmployeeViewModal(empId) {
   const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
   const phone = emp.phone || emp.phone_number || '--';
   const statusInfo = getEmployeeStatus(emp);
-  document.getElementById('empViewModalBody').innerHTML = `<div style="text-align:center; margin-bottom:20px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--bg-card);display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:var(--accent-light);margin-bottom:12px;">${emp.avatar_url ? `<img src="${emp.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : `${(emp.first_name || 'U')[0]}${(emp.last_name || '')[0] || ''}`}</div><div style="font-size:18px;font-weight:600;color:var(--text-primary);">${name}</div><div style="font-size:14px;color:var(--text-secondary);">${(emp.role || '--').replace(/_/g, ' ')} • ${(emp.department || '--').replace(/_/g, ' ')}</div><div class="emp-status ${statusInfo.status}" style="margin-top:8px;display:inline-flex;"><span class="status-dot ${statusInfo.dot}"></span>${statusInfo.label}</div></div><div class="kpi-container"><div class="kpi-row"><span class="kpi-label">Phone</span><span class="kpi-value"><a href="tel:${phone}" style="color:var(--accent-light);text-decoration:none;">${phone}</a></span></div><div class="kpi-row"><span class="kpi-label">Email</span><span class="kpi-value">${emp.email ? `<a href="mailto:${emp.email}" style="color:var(--accent-light);text-decoration:none;">${emp.email}</a>` : '--'}</span></div><div class="kpi-row"><span class="kpi-label">Hire Date</span><span class="kpi-value">${emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : '--'}</span></div></div>`;
+  document.getElementById('empViewModalBody').innerHTML = `
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="width:60px;height:60px;border-radius:50%;background:var(--bg-card);display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;color:var(--accent-light);margin-bottom:12px;">
+        ${emp.avatar_url ? `<img src="${emp.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : `${(emp.first_name || 'U')[0]}${(emp.last_name || '')[0] || ''}`}
+      </div>
+      <div style="font-size:18px;font-weight:600;color:var(--text-primary);">${name}</div>
+      <div style="font-size:14px;color:var(--text-secondary);">${(emp.role || '--').replace(/_/g, ' ')} • ${(emp.department || '--').replace(/_/g, ' ')}</div>
+      <div class="emp-status ${statusInfo.status}" style="margin-top:8px;display:inline-flex;">
+        <span class="status-dot ${statusInfo.dot}"></span>${statusInfo.label}
+      </div>
+    </div>
+    <div class="kpi-container">
+      <div class="kpi-row">
+        <span class="kpi-label">Phone</span>
+        <span class="kpi-value"><a href="tel:${phone}" style="color:var(--accent-light);text-decoration:none;">${phone}</a></span>
+      </div>
+      <div class="kpi-row">
+        <span class="kpi-label">Email</span>
+        <span class="kpi-value">${emp.email ? `<a href="mailto:${emp.email}" style="color:var(--accent-light);text-decoration:none;">${emp.email}</a>` : '--'}</span>
+      </div>
+      <div class="kpi-row">
+        <span class="kpi-label">Hire Date</span>
+        <span class="kpi-value">${emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : '--'}</span>
+      </div>
+    </div>`;
   document.getElementById('empViewModalTitle').textContent = name;
   document.getElementById('employeeViewModal').classList.add('active');
 }
 
 function closeEmployeeViewModal() { document.getElementById('employeeViewModal').classList.remove('active'); }
-function updateEmployeesBadge() { const noShowCount = allEmployeesData.filter(emp => getEmployeeStatus(emp).isNoShow).length; const badge = document.getElementById('employeesBadge'); if (noShowCount > 0) { badge.textContent = noShowCount; badge.style.display = 'inline-block'; badge.classList.add('warning'); } else { badge.style.display = 'none'; } }
-function openNewEmployeeModal() { if (!isOwner) { alert('Only owners can add employees.'); return; } document.getElementById('newEmpFirstName').value = ''; document.getElementById('newEmpLastName').value = ''; document.getElementById('newEmpEmail').value = ''; document.getElementById('newEmpPhone').value = ''; document.getElementById('newEmpDepartment').value = ''; document.getElementById('newEmpRole').value = ''; document.getElementById('newEmpHireDate').value = new Date().toISOString().split('T')[0]; document.getElementById('newEmployeeModal').classList.add('active'); }
+
+function updateEmployeesBadge() { 
+  const noShowCount = allEmployeesData.filter(emp => getEmployeeStatus(emp).isNoShow).length; 
+  const badge = document.getElementById('employeesBadge'); 
+  if (noShowCount > 0) { 
+    badge.textContent = noShowCount; 
+    badge.style.display = 'inline-block'; 
+    badge.classList.add('warning'); 
+  } else { 
+    badge.style.display = 'none'; 
+  } 
+}
+
+function openNewEmployeeModal() { 
+  if (!isOwner) { alert('Only owners can add employees.'); return; } 
+  document.getElementById('newEmpFirstName').value = ''; 
+  document.getElementById('newEmpLastName').value = ''; 
+  document.getElementById('newEmpEmail').value = ''; 
+  document.getElementById('newEmpPhone').value = ''; 
+  document.getElementById('newEmpDepartment').value = ''; 
+  document.getElementById('newEmpRole').value = ''; 
+  document.getElementById('newEmpHireDate').value = new Date().toISOString().split('T')[0]; 
+  document.getElementById('newEmployeeModal').classList.add('active'); 
+}
+
 function closeNewEmployeeModal() { document.getElementById('newEmployeeModal').classList.remove('active'); }
-async function saveNewEmployee() { if (!isOwner) { alert('Only owners can add employees.'); return; } const firstName = document.getElementById('newEmpFirstName').value.trim(); const lastName = document.getElementById('newEmpLastName').value.trim(); const phone = document.getElementById('newEmpPhone').value.trim(); if (!firstName || !lastName || !phone) { alert('First name, last name, and phone are required.'); return; } const newEmp = { tenant_id: currentTenantId, first_name: firstName, last_name: lastName, email: document.getElementById('newEmpEmail').value.trim() || null, phone: phone, department: document.getElementById('newEmpDepartment').value || null, role: document.getElementById('newEmpRole').value || null, hire_date: document.getElementById('newEmpHireDate').value || null, is_active: true }; const { error } = await sb.from('employees').insert(newEmp); if (error) { alert('Error adding employee: ' + error.message); return; } closeNewEmployeeModal(); await loadEmployeesData(); }
+
+async function saveNewEmployee() { 
+  if (!isOwner) { alert('Only owners can add employees.'); return; } 
+  const firstName = document.getElementById('newEmpFirstName').value.trim(); 
+  const lastName = document.getElementById('newEmpLastName').value.trim(); 
+  const phone = document.getElementById('newEmpPhone').value.trim(); 
+  if (!firstName || !lastName || !phone) { alert('First name, last name, and phone are required.'); return; } 
+  const newEmp = { 
+    tenant_id: currentTenantId, 
+    first_name: firstName, 
+    last_name: lastName, 
+    email: document.getElementById('newEmpEmail').value.trim() || null, 
+    phone: phone, 
+    department: document.getElementById('newEmpDepartment').value || null, 
+    role: document.getElementById('newEmpRole').value || null, 
+    hire_date: document.getElementById('newEmpHireDate').value || null, 
+    is_active: true 
+  }; 
+  const { error } = await sb.from('employees').insert(newEmp); 
+  if (error) { alert('Error adding employee: ' + error.message); return; } 
+  closeNewEmployeeModal(); 
+  await loadEmployeesData(); 
+}
 
 // ========== UTILITY ==========
-function formatTimeAgo(dateStr) { const diff = new Date() - new Date(dateStr); const mins = Math.floor(diff / 60000), hrs = Math.floor(diff / 3600000), days = Math.floor(diff / 86400000); if (mins < 1) return 'Just now'; if (mins < 60) return `${mins}m ago`; if (hrs < 24) return `${hrs}h ago`; if (days < 7) return `${days}d ago`; return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+function formatTimeAgo(dateStr) { 
+  const diff = new Date() - new Date(dateStr); 
+  const mins = Math.floor(diff / 60000), hrs = Math.floor(diff / 3600000), days = Math.floor(diff / 86400000); 
+  if (mins < 1) return 'Just now'; 
+  if (mins < 60) return `${mins}m ago`; 
+  if (hrs < 24) return `${hrs}h ago`; 
+  if (days < 7) return `${days}d ago`; 
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); 
+}
 
 // ========== DATE RANGE ==========
 function formatDateDisplay(date) { return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
@@ -1510,29 +1758,191 @@ function rangeChanged() { currentRange = document.getElementById('rangeSelect').
 function rangeChangedMobile() { currentRange = document.getElementById('rangeSelectMobile').value; document.getElementById('rangeSelect').value = currentRange; calculateDateRange(); updateDisplay(); loadDashboardData(); }
 function setDirection(direction) { currentDirection = direction; document.getElementById('pastBtn').classList.toggle('active', direction === 'past'); document.getElementById('futureBtn').classList.toggle('active', direction === 'future'); document.getElementById('pastBtnMobile')?.classList.toggle('active', direction === 'past'); document.getElementById('futureBtnMobile')?.classList.toggle('active', direction === 'future'); calculateDateRange(); updateDisplay(); loadDashboardData(); }
 function setDirectionMobile(direction) { setDirection(direction); }
-function calculateDateRange() { const today = new Date(); today.setHours(0, 0, 0, 0); if (currentDirection === 'future') { startDate = new Date(today); endDate = new Date(today); switch(currentRange) { case 'today': endDate.setHours(23, 59, 59, 999); break; case 'week': endDate.setDate(today.getDate() + 6); break; case '30days': endDate.setDate(today.getDate() + 29); break; case '60days': endDate.setDate(today.getDate() + 59); break; case '90days': endDate.setDate(today.getDate() + 89); break; case 'ytd': endDate = new Date(today.getFullYear(), 11, 31); break; } endDate.setHours(23, 59, 59, 999); } else { endDate = new Date(today); endDate.setHours(23, 59, 59, 999); startDate = new Date(today); switch(currentRange) { case 'today': startDate.setHours(0, 0, 0, 0); break; case 'week': startDate.setDate(today.getDate() - 6); break; case '30days': startDate.setDate(today.getDate() - 29); break; case '60days': startDate.setDate(today.getDate() - 59); break; case '90days': startDate.setDate(today.getDate() - 89); break; case 'ytd': startDate = new Date(today.getFullYear(), 0, 1); break; } } }
-function updateDisplay() { const rangeText = { 'today': 'Today', 'week': '1 Week', '30days': '30 Days', '60days': '60 Days', '90days': '90 Days', 'ytd': 'Year to Date' }; const displayText = `${rangeText[currentRange]} (${currentDirection === 'future' ? 'Future' : 'Past'})`; document.getElementById('dateRangeDisplay').textContent = displayText; const mobileDisplay = document.getElementById('dateRangeDisplayMobile'); if (mobileDisplay) mobileDisplay.textContent = displayText; }
+function calculateDateRange() { 
+  const today = new Date(); 
+  today.setHours(0, 0, 0, 0); 
+  if (currentDirection === 'future') { 
+    startDate = new Date(today); 
+    endDate = new Date(today); 
+    switch(currentRange) { 
+      case 'today': endDate.setHours(23, 59, 59, 999); break; 
+      case 'week': endDate.setDate(today.getDate() + 6); break; 
+      case '30days': endDate.setDate(today.getDate() + 29); break; 
+      case '60days': endDate.setDate(today.getDate() + 59); break; 
+      case '90days': endDate.setDate(today.getDate() + 89); break; 
+      case 'ytd': endDate = new Date(today.getFullYear(), 11, 31); break; 
+    } 
+    endDate.setHours(23, 59, 59, 999); 
+  } else { 
+    endDate = new Date(today); 
+    endDate.setHours(23, 59, 59, 999); 
+    startDate = new Date(today); 
+    switch(currentRange) { 
+      case 'today': startDate.setHours(0, 0, 0, 0); break; 
+      case 'week': startDate.setDate(today.getDate() - 6); break; 
+      case '30days': startDate.setDate(today.getDate() - 29); break; 
+      case '60days': startDate.setDate(today.getDate() - 59); break; 
+      case '90days': startDate.setDate(today.getDate() - 89); break; 
+      case 'ytd': startDate = new Date(today.getFullYear(), 0, 1); break; 
+    } 
+  } 
+}
+function updateDisplay() { 
+  const rangeText = { 'today': 'Today', 'week': '1 Week', '30days': '30 Days', '60days': '60 Days', '90days': '90 Days', 'ytd': 'Year to Date' }; 
+  const displayText = `${rangeText[currentRange]} (${currentDirection === 'future' ? 'Future' : 'Past'})`; 
+  document.getElementById('dateRangeDisplay').textContent = displayText; 
+  const mobileDisplay = document.getElementById('dateRangeDisplayMobile'); 
+  if (mobileDisplay) mobileDisplay.textContent = displayText; 
+}
 
 // ========== DASHBOARD DATA ==========
-async function checkAuth() { let { data: { session } } = await sb.auth.getSession(); if (!session) { const token = localStorage.getItem('sb_access_token'), refreshToken = localStorage.getItem('sb_refresh_token'); if (token && refreshToken) { const { data, error } = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken }); if (error || !data.session) { window.location.href = 'login.html'; return null; } session = data.session; } else { window.location.href = 'login.html'; return null; } } currentUserId = session.user.id; return session; }
+async function checkAuth() { 
+  let { data: { session } } = await sb.auth.getSession(); 
+  if (!session) { 
+    const token = localStorage.getItem('sb_access_token'), refreshToken = localStorage.getItem('sb_refresh_token'); 
+    if (token && refreshToken) { 
+      const { data, error } = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken }); 
+      if (error || !data.session) { window.location.href = 'login.html'; return null; } 
+      session = data.session; 
+    } else { 
+      window.location.href = 'login.html'; 
+      return null; 
+    } 
+  } 
+  currentUserId = session.user.id; 
+  return session; 
+}
 
-async function loadBusinessSettings() { const { data } = await sb.from('business_settings').select('*').limit(1).single(); if (data) { const name = data.business_name || data.company_name || ''; document.getElementById('desktopBusinessName').textContent = name; document.getElementById('mobileBusinessName').textContent = name; if (!currentTenantId && data.tenant_id) currentTenantId = data.tenant_id; } }
+async function loadBusinessSettings() { 
+  const { data } = await sb.from('business_settings').select('*').limit(1).single(); 
+  if (data) { 
+    const name = data.business_name || data.company_name || ''; 
+    document.getElementById('desktopBusinessName').textContent = name; 
+    document.getElementById('mobileBusinessName').textContent = name; 
+    if (!currentTenantId && data.tenant_id) currentTenantId = data.tenant_id; 
+  } 
+}
 
 async function loadDashboardData() { await Promise.all([loadServiceData(), loadPartsData(), loadSalesData(), loadSummaryData()]); }
 
-async function loadServiceData() { try { const { data: allOrders } = await sb.from('work_orders').select('*'); const orders = allOrders || []; const filteredOrders = orders.filter(wo => { if (currentDirection === 'future') { const d = wo.scheduled_start ? new Date(wo.scheduled_start) : null; return d && d >= startDate && d <= endDate; } else { return new Date(wo.created_at) >= startDate && new Date(wo.created_at) <= endDate; } }); const completedOrders = filteredOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed'); const inProgressOrders = filteredOrders.filter(wo => wo.status === 'in_progress'); const scheduledOrders = filteredOrders.filter(wo => wo.status === 'scheduled'); const totalRevenue = completedOrders.reduce((sum, wo) => sum + (parseFloat(wo.total_amount) || 0), 0); const avgTicket = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0; document.getElementById('serviceRevenueSummary').textContent = '$' + Math.round(totalRevenue).toLocaleString(); document.getElementById('serviceOrdersSummary').textContent = completedOrders.length; document.getElementById('serviceInProgressSummary').textContent = inProgressOrders.length; document.getElementById('serviceRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString(); document.getElementById('serviceOrders').textContent = completedOrders.length; document.getElementById('serviceAvgTicket').textContent = '$' + Math.round(avgTicket).toLocaleString(); document.getElementById('serviceInProgress').textContent = inProgressOrders.length; document.getElementById('serviceScheduled').textContent = scheduledOrders.length; createServiceChart(completedOrders.length, inProgressOrders.length, scheduledOrders.length); } catch (error) { console.error('Error loading service data:', error); } }
+async function loadServiceData() { 
+  try { 
+    const { data: allOrders } = await sb.from('work_orders').select('*'); 
+    const orders = allOrders || []; 
+    const filteredOrders = orders.filter(wo => { 
+      if (currentDirection === 'future') { 
+        const d = wo.scheduled_start ? new Date(wo.scheduled_start) : null; 
+        return d && d >= startDate && d <= endDate; 
+      } else { 
+        return new Date(wo.created_at) >= startDate && new Date(wo.created_at) <= endDate; 
+      } 
+    }); 
+    const completedOrders = filteredOrders.filter(wo => wo.status === 'completed' || wo.status === 'closed'); 
+    const inProgressOrders = filteredOrders.filter(wo => wo.status === 'in_progress'); 
+    const scheduledOrders = filteredOrders.filter(wo => wo.status === 'scheduled'); 
+    const totalRevenue = completedOrders.reduce((sum, wo) => sum + (parseFloat(wo.total_amount) || 0), 0); 
+    const avgTicket = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0; 
+    document.getElementById('serviceRevenueSummary').textContent = '$' + Math.round(totalRevenue).toLocaleString(); 
+    document.getElementById('serviceOrdersSummary').textContent = completedOrders.length; 
+    document.getElementById('serviceInProgressSummary').textContent = inProgressOrders.length; 
+    document.getElementById('serviceRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString(); 
+    document.getElementById('serviceOrders').textContent = completedOrders.length; 
+    document.getElementById('serviceAvgTicket').textContent = '$' + Math.round(avgTicket).toLocaleString(); 
+    document.getElementById('serviceInProgress').textContent = inProgressOrders.length; 
+    document.getElementById('serviceScheduled').textContent = scheduledOrders.length; 
+    createServiceChart(completedOrders.length, inProgressOrders.length, scheduledOrders.length); 
+  } catch (error) { console.error('Error loading service data:', error); } 
+}
 
-function createServiceChart(completed, inProgress, scheduled) { if (charts.serviceStatus) charts.serviceStatus.destroy(); const ctx = document.getElementById('serviceStatusChart'); charts.serviceStatus = new Chart(ctx, { type: 'doughnut', data: { labels: ['Completed', 'In Progress', 'Scheduled'], datasets: [{ data: [completed, inProgress, scheduled], backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } } } }); }
+function createServiceChart(completed, inProgress, scheduled) { 
+  if (charts.serviceStatus) charts.serviceStatus.destroy(); 
+  const ctx = document.getElementById('serviceStatusChart'); 
+  charts.serviceStatus = new Chart(ctx, { 
+    type: 'doughnut', 
+    data: { 
+      labels: ['Completed', 'In Progress', 'Scheduled'], 
+      datasets: [{ data: [completed, inProgress, scheduled], backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6'] }] 
+    }, 
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } } } 
+  }); 
+}
 
-async function loadPartsData() { try { const { data: inventory } = await sb.from('parts_inventory').select('*'); const parts = inventory || []; const inventoryValue = parts.reduce((sum, p) => sum + ((parseFloat(p.quantity_on_hand) || 0) * (parseFloat(p.unit_cost) || 0)), 0); const lowStock = parts.filter(p => (p.quantity_on_hand || 0) <= (p.reorder_point || 5)).length; document.getElementById('partsInventorySummary').textContent = '$' + Math.round(inventoryValue).toLocaleString(); document.getElementById('partsTotalSummary').textContent = parts.length; document.getElementById('partsLowStockSummary').textContent = lowStock; document.getElementById('partsInventoryValue').textContent = '$' + Math.round(inventoryValue).toLocaleString(); document.getElementById('partsTotalItems').textContent = parts.length; document.getElementById('partsLowStock').textContent = lowStock; } catch (error) { console.error('Error loading parts data:', error); } }
+async function loadPartsData() { 
+  try { 
+    const { data: inventory } = await sb.from('parts_inventory').select('*'); 
+    const parts = inventory || []; 
+    const inventoryValue = parts.reduce((sum, p) => sum + ((parseFloat(p.quantity_on_hand) || 0) * (parseFloat(p.unit_cost) || 0)), 0); 
+    const lowStock = parts.filter(p => (p.quantity_on_hand || 0) <= (p.reorder_point || 5)).length; 
+    document.getElementById('partsInventorySummary').textContent = '$' + Math.round(inventoryValue).toLocaleString(); 
+    document.getElementById('partsTotalSummary').textContent = parts.length; 
+    document.getElementById('partsLowStockSummary').textContent = lowStock; 
+    document.getElementById('partsInventoryValue').textContent = '$' + Math.round(inventoryValue).toLocaleString(); 
+    document.getElementById('partsTotalItems').textContent = parts.length; 
+    document.getElementById('partsLowStock').textContent = lowStock; 
+  } catch (error) { console.error('Error loading parts data:', error); } 
+}
 
-async function loadSalesData() { try { const { data: allDeals } = await sb.from('deals').select('*'); const deals = allDeals || []; const filteredDeals = deals.filter(d => new Date(d.created_at) >= startDate && new Date(d.created_at) <= endDate); const wonDeals = filteredDeals.filter(d => d.status === 'won' || d.status === 'closed_won'); const lostDeals = filteredDeals.filter(d => d.status === 'lost' || d.status === 'closed_lost'); const activeDeals = filteredDeals.filter(d => d.status !== 'won' && d.status !== 'lost' && d.status !== 'closed_won' && d.status !== 'closed_lost'); const totalRevenue = wonDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0); const pipelineValue = activeDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0); const totalClosed = wonDeals.length + lostDeals.length; const winRate = totalClosed > 0 ? Math.round((wonDeals.length / totalClosed) * 100) : 0; document.getElementById('salesRevenueSummary').textContent = '$' + Math.round(totalRevenue).toLocaleString(); document.getElementById('salesDealsSummary').textContent = wonDeals.length; document.getElementById('salesWinRateSummary').textContent = winRate + '%'; document.getElementById('salesRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString(); document.getElementById('salesDeals').textContent = wonDeals.length; document.getElementById('salesWinRate').textContent = winRate + '%'; document.getElementById('salesPipeline').textContent = '$' + Math.round(pipelineValue).toLocaleString(); const stageCounts = {}; activeDeals.forEach(d => { const stage = d.stage || d.status || 'Unknown'; stageCounts[stage] = (stageCounts[stage] || 0) + 1; }); createSalesPipelineChart(stageCounts); } catch (error) { console.error('Error loading sales data:', error); } }
+async function loadSalesData() { 
+  try { 
+    const { data: allDeals } = await sb.from('deals').select('*'); 
+    const deals = allDeals || []; 
+    const filteredDeals = deals.filter(d => new Date(d.created_at) >= startDate && new Date(d.created_at) <= endDate); 
+    const wonDeals = filteredDeals.filter(d => d.status === 'won' || d.status === 'closed_won'); 
+    const lostDeals = filteredDeals.filter(d => d.status === 'lost' || d.status === 'closed_lost'); 
+    const activeDeals = filteredDeals.filter(d => d.status !== 'won' && d.status !== 'lost' && d.status !== 'closed_won' && d.status !== 'closed_lost'); 
+    const totalRevenue = wonDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0); 
+    const pipelineValue = activeDeals.reduce((sum, d) => sum + (parseFloat(d.deal_value) || parseFloat(d.amount) || 0), 0); 
+    const totalClosed = wonDeals.length + lostDeals.length; 
+    const winRate = totalClosed > 0 ? Math.round((wonDeals.length / totalClosed) * 100) : 0; 
+    document.getElementById('salesRevenueSummary').textContent = '$' + Math.round(totalRevenue).toLocaleString(); 
+    document.getElementById('salesDealsSummary').textContent = wonDeals.length; 
+    document.getElementById('salesWinRateSummary').textContent = winRate + '%'; 
+    document.getElementById('salesRevenue').textContent = '$' + Math.round(totalRevenue).toLocaleString(); 
+    document.getElementById('salesDeals').textContent = wonDeals.length; 
+    document.getElementById('salesWinRate').textContent = winRate + '%'; 
+    document.getElementById('salesPipeline').textContent = '$' + Math.round(pipelineValue).toLocaleString(); 
+    const stageCounts = {}; 
+    activeDeals.forEach(d => { const stage = d.stage || d.status || 'Unknown'; stageCounts[stage] = (stageCounts[stage] || 0) + 1; }); 
+    createSalesPipelineChart(stageCounts); 
+  } catch (error) { console.error('Error loading sales data:', error); } 
+}
 
-function createSalesPipelineChart(stageCounts) { if (charts.salesPipeline) charts.salesPipeline.destroy(); const labels = Object.keys(stageCounts).length > 0 ? Object.keys(stageCounts) : ['No Active Deals']; const values = Object.keys(stageCounts).length > 0 ? Object.values(stageCounts) : [0]; const ctx = document.getElementById('salesPipelineChart'); charts.salesPipeline = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Deals', data: values, backgroundColor: '#8b5cf6' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }, x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } } } } }); }
+function createSalesPipelineChart(stageCounts) { 
+  if (charts.salesPipeline) charts.salesPipeline.destroy(); 
+  const labels = Object.keys(stageCounts).length > 0 ? Object.keys(stageCounts) : ['No Active Deals']; 
+  const values = Object.keys(stageCounts).length > 0 ? Object.values(stageCounts) : [0]; 
+  const ctx = document.getElementById('salesPipelineChart'); 
+  charts.salesPipeline = new Chart(ctx, { 
+    type: 'bar', 
+    data: { labels, datasets: [{ label: 'Deals', data: values, backgroundColor: '#8b5cf6' }] }, 
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } }, x: { grid: { color: '#223044' }, ticks: { color: '#9fb0c3' } } } } 
+  }); 
+}
 
-async function loadSummaryData() { try { const { data: customers } = await sb.from('customers').select('customer_id'); const { data: vehicles } = await sb.from('vehicles').select('vehicle_id'); document.getElementById('totalCustomers').textContent = (customers || []).length; document.getElementById('totalVehicles').textContent = (vehicles || []).length; setTimeout(() => { const serviceRev = parseFloat(document.getElementById('serviceRevenue').textContent.replace(/[$,]/g, '')) || 0; const salesRev = parseFloat(document.getElementById('salesRevenue').textContent.replace(/[$,]/g, '')) || 0; document.getElementById('totalRevenue').textContent = '$' + Math.round(serviceRev + salesRev).toLocaleString(); createSummaryChart(serviceRev, salesRev); }, 500); } catch (error) { console.error('Error loading summary data:', error); } }
+async function loadSummaryData() { 
+  try { 
+    const { data: customers } = await sb.from('customers').select('customer_id'); 
+    const { data: vehicles } = await sb.from('vehicles').select('vehicle_id'); 
+    document.getElementById('totalCustomers').textContent = (customers || []).length; 
+    document.getElementById('totalVehicles').textContent = (vehicles || []).length; 
+    setTimeout(() => { 
+      const serviceRev = parseFloat(document.getElementById('serviceRevenue').textContent.replace(/[$,]/g, '')) || 0; 
+      const salesRev = parseFloat(document.getElementById('salesRevenue').textContent.replace(/[$,]/g, '')) || 0; 
+      document.getElementById('totalRevenue').textContent = '$' + Math.round(serviceRev + salesRev).toLocaleString(); 
+      createSummaryChart(serviceRev, salesRev); 
+    }, 500); 
+  } catch (error) { console.error('Error loading summary data:', error); } 
+}
 
-function createSummaryChart(serviceRev, salesRev) { if (charts.summaryRevenue) charts.summaryRevenue.destroy(); const ctx = document.getElementById('summaryRevenueChart'); charts.summaryRevenue = new Chart(ctx, { type: 'doughnut', data: { labels: ['Service', 'Sales'], datasets: [{ data: [serviceRev || 0, salesRev || 0], backgroundColor: ['#3b82f6', '#8b5cf6'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } } } }); }
+function createSummaryChart(serviceRev, salesRev) { 
+  if (charts.summaryRevenue) charts.summaryRevenue.destroy(); 
+  const ctx = document.getElementById('summaryRevenueChart'); 
+  charts.summaryRevenue = new Chart(ctx, { 
+    type: 'doughnut', 
+    data: { labels: ['Service', 'Sales'], datasets: [{ data: [serviceRev || 0, salesRev || 0], backgroundColor: ['#3b82f6', '#8b5cf6'] }] }, 
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8eef6' } } } } 
+  }); 
+}
 
 async function init() {
   const session = await checkAuth();
@@ -1548,13 +1958,31 @@ async function init() {
     if (mobileEmail) mobileEmail.textContent = authEmail;
   }
   
-  if (authEmail) { const { data: userByEmail } = await sb.from('users').select('*').eq('email', authEmail).single(); if (userByEmail?.tenant_id) { currentTenantId = userByEmail.tenant_id; currentUserId = userByEmail.user_id; } }
+  if (authEmail) { 
+    const { data: userByEmail } = await sb.from('users').select('*').eq('email', authEmail).single(); 
+    if (userByEmail?.tenant_id) { 
+      currentTenantId = userByEmail.tenant_id; 
+      currentUserId = userByEmail.user_id; 
+    } 
+  }
   
-  if (!currentTenantId) { const { data: userData } = await sb.from('users').select('*').eq('user_id', currentUserId).single(); if (userData?.tenant_id) currentTenantId = userData.tenant_id; }
+  if (!currentTenantId) { 
+    const { data: userData } = await sb.from('users').select('*').eq('user_id', currentUserId).single(); 
+    if (userData?.tenant_id) currentTenantId = userData.tenant_id; 
+  }
   
-  if (!currentTenantId && authEmail) { const { data: empByEmail } = await sb.from('employees').select('tenant_id, user_id, email').eq('email', authEmail).single(); if (empByEmail?.tenant_id) { currentTenantId = empByEmail.tenant_id; if (empByEmail.user_id) currentUserId = empByEmail.user_id; } }
+  if (!currentTenantId && authEmail) { 
+    const { data: empByEmail } = await sb.from('employees').select('tenant_id, user_id, email').eq('email', authEmail).single(); 
+    if (empByEmail?.tenant_id) { 
+      currentTenantId = empByEmail.tenant_id; 
+      if (empByEmail.user_id) currentUserId = empByEmail.user_id; 
+    } 
+  }
   
-  if (!currentTenantId) { const { data: bsData } = await sb.from('business_settings').select('tenant_id, business_name').limit(1).single(); if (bsData?.tenant_id) currentTenantId = bsData.tenant_id; }
+  if (!currentTenantId) { 
+    const { data: bsData } = await sb.from('business_settings').select('tenant_id, business_name').limit(1).single(); 
+    if (bsData?.tenant_id) currentTenantId = bsData.tenant_id; 
+  }
   
   if (!currentTenantId) { console.error('Could not determine tenant_id'); return; }
   
