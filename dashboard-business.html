@@ -374,7 +374,10 @@
     <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)"><span class="accordion-icon-header">☰</span></button>
     <div class="mobile-header-center">
       <div class="mobile-header-title">Business Dashboard</div>
-      <div class="business-name" id="mobileBusinessName">Loading...</div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="business-name" id="mobileBusinessName">Loading...</div>
+        <div class="business-name" id="mobileUserEmail" style="color:var(--text-secondary);"></div>
+      </div>
     </div>
     <div class="mobile-header-right">
       <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
@@ -395,7 +398,10 @@
   <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
     <div>
       <h1 style="margin:0; font-size:32px; font-weight:600;">Business Dashboard</h1>
-      <div class="business-name" id="desktopBusinessName">Loading...</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:20px;">
+        <div class="business-name" id="desktopBusinessName">Loading...</div>
+        <div id="desktopUserEmail" style="font-size:12px; color:var(--text-secondary);"></div>
+      </div>
     </div>
     <div class="desktop-header-right">
       <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
@@ -1293,6 +1299,10 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.autocomplete
 function openTaskModal(taskId = null) {
   editingTaskId = taskId;
   
+  // Build assignee select with employee_id values
+  const assigneeSelect = document.getElementById('taskAssignee');
+  assigneeSelect.innerHTML = '<option value="">-- Select Employee --</option>' + allEmployeesData.map(e => `<option value="${e.employee_id}">${e.first_name} ${e.last_name}</option>`).join('');
+  
   if (taskId) {
     const task = allTasks.find(t => t.task_id === taskId);
     if (!task) return;
@@ -1310,8 +1320,10 @@ function openTaskModal(taskId = null) {
     document.getElementById('taskNotes').value = task.notes || '';
     setTaskStatus(task.status || 'pending');
     
-    const select = document.getElementById('taskAssignee');
-    select.innerHTML = '<option value="">-- Select Employee --</option>' + allEmployeesData.map(e => `<option value="${e.employee_id}" ${(task.assigned_to === e.employee_id || task.assigned_to === e.user_id) ? 'selected' : ''}>${e.first_name} ${e.last_name}</option>`).join('');
+    // Set assignee - match by employee_id
+    if (task.assigned_to) {
+      assigneeSelect.value = task.assigned_to;
+    }
   } else {
     document.getElementById('taskModalTitle').textContent = 'New Task';
     document.getElementById('taskSaveBtn').textContent = 'Create Task';
@@ -1327,9 +1339,6 @@ function openTaskModal(taskId = null) {
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('taskDueDate').value = tomorrow.toISOString().split('T')[0];
     currentTaskStatus = 'pending';
-    
-    const select = document.getElementById('taskAssignee');
-    select.innerHTML = '<option value="">-- Select Employee --</option>' + allEmployeesData.map(e => `<option value="${e.employee_id}">${e.first_name} ${e.last_name}</option>`).join('');
   }
   
   document.getElementById('taskModal').classList.add('active');
@@ -1353,6 +1362,8 @@ async function saveTask() {
   const title = document.getElementById('taskTitle').value.trim();
   if (!title) { alert('Please enter a task title'); return; }
   
+  const assignedTo = document.getElementById('taskAssignee').value;
+  
   const taskData = {
     tenant_id: currentTenantId,
     title,
@@ -1361,7 +1372,7 @@ async function saveTask() {
     priority: document.getElementById('taskPriority').value,
     status: editingTaskId ? currentTaskStatus : 'pending',
     due_at: document.getElementById('taskDueDate').value ? new Date(document.getElementById('taskDueDate').value).toISOString() : null,
-    assigned_to: document.getElementById('taskAssignee').value || null,
+    assigned_to: assignedTo && assignedTo.length > 0 ? assignedTo : null,
     notes: document.getElementById('taskNotes').value.trim() || null
   };
   
@@ -1528,6 +1539,15 @@ async function init() {
   if (!session) return;
   
   const authEmail = session.user?.email;
+  
+  // Display logged-in user email in headers
+  if (authEmail) {
+    const desktopEmail = document.getElementById('desktopUserEmail');
+    const mobileEmail = document.getElementById('mobileUserEmail');
+    if (desktopEmail) desktopEmail.textContent = authEmail;
+    if (mobileEmail) mobileEmail.textContent = authEmail;
+  }
+  
   if (authEmail) { const { data: userByEmail } = await sb.from('users').select('*').eq('email', authEmail).single(); if (userByEmail?.tenant_id) { currentTenantId = userByEmail.tenant_id; currentUserId = userByEmail.user_id; } }
   
   if (!currentTenantId) { const { data: userData } = await sb.from('users').select('*').eq('user_id', currentUserId).single(); if (userData?.tenant_id) currentTenantId = userData.tenant_id; }
