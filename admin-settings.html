@@ -336,7 +336,10 @@
     <div class="panel">
       <div class="panel-title">
         <span>Add New Tenant & Owner</span>
-        <button class="btn success" onclick="addTenantAndUser()">Add Tenant</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary" onclick="cancelEdit()" id="cancelEditBtn" style="display:none;">Cancel</button>
+          <button class="btn success" onclick="addTenantAndUser()">Add Tenant</button>
+        </div>
       </div>
       
       <div class="info-box">
@@ -1007,12 +1010,36 @@ async function addTenantAndUser() {
   const company = document.getElementById('companyName').value.trim();
   if (!name || !email || !company) { alert('Name, email, and company required'); return; }
   
-  const tenantId = crypto.randomUUID();
-  const userId = crypto.randomUUID();
   const now = new Date().toISOString();
   const tier = tiers.find(t => t.tier_id === document.getElementById('userTier').value);
   
   try {
+    // UPDATE existing tenant
+    if (editingTenantId) {
+      await supabaseClient.from('tenants').update({
+        tenant_name: company, 
+        company_name: company,
+        domain: document.getElementById('userDomain').value.trim() || null,
+        ui_preset_id: document.getElementById('uiPreset').value || null,
+        tier_id: document.getElementById('userTier').value || null,
+        status: document.getElementById('userStatus').value,
+        billing_cycle: document.getElementById('billingCycle').value,
+        billing_email: email,
+        monthly_recurring_revenue: tier?.monthly_price || 0,
+        metadata: { notes: document.getElementById('userNotes').value },
+        updated_at: now
+      }).eq('tenant_id', editingTenantId);
+      
+      alert(`Updated!\nCompany: ${company}\nPreset: ${presets.find(p=>p.id===document.getElementById('uiPreset').value)?.name||'Default'}`);
+      cancelEdit();
+      await loadTenants();
+      return;
+    }
+    
+    // CREATE new tenant
+    const tenantId = crypto.randomUUID();
+    const userId = crypto.randomUUID();
+    
     await supabaseClient.from('tenants').insert([{
       tenant_id: tenantId, tenant_name: company, company_name: company,
       domain: document.getElementById('userDomain').value.trim() || null,
@@ -1051,9 +1078,12 @@ async function addTenantAndUser() {
   } catch(e) { alert('Error: ' + e.message); }
 }
 
+let editingTenantId = null;
+
 function editTenant(id) {
   const t = tenants.find(x => x.tenant_id === id);
   if (!t) return;
+  editingTenantId = id;
   document.getElementById('userName').value = t.tenant_name || '';
   document.getElementById('userEmail').value = t.owner?.email || t.billing_email || '';
   document.getElementById('companyName').value = t.company_name || '';
@@ -1063,7 +1093,28 @@ function editTenant(id) {
   document.getElementById('userStatus').value = t.status || 'active';
   document.getElementById('billingCycle').value = t.billing_cycle || 'monthly';
   document.getElementById('userNotes').value = t.metadata?.notes || '';
+  
+  // Update button text and show cancel
+  const btn = document.querySelector('.panel-title .btn.success');
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  if (btn) btn.textContent = 'Update Tenant';
+  if (cancelBtn) cancelBtn.style.display = 'inline-block';
+  
   window.scrollTo(0, 0);
+}
+
+function cancelEdit() {
+  editingTenantId = null;
+  document.getElementById('userName').value = '';
+  document.getElementById('userEmail').value = '';
+  document.getElementById('companyName').value = '';
+  document.getElementById('userDomain').value = '';
+  document.getElementById('userNotes').value = '';
+  
+  const btn = document.querySelector('.panel-title .btn.success');
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  if (btn) btn.textContent = 'Add Tenant';
+  if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 async function deleteTenant(id) {
