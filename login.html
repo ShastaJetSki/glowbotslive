@@ -180,6 +180,44 @@
     errorBox.style.display = "none";
   }
 
+  // Get user's tenant_id from various sources
+  async function getUserTenantId(userId, userEmail) {
+    // Try employees table first (most reliable)
+    const { data: emp } = await sb.from('employees')
+      .select('tenant_id')
+      .eq('email', userEmail)
+      .single();
+    if (emp?.tenant_id) return emp.tenant_id;
+    
+    // Try users table
+    const { data: user } = await sb.from('users')
+      .select('tenant_id')
+      .eq('email', userEmail)
+      .single();
+    if (user?.tenant_id) return user.tenant_id;
+    
+    // Try users table by user_id
+    const { data: userById } = await sb.from('users')
+      .select('tenant_id')
+      .eq('user_id', userId)
+      .single();
+    if (userById?.tenant_id) return userById.tenant_id;
+    
+    return null;
+  }
+
+  // Get custom dashboard URL for tenant
+  async function getTenantDashboard(tenantId) {
+    if (!tenantId) return 'dashboard-business.html';
+    
+    const { data: tenant } = await sb.from('tenants')
+      .select('dashboard_url')
+      .eq('tenant_id', tenantId)
+      .single();
+    
+    return tenant?.dashboard_url || 'dashboard-business.html';
+  }
+
   async function login(){
     clearError();
     loginBtn.disabled = true;
@@ -199,7 +237,15 @@
       localStorage.setItem("sb_refresh_token", data.session.refresh_token);
 
       console.log('Login successful:', data.session.user.email);
-      location.replace("dashboard-business.html");
+      
+      // Get user's tenant and check for custom dashboard
+      loginBtn.textContent = "Loading dashboard...";
+      
+      const tenantId = await getUserTenantId(data.session.user.id, data.session.user.email);
+      const dashboardUrl = await getTenantDashboard(tenantId);
+      
+      console.log('Redirecting to:', dashboardUrl);
+      location.replace(dashboardUrl);
 
     } catch (err) {
       console.error('Login error:', err);
