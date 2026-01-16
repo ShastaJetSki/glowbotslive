@@ -956,7 +956,16 @@ async function checkConnection() {
       }
     });
     
-    if (!response.ok) throw new Error('Connection failed');
+    console.log('Connection test response:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Connection test failed:', errorText);
+      throw new Error('Connection failed: ' + response.status);
+    }
+    
+    const testData = await response.json();
+    console.log('Connection test data:', testData);
     
     isConnected = true;
     dot.className = 'status-dot connected';
@@ -966,7 +975,7 @@ async function checkConnection() {
     isConnected = false;
     dot.className = 'status-dot disconnected';
     text.textContent = 'Offline Mode (Local Storage)';
-    console.warn('Using local storage mode');
+    console.warn('Using local storage mode:', e.message);
     addAuditEntry('system', 'Running in offline mode');
   }
 }
@@ -1067,9 +1076,12 @@ async function loadTiers() {
       });
       if (response.ok) {
         const data = await response.json();
+        console.log('Loaded tiers from Supabase:', data);
         if (data && data.length) { tiers = data; saveLocal('tiers', tiers); }
+      } else {
+        console.error('Failed to load tiers:', response.status);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('Error loading tiers:', e); }
   }
   if (!tiers.length) tiers = loadLocal('tiers') || getDefaultTiers();
   renderTiers();
@@ -1834,16 +1846,24 @@ async function saveRolePermissions() {
 
 // TENANTS
 async function loadTenants() {
+  document.getElementById('tenantsLoading').style.display = 'block';
+  document.getElementById('tenantsTable').style.display = 'none';
+  
   if (isConnected) {
     try {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=*,subscription_tiers(tier_display_name)&order=created_at.desc`, {
+      // Simpler query first - just get tenants
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=*&order=created_at.desc`, {
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
       });
+      
       if (response.ok) {
         const data = await response.json();
-        if (data) {
+        console.log('Loaded tenants from Supabase:', data);
+        
+        if (data && data.length > 0) {
           tenants = data;
-          // Get owner emails and user counts
+          
+          // Get owner emails and user counts for each tenant
           for (let t of tenants) {
             try {
               const ownerRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&role=eq.owner&select=email&limit=1`, {
@@ -1854,19 +1874,48 @@ async function loadTenants() {
                 t.owner = owners[0] || null;
               }
               
+              // Get user count
               const countRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&select=user_id`, {
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' }
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
               });
-              t.user_count = parseInt(countRes.headers.get('content-range')?.split('/')[1]) || 1;
-            } catch (e) { t.owner = null; t.user_count = 1; }
+              if (countRes.ok) {
+                const users = await countRes.json();
+                t.user_count = users.length || 1;
+              }
+              
+              // Get tier info
+              if (t.tier_id) {
+                const tierRes = await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers?tier_id=eq.${t.tier_id}&select=tier_display_name&limit=1`, {
+                  headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+                if (tierRes.ok) {
+                  const tierData = await tierRes.json();
+                  t.subscription_tiers = tierData[0] || null;
+                }
+              }
+            } catch (e) { 
+              console.warn('Error fetching tenant details:', e);
+              t.owner = null; 
+              t.user_count = 1; 
+            }
           }
           saveLocal('tenants', tenants);
+        } else {
+          console.log('No tenants in Supabase, checking local storage');
+          tenants = loadLocal('tenants') || [];
         }
+      } else {
+        console.error('Supabase response not OK:', response.status, await response.text());
+        tenants = loadLocal('tenants') || [];
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error('Error loading tenants:', e); 
+      tenants = loadLocal('tenants') || [];
+    }
+  } else {
+    tenants = loadLocal('tenants') || [];
   }
   
-  if (!tenants.length) tenants = loadLocal('tenants') || [];
   renderTenants();
   updateKPIs();
 }
