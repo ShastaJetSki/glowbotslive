@@ -19,7 +19,7 @@
     [data-theme="light-blue"] { --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0; --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569; --accent-primary: #2563eb; --accent-light: #3b82f6; }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { background: var(--bg-primary); min-height: 100%; }
+    html { background: var(--bg-primary); min-height: 100%; scroll-behavior: auto; }
     body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
     
     .theme-toggle-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
@@ -67,7 +67,7 @@
     .quick-submit:hover { background: var(--accent-light); }
 
     /* Funnel View */
-    .funnel-container { display: flex; gap: 12px; padding: 12px; overflow-x: auto; min-height: calc(100vh - 380px); }
+    .funnel-container { display: flex; gap: 12px; padding: 12px; overflow-x: auto; min-height: calc(100vh - 380px); scroll-behavior: auto; -webkit-overflow-scrolling: touch; }
     .funnel-column { flex: 1; min-width: 260px; max-width: 300px; background: var(--bg-secondary); border-radius: 12px; display: flex; flex-direction: column; }
     .funnel-header { padding: 12px 16px; border-bottom: 1px solid var(--border-default); display: flex; justify-content: space-between; align-items: center; }
     .funnel-title { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
@@ -195,9 +195,9 @@
     </div>
   </div>
   <div class="mobile-menu-content" id="mobileMenuContent">
-    <a href="sharklaw-settings.html" class="mobile-menu-item">⚙️ Settings</a>
-    <a href="sharklaw-support.html" class="mobile-menu-item">💬 Support</a>
-    <a href="sharklaw-account.html" class="mobile-menu-item">👤 Account</a>
+    <a href="sharklaw-settings.html" class="mobile-menu-item">Settings</a>
+    <a href="sharklaw-support.html" class="mobile-menu-item">Support</a>
+    <a href="sharklaw-account.html" class="mobile-menu-item">Account</a>
   </div>
 </div>
 
@@ -376,75 +376,72 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let currentUserId = null, currentTenantId = null;
 let allContacts = [];
 let draggedCard = null;
-let autoScrollInterval = null;
-let horizontalScrollInterval = null;
-const SCROLL_ZONE = 80; // pixels from edge to trigger scroll
-const SCROLL_SPEED = 15; // pixels per frame
+let scrollAnimationId = null;
+let currentScrollSpeed = { x: 0, y: 0 };
+const SCROLL_ZONE = 100;
+const MAX_SCROLL_SPEED = 12;
 
-// Auto-scroll during drag (vertical + horizontal)
 function handleDragScroll(e) {
   const mouseY = e.clientY;
   const mouseX = e.clientX;
   const windowHeight = window.innerHeight;
-  const windowWidth = window.innerWidth;
   const funnelContainer = document.getElementById('funnelContainer');
   
-  // Clear existing vertical scroll interval
-  if (autoScrollInterval) {
-    clearInterval(autoScrollInterval);
-    autoScrollInterval = null;
-  }
+  // Reset speeds
+  currentScrollSpeed.y = 0;
+  currentScrollSpeed.x = 0;
   
-  // Clear existing horizontal scroll interval
-  if (horizontalScrollInterval) {
-    clearInterval(horizontalScrollInterval);
-    horizontalScrollInterval = null;
-  }
-  
-  // Vertical scroll - Near top, scroll up
+  // Vertical - calculate speed based on distance from edge (closer = faster)
   if (mouseY < SCROLL_ZONE) {
-    autoScrollInterval = setInterval(() => {
-      window.scrollBy(0, -SCROLL_SPEED);
-    }, 16);
-  }
-  // Vertical scroll - Near bottom, scroll down
-  else if (mouseY > windowHeight - SCROLL_ZONE - 120) { // Account for mobile nav
-    autoScrollInterval = setInterval(() => {
-      window.scrollBy(0, SCROLL_SPEED);
-    }, 16);
+    const distance = SCROLL_ZONE - mouseY;
+    currentScrollSpeed.y = -(distance / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+  } else if (mouseY > windowHeight - SCROLL_ZONE - 120) {
+    const distance = mouseY - (windowHeight - SCROLL_ZONE - 120);
+    currentScrollSpeed.y = (distance / SCROLL_ZONE) * MAX_SCROLL_SPEED;
   }
   
-  // Horizontal scroll in funnel container (desktop)
+  // Horizontal in funnel (desktop)
   if (funnelContainer && window.innerWidth > 768) {
     const rect = funnelContainer.getBoundingClientRect();
-    
-    // Near left edge of funnel - scroll left
-    if (mouseX < rect.left + SCROLL_ZONE && mouseX > rect.left) {
-      horizontalScrollInterval = setInterval(() => {
-        funnelContainer.scrollBy(-SCROLL_SPEED, 0);
-      }, 16);
+    if (mouseX > rect.left && mouseX < rect.left + SCROLL_ZONE) {
+      const distance = SCROLL_ZONE - (mouseX - rect.left);
+      currentScrollSpeed.x = -(distance / SCROLL_ZONE) * MAX_SCROLL_SPEED;
+    } else if (mouseX < rect.right && mouseX > rect.right - SCROLL_ZONE) {
+      const distance = mouseX - (rect.right - SCROLL_ZONE);
+      currentScrollSpeed.x = (distance / SCROLL_ZONE) * MAX_SCROLL_SPEED;
     }
-    // Near right edge of funnel - scroll right
-    else if (mouseX > rect.right - SCROLL_ZONE && mouseX < rect.right) {
-      horizontalScrollInterval = setInterval(() => {
-        funnelContainer.scrollBy(SCROLL_SPEED, 0);
-      }, 16);
-    }
+  }
+  
+  if ((currentScrollSpeed.x !== 0 || currentScrollSpeed.y !== 0) && !scrollAnimationId) {
+    smoothScroll();
+  }
+}
+
+function smoothScroll() {
+  if (currentScrollSpeed.y !== 0) {
+    window.scrollBy(0, currentScrollSpeed.y);
+  }
+  if (currentScrollSpeed.x !== 0) {
+    const funnelContainer = document.getElementById('funnelContainer');
+    if (funnelContainer) funnelContainer.scrollBy(currentScrollSpeed.x, 0);
+  }
+  
+  if (currentScrollSpeed.x !== 0 || currentScrollSpeed.y !== 0) {
+    scrollAnimationId = requestAnimationFrame(smoothScroll);
+  } else {
+    scrollAnimationId = null;
   }
 }
 
 function stopAutoScroll() {
-  if (autoScrollInterval) {
-    clearInterval(autoScrollInterval);
-    autoScrollInterval = null;
-  }
-  if (horizontalScrollInterval) {
-    clearInterval(horizontalScrollInterval);
-    horizontalScrollInterval = null;
+  currentScrollSpeed.x = 0;
+  currentScrollSpeed.y = 0;
+  if (scrollAnimationId) {
+    cancelAnimationFrame(scrollAnimationId);
+    scrollAnimationId = null;
   }
 }
 
-// Add global drag listeners for auto-scroll
 document.addEventListener('dragover', handleDragScroll);
 document.addEventListener('dragend', stopAutoScroll);
 document.addEventListener('drop', stopAutoScroll);
