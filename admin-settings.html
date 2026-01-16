@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Settings - Shark Law</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="grey"] {
+      --bg-primary: #111111; --bg-secondary: #1a1a1a; --bg-card: #242424; --bg-hover: #2e2e2e;
+      --border-default: #333333; --text-primary: #e5e5e5; --text-secondary: #a3a3a3;
+      --accent-primary: #525252; --accent-light: #737373;
+    }
+    [data-theme="slate"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155;
+      --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8;
+      --accent-primary: #6366f1; --accent-light: #818cf8;
+    }
+    [data-theme="midnight"] {
+      --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228;
+      --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4;
+      --accent-primary: #8b5cf6; --accent-light: #a78bfa;
+    }
+    [data-theme="light-blue"] {
+      --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0;
+      --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569;
+      --accent-primary: #2563eb; --accent-light: #3b82f6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: var(--bg-primary); min-height: 100%; }
+    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+
+    .theme-toggle-btn {
+      width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default);
+      background: transparent; color: var(--text-secondary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0;
+    }
+    .theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .theme-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
+    .theme-toast {
+      position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%);
+      background: var(--bg-card); border: 1px solid var(--border-default); color: var(--text-primary);
+      padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 1000;
+      display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .theme-toast.show { display: block; animation: toastIn 0.3s ease; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    .desktop-header { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-default); }
+    .business-name { font-size: 12px; color: var(--accent-light); }
+    .desktop-header-right { display: flex; align-items: center; gap: 16px; }
+
+    .mobile-top-header { display: none; position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
+    .mobile-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px; gap: 12px; }
+    .mobile-menu-toggle { background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-secondary); font-size: 20px; padding: 0; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .mobile-header-center { flex: 1; margin-left: 0; }
+    .mobile-header-title { font-size: 18px; font-weight: 600; }
+    .mobile-header-right { display: flex; align-items: center; gap: 12px; }
+
+    .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); padding: 8px; z-index: 100; }
+    .mobile-nav-top { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
+    .mobile-nav-secondary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .mobile-nav-btn { padding: 10px 8px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; justify-content: center; min-height: 44px; transition: all 0.2s; }
+    .mobile-nav-btn:active { transform: scale(0.95); }
+    .mobile-nav-btn.active { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: var(--text-primary); }
+    .mobile-nav-btn.related { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--text-primary); }
+
+    .content { padding: 20px; max-width: 900px; margin: 0 auto; }
+
+    .settings-section { background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+    .settings-section-header { padding: 16px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border-default); display: flex; justify-content: space-between; align-items: center; }
+    .settings-section-title { font-size: 16px; font-weight: 600; color: var(--accent-light); }
+    .settings-section-body { padding: 20px; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-input, .form-select { width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent-primary); }
+    .form-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+    .button-config-grid { display: grid; gap: 16px; }
+    .button-config-item { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 10px; padding: 16px; }
+    .button-config-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .button-config-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+    .button-config-toggle { display: flex; align-items: center; gap: 8px; }
+    .button-config-toggle label { font-size: 12px; color: var(--text-secondary); }
+    
+    .toggle-switch { position: relative; width: 44px; height: 24px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-hover); border-radius: 24px; transition: 0.3s; }
+    .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: var(--text-secondary); border-radius: 50%; transition: 0.3s; }
+    .toggle-switch input:checked + .toggle-slider { background: var(--accent-primary); }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
+
+    .button-config-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .button-config-fields .form-group { margin-bottom: 0; }
+
+    .btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: var(--accent-primary); border: none; color: #fff; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: transparent; border: 1px solid var(--border-default); color: var(--text-secondary); }
+    .btn-secondary:hover { background: var(--bg-hover); }
+    .btn-success { background: #10b981; border: none; color: #fff; }
+
+    .save-bar { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px; padding: 12px 20px; display: none; align-items: center; gap: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 200; }
+    .save-bar.active { display: flex; }
+    .save-bar-text { font-size: 14px; color: var(--text-secondary); }
+
+    .preview-section { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 10px; padding: 16px; margin-top: 16px; }
+    .preview-title { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .preview-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .preview-btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--accent-light); }
+
+    .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+    .theme-option { padding: 16px; border-radius: 10px; border: 2px solid var(--border-default); cursor: pointer; text-align: center; transition: all 0.2s; }
+    .theme-option:hover { border-color: var(--accent-light); }
+    .theme-option.active { border-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+    .theme-option-name { font-size: 13px; font-weight: 500; margin-top: 8px; }
+    .theme-preview { height: 40px; border-radius: 6px; display: flex; overflow: hidden; }
+    .theme-preview-bar { flex: 1; }
+
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block !important; }
+      body { padding-bottom: 120px; }
+      .content { padding: 12px; }
+      .button-config-fields { grid-template-columns: 1fr; }
+      .save-bar { bottom: 140px; left: 12px; right: 12px; transform: none; }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Mobile Top Header -->
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">Settings</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
+    </div>
+    <div class="mobile-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+      </button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+</div>
+
+<!-- Desktop Header -->
+<div class="desktop-header">
+  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">Settings</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
+    <div class="desktop-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+      </button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div style="padding:0 24px 12px;">
+    <nav style="display:flex; gap:24px;">
+      <a href="dashboard-sharklaw.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Dashboard</a>
+      <a href="dashboard-clients.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Clients</a>
+      <a href="dashboard-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Search</a>
+      <a href="dashboard-settings.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Settings</a>
+    </nav>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="content">
+
+  <!-- Theme Settings -->
+  <div class="settings-section">
+    <div class="settings-section-header">
+      <div class="settings-section-title">🎨 Theme</div>
+    </div>
+    <div class="settings-section-body">
+      <div class="theme-grid" id="themeGrid">
+        <div class="theme-option" data-theme="dark-blue" onclick="selectTheme('dark-blue')">
+          <div class="theme-preview">
+            <div class="theme-preview-bar" style="background:#0b0f14;"></div>
+            <div class="theme-preview-bar" style="background:#3b82f6;"></div>
+            <div class="theme-preview-bar" style="background:#1a2535;"></div>
+          </div>
+          <div class="theme-option-name">Dark Blue</div>
+        </div>
+        <div class="theme-option" data-theme="grey" onclick="selectTheme('grey')">
+          <div class="theme-preview">
+            <div class="theme-preview-bar" style="background:#111111;"></div>
+            <div class="theme-preview-bar" style="background:#525252;"></div>
+            <div class="theme-preview-bar" style="background:#242424;"></div>
+          </div>
+          <div class="theme-option-name">Grey</div>
+        </div>
+        <div class="theme-option" data-theme="slate" onclick="selectTheme('slate')">
+          <div class="theme-preview">
+            <div class="theme-preview-bar" style="background:#0f172a;"></div>
+            <div class="theme-preview-bar" style="background:#6366f1;"></div>
+            <div class="theme-preview-bar" style="background:#273549;"></div>
+          </div>
+          <div class="theme-option-name">Slate</div>
+        </div>
+        <div class="theme-option" data-theme="midnight" onclick="selectTheme('midnight')">
+          <div class="theme-preview">
+            <div class="theme-preview-bar" style="background:#09090b;"></div>
+            <div class="theme-preview-bar" style="background:#8b5cf6;"></div>
+            <div class="theme-preview-bar" style="background:#18181d;"></div>
+          </div>
+          <div class="theme-option-name">Midnight</div>
+        </div>
+        <div class="theme-option" data-theme="light-blue" onclick="selectTheme('light-blue')">
+          <div class="theme-preview">
+            <div class="theme-preview-bar" style="background:#f8fafc;"></div>
+            <div class="theme-preview-bar" style="background:#2563eb;"></div>
+            <div class="theme-preview-bar" style="background:#ffffff;"></div>
+          </div>
+          <div class="theme-option-name">Light Blue</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Buttons Settings -->
+  <div class="settings-section">
+    <div class="settings-section-header">
+      <div class="settings-section-title">🔘 Dashboard Quick Action Buttons</div>
+      <button class="btn btn-secondary" onclick="addNewButton()">+ Add Button</button>
+    </div>
+    <div class="settings-section-body">
+      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">Configure the quick action buttons shown on your dashboard. Enable/disable, rename, and set custom links.</p>
+      
+      <div class="button-config-grid" id="buttonConfigGrid">
+        <!-- Buttons will be rendered here -->
+      </div>
+
+      <div class="preview-section">
+        <div class="preview-title">Preview</div>
+        <div class="preview-buttons" id="buttonPreview">
+          <!-- Preview will be rendered here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Business Settings -->
+  <div class="settings-section">
+    <div class="settings-section-header">
+      <div class="settings-section-title">🏢 Business Information</div>
+    </div>
+    <div class="settings-section-body">
+      <div class="form-group">
+        <label class="form-label">Business Name</label>
+        <input type="text" class="form-input" id="businessName" placeholder="Your business name">
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Save Bar -->
+<div class="save-bar" id="saveBar">
+  <span class="save-bar-text">You have unsaved changes</span>
+  <button class="btn btn-secondary" onclick="resetChanges()">Reset</button>
+  <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-top">
+    <a href="dashboard-sharklaw.html" class="mobile-nav-btn">Dashboard</a>
+    <a href="dashboard-search.html" class="mobile-nav-btn">Search</a>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-clients.html" class="mobile-nav-btn related">Clients</a>
+    <a href="dashboard-scheduling.html" class="mobile-nav-btn related">Scheduler</a>
+    <a href="dashboard-settings.html" class="mobile-nav-btn active">Settings</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentTenantId = null;
+let hasChanges = false;
+let originalSettings = null;
+
+// Default button configuration
+const defaultButtons = [
+  { id: 'scheduler', label: 'Scheduler', link: 'dashboard-scheduling.html', enabled: true },
+  { id: 'events', label: '+ Event', link: '#openEventModal', enabled: true },
+  { id: 'contacts', label: 'Contacts', link: 'dashboard-clients.html', enabled: true },
+  { id: 'search', label: 'Search', link: 'dashboard-search.html', enabled: true },
+  { id: 'swag', label: 'Swag', link: 'dashboard-swag.html', enabled: true }
+];
+
+let buttonConfig = [];
+
+// Theme system
+var themes = ['dark-blue', 'grey', 'slate', 'midnight', 'light-blue'];
+
+function loadTheme() {
+  var savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeSelection(savedTheme);
+}
+
+function selectTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('app-theme', theme);
+  updateThemeSelection(theme);
+  showThemeToast('Theme: ' + theme.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+}
+
+function cycleTheme() {
+  const current = localStorage.getItem('app-theme') || 'dark-blue';
+  const idx = themes.indexOf(current);
+  const next = themes[(idx + 1) % themes.length];
+  selectTheme(next);
+}
+
+function updateThemeSelection(theme) {
+  document.querySelectorAll('.theme-option').forEach(opt => {
+    opt.classList.toggle('active', opt.dataset.theme === theme);
+  });
+}
+
+function showThemeToast(msg) {
+  var toast = document.getElementById('themeToast');
+  if (!toast) { toast = document.createElement('div'); toast.id = 'themeToast'; toast.className = 'theme-toast'; document.body.appendChild(toast); }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+loadTheme();
+
+async function logout() {
+  await sb.auth.signOut();
+  localStorage.removeItem("sb_access_token");
+  localStorage.removeItem("sb_refresh_token");
+  location.replace("login.html?logout=1");
+}
+
+// ========== AUTH ==========
+async function checkAuth() {
+  let { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token'), refreshToken = localStorage.getItem('sb_refresh_token');
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken });
+      if (error || !data.session) { window.location.href = 'login.html'; return null; }
+      session = data.session;
+    } else { window.location.href = 'login.html'; return null; }
+  }
+  return session;
+}
+
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+
+  const authEmail = session.user?.email;
+
+  // Get tenant
+  if (authEmail) {
+    const { data: emp } = await sb.from('employees').select('tenant_id').eq('email', authEmail).single();
+    if (emp?.tenant_id) {
+      currentTenantId = emp.tenant_id;
+    }
+  }
+
+  if (!currentTenantId) {
+    const { data: user } = await sb.from('users').select('tenant_id').eq('email', authEmail).single();
+    if (user?.tenant_id) {
+      currentTenantId = user.tenant_id;
+    }
+  }
+
+  if (!currentTenantId) {
+    alert('Could not determine organization');
+    return;
+  }
+
+  await loadSettings();
+}
+
+// ========== SETTINGS ==========
+async function loadSettings() {
+  // Load from localStorage first (faster)
+  const savedButtons = localStorage.getItem('dashboard_buttons');
+  if (savedButtons) {
+    buttonConfig = JSON.parse(savedButtons);
+  } else {
+    buttonConfig = JSON.parse(JSON.stringify(defaultButtons));
+  }
+
+  // Load business settings
+  const { data: bs } = await sb.from('business_settings').select('*').eq('tenant_id', currentTenantId).single();
+  if (bs) {
+    document.getElementById('businessName').value = bs.business_name || '';
+    document.getElementById('desktopBusinessName').textContent = bs.business_name || 'My Business';
+    document.getElementById('mobileBusinessName').textContent = bs.business_name || 'My Business';
+    
+    // Load button config from database if exists
+    if (bs.dashboard_buttons) {
+      buttonConfig = bs.dashboard_buttons;
+      localStorage.setItem('dashboard_buttons', JSON.stringify(buttonConfig));
+    }
+  }
+
+  originalSettings = {
+    buttons: JSON.parse(JSON.stringify(buttonConfig)),
+    businessName: document.getElementById('businessName').value
+  };
+
+  renderButtonConfig();
+  renderPreview();
+}
+
+function renderButtonConfig() {
+  const grid = document.getElementById('buttonConfigGrid');
+  grid.innerHTML = buttonConfig.map((btn, idx) => `
+    <div class="button-config-item" data-idx="${idx}">
+      <div class="button-config-header">
+        <div class="button-config-title">Button ${idx + 1}</div>
+        <div class="button-config-toggle">
+          <label>Enabled</label>
+          <label class="toggle-switch">
+            <input type="checkbox" ${btn.enabled ? 'checked' : ''} onchange="toggleButton(${idx}, this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          <button style="background:transparent; border:none; color:#f87171; cursor:pointer; margin-left:8px; font-size:18px;" onclick="deleteButton(${idx})" title="Delete">×</button>
+        </div>
+      </div>
+      <div class="button-config-fields">
+        <div class="form-group">
+          <label class="form-label">Label</label>
+          <input type="text" class="form-input" value="${btn.label}" onchange="updateButton(${idx}, 'label', this.value)" placeholder="Button text">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Link</label>
+          <input type="text" class="form-input" value="${btn.link}" onchange="updateButton(${idx}, 'link', this.value)" placeholder="URL or page">
+          <div class="form-hint">Use # for modal triggers (e.g., #openEventModal)</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPreview() {
+  const preview = document.getElementById('buttonPreview');
+  const enabledButtons = buttonConfig.filter(b => b.enabled);
+  
+  if (enabledButtons.length === 0) {
+    preview.innerHTML = '<span style="color:var(--text-secondary); font-size:13px;">No buttons enabled</span>';
+    return;
+  }
+  
+  preview.innerHTML = enabledButtons.map(btn => 
+    `<span class="preview-btn">${btn.label}</span>`
+  ).join('');
+}
+
+function toggleButton(idx, enabled) {
+  buttonConfig[idx].enabled = enabled;
+  markChanged();
+  renderPreview();
+}
+
+function updateButton(idx, field, value) {
+  buttonConfig[idx][field] = value;
+  markChanged();
+  renderPreview();
+}
+
+function deleteButton(idx) {
+  if (confirm('Delete this button?')) {
+    buttonConfig.splice(idx, 1);
+    markChanged();
+    renderButtonConfig();
+    renderPreview();
+  }
+}
+
+function addNewButton() {
+  buttonConfig.push({
+    id: 'button_' + Date.now(),
+    label: 'New Button',
+    link: '#',
+    enabled: true
+  });
+  markChanged();
+  renderButtonConfig();
+  renderPreview();
+}
+
+function markChanged() {
+  hasChanges = true;
+  document.getElementById('saveBar').classList.add('active');
+}
+
+function resetChanges() {
+  buttonConfig = JSON.parse(JSON.stringify(originalSettings.buttons));
+  document.getElementById('businessName').value = originalSettings.businessName;
+  hasChanges = false;
+  document.getElementById('saveBar').classList.remove('active');
+  renderButtonConfig();
+  renderPreview();
+}
+
+async function saveSettings() {
+  // Save to localStorage
+  localStorage.setItem('dashboard_buttons', JSON.stringify(buttonConfig));
+  
+  // Save to database
+  const businessName = document.getElementById('businessName').value.trim();
+  
+  try {
+    await sb.from('business_settings').upsert({
+      tenant_id: currentTenantId,
+      business_name: businessName,
+      dashboard_buttons: buttonConfig,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'tenant_id' });
+    
+    originalSettings = {
+      buttons: JSON.parse(JSON.stringify(buttonConfig)),
+      businessName: businessName
+    };
+    
+    hasChanges = false;
+    document.getElementById('saveBar').classList.remove('active');
+    
+    // Update displayed business name
+    document.getElementById('desktopBusinessName').textContent = businessName || 'My Business';
+    document.getElementById('mobileBusinessName').textContent = businessName || 'My Business';
+    
+    showThemeToast('Settings saved!');
+  } catch (e) {
+    console.error('Error saving settings:', e);
+    alert('Error saving settings');
+  }
+}
+
+// Track changes on business name
+document.getElementById('businessName').addEventListener('input', markChanged);
+
+// Initialize
+init();
+</script>
+</body>
+</html>
