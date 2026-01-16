@@ -376,6 +376,78 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let currentUserId = null, currentTenantId = null;
 let allContacts = [];
 let draggedCard = null;
+let autoScrollInterval = null;
+let horizontalScrollInterval = null;
+const SCROLL_ZONE = 80; // pixels from edge to trigger scroll
+const SCROLL_SPEED = 15; // pixels per frame
+
+// Auto-scroll during drag (vertical + horizontal)
+function handleDragScroll(e) {
+  const mouseY = e.clientY;
+  const mouseX = e.clientX;
+  const windowHeight = window.innerHeight;
+  const windowWidth = window.innerWidth;
+  const funnelContainer = document.getElementById('funnelContainer');
+  
+  // Clear existing vertical scroll interval
+  if (autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+  
+  // Clear existing horizontal scroll interval
+  if (horizontalScrollInterval) {
+    clearInterval(horizontalScrollInterval);
+    horizontalScrollInterval = null;
+  }
+  
+  // Vertical scroll - Near top, scroll up
+  if (mouseY < SCROLL_ZONE) {
+    autoScrollInterval = setInterval(() => {
+      window.scrollBy(0, -SCROLL_SPEED);
+    }, 16);
+  }
+  // Vertical scroll - Near bottom, scroll down
+  else if (mouseY > windowHeight - SCROLL_ZONE - 120) { // Account for mobile nav
+    autoScrollInterval = setInterval(() => {
+      window.scrollBy(0, SCROLL_SPEED);
+    }, 16);
+  }
+  
+  // Horizontal scroll in funnel container (desktop)
+  if (funnelContainer && window.innerWidth > 768) {
+    const rect = funnelContainer.getBoundingClientRect();
+    
+    // Near left edge of funnel - scroll left
+    if (mouseX < rect.left + SCROLL_ZONE && mouseX > rect.left) {
+      horizontalScrollInterval = setInterval(() => {
+        funnelContainer.scrollBy(-SCROLL_SPEED, 0);
+      }, 16);
+    }
+    // Near right edge of funnel - scroll right
+    else if (mouseX > rect.right - SCROLL_ZONE && mouseX < rect.right) {
+      horizontalScrollInterval = setInterval(() => {
+        funnelContainer.scrollBy(SCROLL_SPEED, 0);
+      }, 16);
+    }
+  }
+}
+
+function stopAutoScroll() {
+  if (autoScrollInterval) {
+    clearInterval(autoScrollInterval);
+    autoScrollInterval = null;
+  }
+  if (horizontalScrollInterval) {
+    clearInterval(horizontalScrollInterval);
+    horizontalScrollInterval = null;
+  }
+}
+
+// Add global drag listeners for auto-scroll
+document.addEventListener('dragover', handleDragScroll);
+document.addEventListener('dragend', stopAutoScroll);
+document.addEventListener('drop', stopAutoScroll);
 
 const STAGES = {
   1: { name: '1st Contact', color: 'var(--funnel-1)' },
