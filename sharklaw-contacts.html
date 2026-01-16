@@ -204,7 +204,7 @@
 <div class="desktop-header">
   <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
     <div>
-      <h1 style="margin:0; font-size:28px; font-weight:600;">📋 Contacts Pipeline</h1>
+      <h1 style="margin:0; font-size:28px; font-weight:600;">Contacts Pipeline</h1>
       <div class="business-name">SharkLaw - Customer Nerve Center</div>
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
@@ -235,7 +235,7 @@
 <!-- Toolbar -->
 <div class="toolbar">
   <div class="toolbar-row">
-    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search by name, phone, or email..." oninput="filterContacts()">
+    <input type="text" class="search-box" id="searchBox" placeholder="Search by name, phone, or email..." oninput="filterContacts()">
     <button class="add-btn" onclick="openNewContactModal()">+ New Contact</button>
   </div>
 </div>
@@ -281,7 +281,7 @@
   <!-- Stage 5: Lead -->
   <div class="funnel-column" data-stage="5">
     <div class="funnel-header">
-      <div class="funnel-title"><span class="funnel-dot" style="background:var(--funnel-5)"></span> 🎯 Lead</div>
+      <div class="funnel-title"><span class="funnel-dot" style="background:var(--funnel-5)"></span> Lead</div>
       <span class="funnel-count" id="count5">0</span>
     </div>
     <div class="funnel-cards" id="stage5" ondragover="allowDrop(event)" ondrop="drop(event, 5)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)"></div>
@@ -290,8 +290,7 @@
 
 <!-- Import Section -->
 <div class="import-section" onclick="document.getElementById('csvInput').click()">
-  <div class="import-icon">📥</div>
-  <div class="import-text">Drop a CSV file here or <strong>click to import contacts</strong></div>
+  <div class="import-text"><strong>Drop a CSV file here</strong> or click to import contacts</div>
   <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="importCSV(event)">
 </div>
 
@@ -526,8 +525,8 @@ function createContactCard(contact) {
       <span class="contact-type">${contact.contact_type || 'prospect'}</span>
     </div>
     <div class="contact-info">
-      ${contact.phone ? `<div class="contact-info-item">📱 <a href="tel:${contact.phone}" onclick="event.stopPropagation()">${contact.phone}</a></div>` : ''}
-      ${contact.email ? `<div class="contact-info-item">✉️ <a href="mailto:${contact.email}" onclick="event.stopPropagation()">${contact.email}</a></div>` : ''}
+      ${contact.phone ? `<div class="contact-info-item"><a href="tel:${contact.phone}" onclick="event.stopPropagation()">${contact.phone}</a></div>` : ''}
+      ${contact.email ? `<div class="contact-info-item"><a href="mailto:${contact.email}" onclick="event.stopPropagation()">${contact.email}</a></div>` : ''}
     </div>
     <div class="progress-dots">
       ${dotsHtml}
@@ -568,10 +567,27 @@ async function drop(e, newStage) {
   const contact = allContacts.find(c => (c.customer_id || c.id) == contactId);
   
   if (contact && contact.funnel_stage !== newStage) {
+    // Update local state first
     contact.funnel_stage = newStage;
-    await sb.from('customers').update({ funnel_stage: newStage }).eq('customer_id', contactId);
     renderContacts();
     updateStats();
+    
+    // Then save to database - try customer_id first, then id
+    const idField = contact.customer_id ? 'customer_id' : 'id';
+    const idValue = contact.customer_id || contact.id;
+    
+    const { error } = await sb.from('customers').update({ 
+      funnel_stage: newStage,
+      updated_at: new Date().toISOString()
+    }).eq(idField, idValue);
+    
+    if (error) {
+      console.error('Error saving stage:', error);
+      // Try alternate approach - update by multiple conditions
+      await sb.from('customers').update({ funnel_stage: newStage })
+        .eq('tenant_id', currentTenantId)
+        .eq('phone', contact.phone);
+    }
   }
   draggedCard = null;
 }
@@ -596,7 +612,7 @@ async function quickAddContact() {
   if (!name || !phone) { alert('Name and phone are required'); return; }
   
   const parts = name.split(' ');
-  const newContact = {
+  const { data, error } = await sb.from('customers').insert({
     tenant_id: currentTenantId,
     first_name: parts[0],
     last_name: parts.slice(1).join(' ') || '',
@@ -605,9 +621,8 @@ async function quickAddContact() {
     contact_type: 'prospect',
     funnel_stage: 1,
     created_by: currentUserId
-  };
+  }).select();
   
-  const { error } = await sb.from('customers').insert(newContact);
   if (error) { alert('Error: ' + error.message); return; }
   
   document.getElementById('quickName').value = '';
@@ -628,7 +643,7 @@ async function saveNewContact() {
   
   if (!firstName || !lastName || !phone) { alert('First name, last name, and phone required'); return; }
   
-  const { error } = await sb.from('customers').insert({
+  const { data, error } = await sb.from('customers').insert({
     tenant_id: currentTenantId,
     first_name: firstName,
     last_name: lastName,
@@ -639,7 +654,7 @@ async function saveNewContact() {
     funnel_stage: parseInt(document.getElementById('contactStage').value),
     notes: document.getElementById('contactNotes').value.trim() || null,
     created_by: currentUserId
-  });
+  }).select();
   
   if (error) { alert('Error: ' + error.message); return; }
   closeNewContactModal();
@@ -658,8 +673,8 @@ function openContactDetail(contact) {
       <div class="contact-detail-name">${name}</div>
       ${contact.company ? `<div class="contact-detail-company">${contact.company}</div>` : ''}
       <div class="contact-actions">
-        ${contact.phone ? `<a href="tel:${contact.phone}" class="contact-action-btn">📱 Call</a><a href="sms:${contact.phone}" class="contact-action-btn">💬 Text</a>` : ''}
-        ${contact.email ? `<a href="mailto:${contact.email}" class="contact-action-btn">✉️ Email</a>` : ''}
+        ${contact.phone ? `<a href="tel:${contact.phone}" class="contact-action-btn">Call</a><a href="sms:${contact.phone}" class="contact-action-btn">Text</a>` : ''}
+        ${contact.email ? `<a href="mailto:${contact.email}" class="contact-action-btn">Email</a>` : ''}
       </div>
     </div>
     
@@ -689,7 +704,23 @@ async function changeStage(contactId, newStage) {
   const contact = allContacts.find(c => (c.customer_id || c.id) == contactId);
   if (contact) {
     contact.funnel_stage = newStage;
-    await sb.from('customers').update({ funnel_stage: newStage }).eq('customer_id', contactId);
+    
+    // Save to database
+    const idField = contact.customer_id ? 'customer_id' : 'id';
+    const idValue = contact.customer_id || contact.id;
+    
+    const { error } = await sb.from('customers').update({ 
+      funnel_stage: newStage,
+      updated_at: new Date().toISOString()
+    }).eq(idField, idValue);
+    
+    if (error) {
+      console.error('Error saving stage:', error);
+      await sb.from('customers').update({ funnel_stage: newStage })
+        .eq('tenant_id', currentTenantId)
+        .eq('phone', contact.phone);
+    }
+    
     renderContacts();
     updateStats();
     openContactDetail(contact);
