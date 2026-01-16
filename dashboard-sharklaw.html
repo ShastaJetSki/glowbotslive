@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SharkLaw Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
+    [data-theme="slate"] { --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155; --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --accent-primary: #6366f1; --accent-light: #818cf8; }
+    [data-theme="midnight"] { --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228; --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4; --accent-primary: #8b5cf6; --accent-light: #a78bfa; }
+    [data-theme="ocean"] { --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35; --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5; --accent-primary: #14b8a6; --accent-light: #2dd4bf; }
+    [data-theme="light-blue"] { --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0; --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569; --accent-primary: #2563eb; --accent-light: #3b82f6; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: var(--bg-primary); min-height: 100%; }
+    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+    
+    .theme-toggle-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .theme-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; }
+    
+    .theme-toast { position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--border-default); color: var(--text-primary); padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 1000; display: none; }
+    .theme-toast.show { display: block; }
+    
+    .desktop-header { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-default); }
+    .mobile-top-header { display: none; position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
+    .mobile-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px; gap: 12px; }
+    .mobile-menu-toggle { background: transparent; border: none; color: var(--text-secondary); font-size: 20px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .mobile-header-center { flex: 1; }
+    .mobile-header-title { font-size: 18px; font-weight: 600; }
+    .business-name { font-size: 12px; color: var(--accent-light); }
+    .mobile-header-right { display: flex; align-items: center; gap: 12px; }
+    .mobile-header-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .mobile-header-content.expanded { max-height: 200px; }
+    .mobile-header-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 8px 12px 12px; background: var(--bg-primary); border-top: 1px solid var(--border-default); }
+    .mobile-header-actions button { padding: 10px; font-size: 13px; background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--accent-light); border-radius: 8px; cursor: pointer; }
+
+    .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); padding: 8px; z-index: 100; border-top: 1px solid var(--border-default); }
+    .mobile-nav-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .mobile-nav-row:last-child { margin-bottom: 0; }
+    .mobile-nav-row.single-right .spacer { visibility: hidden; }
+    .mobile-nav-btn { padding: 10px 8px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; justify-content: center; min-height: 44px; }
+    .mobile-nav-btn:active { transform: scale(0.95); }
+    .mobile-nav-btn.active { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: var(--text-primary); }
+    .mobile-nav-btn.action-btn { background: color-mix(in srgb, var(--accent-primary) 20%, transparent); border-color: color-mix(in srgb, var(--accent-primary) 50%, transparent); color: var(--accent-light); font-size: 14px; }
+    
+    .content { flex: 1; padding: 20px; }
+    
+    .section-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+    .section-header:hover { background: var(--bg-hover); }
+    .section-header-title { font-size: 18px; font-weight: 700; color: var(--accent-light); display: flex; align-items: center; gap: 8px; }
+    .section-header-icon { font-size: 20px; color: var(--text-secondary); transition: transform 0.2s; }
+    .section-header.collapsed .section-header-icon { transform: rotate(-90deg); }
+    .section-content { overflow: hidden; transition: max-height 0.3s ease; margin-bottom: 8px; }
+    .section-content.collapsed { max-height: 0 !important; margin-bottom: 0; }
+    
+    .badge-count { background: var(--bg-hover); color: var(--text-primary); padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid var(--border-default); }
+    
+    .kpi-container { background: var(--bg-card); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-default); }
+    .kpi-row:last-child { border-bottom: none; }
+    .kpi-label { font-size: 13px; color: var(--text-secondary); }
+    .kpi-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+    
+    .inbox-container, .tasks-container, .swag-container, .employees-container { background: var(--bg-secondary); border-radius: 8px; overflow: hidden; }
+    .inbox-tabs, .tasks-tabs { display: flex; gap: 4px; padding: 12px; background: var(--bg-card); border-bottom: 1px solid var(--border-default); overflow-x: auto; }
+    .inbox-tab, .tasks-tab { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .inbox-tab:hover, .tasks-tab:hover { background: var(--bg-hover); }
+    .inbox-tab.active, .tasks-tab.active { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: #fff; }
+    .inbox-list, .tasks-list, .swag-list { max-height: 400px; overflow-y: auto; }
+    .inbox-item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-default); cursor: pointer; }
+    .inbox-item:hover { background: var(--bg-hover); }
+    .inbox-item.unread { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent-primary); }
+    .inbox-item-content { flex: 1; min-width: 0; }
+    .inbox-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .inbox-item-title { font-weight: 600; font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .inbox-item-time { font-size: 11px; color: var(--text-secondary); }
+    .inbox-item-body { font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .inbox-empty, .tasks-empty, .swag-empty, .employees-empty { padding: 40px; text-align: center; color: var(--text-secondary); }
+    .inbox-empty-icon, .tasks-empty-icon, .swag-empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .inbox-actions, .tasks-actions, .swag-actions, .employees-actions { display: flex; gap: 8px; padding: 12px; background: var(--bg-card); border-top: 1px solid var(--border-default); }
+    .inbox-action-btn, .tasks-action-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; }
+    .inbox-action-btn:hover, .tasks-action-btn:hover { background: var(--bg-hover); }
+    .tasks-action-btn.primary { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: #fff; }
+    
+    .task-item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-default); align-items: flex-start; }
+    .task-checkbox { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-default); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .task-checkbox:hover { border-color: var(--accent-primary); background: rgba(59, 130, 246, 0.1); }
+    .task-checkbox.completed { background: #10b981; border-color: #10b981; color: #fff; }
+    .task-content { flex: 1; min-width: 0; }
+    .task-title { font-weight: 600; font-size: 14px; color: var(--text-primary); margin-bottom: 4px; }
+    .task-item.completed .task-title { text-decoration: line-through; color: var(--text-secondary); }
+    .task-meta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .task-priority { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-default); }
+    
+    .swag-header, .employees-header { padding: 12px 16px; background: var(--bg-card); border-bottom: 1px solid var(--border-default); }
+    .swag-summary, .employees-summary { display: flex; gap: 16px; flex-wrap: wrap; }
+    .swag-stat { display: flex; flex-direction: column; gap: 2px; }
+    .swag-stat-value { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+    .swag-stat-label { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
+    .swag-item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-default); align-items: center; }
+    .swag-item:hover { background: var(--bg-hover); }
+    .swag-item-icon { width: 44px; height: 44px; border-radius: 8px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .swag-item-info { flex: 1; min-width: 0; }
+    .swag-item-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+    .swag-item-category { font-size: 12px; color: var(--text-secondary); }
+    .swag-item-qty { display: flex; flex-direction: column; align-items: flex-end; }
+    .swag-qty-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+    .swag-qty-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; }
+    .swag-item.low-stock { border-left: 3px solid #f59e0b; }
+    .swag-item.out-of-stock { border-left: 3px solid #ef4444; }
+    
+    .emp-stat { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .status-dot.green { background: #10b981; }
+    .status-dot.yellow { background: #f59e0b; }
+    .status-dot.red { background: #ef4444; }
+    .status-dot.gray { background: #6b7280; }
+    .employees-list { max-height: 600px; overflow-y: auto; }
+    .dept-group { border-bottom: 1px solid var(--border-default); }
+    .dept-header { padding: 10px 16px; background: var(--bg-hover); font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--accent-light); }
+    .emp-strip { border-bottom: 1px solid var(--border-default); }
+    .emp-strip.no-show { background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; }
+    .emp-strip-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; }
+    .emp-strip-header:hover { background: var(--bg-hover); }
+    .emp-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--accent-light); }
+    .emp-info { flex: 1; min-width: 0; }
+    .emp-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .emp-phone { font-size: 13px; color: var(--text-secondary); }
+    .emp-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-default); }
+    .emp-status.clocked-in { color: #10b981; border-color: #10b981; }
+    .emp-status.scheduled { color: #f59e0b; border-color: #f59e0b; }
+    .emp-status.no-show { color: #ef4444; border-color: #ef4444; }
+    
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border-radius: 12px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; border: 1px solid var(--border-default); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-default); }
+    .modal-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+    .modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
+    .modal-body { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; }
+    .form-textarea { min-height: 80px; resize: vertical; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-footer { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid var(--border-default); }
+    .btn-secondary { padding: 10px 20px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 14px; cursor: pointer; }
+    .btn-primary { padding: 10px 20px; border-radius: 6px; border: none; background: color-mix(in srgb, var(--accent-primary) 60%, transparent); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
+    
+    .icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
+    .icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; }
+    .icon-xl { width: 32px; height: 32px; }
+    .inbox-item-icon { width: 40px; height: 40px; border-radius: 50%; background: var(--bg-card); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+    .section-header-icon-svg { color: var(--accent-light); margin-right: 4px; }
+    
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block !important; }
+      body { padding-bottom: 140px; }
+      .content { padding: 12px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">☰</button>
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">SharkLaw Dashboard</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
+    </div>
+    <div class="mobile-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="location.href='sharklaw-settings.html'">Settings</button>
+      <button onclick="location.href='sharklaw-swag.html'">Swag Inventory</button>
+    </div>
+  </div>
+</div>
+
+<div class="desktop-header">
+  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">SharkLaw Dashboard</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <button class="theme-toggle-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div style="padding:0 24px 12px;">
+    <nav style="display:flex; gap:24px;">
+      <a href="sharklaw-dashboard.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Dashboard</a>
+      <a href="sharklaw-scheduler.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Scheduler</a>
+      <a href="sharklaw-contacts.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Contacts</a>
+      <a href="sharklaw-swag.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Swag</a>
+    </nav>
+  </div>
+</div>
+
+<div class="main">
+  <div class="content">
+    
+    <!-- Messages Section -->
+    <div class="section-header collapsed" onclick="toggleSection('messages')">
+      <div class="section-header-title">
+        <span class="icon section-header-icon-svg"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span>
+        Messages & Notifications
+        <span class="badge-count" id="messagesBadge" style="display:none;">0</span>
+      </div>
+      <div class="section-header-icon">▼</div>
+    </div>
+    <div class="section-content collapsed" id="messagesContent">
+      <div class="inbox-container">
+        <div class="inbox-tabs">
+          <button class="inbox-tab active" onclick="switchInboxTab('all', this)">All</button>
+          <button class="inbox-tab" onclick="switchInboxTab('unread', this)">Unread</button>
+        </div>
+        <div class="inbox-list" id="inboxList"><div class="inbox-empty"><div class="inbox-empty-icon">📭</div><div>No messages yet</div></div></div>
+        <div class="inbox-actions">
+          <button class="inbox-action-btn" onclick="markAllNotificationsRead()">Mark All Read</button>
+          <button class="inbox-action-btn" onclick="loadInboxData()">Refresh</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasks Section -->
+    <div class="section-header collapsed" onclick="toggleSection('tasks')">
+      <div class="section-header-title">
+        <span class="icon section-header-icon-svg"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg></span>
+        Tasks
+        <span class="badge-count" id="tasksBadge" style="display:none;">0</span>
+      </div>
+      <div class="section-header-icon">▼</div>
+    </div>
+    <div class="section-content collapsed" id="tasksContent">
+      <div class="tasks-container">
+        <div class="tasks-tabs">
+          <button class="tasks-tab active" onclick="switchTasksTab('pending', this)">Pending</button>
+          <button class="tasks-tab" onclick="switchTasksTab('in_progress', this)">In Progress</button>
+          <button class="tasks-tab" onclick="switchTasksTab('overdue', this)">Overdue</button>
+          <button class="tasks-tab" onclick="switchTasksTab('completed', this)">Done</button>
+        </div>
+        <div class="tasks-list" id="tasksList"><div class="tasks-empty"><div class="tasks-empty-icon">✓</div><div>No tasks</div></div></div>
+        <div class="tasks-actions"><button class="tasks-action-btn primary" onclick="openNewTaskModal()">+ New Task</button></div>
+      </div>
+    </div>
+
+    <!-- Swag Section -->
+    <div class="section-header collapsed" onclick="toggleSection('swag')">
+      <div class="section-header-title">
+        <span class="icon section-header-icon-svg"><svg viewBox="0 0 24 24"><path d="M20 12v10H4V12"></path><path d="M2 7h20v5H2z"></path><path d="M12 22V7"></path><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg></span>
+        Swag Inventory
+        <span class="badge-count" id="swagBadge" style="display:none;">0</span>
+      </div>
+      <div class="section-header-icon">▼</div>
+    </div>
+    <div class="section-content collapsed" id="swagContent">
+      <div class="swag-container">
+        <div class="swag-header">
+          <div class="swag-summary">
+            <div class="swag-stat"><span class="swag-stat-value" id="swagTotalItems">0</span><span class="swag-stat-label">Total Items</span></div>
+            <div class="swag-stat"><span class="swag-stat-value" id="swagTotalValue">$0</span><span class="swag-stat-label">Inventory Value</span></div>
+            <div class="swag-stat"><span class="swag-stat-value" id="swagLowStock">0</span><span class="swag-stat-label">Low Stock</span></div>
+          </div>
+        </div>
+        <div class="swag-list" id="swagList"><div class="swag-empty"><div class="swag-empty-icon">🎁</div><div>No swag items yet</div></div></div>
+        <div class="swag-actions"><button class="tasks-action-btn primary" onclick="location.href='sharklaw-swag.html'">Manage Swag</button></div>
+      </div>
+    </div>
+
+    <!-- Team Section -->
+    <div class="section-header collapsed" onclick="toggleSection('employees')">
+      <div class="section-header-title">
+        <span class="icon section-header-icon-svg"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></span>
+        Team
+        <span class="badge-count" id="employeesBadge" style="display:none;">0</span>
+      </div>
+      <div class="section-header-icon">▼</div>
+    </div>
+    <div class="section-content collapsed" id="employeesContent">
+      <div class="employees-container">
+        <div class="employees-header">
+          <div class="employees-summary">
+            <span class="emp-stat"><span class="status-dot green"></span> <span id="clockedInCount">0</span> Clocked In</span>
+            <span class="emp-stat"><span class="status-dot yellow"></span> <span id="scheduledLaterCount">0</span> Later</span>
+            <span class="emp-stat"><span class="status-dot red"></span> <span id="noShowCount">0</span> No Show</span>
+          </div>
+        </div>
+        <div class="employees-list" id="employeesList"><div class="employees-empty"><div class="employees-empty-icon">👥</div><div>Loading team...</div></div></div>
+        <div class="employees-actions" id="employeesActions" style="display:none;"><button class="tasks-action-btn primary" onclick="openNewEmployeeModal()">+ Add Team Member</button></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- New Task Modal -->
+<div class="modal-overlay" id="newTaskModal">
+  <div class="modal-content">
+    <div class="modal-header"><div class="modal-title">New Task</div><button class="modal-close" onclick="closeNewTaskModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Task Title *</label><input type="text" class="form-input" id="taskTitle" placeholder="Enter task title"></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="taskDescription" placeholder="Enter task description"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Priority</label><select class="form-select" id="taskPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
+        <div class="form-group"><label class="form-label">Due Date</label><input type="date" class="form-input" id="taskDueDate"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Assign To</label><select class="form-select" id="taskAssignee"><option value="">-- Select --</option></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeNewTaskModal()">Cancel</button><button class="btn-primary" onclick="saveNewTask()">Create Task</button></div>
+  </div>
+</div>
+
+<!-- New Event Modal -->
+<div class="modal-overlay" id="newEventModal">
+  <div class="modal-content">
+    <div class="modal-header"><div class="modal-title">New Event</div><button class="modal-close" onclick="closeNewEventModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Event Title *</label><input type="text" class="form-input" id="eventTitle" placeholder="Enter event title"></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="eventDescription" placeholder="Enter description"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="eventDate"></div>
+        <div class="form-group"><label class="form-label">Time</label><input type="time" class="form-input" id="eventTime"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Location</label><input type="text" class="form-input" id="eventLocation" placeholder="Enter location"></div>
+      <div class="form-group"><label class="form-label">Event Type</label><select class="form-select" id="eventType"><option value="meeting">Meeting</option><option value="consultation">Consultation</option><option value="court">Court Date</option><option value="deadline">Deadline</option><option value="other">Other</option></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeNewEventModal()">Cancel</button><button class="btn-primary" onclick="saveNewEvent()">Create Event</button></div>
+  </div>
+</div>
+
+<!-- New Contact Modal -->
+<div class="modal-overlay" id="newContactModal">
+  <div class="modal-content">
+    <div class="modal-header"><div class="modal-title">New Contact</div><button class="modal-close" onclick="closeNewContactModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">First Name *</label><input type="text" class="form-input" id="contactFirstName" placeholder="First name"></div>
+        <div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" id="contactLastName" placeholder="Last name"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="contactEmail" placeholder="email@example.com"></div>
+      <div class="form-group"><label class="form-label">Phone *</label><input type="tel" class="form-input" id="contactPhone" placeholder="(555) 123-4567"></div>
+      <div class="form-group"><label class="form-label">Company</label><input type="text" class="form-input" id="contactCompany" placeholder="Company name"></div>
+      <div class="form-group"><label class="form-label">Contact Type</label><select class="form-select" id="contactType"><option value="client">Client</option><option value="prospect">Prospect</option><option value="vendor">Vendor</option><option value="referral">Referral</option><option value="other">Other</option></select></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="contactNotes" placeholder="Additional notes..."></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeNewContactModal()">Cancel</button><button class="btn-primary" onclick="saveNewContact()">Add Contact</button></div>
+  </div>
+</div>
+
+<!-- Employee View Modal -->
+<div class="modal-overlay" id="employeeViewModal">
+  <div class="modal-content"><div class="modal-header"><div class="modal-title" id="empViewModalTitle">Team Member</div><button class="modal-close" onclick="closeEmployeeViewModal()">&times;</button></div><div class="modal-body" id="empViewModalBody"></div></div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-row">
+    <a href="sharklaw-dashboard.html" class="mobile-nav-btn active">Dashboard</a>
+    <a href="sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a>
+  </div>
+  <div class="mobile-nav-row">
+    <button class="mobile-nav-btn action-btn" onclick="openNewEventModal()">+ Event</button>
+    <button class="mobile-nav-btn action-btn" onclick="openNewContactModal()">+ Contact</button>
+  </div>
+  <div class="mobile-nav-row single-right">
+    <div class="spacer"></div>
+    <a href="sharklaw-contacts.html" class="mobile-nav-btn">Contacts</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUserId = null, currentTenantId = null;
+let currentInboxTab = 'all', currentTasksTab = 'pending';
+let allNotifications = [], allTasks = [], allEmployees = [], allEmployeesData = [], allSwagItems = [];
+let timeClockData = [], scheduleData = [];
+let currentUserRole = null, isOwner = false;
+
+// Theme system
+var themes = ['dark-blue', 'slate', 'midnight', 'ocean', 'light-blue'];
+var themeIndex = 0;
+function loadTheme() { var t = localStorage.getItem('app-theme') || 'dark-blue'; document.documentElement.setAttribute('data-theme', t); themeIndex = themes.indexOf(t); if (themeIndex < 0) themeIndex = 0; }
+function cycleTheme() { themeIndex = (themeIndex + 1) % themes.length; var t = themes[themeIndex]; document.documentElement.setAttribute('data-theme', t); localStorage.setItem('app-theme', t); showThemeToast('Theme: ' + t); }
+function showThemeToast(msg) { var toast = document.getElementById('themeToast'); if (!toast) { toast = document.createElement('div'); toast.id = 'themeToast'; toast.className = 'theme-toast'; document.body.appendChild(toast); } toast.textContent = msg; toast.classList.add('show'); setTimeout(function() { toast.classList.remove('show'); }, 2000); }
+loadTheme();
+
+function toggleMobileMenu(btn) { document.getElementById('mobileHeaderContent').classList.toggle('expanded'); }
+async function logout() { await sb.auth.signOut(); localStorage.clear(); location.replace("login.html"); }
+
+function toggleSection(sectionId) {
+  const content = document.getElementById(sectionId + 'Content');
+  const header = event.currentTarget;
+  content.classList.toggle('collapsed');
+  header.classList.toggle('collapsed');
+  content.style.maxHeight = content.classList.contains('collapsed') ? '0px' : content.scrollHeight + 'px';
+}
+
+// INBOX
+async function loadInboxData() {
+  if (!currentTenantId) return;
+  const { data } = await sb.from('notifications').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false }).limit(50);
+  allNotifications = data || [];
+  renderInbox(); updateInboxBadge();
+}
+function renderInbox() {
+  const container = document.getElementById('inboxList');
+  let filtered = currentInboxTab === 'unread' ? allNotifications.filter(n => !n.is_read) : allNotifications;
+  if (filtered.length === 0) { container.innerHTML = '<div class="inbox-empty"><div class="inbox-empty-icon">📭</div><div>No messages</div></div>'; return; }
+  container.innerHTML = filtered.map(item => `<div class="inbox-item ${item.is_read ? '' : 'unread'}" onclick="handleInboxClick('${item.notification_id}')"><div class="inbox-item-icon">📩</div><div class="inbox-item-content"><div class="inbox-item-header"><div class="inbox-item-title">${item.title || 'Notification'}</div><div class="inbox-item-time">${formatTimeAgo(item.created_at)}</div></div><div class="inbox-item-body">${item.body || ''}</div></div></div>`).join('');
+}
+function switchInboxTab(tab, btn) { currentInboxTab = tab; document.querySelectorAll('.inbox-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active'); renderInbox(); }
+async function handleInboxClick(id) { await sb.from('notifications').update({ is_read: true }).eq('notification_id', id); loadInboxData(); }
+async function markAllNotificationsRead() { await sb.from('notifications').update({ is_read: true }).eq('is_read', false); loadInboxData(); }
+function updateInboxBadge() { const count = allNotifications.filter(n => !n.is_read).length; const badge = document.getElementById('messagesBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; }
+
+// TASKS
+async function loadTasksData() {
+  if (!currentTenantId) return;
+  const { data } = await sb.from('tasks').select('*').eq('tenant_id', currentTenantId).order('due_at', { ascending: true });
+  allTasks = data || [];
+  renderTasks(); updateTasksBadge();
+}
+function renderTasks() {
+  const container = document.getElementById('tasksList');
+  const now = new Date();
+  let filtered = allTasks;
+  if (currentTasksTab === 'pending') filtered = allTasks.filter(t => t.status === 'pending' || t.status === 'todo');
+  else if (currentTasksTab === 'in_progress') filtered = allTasks.filter(t => t.status === 'in_progress');
+  else if (currentTasksTab === 'overdue') filtered = allTasks.filter(t => t.status !== 'completed' && t.due_at && new Date(t.due_at) < now);
+  else if (currentTasksTab === 'completed') filtered = allTasks.filter(t => t.status === 'completed');
+  if (filtered.length === 0) { container.innerHTML = '<div class="tasks-empty"><div class="tasks-empty-icon">✓</div><div>No tasks</div></div>'; return; }
+  container.innerHTML = filtered.map(task => {
+    const isCompleted = task.status === 'completed';
+    return `<div class="task-item ${isCompleted ? 'completed' : ''}"><div class="task-checkbox ${isCompleted ? 'completed' : ''}" onclick="toggleTaskComplete('${task.task_id}', ${!isCompleted})">${isCompleted ? '✓' : ''}</div><div class="task-content"><div class="task-title">${task.title}</div><div class="task-meta"><span class="task-priority">${task.priority || 'normal'}</span></div></div></div>`;
+  }).join('');
+}
+function switchTasksTab(tab, btn) { currentTasksTab = tab; document.querySelectorAll('.tasks-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active'); renderTasks(); }
+async function toggleTaskComplete(taskId, completed) { await sb.from('tasks').update({ status: completed ? 'completed' : 'pending' }).eq('task_id', taskId); loadTasksData(); }
+function updateTasksBadge() { const count = allTasks.filter(t => t.status !== 'completed').length; const badge = document.getElementById('tasksBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; }
+
+// SWAG
+async function loadSwagData() {
+  if (!currentTenantId) return;
+  const { data } = await sb.from('parts_inventory').select('*').eq('tenant_id', currentTenantId).order('part_name', { ascending: true });
+  allSwagItems = data || [];
+  renderSwag(); updateSwagBadge();
+}
+function renderSwag() {
+  const container = document.getElementById('swagList');
+  const totalItems = allSwagItems.reduce((sum, item) => sum + (item.quantity_on_hand || 0), 0);
+  const totalValue = allSwagItems.reduce((sum, item) => sum + ((item.quantity_on_hand || 0) * (item.unit_cost || 0)), 0);
+  const lowStockCount = allSwagItems.filter(item => (item.quantity_on_hand || 0) <= (item.reorder_point || 5)).length;
+  document.getElementById('swagTotalItems').textContent = totalItems;
+  document.getElementById('swagTotalValue').textContent = '$' + totalValue.toLocaleString();
+  document.getElementById('swagLowStock').textContent = lowStockCount;
+  if (allSwagItems.length === 0) { container.innerHTML = '<div class="swag-empty"><div class="swag-empty-icon">🎁</div><div>No swag items yet</div></div>'; return; }
+  container.innerHTML = allSwagItems.map(item => {
+    const qty = item.quantity_on_hand || 0;
+    const isLow = qty > 0 && qty <= (item.reorder_point || 5);
+    const isOut = qty === 0;
+    return `<div class="swag-item ${isOut ? 'out-of-stock' : (isLow ? 'low-stock' : '')}"><div class="swag-item-icon">🎁</div><div class="swag-item-info"><div class="swag-item-name">${item.part_name || 'Unknown'}</div><div class="swag-item-category">${item.category || 'Uncategorized'}</div></div><div class="swag-item-qty"><span class="swag-qty-value">${qty}</span><span class="swag-qty-label">${isOut ? 'Out' : (isLow ? 'Low' : 'In Stock')}</span></div></div>`;
+  }).join('');
+}
+function updateSwagBadge() { const count = allSwagItems.filter(item => (item.quantity_on_hand || 0) <= (item.reorder_point || 5)).length; const badge = document.getElementById('swagBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; }
+
+// EMPLOYEES
+async function loadEmployeesData() {
+  if (!currentTenantId) return;
+  const { data } = await sb.from('employees').select('*').eq('tenant_id', currentTenantId).order('last_name', { ascending: true });
+  allEmployeesData = data || [];
+  renderEmployees();
+}
+function renderEmployees() {
+  const container = document.getElementById('employeesList');
+  if (allEmployeesData.length === 0) { container.innerHTML = '<div class="employees-empty"><div class="employees-empty-icon">👥</div><div>No team members found</div></div>'; return; }
+  container.innerHTML = allEmployeesData.map(emp => {
+    const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+    const initials = `${(emp.first_name || 'U')[0]}${(emp.last_name || '')[0] || ''}`.toUpperCase();
+    return `<div class="emp-strip" onclick="openEmployeeViewModal('${emp.employee_id}')"><div class="emp-strip-header"><div class="emp-avatar">${initials}</div><div class="emp-info"><div class="emp-name">${name}</div><div class="emp-phone">${emp.phone || '--'}</div></div><div class="emp-status"><span class="status-dot gray"></span>Off</div></div></div>`;
+  }).join('');
+}
+function openEmployeeViewModal(empId) {
+  const emp = allEmployeesData.find(e => e.employee_id === empId);
+  if (!emp) return;
+  const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
+  document.getElementById('empViewModalBody').innerHTML = `<div style="text-align:center;"><div style="font-size:48px;margin-bottom:12px;">👤</div><div style="font-size:18px;font-weight:600;">${name}</div><div style="color:var(--text-secondary);">${emp.role || '--'} • ${emp.department || '--'}</div></div><div class="kpi-container" style="margin-top:16px;"><div class="kpi-row"><span class="kpi-label">Phone</span><span class="kpi-value">${emp.phone || '--'}</span></div><div class="kpi-row"><span class="kpi-label">Email</span><span class="kpi-value">${emp.email || '--'}</span></div></div>`;
+  document.getElementById('empViewModalTitle').textContent = name;
+  document.getElementById('employeeViewModal').classList.add('active');
+}
+function closeEmployeeViewModal() { document.getElementById('employeeViewModal').classList.remove('active'); }
+function openNewEmployeeModal() { alert('Add employee feature coming soon'); }
+
+// TASK MODAL
+function openNewTaskModal() { document.getElementById('taskDueDate').value = new Date(Date.now() + 86400000).toISOString().split('T')[0]; document.getElementById('newTaskModal').classList.add('active'); }
+function closeNewTaskModal() { document.getElementById('newTaskModal').classList.remove('active'); }
+async function saveNewTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { alert('Please enter a task title'); return; }
+  const { error } = await sb.from('tasks').insert({ tenant_id: currentTenantId, title, description: document.getElementById('taskDescription').value.trim() || null, priority: document.getElementById('taskPriority').value, status: 'pending', due_at: document.getElementById('taskDueDate').value ? new Date(document.getElementById('taskDueDate').value).toISOString() : null, created_by: currentUserId });
+  if (error) { alert('Error: ' + error.message); return; }
+  closeNewTaskModal(); loadTasksData();
+}
+
+// EVENT MODAL
+function openNewEventModal() { document.getElementById('eventDate').value = new Date().toISOString().split('T')[0]; document.getElementById('eventTime').value = '09:00'; document.getElementById('newEventModal').classList.add('active'); }
+function closeNewEventModal() { document.getElementById('newEventModal').classList.remove('active'); }
+async function saveNewEvent() {
+  const title = document.getElementById('eventTitle').value.trim();
+  const eventDate = document.getElementById('eventDate').value;
+  if (!title || !eventDate) { alert('Please enter event title and date'); return; }
+  const eventTime = document.getElementById('eventTime').value || '00:00';
+  const { error } = await sb.from('events').insert({ tenant_id: currentTenantId, title, description: document.getElementById('eventDescription').value.trim() || null, event_date: new Date(`${eventDate}T${eventTime}`).toISOString(), location: document.getElementById('eventLocation').value.trim() || null, event_type: document.getElementById('eventType').value, created_by: currentUserId });
+  if (error) { alert('Error: ' + error.message); return; }
+  closeNewEventModal(); alert('Event created!');
+}
+
+// CONTACT MODAL
+function openNewContactModal() { document.getElementById('newContactModal').classList.add('active'); }
+function closeNewContactModal() { document.getElementById('newContactModal').classList.remove('active'); }
+async function saveNewContact() {
+  const firstName = document.getElementById('contactFirstName').value.trim();
+  const lastName = document.getElementById('contactLastName').value.trim();
+  const phone = document.getElementById('contactPhone').value.trim();
+  if (!firstName || !lastName || !phone) { alert('First name, last name, and phone are required.'); return; }
+  const { error } = await sb.from('customers').insert({ tenant_id: currentTenantId, first_name: firstName, last_name: lastName, email: document.getElementById('contactEmail').value.trim() || null, phone: phone, company: document.getElementById('contactCompany').value.trim() || null, contact_type: document.getElementById('contactType').value, notes: document.getElementById('contactNotes').value.trim() || null, created_by: currentUserId });
+  if (error) { alert('Error: ' + error.message); return; }
+  closeNewContactModal(); alert('Contact added!');
+}
+
+// UTILITY
+function formatTimeAgo(dateStr) { const diff = new Date() - new Date(dateStr); const mins = Math.floor(diff / 60000); if (mins < 60) return `${mins}m ago`; const hrs = Math.floor(diff / 3600000); if (hrs < 24) return `${hrs}h ago`; const days = Math.floor(diff / 86400000); return `${days}d ago`; }
+
+// INIT
+async function checkAuth() {
+  let { data: { session } } = await sb.auth.getSession();
+  if (!session) { const token = localStorage.getItem('sb_access_token'), refresh = localStorage.getItem('sb_refresh_token'); if (token && refresh) { const { data } = await sb.auth.setSession({ access_token: token, refresh_token: refresh }); session = data?.session; } if (!session) { window.location.href = 'login.html'; return null; } }
+  currentUserId = session.user.id;
+  return session;
+}
+
+async function loadBusinessSettings() {
+  const { data } = await sb.from('business_settings').select('*').limit(1).single();
+  if (data) {
+    const name = data.business_name || data.company_name || 'SharkLaw';
+    document.getElementById('desktopBusinessName').textContent = name;
+    document.getElementById('mobileBusinessName').textContent = name;
+    if (!currentTenantId && data.tenant_id) currentTenantId = data.tenant_id;
+  }
+}
+
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+  const email = session.user?.email;
+  if (email) { const { data } = await sb.from('users').select('*').eq('email', email).single(); if (data?.tenant_id) { currentTenantId = data.tenant_id; currentUserId = data.user_id; } }
+  if (!currentTenantId) { const { data } = await sb.from('business_settings').select('tenant_id').limit(1).single(); if (data?.tenant_id) currentTenantId = data.tenant_id; }
+  if (!currentTenantId) { console.error('No tenant_id'); return; }
+  await loadBusinessSettings();
+  await Promise.all([loadInboxData(), loadTasksData(), loadSwagData(), loadEmployeesData()]);
+}
+
+init();
+</script>
+</body>
+</html>
