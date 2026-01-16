@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Clients - Shark Law</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="grey"] {
+      --bg-primary: #111111; --bg-secondary: #1a1a1a; --bg-card: #242424; --bg-hover: #2e2e2e;
+      --border-default: #333333; --text-primary: #e5e5e5; --text-secondary: #a3a3a3;
+      --accent-primary: #525252; --accent-light: #737373;
+    }
+    [data-theme="slate"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155;
+      --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8;
+      --accent-primary: #6366f1; --accent-light: #818cf8;
+    }
+    [data-theme="midnight"] {
+      --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228;
+      --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4;
+      --accent-primary: #8b5cf6; --accent-light: #a78bfa;
+    }
+    [data-theme="light-blue"] {
+      --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0;
+      --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569;
+      --accent-primary: #2563eb; --accent-light: #3b82f6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: var(--bg-primary); min-height: 100%; }
+    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+
+    /* Theme Toggle */
+    .theme-toggle-btn {
+      width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default);
+      background: transparent; color: var(--text-secondary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0;
+    }
+    .theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .theme-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
+    .theme-toast {
+      position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%);
+      background: var(--bg-card); border: 1px solid var(--border-default); color: var(--text-primary);
+      padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 1000;
+      display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .theme-toast.show { display: block; animation: toastIn 0.3s ease; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    /* Desktop Header */
+    .desktop-header { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-default); }
+    .business-name { font-size: 12px; color: var(--accent-light); }
+    .desktop-header-right { display: flex; align-items: center; gap: 16px; }
+    .desktop-dept-btn { padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--accent-light); transition: all 0.2s; }
+    .desktop-dept-btn:hover { background: color-mix(in srgb, var(--accent-primary) 20%, transparent); }
+
+    /* Mobile Header */
+    .mobile-top-header { display: none; position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
+    .mobile-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px; gap: 12px; }
+    .mobile-menu-toggle { background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-secondary); font-size: 20px; padding: 0; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .mobile-header-center { flex: 1; margin-left: 0; }
+    .mobile-header-title { font-size: 18px; font-weight: 600; }
+    .mobile-header-right { display: flex; align-items: center; gap: 12px; }
+    .mobile-header-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .mobile-header-content.expanded { max-height: 200px; }
+    .mobile-header-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px 12px 12px; background: var(--bg-primary); border-top: 1px solid var(--border-default); }
+    .mobile-header-actions button { padding: 10px; font-size: 13px; background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--accent-light); border-radius: 8px; cursor: pointer; }
+    .accordion-icon-header { font-size: 20px; color: var(--text-secondary); transition: transform 0.2s ease; }
+    .mobile-menu-toggle.active .accordion-icon-header { transform: rotate(180deg); }
+
+    /* Mobile Bottom Nav */
+    .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); padding: 8px; z-index: 100; }
+    .mobile-nav-top { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
+    .mobile-nav-secondary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .mobile-nav-btn { padding: 10px 8px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; justify-content: center; min-height: 44px; transition: all 0.2s; }
+    .mobile-nav-btn:active { transform: scale(0.95); }
+    .mobile-nav-btn.active { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: var(--text-primary); }
+    .mobile-nav-btn.related { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--text-primary); }
+
+    /* Content */
+    .content { padding: 20px; }
+
+    /* Section Headers */
+    .section-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 8px; cursor: pointer; scroll-margin-top: 70px; }
+    .section-header:hover { background: var(--bg-hover); }
+    .section-header.collapsed { border-radius: 8px; }
+    .section-header-title { font-size: 18px; font-weight: 700; color: var(--accent-light); display: flex; align-items: center; gap: 8px; }
+    .section-header-icon { font-size: 20px; color: var(--text-secondary); transition: transform 0.2s; }
+    .section-header.collapsed .section-header-icon { transform: rotate(-90deg); }
+    .section-content { overflow: hidden; transition: max-height 0.3s ease; margin-bottom: 8px; }
+    .section-content.collapsed { max-height: 0 !important; margin-bottom: 0; }
+
+    .badge-count { background: var(--bg-hover); color: var(--text-primary); padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; min-width: 20px; text-align: center; border: 1px solid var(--border-default); }
+    .badge-count.warning { background: rgba(239, 68, 68, 0.2); color: #f87171; border-color: #f87171; }
+    .badge-count.success { background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #34d399; }
+
+    /* Funnel / Kanban Styles */
+    .funnel-container { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; min-height: 300px; }
+    .funnel-stage { flex: 1; min-width: 250px; background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: 12px; display: flex; flex-direction: column; }
+    .funnel-stage.drag-over { border-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary)); }
+    .funnel-stage-header { padding: 14px 16px; border-bottom: 1px solid var(--border-default); display: flex; justify-content: space-between; align-items: center; }
+    .funnel-stage-title { font-weight: 600; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+    .funnel-stage-count { background: var(--bg-card); padding: 2px 8px; border-radius: 10px; font-size: 12px; color: var(--text-secondary); }
+    .funnel-stage-color { width: 10px; height: 10px; border-radius: 50%; }
+    .funnel-stage-color.first-contact { background: #f59e0b; }
+    .funnel-stage-color.artwork-received { background: #8b5cf6; }
+    .funnel-stage-color.opt-in { background: #3b82f6; }
+    .funnel-stage-color.delivered { background: #10b981; }
+    .funnel-stage-body { flex: 1; padding: 12px; overflow-y: auto; min-height: 200px; }
+    .funnel-stage-body:empty::after { content: 'Drop leads here'; display: block; text-align: center; color: var(--text-secondary); padding: 40px 20px; font-size: 13px; opacity: 0.7; }
+
+    .lead-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: grab; transition: all 0.2s; }
+    .lead-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .lead-card.dragging { opacity: 0.5; cursor: grabbing; }
+    .lead-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .lead-card-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+    .lead-card-value { font-size: 13px; font-weight: 600; color: #10b981; }
+    .lead-card-source { font-size: 11px; color: var(--accent-light); margin-bottom: 6px; }
+    .lead-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap; }
+    .lead-card-meta-item { display: flex; align-items: center; gap: 4px; }
+
+    /* Search & Autocomplete */
+    .search-container { margin-bottom: 16px; }
+    .search-input-wrapper { position: relative; }
+    .search-input { width: 100%; padding: 12px 16px; padding-left: 44px; border-radius: 10px; border: 1px solid var(--border-default); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; }
+    .search-input:focus { outline: none; border-color: var(--accent-primary); }
+    .search-input::placeholder { color: var(--text-secondary); }
+    .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 18px; }
+    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-secondary); border: 1px solid var(--border-default); border-top: none; border-radius: 0 0 10px 10px; max-height: 300px; overflow-y: auto; z-index: 1000; display: none; }
+    .autocomplete-dropdown.active { display: block; }
+    .autocomplete-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-default); }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: var(--bg-hover); }
+    .autocomplete-item-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+    .autocomplete-item-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* Client Cards */
+    .client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .client-card { background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; }
+    .client-card:hover { border-color: var(--accent-light); }
+    .client-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .client-card-name { font-weight: 600; font-size: 16px; color: var(--text-primary); }
+    .client-card-type { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--bg-card); color: var(--accent-light); text-transform: uppercase; font-weight: 600; }
+    .client-card-info { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .client-card-stats { display: flex; gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-default); }
+    .client-card-stat { text-align: center; flex: 1; }
+    .client-card-stat-value { font-size: 18px; font-weight: 700; color: var(--accent-light); }
+    .client-card-stat-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border-radius: 12px; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; border: 1px solid var(--border-default); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-default); position: sticky; top: 0; background: var(--bg-secondary); z-index: 1; }
+    .modal-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+    .modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; padding: 0; line-height: 1; }
+    .modal-body { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--accent-primary); }
+    .form-textarea { min-height: 80px; resize: vertical; font-family: inherit; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-footer { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid var(--border-default); position: sticky; bottom: 0; background: var(--bg-secondary); }
+    .btn-secondary { padding: 10px 20px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 14px; cursor: pointer; }
+    .btn-secondary:hover { background: var(--bg-hover); }
+    .btn-primary { padding: 10px 20px; border-radius: 6px; border: none; background: var(--accent-primary); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-danger { padding: 10px 20px; border-radius: 6px; border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.1); color: #f87171; font-size: 14px; cursor: pointer; }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+
+    /* Stats Row */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 10px; padding: 16px; text-align: center; }
+    .stat-card-value { font-size: 28px; font-weight: 700; color: var(--accent-light); }
+    .stat-card-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; }
+
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block !important; }
+      body { padding-bottom: 120px; }
+      .content { padding: 12px; }
+      .funnel-container { flex-direction: column; }
+      .funnel-stage { min-width: 100%; }
+      .funnel-stage-body { min-height: 100px; }
+      .client-grid { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Mobile Top Header -->
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)"><span class="accordion-icon-header">☰</span></button>
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">Clients</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
+    </div>
+    <div class="mobile-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+      </button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="openLeadModal()">+ Lead</button>
+      <button onclick="openClientModal()">+ Client</button>
+      <button onclick="location.href='dashboard-settings.html'">Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Desktop Header -->
+<div class="desktop-header">
+  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">Clients</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
+    <div class="desktop-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()" title="Change theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+      </button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div style="padding:0 24px 12px;">
+    <nav style="display:flex; gap:24px;">
+      <a href="dashboard-sharklaw.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Dashboard</a>
+      <a href="dashboard-clients.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Clients</a>
+      <a href="dashboard-search.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Search</a>
+      <a href="dashboard-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Settings</a>
+    </nav>
+  </div>
+  <div style="padding:0 24px 12px; border-top:1px solid var(--border-default); padding-top:12px;">
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button onclick="openLeadModal()" class="desktop-dept-btn">+ New Lead</button>
+      <button onclick="openClientModal()" class="desktop-dept-btn">+ New Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="content">
+  
+  <!-- Lead Funnel Section -->
+  <div class="section-header" onclick="toggleSection('funnel')">
+    <div class="section-header-title">
+      Lead Funnel
+      <span class="badge-count success" id="funnelBadge">0</span>
+    </div>
+    <div class="section-header-icon">▼</div>
+  </div>
+  <div class="section-content" id="funnelContent" style="max-height: 600px;">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-value" id="statFirstContact">0</div>
+        <div class="stat-card-label">First Contact</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-value" id="statArtwork">0</div>
+        <div class="stat-card-label">Artwork Received</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-value" id="statOptIn">0</div>
+        <div class="stat-card-label">Opt-In Contacts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-value" id="statDelivered">0</div>
+        <div class="stat-card-label">Pop Up Delivered</div>
+      </div>
+    </div>
+    
+    <div class="funnel-container" id="funnelContainer">
+      <div class="funnel-stage" data-stage="first_contact" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-title">
+            <span class="funnel-stage-color first-contact"></span>
+            First Contact
+          </div>
+          <span class="funnel-stage-count" id="countFirstContact">0</span>
+        </div>
+        <div class="funnel-stage-body" id="stageFirstContact"></div>
+      </div>
+      
+      <div class="funnel-stage" data-stage="artwork_received" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-title">
+            <span class="funnel-stage-color artwork-received"></span>
+            Artwork Received
+          </div>
+          <span class="funnel-stage-count" id="countArtwork">0</span>
+        </div>
+        <div class="funnel-stage-body" id="stageArtwork"></div>
+      </div>
+      
+      <div class="funnel-stage" data-stage="opt_in" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-title">
+            <span class="funnel-stage-color opt-in"></span>
+            Opt-In Contacts
+          </div>
+          <span class="funnel-stage-count" id="countOptIn">0</span>
+        </div>
+        <div class="funnel-stage-body" id="stageOptIn"></div>
+      </div>
+      
+      <div class="funnel-stage" data-stage="delivered" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-title">
+            <span class="funnel-stage-color delivered"></span>
+            Pop Up Delivered
+          </div>
+          <span class="funnel-stage-count" id="countDelivered">0</span>
+        </div>
+        <div class="funnel-stage-body" id="stageDelivered"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Lookup Section -->
+  <div class="section-header" onclick="toggleSection('clients')">
+    <div class="section-header-title">
+      Customer Lookup
+      <span class="badge-count" id="clientsBadge">0</span>
+    </div>
+    <div class="section-header-icon">▼</div>
+  </div>
+  <div class="section-content" id="clientsContent" style="max-height: 2000px;">
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by name, phone, or email..." autocomplete="off">
+        <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+      </div>
+    </div>
+    <div class="client-grid" id="clientGrid"></div>
+  </div>
+  
+</div>
+
+<!-- Lead Modal -->
+<div class="modal-overlay" id="leadModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="leadModalTitle">New Lead</div>
+      <button class="modal-close" onclick="closeLeadModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editLeadId">
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" class="form-input" id="leadFirstName" placeholder="First name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" class="form-input" id="leadLastName" placeholder="Last name">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="leadEmail" placeholder="email@example.com">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Phone *</label>
+        <input type="tel" class="form-input" id="leadPhone" placeholder="(555) 123-4567">
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Source</label>
+          <select class="form-select" id="leadSource">
+            <option value="referral">Referral</option>
+            <option value="website">Website</option>
+            <option value="social">Social Media</option>
+            <option value="event">Event</option>
+            <option value="cold_call">Cold Call</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stage</label>
+          <select class="form-select" id="leadStage">
+            <option value="first_contact">First Contact</option>
+            <option value="artwork_received">Artwork Received</option>
+            <option value="opt_in">Opt-In Contacts</option>
+            <option value="delivered">Pop Up Delivered</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Estimated Value ($)</label>
+        <input type="number" class="form-input" id="leadValue" placeholder="0.00" step="0.01">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="leadNotes" placeholder="Additional notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="leadDeleteBtn" onclick="deleteLead()" style="display:none; margin-right:auto;">Delete</button>
+      <button class="btn-secondary" onclick="closeLeadModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveLead()">Save Lead</button>
+    </div>
+  </div>
+</div>
+
+<!-- Client Modal -->
+<div class="modal-overlay" id="clientModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="clientModalTitle">New Client</div>
+      <button class="modal-close" onclick="closeClientModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editClientId">
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" class="form-input" id="clientFirstName" placeholder="First name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" class="form-input" id="clientLastName" placeholder="Last name">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="clientEmail" placeholder="email@example.com">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Phone *</label>
+        <input type="tel" class="form-input" id="clientPhone" placeholder="(555) 123-4567">
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Client Type</label>
+          <select class="form-select" id="clientType">
+            <option value="individual">Individual</option>
+            <option value="business">Business</option>
+            <option value="organization">Organization</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="clientStatus">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="prospect">Prospect</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input type="text" class="form-input" id="clientAddress" placeholder="Street address, City, State ZIP">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="clientNotes" placeholder="Additional notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="clientDeleteBtn" onclick="deleteClient()" style="display:none; margin-right:auto;">Delete</button>
+      <button class="btn-secondary" onclick="closeClientModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveClient()">Save Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-top">
+    <a href="dashboard-sharklaw.html" class="mobile-nav-btn">Dashboard</a>
+    <a href="dashboard-clients.html" class="mobile-nav-btn active">Clients</a>
+  </div>
+  <div class="mobile-nav-secondary">
+    <a href="dashboard-search.html" class="mobile-nav-btn related">Search</a>
+    <a href="#" class="mobile-nav-btn related" onclick="openLeadModal(); return false;">+ Lead</a>
+    <a href="dashboard-settings.html" class="mobile-nav-btn related">Settings</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentTenantId = null, currentUserId = null;
+let allLeads = [], allClients = [];
+let editingLeadId = null, editingClientId = null;
+let draggedLeadId = null;
+
+// Theme system
+var themes = ['dark-blue', 'grey', 'slate', 'midnight', 'light-blue'];
+var themeIndex = 0;
+
+function loadTheme() {
+  var savedTheme = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  themeIndex = themes.indexOf(savedTheme);
+  if (themeIndex < 0) themeIndex = 0;
+}
+
+function cycleTheme() {
+  themeIndex = (themeIndex + 1) % themes.length;
+  var newTheme = themes[themeIndex];
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('app-theme', newTheme);
+  showThemeToast('Theme: ' + newTheme.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+}
+
+function showThemeToast(msg) {
+  var toast = document.getElementById('themeToast');
+  if (!toast) { toast = document.createElement('div'); toast.id = 'themeToast'; toast.className = 'theme-toast'; document.body.appendChild(toast); }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+loadTheme();
+
+function toggleMobileMenu(button) {
+  document.getElementById('mobileHeaderContent').classList.toggle('expanded');
+  button.classList.toggle('active');
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  localStorage.removeItem("sb_access_token");
+  localStorage.removeItem("sb_refresh_token");
+  location.replace("login.html?logout=1");
+}
+
+function toggleSection(sectionId) {
+  const content = document.getElementById(sectionId + 'Content');
+  const header = event.currentTarget;
+  const wasCollapsed = content.classList.contains('collapsed');
+  content.classList.toggle('collapsed');
+  header.classList.toggle('collapsed');
+  content.style.maxHeight = content.classList.contains('collapsed') ? '0px' : content.scrollHeight + 'px';
+  if (wasCollapsed) setTimeout(() => header.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+// ========== AUTH ==========
+async function checkAuth() {
+  let { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token'), refreshToken = localStorage.getItem('sb_refresh_token');
+    if (token && refreshToken) {
+      const { data, error } = await sb.auth.setSession({ access_token: token, refresh_token: refreshToken });
+      if (error || !data.session) { window.location.href = 'login.html'; return null; }
+      session = data.session;
+    } else { window.location.href = 'login.html'; return null; }
+  }
+  currentUserId = session.user.id;
+  return session;
+}
+
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+  
+  const authEmail = session.user?.email;
+  
+  // Get tenant
+  if (authEmail) {
+    const { data: emp } = await sb.from('employees').select('tenant_id, employee_id, user_id').eq('email', authEmail).single();
+    if (emp?.tenant_id) {
+      currentTenantId = emp.tenant_id;
+      if (emp.user_id) currentUserId = emp.user_id;
+    }
+  }
+  
+  if (!currentTenantId) {
+    const { data: user } = await sb.from('users').select('tenant_id, user_id').eq('email', authEmail).single();
+    if (user?.tenant_id) {
+      currentTenantId = user.tenant_id;
+      currentUserId = user.user_id;
+    }
+  }
+  
+  if (!currentTenantId) {
+    alert('Could not determine organization');
+    return;
+  }
+  
+  // Load business name
+  const { data: bs } = await sb.from('business_settings').select('business_name').eq('tenant_id', currentTenantId).single();
+  if (bs?.business_name) {
+    document.getElementById('desktopBusinessName').textContent = bs.business_name;
+    document.getElementById('mobileBusinessName').textContent = bs.business_name;
+  }
+  
+  // Load data
+  await Promise.all([loadLeads(), loadClients()]);
+  setupSearch();
+}
+
+// ========== LEADS ==========
+async function loadLeads() {
+  try {
+    const { data } = await sb.from('leads').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false });
+    allLeads = data || [];
+  } catch (e) {
+    console.log('Leads table may not exist:', e);
+    allLeads = [];
+  }
+  renderFunnel();
+  updateFunnelStats();
+}
+
+function renderFunnel() {
+  const stages = {
+    first_contact: document.getElementById('stageFirstContact'),
+    artwork_received: document.getElementById('stageArtwork'),
+    opt_in: document.getElementById('stageOptIn'),
+    delivered: document.getElementById('stageDelivered')
+  };
+  
+  // Clear all stages
+  Object.values(stages).forEach(el => el.innerHTML = '');
+  
+  // Count per stage
+  const counts = { first_contact: 0, artwork_received: 0, opt_in: 0, delivered: 0 };
+  
+  allLeads.forEach(lead => {
+    const stage = lead.stage || 'first_contact';
+    if (stages[stage]) {
+      counts[stage]++;
+      stages[stage].innerHTML += createLeadCard(lead);
+    }
+  });
+  
+  // Update counts
+  document.getElementById('countFirstContact').textContent = counts.first_contact;
+  document.getElementById('countArtwork').textContent = counts.artwork_received;
+  document.getElementById('countOptIn').textContent = counts.opt_in;
+  document.getElementById('countDelivered').textContent = counts.delivered;
+  
+  // Update badge
+  document.getElementById('funnelBadge').textContent = allLeads.length;
+  
+  // Add drag listeners to cards
+  document.querySelectorAll('.lead-card').forEach(card => {
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+  });
+}
+
+function createLeadCard(lead) {
+  const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown';
+  const value = lead.estimated_value ? `$${parseFloat(lead.estimated_value).toFixed(0)}` : '';
+  const source = lead.source ? lead.source.replace(/_/g, ' ') : '';
+  
+  return `
+    <div class="lead-card" draggable="true" data-lead-id="${lead.lead_id}" onclick="openLeadModal('${lead.lead_id}')">
+      <div class="lead-card-header">
+        <div class="lead-card-name">${name}</div>
+        ${value ? `<div class="lead-card-value">${value}</div>` : ''}
+      </div>
+      ${source ? `<div class="lead-card-source">${source}</div>` : ''}
+      <div class="lead-card-meta">
+        ${lead.phone ? `<span class="lead-card-meta-item">📞 ${lead.phone}</span>` : ''}
+        <span class="lead-card-meta-item">📅 ${formatTimeAgo(lead.created_at)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function updateFunnelStats() {
+  const counts = { first_contact: 0, artwork_received: 0, opt_in: 0, delivered: 0 };
+  allLeads.forEach(lead => {
+    const stage = lead.stage || 'first_contact';
+    if (counts[stage] !== undefined) counts[stage]++;
+  });
+  
+  document.getElementById('statFirstContact').textContent = counts.first_contact;
+  document.getElementById('statArtwork').textContent = counts.artwork_received;
+  document.getElementById('statOptIn').textContent = counts.opt_in;
+  document.getElementById('statDelivered').textContent = counts.delivered;
+}
+
+// ========== DRAG & DROP ==========
+function handleDragStart(e) {
+  draggedLeadId = e.target.dataset.leadId;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.funnel-stage').forEach(s => s.classList.remove('drag-over'));
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const stage = e.currentTarget;
+  stage.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function handleDrop(e) {
+  e.preventDefault();
+  const stage = e.currentTarget;
+  stage.classList.remove('drag-over');
+  
+  const newStage = stage.dataset.stage;
+  if (!draggedLeadId || !newStage) return;
+  
+  // Update in database
+  try {
+    await sb.from('leads').update({ stage: newStage, updated_at: new Date().toISOString() }).eq('lead_id', draggedLeadId);
+    
+    // Update local data
+    const lead = allLeads.find(l => l.lead_id === draggedLeadId);
+    if (lead) lead.stage = newStage;
+    
+    renderFunnel();
+    updateFunnelStats();
+  } catch (e) {
+    console.error('Error updating lead stage:', e);
+  }
+  
+  draggedLeadId = null;
+}
+
+// ========== LEAD MODAL ==========
+function openLeadModal(leadId = null) {
+  editingLeadId = leadId;
+  
+  if (leadId) {
+    const lead = allLeads.find(l => l.lead_id === leadId);
+    if (!lead) return;
+    document.getElementById('leadModalTitle').textContent = 'Edit Lead';
+    document.getElementById('leadDeleteBtn').style.display = 'block';
+    document.getElementById('editLeadId').value = leadId;
+    document.getElementById('leadFirstName').value = lead.first_name || '';
+    document.getElementById('leadLastName').value = lead.last_name || '';
+    document.getElementById('leadEmail').value = lead.email || '';
+    document.getElementById('leadPhone').value = lead.phone || '';
+    document.getElementById('leadSource').value = lead.source || 'referral';
+    document.getElementById('leadStage').value = lead.stage || 'first_contact';
+    document.getElementById('leadValue').value = lead.estimated_value || '';
+    document.getElementById('leadNotes').value = lead.notes || '';
+  } else {
+    document.getElementById('leadModalTitle').textContent = 'New Lead';
+    document.getElementById('leadDeleteBtn').style.display = 'none';
+    document.getElementById('editLeadId').value = '';
+    document.getElementById('leadFirstName').value = '';
+    document.getElementById('leadLastName').value = '';
+    document.getElementById('leadEmail').value = '';
+    document.getElementById('leadPhone').value = '';
+    document.getElementById('leadSource').value = 'referral';
+    document.getElementById('leadStage').value = 'first_contact';
+    document.getElementById('leadValue').value = '';
+    document.getElementById('leadNotes').value = '';
+  }
+  
+  document.getElementById('leadModal').classList.add('active');
+}
+
+function closeLeadModal() {
+  document.getElementById('leadModal').classList.remove('active');
+  editingLeadId = null;
+}
+
+async function saveLead() {
+  const firstName = document.getElementById('leadFirstName').value.trim();
+  const lastName = document.getElementById('leadLastName').value.trim();
+  const phone = document.getElementById('leadPhone').value.trim();
+  
+  if (!firstName || !lastName) { alert('First and last name required'); return; }
+  if (!phone) { alert('Phone number required'); return; }
+  
+  const data = {
+    tenant_id: currentTenantId,
+    first_name: firstName,
+    last_name: lastName,
+    email: document.getElementById('leadEmail').value.trim() || null,
+    phone: phone,
+    source: document.getElementById('leadSource').value,
+    stage: document.getElementById('leadStage').value,
+    estimated_value: parseFloat(document.getElementById('leadValue').value) || null,
+    notes: document.getElementById('leadNotes').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  
+  try {
+    if (editingLeadId) {
+      await sb.from('leads').update(data).eq('lead_id', editingLeadId);
+    } else {
+      data.lead_id = crypto.randomUUID();
+      data.status = 'new';
+      data.created_by = currentUserId;
+      data.created_at = new Date().toISOString();
+      await sb.from('leads').insert(data);
+    }
+    
+    closeLeadModal();
+    await loadLeads();
+  } catch (e) {
+    console.error('Error saving lead:', e);
+    alert('Error saving lead');
+  }
+}
+
+async function deleteLead() {
+  if (!editingLeadId || !confirm('Delete this lead?')) return;
+  await sb.from('leads').delete().eq('lead_id', editingLeadId);
+  closeLeadModal();
+  await loadLeads();
+}
+
+// ========== CLIENTS ==========
+async function loadClients() {
+  try {
+    const { data } = await sb.from('customers').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false });
+    allClients = data || [];
+  } catch (e) {
+    allClients = [];
+  }
+  renderClients();
+  document.getElementById('clientsBadge').textContent = allClients.length;
+}
+
+function renderClients(filtered = null) {
+  const clients = filtered || allClients;
+  const grid = document.getElementById('clientGrid');
+  
+  if (clients.length === 0) {
+    grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);">No clients found</div>';
+    return;
+  }
+  
+  grid.innerHTML = clients.map(c => {
+    const name = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.full_name || 'Unknown';
+    const type = c.client_type || c.contact_type || 'client';
+    
+    return `
+      <div class="client-card" onclick="openClientModal('${c.customer_id}')">
+        <div class="client-card-header">
+          <div class="client-card-name">${name}</div>
+          <div class="client-card-type">${type}</div>
+        </div>
+        <div class="client-card-info">📞 ${c.phone || '—'}</div>
+        <div class="client-card-info">✉️ ${c.email || '—'}</div>
+        ${c.address ? `<div class="client-card-info">📍 ${c.address}</div>` : ''}
+        <div class="client-card-stats">
+          <div class="client-card-stat">
+            <div class="client-card-stat-value">${formatTimeAgo(c.created_at)}</div>
+            <div class="client-card-stat-label">Added</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ========== CLIENT MODAL ==========
+function openClientModal(clientId = null) {
+  editingClientId = clientId;
+  
+  if (clientId) {
+    const client = allClients.find(c => c.customer_id === clientId);
+    if (!client) return;
+    document.getElementById('clientModalTitle').textContent = 'Edit Client';
+    document.getElementById('clientDeleteBtn').style.display = 'block';
+    document.getElementById('editClientId').value = clientId;
+    document.getElementById('clientFirstName').value = client.first_name || '';
+    document.getElementById('clientLastName').value = client.last_name || '';
+    document.getElementById('clientEmail').value = client.email || '';
+    document.getElementById('clientPhone').value = client.phone || '';
+    document.getElementById('clientType').value = client.client_type || 'individual';
+    document.getElementById('clientStatus').value = client.status || 'active';
+    document.getElementById('clientAddress').value = client.address || '';
+    document.getElementById('clientNotes').value = client.notes || '';
+  } else {
+    document.getElementById('clientModalTitle').textContent = 'New Client';
+    document.getElementById('clientDeleteBtn').style.display = 'none';
+    document.getElementById('editClientId').value = '';
+    document.getElementById('clientFirstName').value = '';
+    document.getElementById('clientLastName').value = '';
+    document.getElementById('clientEmail').value = '';
+    document.getElementById('clientPhone').value = '';
+    document.getElementById('clientType').value = 'individual';
+    document.getElementById('clientStatus').value = 'active';
+    document.getElementById('clientAddress').value = '';
+    document.getElementById('clientNotes').value = '';
+  }
+  
+  document.getElementById('clientModal').classList.add('active');
+}
+
+function closeClientModal() {
+  document.getElementById('clientModal').classList.remove('active');
+  editingClientId = null;
+}
+
+async function saveClient() {
+  const firstName = document.getElementById('clientFirstName').value.trim();
+  const lastName = document.getElementById('clientLastName').value.trim();
+  const phone = document.getElementById('clientPhone').value.trim();
+  
+  if (!firstName || !lastName) { alert('First and last name required'); return; }
+  if (!phone) { alert('Phone number required'); return; }
+  
+  const data = {
+    tenant_id: currentTenantId,
+    first_name: firstName,
+    last_name: lastName,
+    full_name: firstName + ' ' + lastName,
+    email: document.getElementById('clientEmail').value.trim() || null,
+    phone: phone,
+    client_type: document.getElementById('clientType').value,
+    status: document.getElementById('clientStatus').value,
+    address: document.getElementById('clientAddress').value.trim() || null,
+    notes: document.getElementById('clientNotes').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  
+  try {
+    if (editingClientId) {
+      await sb.from('customers').update(data).eq('customer_id', editingClientId);
+    } else {
+      data.customer_id = crypto.randomUUID();
+      data.created_at = new Date().toISOString();
+      await sb.from('customers').insert(data);
+    }
+    
+    closeClientModal();
+    await loadClients();
+  } catch (e) {
+    console.error('Error saving client:', e);
+    alert('Error saving client');
+  }
+}
+
+async function deleteClient() {
+  if (!editingClientId || !confirm('Delete this client?')) return;
+  await sb.from('customers').delete().eq('customer_id', editingClientId);
+  closeClientModal();
+  await loadClients();
+}
+
+// ========== SEARCH ==========
+function setupSearch() {
+  const input = document.getElementById('searchInput');
+  const dropdown = document.getElementById('autocompleteDropdown');
+  
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase().trim();
+    
+    if (!q) {
+      dropdown.classList.remove('active');
+      renderClients();
+      return;
+    }
+    
+    const matches = allClients.filter(c =>
+      (c.first_name || '').toLowerCase().includes(q) ||
+      (c.last_name || '').toLowerCase().includes(q) ||
+      (c.full_name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (c.phone || '').toLowerCase().includes(q)
+    );
+    
+    if (matches.length === 0) {
+      dropdown.classList.remove('active');
+      renderClients([]);
+      return;
+    }
+    
+    // Show autocomplete
+    dropdown.innerHTML = matches.slice(0, 6).map(c => {
+      const name = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.full_name || 'Unknown';
+      return `
+        <div class="autocomplete-item" onclick="selectClient('${c.customer_id}')">
+          <div class="autocomplete-item-name">${name}</div>
+          <div class="autocomplete-item-meta">${c.phone || ''} • ${c.email || ''}</div>
+        </div>
+      `;
+    }).join('');
+    
+    dropdown.classList.add('active');
+    renderClients(matches);
+  });
+  
+  // Close dropdown on outside click
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.remove('active');
+    }
+  });
+}
+
+function selectClient(clientId) {
+  document.getElementById('autocompleteDropdown').classList.remove('active');
+  openClientModal(clientId);
+}
+
+// ========== UTILITIES ==========
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const diff = new Date() - new Date(dateStr);
+  const mins = Math.floor(diff / 60000), hrs = Math.floor(diff / 3600000), days = Math.floor(diff / 86400000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hrs < 24) return `${hrs}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Initialize
+init();
+</script>
+</body>
+</html>
