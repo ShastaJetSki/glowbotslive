@@ -407,22 +407,27 @@
     <button class="mobile-action-btn" onclick="openQuickApptModal()">+ Appointment</button>
   </div>
 </div>
+
+<!-- DYNAMIC BOTTOM NAV - Rendered by renderNavButtons() -->
 <nav class="mobile-bottom-nav">
-  <div class="mobile-nav-top">
-    <a href="dashboard-business.html" class="mobile-nav-btn related">Business</a>
-    <a href="dashboard-search.html" class="mobile-nav-btn">Search</a>
+  <div class="mobile-nav-top" id="dynamicTopNav">
+    <!-- Buttons will be inserted here by renderNavButtons() -->
   </div>
-  <div class="mobile-nav-secondary">
-    <a href="dashboard-service.html" class="mobile-nav-btn related">Service</a>
-    <a href="dashboard-parts.html" class="mobile-nav-btn related">Parts</a>
-    <a href="dashboard-sales.html" class="mobile-nav-btn related">Sales</a>
+  <div class="mobile-nav-secondary" id="dynamicActionNav">
+    <!-- Buttons will be inserted here by renderNavButtons() -->
   </div>
 </nav>
+
 <div class="toast" id="toast"></div>
 <script>
 var SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
 var SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+// UI Preset variables
+var uiPreset = null;
+var tenantData = null;
+
 var tenantId=null,technicians=[],salespeople=[],serviceJobs=[],fleetJobs=[],salesJobs=[],allCustomers=[],allVehicles=[],appointmentTypes=[];
 var currentTab='service',currentViewStyle='lanes',selectedDate=0,currentFilter='all',lanesExpanded=false,isAnimating=false;
 var woSelectedCustomer=null,woSelectedVehicle=null,woIsNewCustomer=false,woIsNewVehicle=false;
@@ -432,7 +437,243 @@ var savedExpand=localStorage.getItem('lanes-expanded');if(savedExpand==='true')l
 var savedStyle=localStorage.getItem('scheduler-view-style');if(savedStyle&&['lanes','stack','grid'].indexOf(savedStyle)!==-1)currentViewStyle=savedStyle;
 function toggleMobileMenu(b){document.getElementById('mobileHeaderContent').classList.toggle('expanded');b.classList.toggle('active');}
 async function checkAuth(){var s=null;try{var r=await sb.auth.getSession();s=r.data.session;}catch(e){}if(!s){var t=localStorage.getItem('sb_access_token'),rt=localStorage.getItem('sb_refresh_token');if(t&&rt){try{var r=await sb.auth.setSession({access_token:t,refresh_token:rt});if(r.data&&r.data.session)return r.data.session;}catch(e){}}window.location.href='login.html';return null;}return s;}
-async function loadBusinessSettings(){try{var r=await sb.from('business_settings').select('*').single();if(r.error){document.getElementById('businessName').textContent='My Business';return;}if(r.data){tenantId=r.data.tenant_id;document.getElementById('businessName').textContent=r.data.business_name||r.data.company_name||'My Business';}else{document.getElementById('businessName').textContent='My Business';}}catch(e){document.getElementById('businessName').textContent='My Business';}}
+
+// ============================================
+// UPDATED: loadBusinessSettings() now loads UI preset
+// ============================================
+async function loadBusinessSettings(){
+  try{
+    var r=await sb.from('business_settings').select('*').single();
+    if(r.error){
+      document.getElementById('businessName').textContent='My Business';
+      return;
+    }
+    if(r.data){
+      tenantId=r.data.tenant_id;
+      document.getElementById('businessName').textContent=r.data.business_name||r.data.company_name||'My Business';
+      
+      // NOW LOAD THE TENANT'S UI PRESET
+      await loadUIPreset();
+    }
+  }catch(e){
+    console.error('Error loading business settings:', e);
+    document.getElementById('businessName').textContent='My Business';
+  }
+}
+
+// ============================================
+// NEW: Load UI Preset from database
+// ============================================
+async function loadUIPreset() {
+  if (!tenantId) return;
+  
+  try {
+    // Get tenant record to find their ui_preset_id
+    var tenantRes = await sb.from('tenants')
+      .select('ui_preset_id')
+      .eq('tenant_id', tenantId)
+      .single();
+    
+    if (tenantRes.error || !tenantRes.data || !tenantRes.data.ui_preset_id) {
+      console.log('No UI preset assigned to tenant, using defaults');
+      uiPreset = getDefaultPreset();
+      renderNavButtons();
+      renderMainTabs();
+      return;
+    }
+    
+    var presetId = tenantRes.data.ui_preset_id;
+    console.log('Loading UI preset:', presetId);
+    
+    // Get the preset configuration
+    var presetRes = await sb.from('ui_presets')
+      .select('*')
+      .eq('id', presetId)
+      .single();
+    
+    if (presetRes.error || !presetRes.data) {
+      console.log('UI preset not found, using defaults');
+      uiPreset = getDefaultPreset();
+    } else {
+      uiPreset = presetRes.data;
+      console.log('Loaded UI preset:', uiPreset.name, uiPreset);
+    }
+    
+    // Render the navigation buttons based on preset
+    renderNavButtons();
+    renderMainTabs();
+    
+  } catch (e) {
+    console.error('Error loading UI preset:', e);
+    uiPreset = getDefaultPreset();
+    renderNavButtons();
+    renderMainTabs();
+  }
+}
+
+// ============================================
+// NEW: Default preset fallback
+// ============================================
+function getDefaultPreset() {
+  return {
+    name: 'Default',
+    nav_buttons: [
+      { id: 'Dashboard', enabled: true, label: 'Dashboard', route: '/dashboard' },
+      { id: 'Business', enabled: true, label: 'Business', route: 'dashboard-business.html' },
+      { id: 'Customers', enabled: true, label: 'Customers', route: 'dashboard-search.html' },
+      { id: 'Settings', enabled: true, label: 'Settings', route: 'dashboard-settings.html' }
+    ],
+    action_buttons: [
+      { id: 'Service', enabled: true, label: 'Service', route: 'dashboard-service.html' },
+      { id: 'Parts', enabled: true, label: 'Parts', route: 'dashboard-parts.html' },
+      { id: 'Sales', enabled: true, label: 'Sales', route: 'dashboard-sales.html' },
+      { id: 'Scheduler', enabled: true, label: 'Scheduler', route: 'scheduler.html' }
+    ]
+  };
+}
+
+// ============================================
+// NEW: Render navigation buttons dynamically
+// ============================================
+function renderNavButtons() {
+  if (!uiPreset) return;
+  
+  // Get enabled nav buttons
+  var navButtons = (uiPreset.nav_buttons || []).filter(function(btn) {
+    if (typeof btn === 'string') return true;
+    return btn.enabled !== false;
+  });
+  
+  // Get enabled action buttons
+  var actionButtons = (uiPreset.action_buttons || []).filter(function(btn) {
+    if (typeof btn === 'string') return true;
+    return btn.enabled !== false;
+  });
+  
+  // Render top nav buttons (typically Business, Search/Customers)
+  var topNavHtml = '';
+  navButtons.forEach(function(btn) {
+    var id = typeof btn === 'string' ? btn : btn.id;
+    var label = typeof btn === 'string' ? btn : (btn.label || btn.id);
+    var route = typeof btn === 'string' ? getDefaultRoute(btn) : (btn.route || getDefaultRoute(btn.id));
+    
+    // Skip Dashboard and Settings for top nav (Dashboard in header, Settings in menu)
+    if (id === 'Dashboard' || id === 'Settings') return;
+    
+    var isRelated = isCurrentPageRelated(route);
+    topNavHtml += '<a href="' + route + '" class="mobile-nav-btn' + (isRelated ? ' related' : '') + '">' + label + '</a>';
+  });
+  
+  // Render action buttons (Service, Parts, Sales, etc.) - skip Scheduler since we're on it
+  var actionNavHtml = '';
+  actionButtons.forEach(function(btn) {
+    var id = typeof btn === 'string' ? btn : btn.id;
+    var label = typeof btn === 'string' ? btn : (btn.label || btn.id);
+    var route = typeof btn === 'string' ? getDefaultRoute(btn) : (btn.route || getDefaultRoute(btn.id));
+    
+    // Skip Scheduler since we're on that page
+    if (id === 'Scheduler' || id === 'Calendar') return;
+    
+    var isRelated = isCurrentPageRelated(route);
+    actionNavHtml += '<a href="' + route + '" class="mobile-nav-btn' + (isRelated ? ' related' : '') + '">' + label + '</a>';
+  });
+  
+  // Update the DOM
+  var topNavContainer = document.getElementById('dynamicTopNav');
+  var actionNavContainer = document.getElementById('dynamicActionNav');
+  
+  if (topNavContainer) topNavContainer.innerHTML = topNavHtml;
+  if (actionNavContainer) actionNavContainer.innerHTML = actionNavHtml;
+  
+  // Update grid columns based on button count
+  if (topNavContainer) {
+    var topCount = topNavContainer.querySelectorAll('.mobile-nav-btn').length;
+    topNavContainer.style.gridTemplateColumns = 'repeat(' + Math.max(topCount, 2) + ', 1fr)';
+  }
+  if (actionNavContainer) {
+    var actionCount = actionNavContainer.querySelectorAll('.mobile-nav-btn').length;
+    actionNavContainer.style.gridTemplateColumns = 'repeat(' + Math.min(Math.max(actionCount, 2), 4) + ', 1fr)';
+  }
+}
+
+// ============================================
+// NEW: Helper to get default routes
+// ============================================
+function getDefaultRoute(buttonId) {
+  var routes = {
+    'Dashboard': 'dashboard-business.html',
+    'Business': 'dashboard-business.html',
+    'Customers': 'dashboard-search.html',
+    'Search': 'dashboard-search.html',
+    'Vehicles': 'dashboard-search.html',
+    'Clients': 'dashboard-search.html',
+    'Cases': 'dashboard-cases.html',
+    'Service': 'dashboard-service.html',
+    'Parts': 'dashboard-parts.html',
+    'Sales': 'dashboard-sales.html',
+    'Fleet': 'dashboard-fleet.html',
+    'Scheduler': 'scheduler.html',
+    'Calendar': 'scheduler.html',
+    'Settings': 'dashboard-settings.html',
+    'Tasks': 'dashboard-tasks.html',
+    'Documents': 'dashboard-documents.html',
+    'Billing': 'dashboard-billing.html',
+    'Reports': 'dashboard-reports.html'
+  };
+  return routes[buttonId] || 'dashboard-business.html';
+}
+
+function isCurrentPageRelated(route) {
+  var currentPage = window.location.pathname.split('/').pop() || 'index.html';
+  // Check if the route matches current page or if we're on a related page
+  if (route.includes(currentPage) || currentPage.includes(route.replace('.html', ''))) return true;
+  // For scheduler page, mark Service/Parts/Sales as related
+  if (currentPage === 'scheduler.html') {
+    if (route.includes('service') || route.includes('parts') || route.includes('sales')) return true;
+  }
+  return false;
+}
+
+// ============================================
+// NEW: Update main tabs based on preset
+// ============================================
+function renderMainTabs() {
+  if (!uiPreset) return;
+  
+  var actionButtons = uiPreset.action_buttons || [];
+  
+  // Check which tabs should be visible
+  var showService = actionButtons.some(function(btn) {
+    var id = typeof btn === 'string' ? btn : btn.id;
+    return id === 'Service' && (typeof btn === 'string' || btn.enabled !== false);
+  });
+  
+  var showSales = actionButtons.some(function(btn) {
+    var id = typeof btn === 'string' ? btn : btn.id;
+    return id === 'Sales' && (typeof btn === 'string' || btn.enabled !== false);
+  });
+  
+  var showFleet = actionButtons.some(function(btn) {
+    var id = typeof btn === 'string' ? btn : btn.id;
+    return id === 'Fleet' && (typeof btn === 'string' || btn.enabled !== false);
+  });
+  
+  // Hide tabs that aren't in the preset
+  var serviceTab = document.getElementById('tabService');
+  var salesTab = document.getElementById('tabSales');
+  var fleetTab = document.getElementById('tabFleet');
+  
+  if (serviceTab) serviceTab.style.display = showService ? '' : 'none';
+  if (salesTab) salesTab.style.display = showSales ? '' : 'none';
+  if (fleetTab) fleetTab.style.display = showFleet ? '' : 'none';
+  
+  // If current tab is hidden, switch to first visible tab
+  if (!showService && currentTab === 'service') {
+    if (showSales) switchTab('sales');
+    else if (showFleet) switchTab('fleet');
+  }
+}
+
 async function loadAllData(){if(!tenantId)return;try{await Promise.all([loadTechnicians(),loadSalespeople(),loadCustomersForSearch(),loadVehiclesForSearch(),loadAppointmentTypes()]);await loadServiceJobs();await loadSalesJobs();renderAll();}catch(e){}}
 async function loadCustomersForSearch(){try{var r=await sb.from('customers').select('customer_id,full_name,phone,email').eq('tenant_id',tenantId).order('full_name',{ascending:true}).limit(500);if(r.data)allCustomers=r.data;}catch(e){}}
 async function loadVehiclesForSearch(){try{var r=await sb.from('vehicles').select('vehicle_id,customer_id,year,make,model,vin,license_plate').eq('tenant_id',tenantId).order('year',{ascending:false}).limit(500);if(r.data)allVehicles=r.data;}catch(e){}}
