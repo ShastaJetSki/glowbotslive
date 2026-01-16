@@ -384,25 +384,45 @@
     }
     .role-header { font-size: 14px; font-weight: 600; color: var(--accent-cyan); margin-bottom: 12px; }
 
+    /* UPDATED: Button Preview with 3-2-3 stacking */
     .button-preview {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 16px;
+      flex-direction: column-reverse;
+      align-items: center;
+      gap: 10px;
+      padding: 20px;
       background: var(--bg-primary);
       border: 1px solid var(--border-color);
       border-radius: 6px;
+      min-height: 120px;
+    }
+    .button-preview-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .button-preview-empty {
+      color: var(--text-muted);
+      font-size: 13px;
     }
     .preview-btn {
       font-size: 12px;
       font-weight: 500;
-      padding: 8px 14px;
+      padding: 10px 16px;
       border: 1px solid var(--border-color);
       border-radius: 6px;
       background: transparent;
       color: var(--text-primary);
+      min-width: 90px;
+      text-align: center;
+      transition: all 0.2s;
     }
-    .preview-btn.primary { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+    .preview-btn:hover {
+      background: var(--bg-card);
+    }
+    .preview-btn.nav { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+    .preview-btn.action { border-color: var(--accent-purple); color: var(--accent-purple); }
 
     .color-row {
       display: flex;
@@ -817,8 +837,8 @@
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="presetIsActive"><option value="true">Active</option><option value="false">Inactive</option></select></div>
         
         <div class="form-group full">
-          <label class="form-label">Live Preview</label>
-          <div class="button-preview" id="presetPreview"><span style="color:var(--text-muted);">Enable buttons above to see preview...</span></div>
+          <label class="form-label">Live Preview (3-2-3 Layout: Bottom → Middle → Top)</label>
+          <div class="button-preview" id="presetPreview"><span class="button-preview-empty">Enable buttons above to see preview...</span></div>
         </div>
       </div>
     </div>
@@ -948,7 +968,6 @@ async function checkConnection() {
   const text = document.getElementById('connText');
   
   try {
-    // Test connection with a simple query using fetch
     const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=tenant_id&limit=1`, {
       headers: {
         'apikey': SUPABASE_KEY,
@@ -956,16 +975,9 @@ async function checkConnection() {
       }
     });
     
-    console.log('Connection test response:', response.status);
-    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Connection test failed:', errorText);
       throw new Error('Connection failed: ' + response.status);
     }
-    
-    const testData = await response.json();
-    console.log('Connection test data:', testData);
     
     isConnected = true;
     dot.className = 'status-dot connected';
@@ -975,7 +987,6 @@ async function checkConnection() {
     isConnected = false;
     dot.className = 'status-dot disconnected';
     text.textContent = 'Offline Mode (Local Storage)';
-    console.warn('Using local storage mode:', e.message);
     addAuditEntry('system', 'Running in offline mode');
   }
 }
@@ -988,7 +999,6 @@ function toggleKPIs() {
   localStorage.setItem('kpisCollapsed', kpisCollapsed);
 }
 
-// Restore KPI state
 if (localStorage.getItem('kpisCollapsed') === 'true') {
   kpisCollapsed = true;
   document.getElementById('kpiContent')?.classList.add('collapsed');
@@ -1008,45 +1018,36 @@ function updateKPIs() {
   const mrr = tenants.reduce((s, t) => s + (t.monthly_recurring_revenue || 0), 0);
   const users = tenants.reduce((s, t) => s + (t.user_count || 1), 0);
   
-  // Update summary
   document.getElementById('kpiSummary').textContent = `${active.length} active tenants • $${mrr.toLocaleString()} MRR • ${users} users`;
   
-  // MRR
   document.getElementById('mrrValue').textContent = '$' + mrr.toLocaleString();
   document.getElementById('mrrPercent').textContent = ((mrr / 50000) * 100).toFixed(1) + '%';
   animateGauge('mrrGauge', Math.min((mrr / 50000) * 100, 100));
   
-  // Tenants
   document.getElementById('tenantCount').textContent = active.length;
   document.getElementById('tenantPercent').textContent = active.length + '%';
   animateGauge('tenantGauge', Math.min(active.length, 100));
   
-  // Churn
   document.getElementById('churnValue').textContent = '3.2%';
   animateGauge('churnGauge', 32);
   
-  // Conversion
   document.getElementById('convValue').textContent = '22.5%';
   animateGauge('convGauge', 90);
   
-  // ARPT
   const arpt = active.length > 0 ? mrr / active.length : 0;
   document.getElementById('arptValue').textContent = '$' + arpt.toFixed(0);
   document.getElementById('arptPercent').textContent = ((arpt / 500) * 100).toFixed(1) + '%';
   animateGauge('arptGauge', Math.min((arpt / 500) * 100, 100));
   
-  // Users
   document.getElementById('userCount').textContent = users;
   document.getElementById('userPercent').textContent = ((users / 500) * 100).toFixed(1) + '%';
   animateGauge('userGauge', Math.min((users / 500) * 100, 100));
   
-  // LTV
   const ltv = arpt * 12;
   document.getElementById('ltvValue').textContent = '$' + ltv.toFixed(0);
   document.getElementById('ltvPercent').textContent = ((ltv / 6000) * 100).toFixed(1) + '%';
   animateGauge('ltvGauge', Math.min((ltv / 6000) * 100, 100));
   
-  // Trials
   document.getElementById('trialCount').textContent = trials.length;
   animateGauge('trialGauge', trials.length * 10);
 }
@@ -1056,7 +1057,6 @@ function animateGauge(id, pct) {
   if (el) el.setAttribute('stroke-dasharray', `${(pct / 100) * 157} 157`);
 }
 
-// Storage helpers
 function saveLocal(key, data) {
   localStorage.setItem('admin_' + key, JSON.stringify(data));
 }
@@ -1076,12 +1076,9 @@ async function loadTiers() {
       });
       if (response.ok) {
         const data = await response.json();
-        console.log('Loaded tiers from Supabase:', data);
         if (data && data.length) { tiers = data; saveLocal('tiers', tiers); }
-      } else {
-        console.error('Failed to load tiers:', response.status);
       }
-    } catch (e) { console.error('Error loading tiers:', e); }
+    } catch (e) { console.error(e); }
   }
   if (!tiers.length) tiers = loadLocal('tiers') || getDefaultTiers();
   renderTiers();
@@ -1115,7 +1112,6 @@ function populateTierSelect() {
   document.getElementById('userTier').innerHTML = '<option value="">-- Select Tier --</option>' + 
     tiers.filter(t => t.is_active).map(t => `<option value="${t.tier_id}">${t.tier_display_name || t.tier_name} - $${t.monthly_price}/mo</option>`).join('');
   
-  // Also update announcement tier dropdown
   const announcementTiers = document.getElementById('announcementTiers');
   if (announcementTiers) {
     announcementTiers.innerHTML = '<option value="all">All Tiers</option>' +
@@ -1199,7 +1195,6 @@ async function saveTier() {
     }
   }
   
-  // Update local
   if (id) {
     const idx = tiers.findIndex(x => x.tier_id === id);
     if (idx >= 0) tiers[idx] = { ...tiers[idx], ...data };
@@ -1234,7 +1229,7 @@ async function deleteTier(id) {
   populateTierSelect();
 }
 
-// PRESETS (Enhanced with relabel + relink)
+// PRESETS
 async function loadPresets() {
   if (isConnected) {
     try {
@@ -1322,7 +1317,6 @@ function populatePresetSelect() {
 }
 
 function populatePresetModal() {
-  // Nav buttons
   document.getElementById('presetNavButtons').innerHTML = ALL_NAV_BUTTONS.map(btn => `
     <div class="button-config-item" id="nav_item_${btn.id}">
       <input type="checkbox" id="nav_enabled_${btn.id}" onchange="updateButtonState('nav', '${btn.id}'); updatePresetPreview()">
@@ -1341,7 +1335,6 @@ function populatePresetModal() {
     </div>
   `).join('');
   
-  // Action buttons
   document.getElementById('presetActionButtons').innerHTML = ALL_ACTION_BUTTONS.map(btn => `
     <div class="button-config-item" id="action_item_${btn.id}">
       <input type="checkbox" id="action_enabled_${btn.id}" onchange="updateButtonState('action', '${btn.id}'); updatePresetPreview()">
@@ -1372,31 +1365,74 @@ function updateButtonState(type, btnId) {
   item.classList.toggle('disabled', !enabled);
 }
 
+// UPDATED: 3-2-3 stacking pattern (bottom to top)
 function updatePresetPreview() {
-  const navButtons = ALL_NAV_BUTTONS.filter(btn => {
-    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
-    return checkbox && checkbox.checked;
-  }).map(btn => {
-    const label = document.getElementById(`nav_label_${btn.id}`)?.value || btn.defaultLabel;
-    const route = document.getElementById(`nav_route_${btn.id}`)?.value || btn.defaultRoute;
-    return `<span class="preview-btn primary" title="Route: ${route}">${label}</span>`;
-  });
-  
-  const actionButtons = ALL_ACTION_BUTTONS.filter(btn => {
-    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
-    return checkbox && checkbox.checked;
-  }).map(btn => {
-    const label = document.getElementById(`action_label_${btn.id}`)?.value || btn.defaultLabel;
-    const route = document.getElementById(`action_route_${btn.id}`)?.value || btn.defaultRoute;
-    return `<span class="preview-btn" title="Route: ${route}">${label}</span>`;
-  });
-  
   const preview = document.getElementById('presetPreview');
-  if (navButtons.length || actionButtons.length) {
-    preview.innerHTML = navButtons.join('') + actionButtons.join('');
-  } else {
-    preview.innerHTML = '<span style="color:var(--text-muted)">Enable buttons above to see preview...</span>';
+  
+  // Collect all enabled buttons
+  const allButtons = [];
+  
+  // Nav buttons (cyan)
+  ALL_NAV_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
+    if (checkbox && checkbox.checked) {
+      const label = document.getElementById(`nav_label_${btn.id}`)?.value || btn.defaultLabel;
+      const route = document.getElementById(`nav_route_${btn.id}`)?.value || btn.defaultRoute;
+      allButtons.push({ label, route, type: 'nav' });
+    }
+  });
+  
+  // Action buttons (purple)
+  ALL_ACTION_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
+    if (checkbox && checkbox.checked) {
+      const label = document.getElementById(`action_label_${btn.id}`)?.value || btn.defaultLabel;
+      const route = document.getElementById(`action_route_${btn.id}`)?.value || btn.defaultRoute;
+      allButtons.push({ label, route, type: 'action' });
+    }
+  });
+  
+  if (allButtons.length === 0) {
+    preview.innerHTML = '<span class="button-preview-empty">Enable buttons above to see preview...</span>';
+    return;
   }
+  
+  // Distribute buttons in 3-2-3 pattern (from bottom to top)
+  // Row pattern: bottom=3, middle=2, top=3
+  const rows = [];
+  let remaining = [...allButtons];
+  
+  // Calculate how many complete "3-2-3" cycles we need plus remainder
+  // Pattern: 3 (bottom), 2 (middle), 3 (top) = 8 buttons per full cycle
+  // But we build from bottom up
+  
+  while (remaining.length > 0) {
+    // Bottom row: up to 3
+    const bottomCount = Math.min(3, remaining.length);
+    if (bottomCount > 0) {
+      rows.push(remaining.splice(0, bottomCount));
+    }
+    
+    // Middle row: up to 2
+    if (remaining.length > 0) {
+      const middleCount = Math.min(2, remaining.length);
+      rows.push(remaining.splice(0, middleCount));
+    }
+    
+    // Top row: up to 3
+    if (remaining.length > 0) {
+      const topCount = Math.min(3, remaining.length);
+      rows.push(remaining.splice(0, topCount));
+    }
+  }
+  
+  // Render rows (flex-direction: column-reverse handles bottom-to-top)
+  preview.innerHTML = rows.map(row => {
+    const buttonsHtml = row.map(btn => 
+      `<span class="preview-btn ${btn.type}" title="Route: ${btn.route}">${btn.label}</span>`
+    ).join('');
+    return `<div class="button-preview-row">${buttonsHtml}</div>`;
+  }).join('');
 }
 
 function openPresetModal() {
@@ -1407,7 +1443,6 @@ function openPresetModal() {
   document.getElementById('presetDescription').value = '';
   document.getElementById('presetIsActive').value = 'true';
   
-  // Reset all buttons
   ALL_NAV_BUTTONS.forEach(btn => {
     const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
     if (checkbox) {
@@ -1442,13 +1477,11 @@ function editPreset(id) {
   document.getElementById('presetDescription').value = p.description || '';
   document.getElementById('presetIsActive').value = p.is_active ? 'true' : 'false';
   
-  // Set nav buttons
   ALL_NAV_BUTTONS.forEach(btn => {
     const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
     const labelInput = document.getElementById(`nav_label_${btn.id}`);
     const routeInput = document.getElementById(`nav_route_${btn.id}`);
     
-    // Find button config (handle both array of strings and array of objects)
     let btnConfig = null;
     if (p.nav_buttons) {
       btnConfig = p.nav_buttons.find(b => (typeof b === 'string' ? b === btn.id : b.id === btn.id));
@@ -1468,7 +1501,6 @@ function editPreset(id) {
     updateButtonState('nav', btn.id);
   });
   
-  // Set action buttons
   ALL_ACTION_BUTTONS.forEach(btn => {
     const checkbox = document.getElementById(`action_enabled_${btn.id}`);
     const labelInput = document.getElementById(`action_label_${btn.id}`);
@@ -1507,7 +1539,6 @@ async function savePreset() {
     return;
   }
   
-  // Collect nav buttons
   const navButtons = ALL_NAV_BUTTONS.map(btn => {
     const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
     const labelInput = document.getElementById(`nav_label_${btn.id}`);
@@ -1521,7 +1552,6 @@ async function savePreset() {
     };
   }).filter(b => b.enabled);
   
-  // Collect action buttons
   const actionButtons = ALL_ACTION_BUTTONS.map(btn => {
     const checkbox = document.getElementById(`action_enabled_${btn.id}`);
     const labelInput = document.getElementById(`action_label_${btn.id}`);
@@ -1568,7 +1598,6 @@ async function savePreset() {
     }
   }
   
-  // Update local
   if (id) {
     const idx = presets.findIndex(x => x.id === id);
     if (idx >= 0) presets[idx] = { ...presets[idx], ...data };
@@ -1823,7 +1852,6 @@ async function saveRolePermissions() {
     
     if (isConnected) {
       try {
-        // Try to upsert using POST with conflict resolution header
         await fetch(`${SUPABASE_URL}/rest/v1/role_permissions`, {
           method: 'POST',
           headers: { 
@@ -1851,19 +1879,16 @@ async function loadTenants() {
   
   if (isConnected) {
     try {
-      // Simpler query first - just get tenants
       const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=*&order=created_at.desc`, {
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
       });
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Loaded tenants from Supabase:', data);
         
         if (data && data.length > 0) {
           tenants = data;
           
-          // Get owner emails and user counts for each tenant
           for (let t of tenants) {
             try {
               const ownerRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&role=eq.owner&select=email&limit=1`, {
@@ -1874,7 +1899,6 @@ async function loadTenants() {
                 t.owner = owners[0] || null;
               }
               
-              // Get user count
               const countRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&select=user_id`, {
                 headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
               });
@@ -1883,7 +1907,6 @@ async function loadTenants() {
                 t.user_count = users.length || 1;
               }
               
-              // Get tier info
               if (t.tier_id) {
                 const tierRes = await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers?tier_id=eq.${t.tier_id}&select=tier_display_name&limit=1`, {
                   headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
@@ -1894,22 +1917,18 @@ async function loadTenants() {
                 }
               }
             } catch (e) { 
-              console.warn('Error fetching tenant details:', e);
               t.owner = null; 
               t.user_count = 1; 
             }
           }
           saveLocal('tenants', tenants);
         } else {
-          console.log('No tenants in Supabase, checking local storage');
           tenants = loadLocal('tenants') || [];
         }
       } else {
-        console.error('Supabase response not OK:', response.status, await response.text());
         tenants = loadLocal('tenants') || [];
       }
     } catch (e) { 
-      console.error('Error loading tenants:', e); 
       tenants = loadLocal('tenants') || [];
     }
   } else {
@@ -1976,7 +1995,6 @@ async function addTenantAndUser() {
   };
   
   if (editingTenantId) {
-    // Update existing
     if (isConnected) {
       try {
         await fetch(`${SUPABASE_URL}/rest/v1/tenants?tenant_id=eq.${editingTenantId}`, {
@@ -1999,7 +2017,6 @@ async function addTenantAndUser() {
     return;
   }
   
-  // Create new
   const tenantId = crypto.randomUUID();
   const userId = crypto.randomUUID();
   
@@ -2039,7 +2056,6 @@ async function addTenantAndUser() {
     }
   }
   
-  // Add to local
   tenantData.owner = { email };
   tenantData.user_count = 1;
   tenants.unshift(tenantData);
@@ -2256,7 +2272,6 @@ function addAuditEntry(type, action) {
     timestamp: new Date().toISOString()
   });
   
-  // Keep last 100 entries
   if (auditLog.length > 100) auditLog = auditLog.slice(0, 100);
   saveLocal('auditLog', auditLog);
 }
@@ -2324,7 +2339,6 @@ function clearLocalData() {
   location.reload();
 }
 
-// UTILITIES
 function refreshAllData() {
   loadTiers();
   loadTenants();
