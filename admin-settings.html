@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Platform Admin Console</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --bg-primary: #0a0f1a;
@@ -33,9 +32,16 @@
 
     .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
 
-    .header { margin-bottom: 8px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .header-left { }
     .header-title { font-size: 28px; font-weight: 700; }
     .header-subtitle { font-size: 14px; color: var(--accent-cyan); margin-top: 2px; }
+    .connection-status { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 12px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status-dot.connected { background: var(--accent-green); }
+    .status-dot.disconnected { background: var(--accent-red); }
+    .status-dot.checking { background: var(--accent-orange); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
     .top-nav {
       display: flex;
@@ -44,33 +50,26 @@
       padding: 16px 0;
       border-bottom: 1px solid var(--border-color);
       margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
     }
 
-    .nav-tabs { display: flex; gap: 24px; }
+    .nav-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 
     .nav-tab {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
       color: var(--text-secondary);
       background: none;
-      border: none;
-      padding: 8px 0;
+      border: 1px solid transparent;
+      padding: 8px 16px;
+      border-radius: 6px;
       cursor: pointer;
-      position: relative;
-      transition: color 0.2s;
+      transition: all 0.2s;
     }
 
-    .nav-tab:hover { color: var(--text-primary); }
-    .nav-tab.active { color: var(--accent-cyan); }
-    .nav-tab.active::after {
-      content: '';
-      position: absolute;
-      bottom: -17px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: var(--accent-cyan);
-    }
+    .nav-tab:hover { color: var(--text-primary); background: var(--bg-card); }
+    .nav-tab.active { color: var(--accent-cyan); border-color: var(--accent-cyan); background: rgba(34, 211, 238, 0.1); }
 
     .nav-actions { display: flex; gap: 10px; }
 
@@ -96,18 +95,69 @@
     .btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
     .btn-sm { padding: 5px 10px; font-size: 12px; }
 
+    /* Collapsible KPI Section */
+    .kpi-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .kpi-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .kpi-header:hover { background: var(--bg-card); }
+
+    .kpi-header-left { display: flex; align-items: center; gap: 12px; }
+    .kpi-header-title { font-size: 16px; font-weight: 600; }
+    .kpi-header-summary { font-size: 13px; color: var(--text-secondary); }
+
+    .kpi-toggle {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-size: 18px;
+      transition: all 0.3s;
+    }
+
+    .kpi-toggle.collapsed { transform: rotate(-90deg); }
+
+    .kpi-content {
+      max-height: 400px;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      padding: 0 20px 20px;
+    }
+
+    .kpi-content.collapsed {
+      max-height: 0;
+      padding: 0 20px;
+    }
+
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 16px;
-      margin-bottom: 24px;
     }
 
     @media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } }
 
     .speedo-card {
-      background: var(--bg-secondary);
+      background: var(--bg-primary);
       border: 1px dashed var(--border-color);
       border-radius: 8px;
       padding: 16px;
@@ -116,13 +166,7 @@
 
     .speedo-card:hover { border-color: var(--accent-cyan); border-style: solid; }
 
-    .speedo-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 12px;
-    }
-
+    .speedo-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
     .speedo-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
     .speedo-trend { font-size: 12px; font-weight: 600; }
     .speedo-trend.up { color: var(--accent-green); }
@@ -176,7 +220,7 @@
     }
 
     .panel-title { font-size: 16px; font-weight: 600; }
-    .panel-actions { display: flex; gap: 8px; }
+    .panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
     .info-box {
       background: rgba(34, 211, 238, 0.05);
@@ -186,6 +230,16 @@
       margin-bottom: 16px;
       font-size: 13px;
       color: var(--accent-cyan);
+    }
+
+    .warning-box {
+      background: rgba(249, 115, 22, 0.05);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--accent-orange);
     }
 
     .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
@@ -209,6 +263,7 @@
     .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--accent-cyan); }
     .form-input::placeholder { color: var(--text-muted); }
     .form-textarea { resize: vertical; min-height: 80px; }
+    .form-input:disabled, .form-select:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th {
@@ -243,6 +298,67 @@
     .status-dot.inactive { background: var(--text-muted); }
     .status-dot.trial { background: var(--accent-orange); }
 
+    /* Enhanced Button Config */
+    .button-config-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .button-config-item {
+      display: grid;
+      grid-template-columns: 40px 1fr 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .button-config-item:hover { border-color: var(--border-light); }
+    .button-config-item.disabled { opacity: 0.5; }
+
+    .button-config-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--accent-cyan);
+      cursor: pointer;
+    }
+
+    .button-config-item input[type="text"] {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+    }
+
+    .button-config-item input[type="text"]:focus { border-color: var(--accent-cyan); outline: none; }
+    .button-config-item input[type="text"]:disabled { opacity: 0.4; }
+
+    .button-config-item .config-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .button-config-item .config-field { display: flex; flex-direction: column; }
+
+    .button-config-header {
+      display: grid;
+      grid-template-columns: 40px 1fr 1fr 1fr;
+      gap: 10px;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
     .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
     .checkbox-item {
       display: flex;
@@ -258,32 +374,6 @@
     .checkbox-item:hover { border-color: var(--border-light); }
     .checkbox-item input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-cyan); }
     .checkbox-item span { font-size: 13px; }
-
-    .button-label-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
-    .button-label-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: var(--bg-primary);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-    }
-    .button-label-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-cyan); flex-shrink: 0; }
-    .button-label-item .btn-id { font-size: 11px; color: var(--text-muted); width: 70px; flex-shrink: 0; }
-    .button-label-item input[type="text"] {
-      flex: 1;
-      font-family: inherit;
-      font-size: 13px;
-      padding: 6px 10px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      color: var(--text-primary);
-      min-width: 80px;
-    }
-    .button-label-item input[type="text"]:focus { border-color: var(--accent-cyan); outline: none; }
-    .button-label-item input[type="text"]:disabled { opacity: 0.4; }
 
     .role-section {
       background: var(--bg-primary);
@@ -369,7 +459,7 @@
       border: 1px solid var(--border-color);
       border-radius: 8px;
       width: 100%;
-      max-width: 700px;
+      max-width: 800px;
       max-height: 90vh;
       overflow-y: auto;
     }
@@ -395,6 +485,40 @@
     .message.success { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); color: var(--accent-green); }
     .message.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--accent-red); }
 
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-switch.active { background: var(--accent-cyan); border-color: var(--accent-cyan); }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: var(--text-primary);
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.active::after { transform: translateX(20px); }
+
+    .audit-item {
+      display: flex;
+      gap: 16px;
+      padding: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .audit-time { font-size: 12px; color: var(--text-muted); min-width: 140px; }
+    .audit-action { flex: 1; }
+    .audit-user { font-size: 12px; color: var(--accent-cyan); }
+
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg-primary); }
     ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
@@ -405,18 +529,27 @@
 
 <div class="container">
   <div class="header">
-    <div class="header-title">Platform Admin</div>
-    <div class="header-subtitle">App Owner Console</div>
+    <div class="header-left">
+      <div class="header-title">Platform Admin</div>
+      <div class="header-subtitle">App Owner Console</div>
+    </div>
+    <div class="connection-status">
+      <div class="status-dot checking" id="connDot"></div>
+      <span id="connText">Checking connection...</span>
+    </div>
   </div>
 
   <div class="top-nav">
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="switchTab('tenants')">Tenants</button>
       <button class="nav-tab" onclick="switchTab('tiers')">Tiers</button>
-      <button class="nav-tab" onclick="switchTab('presets')">Presets</button>
+      <button class="nav-tab" onclick="switchTab('presets')">UI Presets</button>
       <button class="nav-tab" onclick="switchTab('themes')">Themes</button>
       <button class="nav-tab" onclick="switchTab('roles')">Roles</button>
-      <button class="nav-tab" onclick="switchTab('analytics')">Analytics</button>
+      <button class="nav-tab" onclick="switchTab('announcements')">Announcements</button>
+      <button class="nav-tab" onclick="switchTab('features')">Feature Flags</button>
+      <button class="nav-tab" onclick="switchTab('audit')">Audit Log</button>
+      <button class="nav-tab" onclick="switchTab('settings')">Settings</button>
     </div>
     <div class="nav-actions">
       <button class="btn" onclick="refreshAllData()">Refresh</button>
@@ -424,65 +557,78 @@
     </div>
   </div>
 
-  <div class="kpi-grid">
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Monthly Recurring Revenue</span><span class="speedo-trend up" id="mrrTrend">+12.4%</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill cyan" id="mrrGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value cyan" id="mrrValue">$0</div>
-      <div class="speedo-unit">Total MRR</div>
-      <div class="speedo-footer"><span>Target: $50,000</span><span id="mrrPercent">0%</span></div>
+  <!-- Collapsible KPI Section -->
+  <div class="kpi-section">
+    <div class="kpi-header" onclick="toggleKPIs()">
+      <div class="kpi-header-left">
+        <div class="kpi-header-title">📊 Platform Metrics</div>
+        <div class="kpi-header-summary" id="kpiSummary">Loading...</div>
+      </div>
+      <div class="kpi-toggle" id="kpiToggle">▼</div>
     </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Active Tenants</span><span class="speedo-trend up" id="tenantTrend">+8</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill green" id="tenantGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value green" id="tenantCount">0</div>
-      <div class="speedo-unit">Active Accounts</div>
-      <div class="speedo-footer"><span>Target: 100</span><span id="tenantPercent">0%</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Churn Rate</span><span class="speedo-trend down" id="churnTrend">-0.5%</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill orange" id="churnGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value orange" id="churnValue">0%</div>
-      <div class="speedo-unit">Monthly Churn</div>
-      <div class="speedo-footer"><span>Target: &lt;5%</span><span id="churnStatus">Healthy</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Trial Conversion</span><span class="speedo-trend up" id="convTrend">+3.2%</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill purple" id="convGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value purple" id="convValue">0%</div>
-      <div class="speedo-unit">Conversion Rate</div>
-      <div class="speedo-footer"><span>Target: 25%</span><span id="convStatus">Good</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Avg Revenue Per Tenant</span><span class="speedo-trend up" id="arptTrend">+$15</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill cyan" id="arptGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value cyan" id="arptValue">$0</div>
-      <div class="speedo-unit">Per Tenant/Month</div>
-      <div class="speedo-footer"><span>Target: $500</span><span id="arptPercent">0%</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Total Platform Users</span><span class="speedo-trend up" id="userTrend">+45</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill green" id="userGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value green" id="userCount">0</div>
-      <div class="speedo-unit">Total Users</div>
-      <div class="speedo-footer"><span>Target: 500</span><span id="userPercent">0%</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Customer Lifetime Value</span><span class="speedo-trend up" id="ltvTrend">+$200</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill orange" id="ltvGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value orange" id="ltvValue">$0</div>
-      <div class="speedo-unit">Average LTV</div>
-      <div class="speedo-footer"><span>Target: $6,000</span><span id="ltvPercent">0%</span></div>
-    </div>
-    <div class="speedo-card">
-      <div class="speedo-header"><span class="speedo-label">Active Trials</span><span class="speedo-trend up" id="trialTrend">+5</span></div>
-      <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill purple" id="trialGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
-      <div class="speedo-value purple" id="trialCount">0</div>
-      <div class="speedo-unit">In Trial Period</div>
-      <div class="speedo-footer"><span>Avg Trial: 14 days</span><span id="trialStatus">Pipeline</span></div>
+    <div class="kpi-content" id="kpiContent">
+      <div class="kpi-grid">
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Monthly Recurring Revenue</span><span class="speedo-trend up" id="mrrTrend">+12.4%</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill cyan" id="mrrGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value cyan" id="mrrValue">$0</div>
+          <div class="speedo-unit">Total MRR</div>
+          <div class="speedo-footer"><span>Target: $50,000</span><span id="mrrPercent">0%</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Active Tenants</span><span class="speedo-trend up" id="tenantTrend">+8</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill green" id="tenantGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value green" id="tenantCount">0</div>
+          <div class="speedo-unit">Active Accounts</div>
+          <div class="speedo-footer"><span>Target: 100</span><span id="tenantPercent">0%</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Churn Rate</span><span class="speedo-trend down" id="churnTrend">-0.5%</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill orange" id="churnGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value orange" id="churnValue">0%</div>
+          <div class="speedo-unit">Monthly Churn</div>
+          <div class="speedo-footer"><span>Target: &lt;5%</span><span id="churnStatus">Healthy</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Trial Conversion</span><span class="speedo-trend up" id="convTrend">+3.2%</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill purple" id="convGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value purple" id="convValue">0%</div>
+          <div class="speedo-unit">Conversion Rate</div>
+          <div class="speedo-footer"><span>Target: 25%</span><span id="convStatus">Good</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Avg Revenue Per Tenant</span><span class="speedo-trend up" id="arptTrend">+$15</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill cyan" id="arptGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value cyan" id="arptValue">$0</div>
+          <div class="speedo-unit">Per Tenant/Month</div>
+          <div class="speedo-footer"><span>Target: $500</span><span id="arptPercent">0%</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Total Platform Users</span><span class="speedo-trend up" id="userTrend">+45</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill green" id="userGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value green" id="userCount">0</div>
+          <div class="speedo-unit">Total Users</div>
+          <div class="speedo-footer"><span>Target: 500</span><span id="userPercent">0%</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Customer Lifetime Value</span><span class="speedo-trend up" id="ltvTrend">+$200</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill orange" id="ltvGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value orange" id="ltvValue">$0</div>
+          <div class="speedo-unit">Average LTV</div>
+          <div class="speedo-footer"><span>Target: $6,000</span><span id="ltvPercent">0%</span></div>
+        </div>
+        <div class="speedo-card">
+          <div class="speedo-header"><span class="speedo-label">Active Trials</span><span class="speedo-trend up" id="trialTrend">+5</span></div>
+          <div class="speedo-gauge"><svg viewBox="0 0 120 65"><path class="gauge-bg" d="M 10 60 A 50 50 0 0 1 110 60"/><path class="gauge-fill purple" id="trialGauge" d="M 10 60 A 50 50 0 0 1 110 60" stroke-dasharray="0 157"/></svg></div>
+          <div class="speedo-value purple" id="trialCount">0</div>
+          <div class="speedo-unit">In Trial Period</div>
+          <div class="speedo-footer"><span>Avg Trial: 14 days</span><span id="trialStatus">Pipeline</span></div>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- TENANTS TAB -->
   <div class="tab-content active" id="tenants">
     <div class="panel">
       <div class="panel-header"><span class="panel-title">Create Tenant Account</span><div class="panel-actions"><button class="btn" onclick="cancelEdit()" id="cancelEditBtn" style="display:none;">Cancel</button><button class="btn btn-success" onclick="addTenantAndUser()" id="saveTenantBtn">Add Tenant</button></div></div>
@@ -504,49 +650,46 @@
     <div class="panel">
       <div class="panel-header"><span class="panel-title">All Tenants</span><div class="panel-actions"><input type="text" class="form-input" id="tenantSearch" placeholder="Search..." style="width:180px;" oninput="filterTenants()"><button class="btn" onclick="loadTenants()">Refresh</button></div></div>
       <div id="tenantsLoading" class="loading">Loading...</div>
-      <table class="data-table" id="tenantsTable" style="display:none;"><thead><tr><th>Company</th><th>Owner</th><th>Preset</th><th>Theme</th><th>Tier</th><th>MRR</th><th>Users</th><th>Status</th><th>Actions</th></tr></thead><tbody id="tenantsTableBody"></tbody></table>
+      <div style="overflow-x:auto;"><table class="data-table" id="tenantsTable" style="display:none;"><thead><tr><th>Company</th><th>Owner</th><th>Preset</th><th>Theme</th><th>Tier</th><th>MRR</th><th>Users</th><th>Status</th><th>Actions</th></tr></thead><tbody id="tenantsTableBody"></tbody></table></div>
     </div>
   </div>
 
+  <!-- TIERS TAB -->
   <div class="tab-content" id="tiers">
     <div class="panel">
       <div class="panel-header"><span class="panel-title">Subscription Tiers</span><button class="btn btn-success" onclick="openTierModal()">+ Add Tier</button></div>
       <div class="info-box">Define pricing tiers with features and Stripe integration.</div>
       <div id="tiersLoading" class="loading">Loading...</div>
-      <table class="data-table" id="tiersTable" style="display:none;"><thead><tr><th>Tier</th><th>Monthly</th><th>Annual</th><th>Limits</th><th>Features</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead><tbody id="tiersTableBody"></tbody></table>
+      <div style="overflow-x:auto;"><table class="data-table" id="tiersTable" style="display:none;"><thead><tr><th>Tier</th><th>Monthly</th><th>Annual</th><th>Limits</th><th>Features</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead><tbody id="tiersTableBody"></tbody></table></div>
     </div>
   </div>
 
+  <!-- PRESETS TAB -->
   <div class="tab-content" id="presets">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">UI Presets</span><button class="btn btn-success" onclick="openPresetModal()">+ Add Preset</button></div>
-      <div class="info-box">UI Presets define navigation and action buttons for different industries.</div>
+      <div class="panel-header"><span class="panel-title">UI Presets - Button Configuration</span><button class="btn btn-success" onclick="openPresetModal()">+ Add Preset</button></div>
+      <div class="info-box">UI Presets define which buttons appear and their labels/routes. Each button can be enabled, relabeled, and linked to a custom route.</div>
       <div id="presetsLoading" class="loading">Loading...</div>
-      <table class="data-table" id="presetsTable" style="display:none;"><thead><tr><th>Preset</th><th>Industry</th><th>Buttons</th><th>Tenants</th><th>Status</th><th>Actions</th></tr></thead><tbody id="presetsTableBody"></tbody></table>
-    </div>
-    <div class="panel">
-      <div class="panel-header"><span class="panel-title">Built-in Templates</span></div>
-      <div style="display:grid; gap:12px;">
-        <div class="role-section"><div class="role-header">Car Dealership</div><div class="button-preview"><span class="preview-btn primary">Business</span><span class="preview-btn primary">Customers</span><span class="preview-btn primary">Vehicles</span><span class="preview-btn">Service</span><span class="preview-btn">Parts</span><span class="preview-btn">Sales</span></div></div>
-        <div class="role-section"><div class="role-header">Law Firm</div><div class="button-preview"><span class="preview-btn primary">Business</span><span class="preview-btn primary">Clients</span><span class="preview-btn primary">Cases</span><span class="preview-btn">Tasks</span><span class="preview-btn">Billing</span></div></div>
-      </div>
+      <div style="overflow-x:auto;"><table class="data-table" id="presetsTable" style="display:none;"><thead><tr><th>Preset</th><th>Industry</th><th>Nav Buttons</th><th>Action Buttons</th><th>Tenants</th><th>Status</th><th>Actions</th></tr></thead><tbody id="presetsTableBody"></tbody></table></div>
     </div>
   </div>
 
+  <!-- THEMES TAB -->
   <div class="tab-content" id="themes">
     <div class="panel">
       <div class="panel-header"><span class="panel-title">Global Themes</span><button class="btn btn-success" onclick="openThemeModal()">+ Create Theme</button></div>
-      <div class="info-box">Global themes apply across all tenant settings pages.</div>
+      <div class="info-box">Global themes apply across all tenant interfaces. Tenants can select from available themes.</div>
       <div id="themesLoading" class="loading">Loading...</div>
-      <table class="data-table" id="themesTable" style="display:none;"><thead><tr><th>Theme</th><th>Preview</th><th>Type</th><th>Tenants</th><th>Default</th><th>Actions</th></tr></thead><tbody id="themesTableBody"></tbody></table>
+      <div style="overflow-x:auto;"><table class="data-table" id="themesTable" style="display:none;"><thead><tr><th>Theme</th><th>Preview</th><th>Type</th><th>Tenants</th><th>Default</th><th>Actions</th></tr></thead><tbody id="themesTableBody"></tbody></table></div>
     </div>
   </div>
 
+  <!-- ROLES TAB -->
   <div class="tab-content" id="roles">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">Role Permissions</span><button class="btn btn-primary" onclick="saveRolePermissions()">Save</button></div>
-      <div class="info-box">Configure button access per role. Owners always have full access.</div>
-      <div class="role-section"><div class="role-header">Owner - Full Access</div></div>
+      <div class="panel-header"><span class="panel-title">Role Permissions</span><button class="btn btn-primary" onclick="saveRolePermissions()">Save Permissions</button></div>
+      <div class="info-box">Configure which buttons each role can access. Owners always have full access.</div>
+      <div class="role-section"><div class="role-header">Owner - Full Access (Cannot be restricted)</div></div>
       <div class="role-section"><div class="role-header">Manager</div><div class="checkbox-grid" id="managerButtons"></div></div>
       <div class="role-section"><div class="role-header">Technician</div><div class="checkbox-grid" id="technicianButtons"></div></div>
       <div class="role-section"><div class="role-header">Admin</div><div class="checkbox-grid" id="adminButtons"></div></div>
@@ -555,69 +698,142 @@
     </div>
   </div>
 
-  <div class="tab-content" id="analytics">
+  <!-- ANNOUNCEMENTS TAB -->
+  <div class="tab-content" id="announcements">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">Analytics</span><select class="form-select" id="analyticsRange" onchange="loadAnalytics()" style="width:140px;"><option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="90">Last 90 Days</option></select></div>
-      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:20px;">
-        <div class="role-section" style="text-align:center;"><div class="speedo-label">New Signups</div><div class="speedo-value cyan" style="font-size:28px;" id="analyticSignups">0</div></div>
-        <div class="role-section" style="text-align:center;"><div class="speedo-label">Revenue Growth</div><div class="speedo-value green" style="font-size:28px;" id="analyticGrowth">0%</div></div>
-        <div class="role-section" style="text-align:center;"><div class="speedo-label">Support Tickets</div><div class="speedo-value orange" style="font-size:28px;" id="analyticTickets">0</div></div>
-        <div class="role-section" style="text-align:center;"><div class="speedo-label">API Calls</div><div class="speedo-value purple" style="font-size:28px;" id="analyticAPI">0</div></div>
+      <div class="panel-header"><span class="panel-title">Tenant Announcements</span><button class="btn btn-success" onclick="openAnnouncementModal()">+ New Announcement</button></div>
+      <div class="info-box">Broadcast messages to all tenants or specific tiers. Announcements appear in tenant dashboards.</div>
+      <div id="announcementsLoading" class="loading">Loading...</div>
+      <div id="announcementsList"></div>
+    </div>
+  </div>
+
+  <!-- FEATURE FLAGS TAB -->
+  <div class="tab-content" id="features">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Feature Flags</span><button class="btn btn-success" onclick="openFeatureModal()">+ Add Feature Flag</button></div>
+      <div class="info-box">Control feature rollouts across tenants. Enable/disable features globally or per tier.</div>
+      <div id="featuresLoading" class="loading">Loading...</div>
+      <div id="featuresList"></div>
+    </div>
+  </div>
+
+  <!-- AUDIT LOG TAB -->
+  <div class="tab-content" id="audit">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Audit Log</span><div class="panel-actions"><select class="form-select" id="auditFilter" style="width:150px;" onchange="filterAuditLog()"><option value="all">All Actions</option><option value="tenant">Tenant Changes</option><option value="tier">Tier Changes</option><option value="preset">Preset Changes</option><option value="theme">Theme Changes</option></select><button class="btn" onclick="loadAuditLog()">Refresh</button></div></div>
+      <div class="info-box">Track all administrative actions. Logs are retained for 90 days.</div>
+      <div id="auditLogContent"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-content" id="settings">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Platform Settings</span><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Platform Name</label><input type="text" class="form-input" id="settingPlatformName" value="My SaaS Platform"></div>
+        <div class="form-group"><label class="form-label">Support Email</label><input type="email" class="form-input" id="settingSupportEmail" value="support@example.com"></div>
+        <div class="form-group"><label class="form-label">Default Trial Days</label><input type="number" class="form-input" id="settingTrialDays" value="14"></div>
+        <div class="form-group"><label class="form-label">Max Users Per Tenant (Default)</label><input type="number" class="form-input" id="settingMaxUsers" value="100"></div>
+        <div class="form-group full"><label class="form-label">Welcome Email Template</label><textarea class="form-textarea" id="settingWelcomeEmail" rows="4">Welcome to {platform_name}! Your account is ready.</textarea></div>
       </div>
-      <div class="info-box">Revenue by Tier</div>
-      <div id="revenueBreakdown" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px;"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">API Configuration</span></div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Supabase URL</label><input type="text" class="form-input" id="settingSupabaseUrl" value="https://kxqkwpkmtgvmthpafoqx.supabase.co"></div>
+        <div class="form-group"><label class="form-label">Stripe Public Key</label><input type="text" class="form-input" id="settingStripeKey" placeholder="pk_live_..."></div>
+        <div class="form-group full"><label class="form-label">Supabase Anon Key</label><input type="text" class="form-input" id="settingSupabaseKey" value="eyJhbGciOiJIUzI1NiIs..."></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Data Management</span></div>
+      <div class="panel-actions" style="gap:12px;">
+        <button class="btn" onclick="exportAllData()">Export All Data</button>
+        <button class="btn btn-danger" onclick="clearLocalData()">Clear Local Cache</button>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- TIER MODAL -->
 <div class="modal-overlay" id="tierModal">
   <div class="modal">
     <div class="modal-header"><span class="modal-title" id="tierModalTitle">Add Tier</span><button class="modal-close" onclick="closeTierModal()">&times;</button></div>
     <div class="modal-body">
       <input type="hidden" id="editTierId">
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Tier Name *</label><input type="text" class="form-input" id="tierName"></div>
-        <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="tierDisplayName"></div>
-        <div class="form-group"><label class="form-label">Monthly Price *</label><input type="number" class="form-input" id="tierMonthlyPrice" step="0.01"></div>
-        <div class="form-group"><label class="form-label">Annual Price</label><input type="number" class="form-input" id="tierAnnualPrice" step="0.01"></div>
-        <div class="form-group"><label class="form-label">Max Users</label><input type="number" class="form-input" id="tierMaxUsers"></div>
-        <div class="form-group"><label class="form-label">Max Units</label><input type="number" class="form-input" id="tierMaxVehicles"></div>
-        <div class="form-group"><label class="form-label">Stripe Monthly ID</label><input type="text" class="form-input" id="tierStripeMonthly"></div>
+        <div class="form-group"><label class="form-label">Tier Name *</label><input type="text" class="form-input" id="tierName" placeholder="e.g., professional"></div>
+        <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="tierDisplayName" placeholder="e.g., Professional Plan"></div>
+        <div class="form-group"><label class="form-label">Monthly Price ($) *</label><input type="number" class="form-input" id="tierMonthlyPrice" step="0.01" placeholder="99.00"></div>
+        <div class="form-group"><label class="form-label">Annual Price ($)</label><input type="number" class="form-input" id="tierAnnualPrice" step="0.01" placeholder="990.00"></div>
+        <div class="form-group"><label class="form-label">Max Users</label><input type="number" class="form-input" id="tierMaxUsers" placeholder="Unlimited if empty"></div>
+        <div class="form-group"><label class="form-label">Max Units</label><input type="number" class="form-input" id="tierMaxVehicles" placeholder="Unlimited if empty"></div>
+        <div class="form-group"><label class="form-label">Stripe Monthly Price ID</label><input type="text" class="form-input" id="tierStripeMonthly" placeholder="price_..."></div>
         <div class="form-group"><label class="form-label">Sort Order</label><input type="number" class="form-input" id="tierSortOrder" value="0"></div>
-        <div class="form-group full"><label class="form-label">Features (one per line)</label><textarea class="form-textarea" id="tierFeatures"></textarea></div>
+        <div class="form-group full"><label class="form-label">Features (one per line)</label><textarea class="form-textarea" id="tierFeatures" placeholder="Feature 1&#10;Feature 2&#10;Feature 3"></textarea></div>
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="tierIsActive"><option value="true">Active</option><option value="false">Inactive</option></select></div>
       </div>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeTierModal()">Cancel</button><button class="btn btn-success" onclick="saveTier()">Save</button></div>
+    <div class="modal-footer"><button class="btn" onclick="closeTierModal()">Cancel</button><button class="btn btn-success" onclick="saveTier()">Save Tier</button></div>
   </div>
 </div>
 
+<!-- PRESET MODAL (Enhanced with relabel + relink) -->
 <div class="modal-overlay" id="presetModal">
-  <div class="modal" style="max-width:800px;">
-    <div class="modal-header"><span class="modal-title" id="presetModalTitle">Add Preset</span><button class="modal-close" onclick="closePresetModal()">&times;</button></div>
+  <div class="modal" style="max-width:900px;">
+    <div class="modal-header"><span class="modal-title" id="presetModalTitle">Add UI Preset</span><button class="modal-close" onclick="closePresetModal()">&times;</button></div>
     <div class="modal-body">
       <input type="hidden" id="editPresetId">
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Name *</label><input type="text" class="form-input" id="presetName"></div>
-        <div class="form-group"><label class="form-label">Industry</label><select class="form-select" id="presetIndustry"><option value="automotive">Automotive</option><option value="powersports">Powersports</option><option value="marine">Marine</option><option value="field_sales">Field Sales</option><option value="legal">Legal</option><option value="other">Other</option></select></div>
-        <div class="form-group full"><label class="form-label">Description</label><input type="text" class="form-input" id="presetDescription"></div>
-        <div class="form-group full"><label class="form-label">Navigation Buttons</label><div class="button-label-grid" id="presetNavButtons"></div></div>
-        <div class="form-group full"><label class="form-label">Action Buttons</label><div class="button-label-grid" id="presetActionButtons"></div></div>
+        <div class="form-group"><label class="form-label">Preset Name *</label><input type="text" class="form-input" id="presetName" placeholder="e.g., Car Dealership Pro"></div>
+        <div class="form-group"><label class="form-label">Industry</label><select class="form-select" id="presetIndustry"><option value="automotive">Automotive</option><option value="powersports">Powersports</option><option value="marine">Marine</option><option value="field_sales">Field Sales</option><option value="legal">Legal</option><option value="healthcare">Healthcare</option><option value="real_estate">Real Estate</option><option value="other">Other</option></select></div>
+        <div class="form-group full"><label class="form-label">Description</label><input type="text" class="form-input" id="presetDescription" placeholder="Brief description..."></div>
+        
+        <div class="form-group full">
+          <label class="form-label">Navigation Buttons</label>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Check to enable, customize label and route for each button.</p>
+          <div class="button-config-header">
+            <span>ON</span>
+            <span>Button ID</span>
+            <span>Custom Label</span>
+            <span>Route/Link</span>
+          </div>
+          <div class="button-config-grid" id="presetNavButtons"></div>
+        </div>
+        
+        <div class="form-group full">
+          <label class="form-label">Action Buttons</label>
+          <div class="button-config-header">
+            <span>ON</span>
+            <span>Button ID</span>
+            <span>Custom Label</span>
+            <span>Route/Link</span>
+          </div>
+          <div class="button-config-grid" id="presetActionButtons"></div>
+        </div>
+        
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="presetIsActive"><option value="true">Active</option><option value="false">Inactive</option></select></div>
-        <div class="form-group full"><label class="form-label">Preview</label><div class="button-preview" id="presetPreview"><span style="color:var(--text-muted);">Select buttons...</span></div></div>
+        
+        <div class="form-group full">
+          <label class="form-label">Live Preview</label>
+          <div class="button-preview" id="presetPreview"><span style="color:var(--text-muted);">Enable buttons above to see preview...</span></div>
+        </div>
       </div>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closePresetModal()">Cancel</button><button class="btn btn-success" onclick="savePreset()">Save</button></div>
+    <div class="modal-footer"><button class="btn" onclick="closePresetModal()">Cancel</button><button class="btn btn-success" onclick="savePreset()">Save Preset</button></div>
   </div>
 </div>
 
+<!-- THEME MODAL -->
 <div class="modal-overlay" id="themeModal">
   <div class="modal">
     <div class="modal-header"><span class="modal-title" id="themeModalTitle">Create Theme</span><button class="modal-close" onclick="closeThemeModal()">&times;</button></div>
     <div class="modal-body">
       <input type="hidden" id="editThemeId">
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Name *</label><input type="text" class="form-input" id="themeName"></div>
+        <div class="form-group"><label class="form-label">Theme Name *</label><input type="text" class="form-input" id="themeName" placeholder="e.g., Corporate Blue"></div>
         <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="themeType" onchange="updateThemePreview()"><option value="dark">Dark</option><option value="light">Light</option></select></div>
         <div class="form-group full">
           <label class="form-label">Colors</label>
@@ -629,27 +845,145 @@
           <div class="color-row"><label>Border</label><input type="color" id="themeBorder" value="#2a3441" onchange="updateThemePreview()"><input type="text" id="themeBorderHex" value="#2a3441"></div>
         </div>
         <div class="form-group full"><label class="form-label">Preview</label><div class="theme-preview-box" id="themePreviewBox"><div class="theme-preview-header" id="themePreviewHeader"><div class="theme-preview-dot" style="background:#ff5f57;"></div><div class="theme-preview-dot" style="background:#febc2e;"></div><div class="theme-preview-dot" style="background:#28c840;"></div></div><div class="theme-preview-body" id="themePreviewBody"><div class="theme-preview-sidebar" id="themePreviewSidebar"></div><div class="theme-preview-content" id="themePreviewContent"></div></div></div></div>
-        <div class="form-group"><label class="form-label">Default</label><select class="form-select" id="themeIsDefault"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="form-group"><label class="form-label">Set as Default</label><select class="form-select" id="themeIsDefault"><option value="false">No</option><option value="true">Yes</option></select></div>
         <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="themeIsActive"><option value="true">Active</option><option value="false">Inactive</option></select></div>
       </div>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeThemeModal()">Cancel</button><button class="btn btn-success" onclick="saveTheme()">Save</button></div>
+    <div class="modal-footer"><button class="btn" onclick="closeThemeModal()">Cancel</button><button class="btn btn-success" onclick="saveTheme()">Save Theme</button></div>
+  </div>
+</div>
+
+<!-- ANNOUNCEMENT MODAL -->
+<div class="modal-overlay" id="announcementModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">New Announcement</span><button class="modal-close" onclick="closeAnnouncementModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full"><label class="form-label">Title *</label><input type="text" class="form-input" id="announcementTitle" placeholder="Announcement title"></div>
+        <div class="form-group full"><label class="form-label">Message *</label><textarea class="form-textarea" id="announcementMessage" rows="4" placeholder="Your message to tenants..."></textarea></div>
+        <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="announcementType"><option value="info">Info</option><option value="warning">Warning</option><option value="success">Success</option><option value="urgent">Urgent</option></select></div>
+        <div class="form-group"><label class="form-label">Target Tiers</label><select class="form-select" id="announcementTiers"><option value="all">All Tiers</option></select></div>
+        <div class="form-group"><label class="form-label">Expires</label><input type="date" class="form-input" id="announcementExpires"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeAnnouncementModal()">Cancel</button><button class="btn btn-success" onclick="saveAnnouncement()">Publish</button></div>
+  </div>
+</div>
+
+<!-- FEATURE FLAG MODAL -->
+<div class="modal-overlay" id="featureModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Add Feature Flag</span><button class="modal-close" onclick="closeFeatureModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Feature Key *</label><input type="text" class="form-input" id="featureKey" placeholder="e.g., new_dashboard"></div>
+        <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="featureName" placeholder="e.g., New Dashboard"></div>
+        <div class="form-group full"><label class="form-label">Description</label><textarea class="form-textarea" id="featureDescription" placeholder="What does this feature do?"></textarea></div>
+        <div class="form-group"><label class="form-label">Enabled For</label><select class="form-select" id="featureTarget"><option value="none">Disabled</option><option value="all">All Tenants</option><option value="tier">Specific Tiers</option></select></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeFeatureModal()">Cancel</button><button class="btn btn-success" onclick="saveFeature()">Save</button></div>
   </div>
 </div>
 
 <script>
+// Configuration
 const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ALL_NAV_BUTTONS = ['Business', 'Customers', 'Vehicles', 'Clients', 'Cases', 'Units', 'Boats', 'Settings'];
-const ALL_ACTION_BUTTONS = ['Service', 'Parts', 'Sales', 'Fleet', 'Rentals', 'Scheduler', 'Calendar', 'Routes', 'Leads', 'Tasks', 'Documents', 'Billing', 'Storage', 'Inbox', 'Reports'];
+let isConnected = false;
 
-let tiers = [], tenants = [], presets = [], themes = [], rolePermissions = {}, editingTenantId = null;
+// Button definitions with default routes
+const ALL_NAV_BUTTONS = [
+  { id: 'Dashboard', defaultLabel: 'Dashboard', defaultRoute: '/dashboard' },
+  { id: 'Business', defaultLabel: 'Business', defaultRoute: '/business' },
+  { id: 'Customers', defaultLabel: 'Customers', defaultRoute: '/customers' },
+  { id: 'Vehicles', defaultLabel: 'Vehicles', defaultRoute: '/vehicles' },
+  { id: 'Clients', defaultLabel: 'Clients', defaultRoute: '/clients' },
+  { id: 'Cases', defaultLabel: 'Cases', defaultRoute: '/cases' },
+  { id: 'Units', defaultLabel: 'Units', defaultRoute: '/units' },
+  { id: 'Boats', defaultLabel: 'Boats', defaultRoute: '/boats' },
+  { id: 'Properties', defaultLabel: 'Properties', defaultRoute: '/properties' },
+  { id: 'Settings', defaultLabel: 'Settings', defaultRoute: '/settings' }
+];
 
+const ALL_ACTION_BUTTONS = [
+  { id: 'Service', defaultLabel: 'Service', defaultRoute: '/service' },
+  { id: 'Parts', defaultLabel: 'Parts', defaultRoute: '/parts' },
+  { id: 'Sales', defaultLabel: 'Sales', defaultRoute: '/sales' },
+  { id: 'Fleet', defaultLabel: 'Fleet', defaultRoute: '/fleet' },
+  { id: 'Rentals', defaultLabel: 'Rentals', defaultRoute: '/rentals' },
+  { id: 'Scheduler', defaultLabel: 'Scheduler', defaultRoute: '/scheduler' },
+  { id: 'Calendar', defaultLabel: 'Calendar', defaultRoute: '/calendar' },
+  { id: 'Routes', defaultLabel: 'Routes', defaultRoute: '/routes' },
+  { id: 'Leads', defaultLabel: 'Leads', defaultRoute: '/leads' },
+  { id: 'Tasks', defaultLabel: 'Tasks', defaultRoute: '/tasks' },
+  { id: 'Documents', defaultLabel: 'Documents', defaultRoute: '/documents' },
+  { id: 'Billing', defaultLabel: 'Billing', defaultRoute: '/billing' },
+  { id: 'Storage', defaultLabel: 'Storage', defaultRoute: '/storage' },
+  { id: 'Inbox', defaultLabel: 'Inbox', defaultRoute: '/inbox' },
+  { id: 'Reports', defaultLabel: 'Reports', defaultRoute: '/reports' },
+  { id: 'Appointments', defaultLabel: 'Appointments', defaultRoute: '/appointments' }
+];
+
+let tiers = [], tenants = [], presets = [], themes = [], rolePermissions = {}, announcements = [], featureFlags = [], auditLog = [];
+let editingTenantId = null;
+let kpisCollapsed = false;
+
+// Initialize
 async function init() {
+  await checkConnection();
   await Promise.all([loadTiers(), loadTenants(), loadPresets(), loadThemes(), loadRolePermissions()]);
-  populatePresetModal(); populateRolePermissions(); updateKPIs(); loadAnalytics();
+  loadAnnouncements();
+  loadFeatureFlags();
+  loadAuditLog();
+  populatePresetModal();
+  populateRolePermissions();
+  updateKPIs();
+}
+
+// Connection check
+async function checkConnection() {
+  const dot = document.getElementById('connDot');
+  const text = document.getElementById('connText');
+  
+  try {
+    // Test connection with a simple query using fetch
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=tenant_id&limit=1`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Connection failed');
+    
+    isConnected = true;
+    dot.className = 'status-dot connected';
+    text.textContent = 'Connected to Supabase';
+    addAuditEntry('system', 'Database connection established');
+  } catch (e) {
+    isConnected = false;
+    dot.className = 'status-dot disconnected';
+    text.textContent = 'Offline Mode (Local Storage)';
+    console.warn('Using local storage mode');
+    addAuditEntry('system', 'Running in offline mode');
+  }
+}
+
+// KPI Toggle
+function toggleKPIs() {
+  kpisCollapsed = !kpisCollapsed;
+  document.getElementById('kpiContent').classList.toggle('collapsed', kpisCollapsed);
+  document.getElementById('kpiToggle').classList.toggle('collapsed', kpisCollapsed);
+  localStorage.setItem('kpisCollapsed', kpisCollapsed);
+}
+
+// Restore KPI state
+if (localStorage.getItem('kpisCollapsed') === 'true') {
+  kpisCollapsed = true;
+  document.getElementById('kpiContent')?.classList.add('collapsed');
+  document.getElementById('kpiToggle')?.classList.add('collapsed');
 }
 
 function switchTab(tabName) {
@@ -660,101 +994,1329 @@ function switchTab(tabName) {
 }
 
 function updateKPIs() {
-  const active = tenants.filter(t => t.status === 'active'), trials = tenants.filter(t => t.status === 'trial');
+  const active = tenants.filter(t => t.status === 'active');
+  const trials = tenants.filter(t => t.status === 'trial');
   const mrr = tenants.reduce((s, t) => s + (t.monthly_recurring_revenue || 0), 0);
   const users = tenants.reduce((s, t) => s + (t.user_count || 1), 0);
+  
+  // Update summary
+  document.getElementById('kpiSummary').textContent = `${active.length} active tenants • $${mrr.toLocaleString()} MRR • ${users} users`;
+  
+  // MRR
   document.getElementById('mrrValue').textContent = '$' + mrr.toLocaleString();
   document.getElementById('mrrPercent').textContent = ((mrr / 50000) * 100).toFixed(1) + '%';
   animateGauge('mrrGauge', Math.min((mrr / 50000) * 100, 100));
+  
+  // Tenants
   document.getElementById('tenantCount').textContent = active.length;
   document.getElementById('tenantPercent').textContent = active.length + '%';
   animateGauge('tenantGauge', Math.min(active.length, 100));
-  document.getElementById('churnValue').textContent = '3.2%'; animateGauge('churnGauge', 32);
-  document.getElementById('convValue').textContent = '22.5%'; animateGauge('convGauge', 90);
+  
+  // Churn
+  document.getElementById('churnValue').textContent = '3.2%';
+  animateGauge('churnGauge', 32);
+  
+  // Conversion
+  document.getElementById('convValue').textContent = '22.5%';
+  animateGauge('convGauge', 90);
+  
+  // ARPT
   const arpt = active.length > 0 ? mrr / active.length : 0;
   document.getElementById('arptValue').textContent = '$' + arpt.toFixed(0);
   document.getElementById('arptPercent').textContent = ((arpt / 500) * 100).toFixed(1) + '%';
   animateGauge('arptGauge', Math.min((arpt / 500) * 100, 100));
+  
+  // Users
   document.getElementById('userCount').textContent = users;
   document.getElementById('userPercent').textContent = ((users / 500) * 100).toFixed(1) + '%';
   animateGauge('userGauge', Math.min((users / 500) * 100, 100));
+  
+  // LTV
   const ltv = arpt * 12;
   document.getElementById('ltvValue').textContent = '$' + ltv.toFixed(0);
   document.getElementById('ltvPercent').textContent = ((ltv / 6000) * 100).toFixed(1) + '%';
   animateGauge('ltvGauge', Math.min((ltv / 6000) * 100, 100));
+  
+  // Trials
   document.getElementById('trialCount').textContent = trials.length;
   animateGauge('trialGauge', trials.length * 10);
 }
 
-function animateGauge(id, pct) { document.getElementById(id).setAttribute('stroke-dasharray', `${(pct / 100) * 157} 157`); }
-
-async function loadTiers() {
-  try { const { data } = await supabaseClient.from('subscription_tiers').select('*').order('sort_order'); tiers = data?.length ? data : getDefaultTiers(); } catch(e) { tiers = getDefaultTiers(); }
-  renderTiers(); populateTierSelect();
+function animateGauge(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.setAttribute('stroke-dasharray', `${(pct / 100) * 157} 157`);
 }
 
-function getDefaultTiers() { return [{tier_id:'starter',tier_display_name:'Starter',monthly_price:49,annual_price:490,max_users:3,is_active:true,features:['Basic Support']},{tier_id:'professional',tier_display_name:'Professional',monthly_price:149,annual_price:1490,max_users:10,is_active:true,features:['Priority Support','API Access']},{tier_id:'enterprise',tier_display_name:'Enterprise',monthly_price:399,annual_price:3990,is_active:true,features:['24/7 Support','Custom Integration']}]; }
+// Storage helpers
+function saveLocal(key, data) {
+  localStorage.setItem('admin_' + key, JSON.stringify(data));
+}
+
+function loadLocal(key) {
+  try {
+    return JSON.parse(localStorage.getItem('admin_' + key)) || null;
+  } catch { return null; }
+}
+
+// TIERS
+async function loadTiers() {
+  if (isConnected) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers?select=*&order=sort_order`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length) { tiers = data; saveLocal('tiers', tiers); }
+      }
+    } catch (e) { console.error(e); }
+  }
+  if (!tiers.length) tiers = loadLocal('tiers') || getDefaultTiers();
+  renderTiers();
+  populateTierSelect();
+}
+
+function getDefaultTiers() {
+  return [
+    { tier_id: 'starter', tier_display_name: 'Starter', monthly_price: 49, annual_price: 490, max_users: 3, is_active: true, features: ['Basic Support', 'Core Features'] },
+    { tier_id: 'professional', tier_display_name: 'Professional', monthly_price: 149, annual_price: 1490, max_users: 10, is_active: true, features: ['Priority Support', 'All Features', 'API Access'] },
+    { tier_id: 'enterprise', tier_display_name: 'Enterprise', monthly_price: 399, annual_price: 3990, max_users: null, is_active: true, features: ['24/7 Support', 'Custom Integration', 'Dedicated Manager'] }
+  ];
+}
 
 function renderTiers() {
   document.getElementById('tiersLoading').style.display = 'none';
   document.getElementById('tiersTable').style.display = 'table';
-  document.getElementById('tiersTableBody').innerHTML = tiers.map(t => `<tr><td><strong>${t.tier_display_name||t.tier_name}</strong></td><td>$${(t.monthly_price||0).toFixed(2)}</td><td>$${(t.annual_price||0).toFixed(2)}</td><td>${t.max_users?t.max_users+' users':'Unlimited'}</td><td>${(t.features||[]).slice(0,2).join(', ')}</td><td>${tenants.filter(tn=>tn.tier_id===t.tier_id).length}</td><td><span class="badge ${t.is_active?'badge-green':'badge-orange'}">${t.is_active?'Active':'Inactive'}</span></td><td class="actions"><button class="btn btn-sm" onclick="editTier('${t.tier_id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTier('${t.tier_id}')">Delete</button></td></tr>`).join('');
+  document.getElementById('tiersTableBody').innerHTML = tiers.map(t => `<tr>
+    <td><strong>${t.tier_display_name || t.tier_name}</strong></td>
+    <td>$${(t.monthly_price || 0).toFixed(2)}</td>
+    <td>$${(t.annual_price || 0).toFixed(2)}</td>
+    <td>${t.max_users ? t.max_users + ' users' : 'Unlimited'}</td>
+    <td>${(t.features || []).slice(0, 2).join(', ')}</td>
+    <td>${tenants.filter(tn => tn.tier_id === t.tier_id).length}</td>
+    <td><span class="badge ${t.is_active ? 'badge-green' : 'badge-orange'}">${t.is_active ? 'Active' : 'Inactive'}</span></td>
+    <td class="actions"><button class="btn btn-sm" onclick="editTier('${t.tier_id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTier('${t.tier_id}')">Delete</button></td>
+  </tr>`).join('') || '<tr><td colspan="8" class="loading">No tiers configured</td></tr>';
 }
 
-function populateTierSelect() { document.getElementById('userTier').innerHTML = '<option value="">-- Select --</option>' + tiers.filter(t=>t.is_active).map(t => `<option value="${t.tier_id}">${t.tier_display_name||t.tier_name} - $${t.monthly_price}/mo</option>`).join(''); }
+function populateTierSelect() {
+  document.getElementById('userTier').innerHTML = '<option value="">-- Select Tier --</option>' + 
+    tiers.filter(t => t.is_active).map(t => `<option value="${t.tier_id}">${t.tier_display_name || t.tier_name} - $${t.monthly_price}/mo</option>`).join('');
+  
+  // Also update announcement tier dropdown
+  const announcementTiers = document.getElementById('announcementTiers');
+  if (announcementTiers) {
+    announcementTiers.innerHTML = '<option value="all">All Tiers</option>' +
+      tiers.filter(t => t.is_active).map(t => `<option value="${t.tier_id}">${t.tier_display_name || t.tier_name}</option>`).join('');
+  }
+}
 
-function openTierModal() { ['editTierId','tierName','tierDisplayName','tierMonthlyPrice','tierAnnualPrice','tierMaxUsers','tierMaxVehicles','tierStripeMonthly','tierFeatures'].forEach(id=>document.getElementById(id).value=''); document.getElementById('tierSortOrder').value=tiers.length; document.getElementById('tierIsActive').value='true'; document.getElementById('tierModalTitle').textContent='Add Tier'; document.getElementById('tierModal').classList.add('active'); }
+function openTierModal() {
+  ['editTierId', 'tierName', 'tierDisplayName', 'tierMonthlyPrice', 'tierAnnualPrice', 'tierMaxUsers', 'tierMaxVehicles', 'tierStripeMonthly', 'tierFeatures'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('tierSortOrder').value = tiers.length;
+  document.getElementById('tierIsActive').value = 'true';
+  document.getElementById('tierModalTitle').textContent = 'Add Subscription Tier';
+  document.getElementById('tierModal').classList.add('active');
+}
+
 function closeTierModal() { document.getElementById('tierModal').classList.remove('active'); }
 
-function editTier(id) { const t=tiers.find(x=>x.tier_id===id); if(!t)return; document.getElementById('editTierId').value=t.tier_id; document.getElementById('tierName').value=t.tier_name||''; document.getElementById('tierDisplayName').value=t.tier_display_name||''; document.getElementById('tierMonthlyPrice').value=t.monthly_price||''; document.getElementById('tierAnnualPrice').value=t.annual_price||''; document.getElementById('tierMaxUsers').value=t.max_users||''; document.getElementById('tierMaxVehicles').value=t.max_vehicles||''; document.getElementById('tierStripeMonthly').value=t.stripe_price_id_monthly||''; document.getElementById('tierSortOrder').value=t.sort_order||0; document.getElementById('tierFeatures').value=(t.features||[]).join('\n'); document.getElementById('tierIsActive').value=t.is_active?'true':'false'; document.getElementById('tierModalTitle').textContent='Edit Tier'; document.getElementById('tierModal').classList.add('active'); }
+function editTier(id) {
+  const t = tiers.find(x => x.tier_id === id);
+  if (!t) return;
+  document.getElementById('editTierId').value = t.tier_id;
+  document.getElementById('tierName').value = t.tier_name || '';
+  document.getElementById('tierDisplayName').value = t.tier_display_name || '';
+  document.getElementById('tierMonthlyPrice').value = t.monthly_price || '';
+  document.getElementById('tierAnnualPrice').value = t.annual_price || '';
+  document.getElementById('tierMaxUsers').value = t.max_users || '';
+  document.getElementById('tierMaxVehicles').value = t.max_vehicles || '';
+  document.getElementById('tierStripeMonthly').value = t.stripe_price_id_monthly || '';
+  document.getElementById('tierSortOrder').value = t.sort_order || 0;
+  document.getElementById('tierFeatures').value = (t.features || []).join('\n');
+  document.getElementById('tierIsActive').value = t.is_active ? 'true' : 'false';
+  document.getElementById('tierModalTitle').textContent = 'Edit Subscription Tier';
+  document.getElementById('tierModal').classList.add('active');
+}
 
-async function saveTier() { const id=document.getElementById('editTierId').value,name=document.getElementById('tierName').value.trim(),monthly=parseFloat(document.getElementById('tierMonthlyPrice').value)||0; if(!name||monthly<=0){alert('Name and price required');return;} const data={tier_name:name,tier_display_name:document.getElementById('tierDisplayName').value.trim()||name,monthly_price:monthly,annual_price:parseFloat(document.getElementById('tierAnnualPrice').value)||(monthly*10),max_users:parseInt(document.getElementById('tierMaxUsers').value)||null,max_vehicles:parseInt(document.getElementById('tierMaxVehicles').value)||null,stripe_price_id_monthly:document.getElementById('tierStripeMonthly').value.trim()||null,sort_order:parseInt(document.getElementById('tierSortOrder').value)||0,features:document.getElementById('tierFeatures').value.trim().split('\n').filter(f=>f.trim()),is_active:document.getElementById('tierIsActive').value==='true',updated_at:new Date().toISOString()}; try{if(id)await supabaseClient.from('subscription_tiers').update(data).eq('tier_id',id);else{data.tier_id=name.toLowerCase().replace(/[^a-z0-9]/g,'_');data.created_at=new Date().toISOString();await supabaseClient.from('subscription_tiers').insert([data]);}alert('Saved');closeTierModal();await loadTiers();}catch(e){alert('Error: '+e.message);} }
+async function saveTier() {
+  const id = document.getElementById('editTierId').value;
+  const name = document.getElementById('tierName').value.trim();
+  const monthly = parseFloat(document.getElementById('tierMonthlyPrice').value) || 0;
+  
+  if (!name || monthly <= 0) {
+    alert('Tier name and monthly price are required');
+    return;
+  }
+  
+  const data = {
+    tier_name: name,
+    tier_display_name: document.getElementById('tierDisplayName').value.trim() || name,
+    monthly_price: monthly,
+    annual_price: parseFloat(document.getElementById('tierAnnualPrice').value) || (monthly * 10),
+    max_users: parseInt(document.getElementById('tierMaxUsers').value) || null,
+    max_vehicles: parseInt(document.getElementById('tierMaxVehicles').value) || null,
+    stripe_price_id_monthly: document.getElementById('tierStripeMonthly').value.trim() || null,
+    sort_order: parseInt(document.getElementById('tierSortOrder').value) || 0,
+    features: document.getElementById('tierFeatures').value.trim().split('\n').filter(f => f.trim()),
+    is_active: document.getElementById('tierIsActive').value === 'true',
+    updated_at: new Date().toISOString()
+  };
+  
+  if (isConnected) {
+    try {
+      if (id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers?tier_id=eq.${id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+        addAuditEntry('tier', `Updated tier: ${data.tier_display_name}`);
+      } else {
+        data.tier_id = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        data.created_at = new Date().toISOString();
+        await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers`, {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+        addAuditEntry('tier', `Created tier: ${data.tier_display_name}`);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  
+  // Update local
+  if (id) {
+    const idx = tiers.findIndex(x => x.tier_id === id);
+    if (idx >= 0) tiers[idx] = { ...tiers[idx], ...data };
+  } else {
+    data.tier_id = data.tier_id || name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    tiers.push(data);
+  }
+  
+  saveLocal('tiers', tiers);
+  alert('Tier saved successfully');
+  closeTierModal();
+  renderTiers();
+  populateTierSelect();
+}
 
-async function deleteTier(id) { if(!confirm('Delete tier?'))return; try{await supabaseClient.from('subscription_tiers').delete().eq('tier_id',id);await loadTiers();}catch(e){alert('Error: '+e.message);} }
+async function deleteTier(id) {
+  if (!confirm('Delete this subscription tier?')) return;
+  
+  if (isConnected) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/subscription_tiers?tier_id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch (e) { console.error(e); }
+  }
+  
+  tiers = tiers.filter(t => t.tier_id !== id);
+  saveLocal('tiers', tiers);
+  addAuditEntry('tier', `Deleted tier: ${id}`);
+  renderTiers();
+  populateTierSelect();
+}
 
-async function loadPresets() { try{const{data}=await supabaseClient.from('ui_presets').select('*').order('name');presets=data?.length?data:getDefaultPresets();}catch(e){presets=getDefaultPresets();} renderPresets();populatePresetSelect(); }
-function getDefaultPresets() { return [{id:'car_dealership',name:'Car Dealership',industry:'automotive',nav_buttons:['Business','Customers','Vehicles','Settings'],action_buttons:['Service','Parts','Sales','Scheduler'],button_labels:{},is_active:true},{id:'law_firm',name:'Law Firm',industry:'legal',nav_buttons:['Business','Clients','Cases','Settings'],action_buttons:['Tasks','Calendar','Documents','Billing'],button_labels:{},is_active:true},{id:'powersports',name:'Powersports',industry:'powersports',nav_buttons:['Business','Customers','Units','Settings'],action_buttons:['Service','Parts','Sales','Rentals'],button_labels:{},is_active:true}]; }
-function renderPresets() { document.getElementById('presetsLoading').style.display='none'; document.getElementById('presetsTable').style.display='table'; document.getElementById('presetsTableBody').innerHTML=presets.map(p=>`<tr><td><strong>${p.name}</strong></td><td><span class="badge badge-cyan">${p.industry||'other'}</span></td><td>${[...(p.nav_buttons||[]),...(p.action_buttons||[])].slice(0,4).join(', ')}...</td><td>${tenants.filter(t=>t.ui_preset_id===p.id).length}</td><td><span class="badge ${p.is_active?'badge-green':'badge-orange'}">${p.is_active?'Active':'Inactive'}</span></td><td class="actions"><button class="btn btn-sm" onclick="editPreset('${p.id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deletePreset('${p.id}')">Delete</button></td></tr>`).join(''); }
-function populatePresetSelect() { document.getElementById('uiPreset').innerHTML=presets.filter(p=>p.is_active).map(p=>`<option value="${p.id}">${p.name}</option>`).join(''); }
-function populatePresetModal() { document.getElementById('presetNavButtons').innerHTML=ALL_NAV_BUTTONS.map(b=>`<div class="button-label-item"><input type="checkbox" value="${b}" onchange="toggleButtonLabel(this);updatePresetPreview()"><span class="btn-id">${b}</span><input type="text" id="label_${b}" value="${b}" disabled onkeyup="updatePresetPreview()"></div>`).join(''); document.getElementById('presetActionButtons').innerHTML=ALL_ACTION_BUTTONS.map(b=>`<div class="button-label-item"><input type="checkbox" value="${b}" onchange="toggleButtonLabel(this);updatePresetPreview()"><span class="btn-id">${b}</span><input type="text" id="label_${b}" value="${b}" disabled onkeyup="updatePresetPreview()"></div>`).join(''); }
-function toggleButtonLabel(cb) { const inp=document.getElementById('label_'+cb.value); if(inp){inp.disabled=!cb.checked;if(cb.checked&&!inp.value)inp.value=cb.value;} }
-function updatePresetPreview() { const nav=[...document.querySelectorAll('#presetNavButtons input[type="checkbox"]:checked')].map(c=>`<span class="preview-btn primary">${document.getElementById('label_'+c.value)?.value||c.value}</span>`); const act=[...document.querySelectorAll('#presetActionButtons input[type="checkbox"]:checked')].map(c=>`<span class="preview-btn">${document.getElementById('label_'+c.value)?.value||c.value}</span>`); document.getElementById('presetPreview').innerHTML=nav.join('')+act.join('')||'<span style="color:var(--text-muted)">Select buttons...</span>'; }
-function openPresetModal() { populatePresetModal(); ['editPresetId','presetName','presetDescription'].forEach(id=>document.getElementById(id).value=''); document.getElementById('presetIndustry').value='automotive'; document.getElementById('presetIsActive').value='true'; document.querySelectorAll('#presetNavButtons input[type="checkbox"], #presetActionButtons input[type="checkbox"]').forEach(c=>{c.checked=false;toggleButtonLabel(c);}); document.getElementById('presetPreview').innerHTML='<span style="color:var(--text-muted)">Select buttons...</span>'; document.getElementById('presetModalTitle').textContent='Add Preset'; document.getElementById('presetModal').classList.add('active'); }
+// PRESETS (Enhanced with relabel + relink)
+async function loadPresets() {
+  if (isConnected) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/ui_presets?select=*&order=name`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length) { presets = data; saveLocal('presets', presets); }
+      }
+    } catch (e) { console.error(e); }
+  }
+  if (!presets.length) presets = loadLocal('presets') || getDefaultPresets();
+  renderPresets();
+  populatePresetSelect();
+}
+
+function getDefaultPresets() {
+  return [
+    {
+      id: 'car_dealership',
+      name: 'Car Dealership',
+      industry: 'automotive',
+      nav_buttons: [
+        { id: 'Dashboard', enabled: true, label: 'Dashboard', route: '/dashboard' },
+        { id: 'Business', enabled: true, label: 'Business', route: '/business' },
+        { id: 'Customers', enabled: true, label: 'Customers', route: '/customers' },
+        { id: 'Vehicles', enabled: true, label: 'Vehicles', route: '/vehicles' },
+        { id: 'Settings', enabled: true, label: 'Settings', route: '/settings' }
+      ],
+      action_buttons: [
+        { id: 'Service', enabled: true, label: 'Service', route: '/service' },
+        { id: 'Parts', enabled: true, label: 'Parts', route: '/parts' },
+        { id: 'Sales', enabled: true, label: 'Sales', route: '/sales' },
+        { id: 'Scheduler', enabled: true, label: 'Scheduler', route: '/scheduler' }
+      ],
+      is_active: true
+    },
+    {
+      id: 'law_firm',
+      name: 'Law Firm',
+      industry: 'legal',
+      nav_buttons: [
+        { id: 'Dashboard', enabled: true, label: 'Dashboard', route: '/dashboard' },
+        { id: 'Business', enabled: true, label: 'Firm', route: '/business' },
+        { id: 'Clients', enabled: true, label: 'Clients', route: '/clients' },
+        { id: 'Cases', enabled: true, label: 'Cases', route: '/cases' },
+        { id: 'Settings', enabled: true, label: 'Settings', route: '/settings' }
+      ],
+      action_buttons: [
+        { id: 'Tasks', enabled: true, label: 'Tasks', route: '/tasks' },
+        { id: 'Calendar', enabled: true, label: 'Calendar', route: '/calendar' },
+        { id: 'Documents', enabled: true, label: 'Documents', route: '/documents' },
+        { id: 'Billing', enabled: true, label: 'Billing', route: '/billing' }
+      ],
+      is_active: true
+    }
+  ];
+}
+
+function renderPresets() {
+  document.getElementById('presetsLoading').style.display = 'none';
+  document.getElementById('presetsTable').style.display = 'table';
+  
+  document.getElementById('presetsTableBody').innerHTML = presets.map(p => {
+    const navCount = (p.nav_buttons || []).filter(b => b.enabled !== false && (typeof b === 'string' || b.enabled)).length;
+    const actCount = (p.action_buttons || []).filter(b => b.enabled !== false && (typeof b === 'string' || b.enabled)).length;
+    
+    return `<tr>
+      <td><strong>${p.name}</strong><br><small style="color:var(--text-muted)">${p.description || ''}</small></td>
+      <td><span class="badge badge-cyan">${p.industry || 'other'}</span></td>
+      <td>${navCount} buttons</td>
+      <td>${actCount} buttons</td>
+      <td>${tenants.filter(t => t.ui_preset_id === p.id).length}</td>
+      <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-orange'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td class="actions"><button class="btn btn-sm" onclick="editPreset('${p.id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deletePreset('${p.id}')">Delete</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="loading">No presets configured</td></tr>';
+}
+
+function populatePresetSelect() {
+  document.getElementById('uiPreset').innerHTML = presets.filter(p => p.is_active).map(p => 
+    `<option value="${p.id}">${p.name} (${p.industry})</option>`
+  ).join('');
+}
+
+function populatePresetModal() {
+  // Nav buttons
+  document.getElementById('presetNavButtons').innerHTML = ALL_NAV_BUTTONS.map(btn => `
+    <div class="button-config-item" id="nav_item_${btn.id}">
+      <input type="checkbox" id="nav_enabled_${btn.id}" onchange="updateButtonState('nav', '${btn.id}'); updatePresetPreview()">
+      <div class="config-field">
+        <div class="config-label">ID</div>
+        <input type="text" value="${btn.id}" disabled style="background:transparent;border:none;color:var(--text-secondary);padding:0;">
+      </div>
+      <div class="config-field">
+        <div class="config-label">Label</div>
+        <input type="text" id="nav_label_${btn.id}" value="${btn.defaultLabel}" placeholder="${btn.defaultLabel}" disabled onkeyup="updatePresetPreview()">
+      </div>
+      <div class="config-field">
+        <div class="config-label">Route</div>
+        <input type="text" id="nav_route_${btn.id}" value="${btn.defaultRoute}" placeholder="${btn.defaultRoute}" disabled onkeyup="updatePresetPreview()">
+      </div>
+    </div>
+  `).join('');
+  
+  // Action buttons
+  document.getElementById('presetActionButtons').innerHTML = ALL_ACTION_BUTTONS.map(btn => `
+    <div class="button-config-item" id="action_item_${btn.id}">
+      <input type="checkbox" id="action_enabled_${btn.id}" onchange="updateButtonState('action', '${btn.id}'); updatePresetPreview()">
+      <div class="config-field">
+        <div class="config-label">ID</div>
+        <input type="text" value="${btn.id}" disabled style="background:transparent;border:none;color:var(--text-secondary);padding:0;">
+      </div>
+      <div class="config-field">
+        <div class="config-label">Label</div>
+        <input type="text" id="action_label_${btn.id}" value="${btn.defaultLabel}" placeholder="${btn.defaultLabel}" disabled onkeyup="updatePresetPreview()">
+      </div>
+      <div class="config-field">
+        <div class="config-label">Route</div>
+        <input type="text" id="action_route_${btn.id}" value="${btn.defaultRoute}" placeholder="${btn.defaultRoute}" disabled onkeyup="updatePresetPreview()">
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateButtonState(type, btnId) {
+  const enabled = document.getElementById(`${type}_enabled_${btnId}`).checked;
+  const labelInput = document.getElementById(`${type}_label_${btnId}`);
+  const routeInput = document.getElementById(`${type}_route_${btnId}`);
+  const item = document.getElementById(`${type}_item_${btnId}`);
+  
+  labelInput.disabled = !enabled;
+  routeInput.disabled = !enabled;
+  item.classList.toggle('disabled', !enabled);
+}
+
+function updatePresetPreview() {
+  const navButtons = ALL_NAV_BUTTONS.filter(btn => {
+    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
+    return checkbox && checkbox.checked;
+  }).map(btn => {
+    const label = document.getElementById(`nav_label_${btn.id}`)?.value || btn.defaultLabel;
+    const route = document.getElementById(`nav_route_${btn.id}`)?.value || btn.defaultRoute;
+    return `<span class="preview-btn primary" title="Route: ${route}">${label}</span>`;
+  });
+  
+  const actionButtons = ALL_ACTION_BUTTONS.filter(btn => {
+    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
+    return checkbox && checkbox.checked;
+  }).map(btn => {
+    const label = document.getElementById(`action_label_${btn.id}`)?.value || btn.defaultLabel;
+    const route = document.getElementById(`action_route_${btn.id}`)?.value || btn.defaultRoute;
+    return `<span class="preview-btn" title="Route: ${route}">${label}</span>`;
+  });
+  
+  const preview = document.getElementById('presetPreview');
+  if (navButtons.length || actionButtons.length) {
+    preview.innerHTML = navButtons.join('') + actionButtons.join('');
+  } else {
+    preview.innerHTML = '<span style="color:var(--text-muted)">Enable buttons above to see preview...</span>';
+  }
+}
+
+function openPresetModal() {
+  populatePresetModal();
+  document.getElementById('editPresetId').value = '';
+  document.getElementById('presetName').value = '';
+  document.getElementById('presetIndustry').value = 'automotive';
+  document.getElementById('presetDescription').value = '';
+  document.getElementById('presetIsActive').value = 'true';
+  
+  // Reset all buttons
+  ALL_NAV_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
+    if (checkbox) {
+      checkbox.checked = false;
+      updateButtonState('nav', btn.id);
+    }
+  });
+  
+  ALL_ACTION_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
+    if (checkbox) {
+      checkbox.checked = false;
+      updateButtonState('action', btn.id);
+    }
+  });
+  
+  updatePresetPreview();
+  document.getElementById('presetModalTitle').textContent = 'Add UI Preset';
+  document.getElementById('presetModal').classList.add('active');
+}
+
 function closePresetModal() { document.getElementById('presetModal').classList.remove('active'); }
-function editPreset(id) { populatePresetModal(); const p=presets.find(x=>x.id===id); if(!p)return; document.getElementById('editPresetId').value=p.id; document.getElementById('presetName').value=p.name||''; document.getElementById('presetIndustry').value=p.industry||'other'; document.getElementById('presetDescription').value=p.description||''; document.getElementById('presetIsActive').value=p.is_active?'true':'false'; document.querySelectorAll('#presetNavButtons input[type="checkbox"]').forEach(c=>{c.checked=(p.nav_buttons||[]).includes(c.value);toggleButtonLabel(c);}); document.querySelectorAll('#presetActionButtons input[type="checkbox"]').forEach(c=>{c.checked=(p.action_buttons||[]).includes(c.value);toggleButtonLabel(c);}); Object.entries(p.button_labels||{}).forEach(([k,v])=>{const inp=document.getElementById('label_'+k);if(inp)inp.value=v;}); updatePresetPreview(); document.getElementById('presetModalTitle').textContent='Edit Preset'; document.getElementById('presetModal').classList.add('active'); }
-async function savePreset() { const id=document.getElementById('editPresetId').value,name=document.getElementById('presetName').value.trim(); if(!name){alert('Name required');return;} const labels={}; [...ALL_NAV_BUTTONS,...ALL_ACTION_BUTTONS].forEach(b=>{const cb=document.querySelector(`input[value="${b}"]`);const inp=document.getElementById('label_'+b);if(cb?.checked&&inp?.value&&inp.value!==b)labels[b]=inp.value;}); const data={name,industry:document.getElementById('presetIndustry').value,description:document.getElementById('presetDescription').value.trim(),nav_buttons:[...document.querySelectorAll('#presetNavButtons input[type="checkbox"]:checked')].map(c=>c.value),action_buttons:[...document.querySelectorAll('#presetActionButtons input[type="checkbox"]:checked')].map(c=>c.value),button_labels:labels,is_active:document.getElementById('presetIsActive').value==='true',updated_at:new Date().toISOString()}; try{if(id)await supabaseClient.from('ui_presets').update(data).eq('id',id);else{data.id=name.toLowerCase().replace(/[^a-z0-9]/g,'_');data.created_at=new Date().toISOString();await supabaseClient.from('ui_presets').insert([data]);}alert('Saved');closePresetModal();await loadPresets();}catch(e){if(id){const idx=presets.findIndex(x=>x.id===id);if(idx>=0)presets[idx]={...presets[idx],...data};}else{data.id=name.toLowerCase().replace(/[^a-z0-9]/g,'_');presets.push(data);}alert('Saved locally');closePresetModal();renderPresets();populatePresetSelect();} }
-async function deletePreset(id) { if(!confirm('Delete?'))return; try{await supabaseClient.from('ui_presets').delete().eq('id',id);}catch(e){} presets=presets.filter(p=>p.id!==id); renderPresets();populatePresetSelect(); }
 
-async function loadThemes() { themes=getDefaultThemes(); try{const{data}=await supabaseClient.from('global_themes').select('*').order('name');if(data?.length)themes=data;}catch(e){} renderThemes();populateThemeSelect(); }
-function getDefaultThemes() { return [{id:'default_dark',name:'Default Dark',type:'dark',primary:'#22d3ee',secondary:'#22c55e',bg:'#0a0f1a',card:'#111827',text:'#ffffff',border:'#2a3441',is_default:true,is_active:true},{id:'ocean_blue',name:'Ocean Blue',type:'dark',primary:'#3b82f6',secondary:'#60a5fa',bg:'#0c1929',card:'#1e3a5f',text:'#ffffff',border:'#2d5a8a',is_active:true},{id:'forest_green',name:'Forest Green',type:'dark',primary:'#10b981',secondary:'#34d399',bg:'#0a1f1a',card:'#134e3a',text:'#ffffff',border:'#1f5c4a',is_active:true}]; }
-function renderThemes() { document.getElementById('themesLoading').style.display='none'; document.getElementById('themesTable').style.display='table'; document.getElementById('themesTableBody').innerHTML=themes.map(t=>`<tr><td><strong>${t.name}</strong></td><td><div style="width:60px;height:30px;background:${t.bg};border:1px solid ${t.border};border-radius:4px;display:flex;align-items:center;justify-content:center;"><div style="width:8px;height:8px;background:${t.primary};border-radius:50%;"></div></div></td><td><span class="badge ${t.type==='dark'?'badge-purple':'badge-cyan'}">${t.type}</span></td><td>${tenants.filter(tn=>tn.theme_id===t.id).length}</td><td>${t.is_default?'<span class="badge badge-green">Default</span>':'-'}</td><td class="actions"><button class="btn btn-sm" onclick="editTheme('${t.id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTheme('${t.id}')">Delete</button></td></tr>`).join(''); }
-function populateThemeSelect() { document.getElementById('userTheme').innerHTML=themes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${t.is_default?'selected':''}>${t.name}</option>`).join(''); }
-function openThemeModal() { document.getElementById('editThemeId').value=''; document.getElementById('themeName').value=''; document.getElementById('themeType').value='dark'; const defs={Primary:'#22d3ee',Secondary:'#22c55e',Bg:'#0a0f1a',Card:'#111827',Text:'#ffffff',Border:'#2a3441'}; Object.entries(defs).forEach(([n,v])=>{document.getElementById('theme'+n).value=v;document.getElementById('theme'+n+'Hex').value=v;}); document.getElementById('themeIsDefault').value='false'; document.getElementById('themeIsActive').value='true'; document.getElementById('themeModalTitle').textContent='Create Theme'; updateThemePreview(); document.getElementById('themeModal').classList.add('active'); }
+function editPreset(id) {
+  populatePresetModal();
+  const p = presets.find(x => x.id === id);
+  if (!p) return;
+  
+  document.getElementById('editPresetId').value = p.id;
+  document.getElementById('presetName').value = p.name || '';
+  document.getElementById('presetIndustry').value = p.industry || 'other';
+  document.getElementById('presetDescription').value = p.description || '';
+  document.getElementById('presetIsActive').value = p.is_active ? 'true' : 'false';
+  
+  // Set nav buttons
+  ALL_NAV_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
+    const labelInput = document.getElementById(`nav_label_${btn.id}`);
+    const routeInput = document.getElementById(`nav_route_${btn.id}`);
+    
+    // Find button config (handle both array of strings and array of objects)
+    let btnConfig = null;
+    if (p.nav_buttons) {
+      btnConfig = p.nav_buttons.find(b => (typeof b === 'string' ? b === btn.id : b.id === btn.id));
+    }
+    
+    if (btnConfig) {
+      checkbox.checked = typeof btnConfig === 'string' ? true : btnConfig.enabled !== false;
+      if (typeof btnConfig === 'object') {
+        labelInput.value = btnConfig.label || btn.defaultLabel;
+        routeInput.value = btnConfig.route || btn.defaultRoute;
+      }
+    } else {
+      checkbox.checked = false;
+      labelInput.value = btn.defaultLabel;
+      routeInput.value = btn.defaultRoute;
+    }
+    updateButtonState('nav', btn.id);
+  });
+  
+  // Set action buttons
+  ALL_ACTION_BUTTONS.forEach(btn => {
+    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
+    const labelInput = document.getElementById(`action_label_${btn.id}`);
+    const routeInput = document.getElementById(`action_route_${btn.id}`);
+    
+    let btnConfig = null;
+    if (p.action_buttons) {
+      btnConfig = p.action_buttons.find(b => (typeof b === 'string' ? b === btn.id : b.id === btn.id));
+    }
+    
+    if (btnConfig) {
+      checkbox.checked = typeof btnConfig === 'string' ? true : btnConfig.enabled !== false;
+      if (typeof btnConfig === 'object') {
+        labelInput.value = btnConfig.label || btn.defaultLabel;
+        routeInput.value = btnConfig.route || btn.defaultRoute;
+      }
+    } else {
+      checkbox.checked = false;
+      labelInput.value = btn.defaultLabel;
+      routeInput.value = btn.defaultRoute;
+    }
+    updateButtonState('action', btn.id);
+  });
+  
+  updatePresetPreview();
+  document.getElementById('presetModalTitle').textContent = 'Edit UI Preset';
+  document.getElementById('presetModal').classList.add('active');
+}
+
+async function savePreset() {
+  const id = document.getElementById('editPresetId').value;
+  const name = document.getElementById('presetName').value.trim();
+  
+  if (!name) {
+    alert('Preset name is required');
+    return;
+  }
+  
+  // Collect nav buttons
+  const navButtons = ALL_NAV_BUTTONS.map(btn => {
+    const checkbox = document.getElementById(`nav_enabled_${btn.id}`);
+    const labelInput = document.getElementById(`nav_label_${btn.id}`);
+    const routeInput = document.getElementById(`nav_route_${btn.id}`);
+    
+    return {
+      id: btn.id,
+      enabled: checkbox?.checked || false,
+      label: labelInput?.value || btn.defaultLabel,
+      route: routeInput?.value || btn.defaultRoute
+    };
+  }).filter(b => b.enabled);
+  
+  // Collect action buttons
+  const actionButtons = ALL_ACTION_BUTTONS.map(btn => {
+    const checkbox = document.getElementById(`action_enabled_${btn.id}`);
+    const labelInput = document.getElementById(`action_label_${btn.id}`);
+    const routeInput = document.getElementById(`action_route_${btn.id}`);
+    
+    return {
+      id: btn.id,
+      enabled: checkbox?.checked || false,
+      label: labelInput?.value || btn.defaultLabel,
+      route: routeInput?.value || btn.defaultRoute
+    };
+  }).filter(b => b.enabled);
+  
+  const data = {
+    name,
+    industry: document.getElementById('presetIndustry').value,
+    description: document.getElementById('presetDescription').value.trim(),
+    nav_buttons: navButtons,
+    action_buttons: actionButtons,
+    is_active: document.getElementById('presetIsActive').value === 'true',
+    updated_at: new Date().toISOString()
+  };
+  
+  if (isConnected) {
+    try {
+      if (id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/ui_presets?id=eq.${id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+      } else {
+        data.id = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        data.created_at = new Date().toISOString();
+        await fetch(`${SUPABASE_URL}/rest/v1/ui_presets`, {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+      }
+      addAuditEntry('preset', `${id ? 'Updated' : 'Created'} preset: ${name}`);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  
+  // Update local
+  if (id) {
+    const idx = presets.findIndex(x => x.id === id);
+    if (idx >= 0) presets[idx] = { ...presets[idx], ...data };
+  } else {
+    data.id = data.id || name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    presets.push(data);
+  }
+  
+  saveLocal('presets', presets);
+  alert('Preset saved successfully');
+  closePresetModal();
+  renderPresets();
+  populatePresetSelect();
+}
+
+async function deletePreset(id) {
+  if (!confirm('Delete this preset?')) return;
+  
+  if (isConnected) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/ui_presets?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch (e) { console.error(e); }
+  }
+  
+  presets = presets.filter(p => p.id !== id);
+  saveLocal('presets', presets);
+  addAuditEntry('preset', `Deleted preset: ${id}`);
+  renderPresets();
+  populatePresetSelect();
+}
+
+// THEMES
+async function loadThemes() {
+  if (isConnected) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/global_themes?select=*&order=name`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length) { themes = data; saveLocal('themes', themes); }
+      }
+    } catch (e) { console.error(e); }
+  }
+  if (!themes.length) themes = loadLocal('themes') || getDefaultThemes();
+  renderThemes();
+  populateThemeSelect();
+}
+
+function getDefaultThemes() {
+  return [
+    { id: 'default_dark', name: 'Default Dark', type: 'dark', primary: '#22d3ee', secondary: '#22c55e', bg: '#0a0f1a', card: '#111827', text: '#ffffff', border: '#2a3441', is_default: true, is_active: true },
+    { id: 'ocean_blue', name: 'Ocean Blue', type: 'dark', primary: '#3b82f6', secondary: '#60a5fa', bg: '#0c1929', card: '#1e3a5f', text: '#ffffff', border: '#2d5a8a', is_active: true },
+    { id: 'forest_green', name: 'Forest Green', type: 'dark', primary: '#10b981', secondary: '#34d399', bg: '#0a1f1a', card: '#134e3a', text: '#ffffff', border: '#1f5c4a', is_active: true }
+  ];
+}
+
+function renderThemes() {
+  document.getElementById('themesLoading').style.display = 'none';
+  document.getElementById('themesTable').style.display = 'table';
+  document.getElementById('themesTableBody').innerHTML = themes.map(t => `<tr>
+    <td><strong>${t.name}</strong></td>
+    <td><div style="width:60px;height:30px;background:${t.bg};border:1px solid ${t.border};border-radius:4px;display:flex;align-items:center;justify-content:center;"><div style="width:8px;height:8px;background:${t.primary};border-radius:50%;"></div></div></td>
+    <td><span class="badge ${t.type === 'dark' ? 'badge-purple' : 'badge-cyan'}">${t.type}</span></td>
+    <td>${tenants.filter(tn => tn.theme_id === t.id).length}</td>
+    <td>${t.is_default ? '<span class="badge badge-green">Default</span>' : '-'}</td>
+    <td class="actions"><button class="btn btn-sm" onclick="editTheme('${t.id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTheme('${t.id}')">Delete</button></td>
+  </tr>`).join('');
+}
+
+function populateThemeSelect() {
+  document.getElementById('userTheme').innerHTML = themes.filter(t => t.is_active).map(t =>
+    `<option value="${t.id}" ${t.is_default ? 'selected' : ''}>${t.name}</option>`
+  ).join('');
+}
+
+function openThemeModal() {
+  document.getElementById('editThemeId').value = '';
+  document.getElementById('themeName').value = '';
+  document.getElementById('themeType').value = 'dark';
+  const defs = { Primary: '#22d3ee', Secondary: '#22c55e', Bg: '#0a0f1a', Card: '#111827', Text: '#ffffff', Border: '#2a3441' };
+  Object.entries(defs).forEach(([n, v]) => {
+    document.getElementById('theme' + n).value = v;
+    document.getElementById('theme' + n + 'Hex').value = v;
+  });
+  document.getElementById('themeIsDefault').value = 'false';
+  document.getElementById('themeIsActive').value = 'true';
+  document.getElementById('themeModalTitle').textContent = 'Create Theme';
+  updateThemePreview();
+  document.getElementById('themeModal').classList.add('active');
+}
+
 function closeThemeModal() { document.getElementById('themeModal').classList.remove('active'); }
-function editTheme(id) { const t=themes.find(x=>x.id===id); if(!t)return; document.getElementById('editThemeId').value=t.id; document.getElementById('themeName').value=t.name||''; document.getElementById('themeType').value=t.type||'dark'; ['Primary','Secondary','Bg','Card','Text','Border'].forEach(n=>{const v=t[n.toLowerCase()]||'#000000';document.getElementById('theme'+n).value=v;document.getElementById('theme'+n+'Hex').value=v;}); document.getElementById('themeIsDefault').value=t.is_default?'true':'false'; document.getElementById('themeIsActive').value=t.is_active?'true':'false'; document.getElementById('themeModalTitle').textContent='Edit Theme'; updateThemePreview(); document.getElementById('themeModal').classList.add('active'); }
-function updateThemePreview() { const bg=document.getElementById('themeBg').value,card=document.getElementById('themeCard').value,border=document.getElementById('themeBorder').value; ['Primary','Secondary','Bg','Card','Text','Border'].forEach(n=>document.getElementById('theme'+n+'Hex').value=document.getElementById('theme'+n).value); document.getElementById('themePreviewBox').style.background=bg; document.getElementById('themePreviewHeader').style.background=card; document.getElementById('themePreviewBody').style.background=bg; document.getElementById('themePreviewSidebar').style.background=card; document.getElementById('themePreviewContent').style.background=card; document.getElementById('themePreviewContent').style.border='1px solid '+border; }
-async function saveTheme() { const id=document.getElementById('editThemeId').value,name=document.getElementById('themeName').value.trim(); if(!name){alert('Name required');return;} const isDefault=document.getElementById('themeIsDefault').value==='true'; if(isDefault)themes.forEach(t=>t.is_default=false); const data={name,type:document.getElementById('themeType').value,primary:document.getElementById('themePrimary').value,secondary:document.getElementById('themeSecondary').value,bg:document.getElementById('themeBg').value,card:document.getElementById('themeCard').value,text:document.getElementById('themeText').value,border:document.getElementById('themeBorder').value,is_default:isDefault,is_active:document.getElementById('themeIsActive').value==='true',updated_at:new Date().toISOString()}; try{if(isDefault)await supabaseClient.from('global_themes').update({is_default:false}).neq('id',id||'none');if(id)await supabaseClient.from('global_themes').update(data).eq('id',id);else{data.id=name.toLowerCase().replace(/[^a-z0-9]/g,'_');data.created_at=new Date().toISOString();await supabaseClient.from('global_themes').insert([data]);}alert('Saved');}catch(e){if(id){const idx=themes.findIndex(x=>x.id===id);if(idx>=0)themes[idx]={...themes[idx],...data};}else{data.id=name.toLowerCase().replace(/[^a-z0-9]/g,'_');themes.push(data);}alert('Saved locally');} closeThemeModal();renderThemes();populateThemeSelect(); }
-async function deleteTheme(id) { if(!confirm('Delete?'))return; try{await supabaseClient.from('global_themes').delete().eq('id',id);}catch(e){} themes=themes.filter(t=>t.id!==id); renderThemes();populateThemeSelect(); }
 
-async function loadRolePermissions() { rolePermissions={owner:[...ALL_NAV_BUTTONS,...ALL_ACTION_BUTTONS],manager:['Business','Customers','Vehicles','Settings','Service','Parts','Sales','Scheduler','Tasks'],technician:['Customers','Vehicles','Service','Parts','Tasks'],admin:['Business','Customers','Vehicles','Settings','Service','Parts','Sales','Scheduler','Tasks','Billing'],sales:['Customers','Vehicles','Sales','Leads','Calendar','Tasks']}; try{const{data}=await supabaseClient.from('role_permissions').select('*');if(data)data.forEach(r=>rolePermissions[r.role]=r.allowed_buttons||[]);}catch(e){} }
-function populateRolePermissions() { const all=[...ALL_NAV_BUTTONS,...ALL_ACTION_BUTTONS]; ['manager','technician','admin','sales'].forEach(role=>{const c=document.getElementById(role+'Buttons');if(c)c.innerHTML=all.map(b=>`<label class="checkbox-item"><input type="checkbox" value="${b}" ${(rolePermissions[role]||[]).includes(b)?'checked':''}><span>${b}</span></label>`).join('');}); }
-async function saveRolePermissions() { ['manager','technician','admin','sales'].forEach(async role=>{const btns=[...document.querySelectorAll(`#${role}Buttons input:checked`)].map(c=>c.value);rolePermissions[role]=btns;try{await supabaseClient.from('role_permissions').upsert({role,allowed_buttons:btns,updated_at:new Date().toISOString()},{onConflict:'role'});}catch(e){}}); document.getElementById('rolesSaveMessage').innerHTML='<div class="message success">Saved</div>'; setTimeout(()=>document.getElementById('rolesSaveMessage').innerHTML='',3000); }
+function editTheme(id) {
+  const t = themes.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('editThemeId').value = t.id;
+  document.getElementById('themeName').value = t.name || '';
+  document.getElementById('themeType').value = t.type || 'dark';
+  ['Primary', 'Secondary', 'Bg', 'Card', 'Text', 'Border'].forEach(n => {
+    const v = t[n.toLowerCase()] || '#000000';
+    document.getElementById('theme' + n).value = v;
+    document.getElementById('theme' + n + 'Hex').value = v;
+  });
+  document.getElementById('themeIsDefault').value = t.is_default ? 'true' : 'false';
+  document.getElementById('themeIsActive').value = t.is_active ? 'true' : 'false';
+  document.getElementById('themeModalTitle').textContent = 'Edit Theme';
+  updateThemePreview();
+  document.getElementById('themeModal').classList.add('active');
+}
 
-async function loadTenants() { try{const{data}=await supabaseClient.from('tenants').select('*, subscription_tiers(tier_display_name)').order('created_at',{ascending:false});tenants=data||[];for(let t of tenants){try{const{data:owner}=await supabaseClient.from('users').select('email').eq('tenant_id',t.tenant_id).eq('role','owner').limit(1).single();t.owner=owner;const{count}=await supabaseClient.from('users').select('*',{count:'exact',head:true}).eq('tenant_id',t.tenant_id);t.user_count=count||1;}catch(e){t.owner=null;t.user_count=1;}}renderTenants();updateKPIs();}catch(e){console.error(e);} }
-function renderTenants() { document.getElementById('tenantsLoading').style.display='none'; document.getElementById('tenantsTable').style.display='table'; if(!tenants.length){document.getElementById('tenantsTableBody').innerHTML='<tr><td colspan="9" class="loading">No tenants yet</td></tr>';return;} document.getElementById('tenantsTableBody').innerHTML=tenants.map(t=>`<tr><td><strong>${t.company_name||t.tenant_name}</strong><br><small style="color:var(--text-muted)">${t.domain||''}</small></td><td>${t.owner?.email||t.billing_email||'-'}</td><td><span class="badge badge-cyan">${presets.find(p=>p.id===t.ui_preset_id)?.name||'-'}</span></td><td><span class="badge badge-purple">${themes.find(th=>th.id===t.theme_id)?.name||'Default'}</span></td><td>${t.subscription_tiers?.tier_display_name||'None'}</td><td style="color:var(--accent-green)">$${(t.monthly_recurring_revenue||0).toFixed(2)}</td><td>${t.user_count||1}</td><td><span class="status-dot ${t.status}"></span>${t.status}</td><td class="actions"><button class="btn btn-sm" onclick="editTenant('${t.tenant_id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTenant('${t.tenant_id}')">Delete</button></td></tr>`).join(''); }
-function filterTenants() { const s=document.getElementById('tenantSearch').value.toLowerCase(); document.querySelectorAll('#tenantsTableBody tr').forEach(r=>r.style.display=r.textContent.toLowerCase().includes(s)?'':'none'); }
+function updateThemePreview() {
+  const bg = document.getElementById('themeBg').value;
+  const card = document.getElementById('themeCard').value;
+  const border = document.getElementById('themeBorder').value;
+  ['Primary', 'Secondary', 'Bg', 'Card', 'Text', 'Border'].forEach(n =>
+    document.getElementById('theme' + n + 'Hex').value = document.getElementById('theme' + n).value
+  );
+  document.getElementById('themePreviewBox').style.background = bg;
+  document.getElementById('themePreviewHeader').style.background = card;
+  document.getElementById('themePreviewBody').style.background = bg;
+  document.getElementById('themePreviewSidebar').style.background = card;
+  document.getElementById('themePreviewContent').style.background = card;
+  document.getElementById('themePreviewContent').style.border = '1px solid ' + border;
+}
 
-async function addTenantAndUser() { const name=document.getElementById('userName').value.trim(),email=document.getElementById('userEmail').value.trim(),company=document.getElementById('companyName').value.trim(); if(!name||!email||!company){alert('Name, email, and company required');return;} const now=new Date().toISOString(),tier=tiers.find(t=>t.tier_id===document.getElementById('userTier').value); try{if(editingTenantId){await supabaseClient.from('tenants').update({tenant_name:company,company_name:company,domain:document.getElementById('userDomain').value.trim()||null,ui_preset_id:document.getElementById('uiPreset').value||null,theme_id:document.getElementById('userTheme').value||null,tier_id:document.getElementById('userTier').value||null,status:document.getElementById('userStatus').value,billing_cycle:document.getElementById('billingCycle').value,billing_email:email,monthly_recurring_revenue:tier?.monthly_price||0,metadata:{notes:document.getElementById('userNotes').value,trial_days:parseInt(document.getElementById('trialDays').value)||14},updated_at:now}).eq('tenant_id',editingTenantId);alert('Updated');cancelEdit();await loadTenants();return;} const tenantId=crypto.randomUUID(),userId=crypto.randomUUID(); await supabaseClient.from('tenants').insert([{tenant_id:tenantId,tenant_name:company,company_name:company,domain:document.getElementById('userDomain').value.trim()||null,ui_preset_id:document.getElementById('uiPreset').value||null,theme_id:document.getElementById('userTheme').value||null,tier_id:document.getElementById('userTier').value||null,status:document.getElementById('userStatus').value,billing_cycle:document.getElementById('billingCycle').value,billing_email:email,monthly_recurring_revenue:tier?.monthly_price||0,metadata:{notes:document.getElementById('userNotes').value,trial_days:parseInt(document.getElementById('trialDays').value)||14},created_at:now,updated_at:now}]); await supabaseClient.from('users').insert([{user_id:userId,tenant_id:tenantId,email,role:'owner',is_active:true,created_at:now,updated_at:now}]); const[first,...rest]=name.split(' '); await supabaseClient.from('employees').insert([{employee_id:crypto.randomUUID(),tenant_id:tenantId,user_id:userId,first_name:first,last_name:rest.join(' ')||'',email,role:'owner',is_active:true,created_at:now}]); await supabaseClient.from('business_settings').insert([{tenant_id:tenantId,business_name:company,created_at:now,updated_at:now}]); alert('Created: '+company);clearTenantForm();await loadTenants();}catch(e){alert('Error: '+e.message);} }
-function editTenant(id) { const t=tenants.find(x=>x.tenant_id===id); if(!t)return; editingTenantId=id; document.getElementById('userName').value=t.tenant_name||''; document.getElementById('userEmail').value=t.owner?.email||t.billing_email||''; document.getElementById('companyName').value=t.company_name||''; document.getElementById('userDomain').value=t.domain||''; document.getElementById('uiPreset').value=t.ui_preset_id||''; document.getElementById('userTheme').value=t.theme_id||''; document.getElementById('userTier').value=t.tier_id||''; document.getElementById('userStatus').value=t.status||'active'; document.getElementById('billingCycle').value=t.billing_cycle||'monthly'; document.getElementById('trialDays').value=t.metadata?.trial_days||14; document.getElementById('userNotes').value=t.metadata?.notes||''; document.getElementById('saveTenantBtn').textContent='Update'; document.getElementById('cancelEditBtn').style.display='inline-block'; window.scrollTo(0,0); }
-function cancelEdit() { editingTenantId=null;clearTenantForm(); document.getElementById('saveTenantBtn').textContent='Add Tenant'; document.getElementById('cancelEditBtn').style.display='none'; }
-function clearTenantForm() { ['userName','userEmail','companyName','userDomain','userNotes'].forEach(id=>document.getElementById(id).value=''); document.getElementById('trialDays').value='14'; }
-async function deleteTenant(id) { if(!confirm('Delete tenant and all data?'))return; try{await supabaseClient.from('employees').delete().eq('tenant_id',id);await supabaseClient.from('users').delete().eq('tenant_id',id);await supabaseClient.from('business_settings').delete().eq('tenant_id',id);await supabaseClient.from('tenants').delete().eq('tenant_id',id);await loadTenants();}catch(e){alert('Error: '+e.message);} }
+async function saveTheme() {
+  const id = document.getElementById('editThemeId').value;
+  const name = document.getElementById('themeName').value.trim();
+  if (!name) { alert('Theme name is required'); return; }
+  
+  const isDefault = document.getElementById('themeIsDefault').value === 'true';
+  if (isDefault) themes.forEach(t => t.is_default = false);
+  
+  const data = {
+    name,
+    type: document.getElementById('themeType').value,
+    primary: document.getElementById('themePrimary').value,
+    secondary: document.getElementById('themeSecondary').value,
+    bg: document.getElementById('themeBg').value,
+    card: document.getElementById('themeCard').value,
+    text: document.getElementById('themeText').value,
+    border: document.getElementById('themeBorder').value,
+    is_default: isDefault,
+    is_active: document.getElementById('themeIsActive').value === 'true',
+    updated_at: new Date().toISOString()
+  };
+  
+  if (isConnected) {
+    try {
+      if (isDefault) {
+        await fetch(`${SUPABASE_URL}/rest/v1/global_themes?id=neq.${id || 'none'}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_default: false })
+        });
+      }
+      if (id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/global_themes?id=eq.${id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+      } else {
+        data.id = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        data.created_at = new Date().toISOString();
+        await fetch(`${SUPABASE_URL}/rest/v1/global_themes`, {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(data)
+        });
+      }
+      addAuditEntry('theme', `${id ? 'Updated' : 'Created'} theme: ${name}`);
+    } catch (e) { console.error(e); }
+  }
+  
+  if (id) {
+    const idx = themes.findIndex(x => x.id === id);
+    if (idx >= 0) themes[idx] = { ...themes[idx], ...data };
+  } else {
+    data.id = data.id || name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    themes.push(data);
+  }
+  
+  saveLocal('themes', themes);
+  alert('Theme saved successfully');
+  closeThemeModal();
+  renderThemes();
+  populateThemeSelect();
+}
 
-function loadAnalytics() { document.getElementById('analyticSignups').textContent=Math.floor(Math.random()*20+5); document.getElementById('analyticGrowth').textContent='+'+(Math.random()*15+5).toFixed(1)+'%'; document.getElementById('analyticTickets').textContent=Math.floor(Math.random()*30+10); document.getElementById('analyticAPI').textContent=Math.floor(Math.random()*500+100)+'K'; document.getElementById('revenueBreakdown').innerHTML=tiers.map(t=>{const subs=tenants.filter(tn=>tn.tier_id===t.tier_id).length;return`<div class="role-section" style="text-align:center"><div style="font-weight:600;margin-bottom:8px">${t.tier_display_name||t.tier_name}</div><div class="speedo-value cyan" style="font-size:22px">$${(subs*(t.monthly_price||0)).toLocaleString()}</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">${subs} subscribers</div></div>`;}).join(''); }
+async function deleteTheme(id) {
+  if (!confirm('Delete this theme?')) return;
+  if (isConnected) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/global_themes?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch (e) { console.error(e); }
+  }
+  themes = themes.filter(t => t.id !== id);
+  saveLocal('themes', themes);
+  addAuditEntry('theme', `Deleted theme: ${id}`);
+  renderThemes();
+  populateThemeSelect();
+}
 
-function refreshAllData() { loadTiers();loadTenants();loadPresets();loadThemes();loadRolePermissions();loadAnalytics(); }
-function exportReport() { const report={generated:new Date().toISOString(),summary:{total_tenants:tenants.length,active_tenants:tenants.filter(t=>t.status==='active').length,total_mrr:tenants.reduce((s,t)=>s+(t.monthly_recurring_revenue||0),0)},tiers:tiers.map(t=>({name:t.tier_display_name,price:t.monthly_price,subscribers:tenants.filter(tn=>tn.tier_id===t.tier_id).length})),tenants:tenants.map(t=>({company:t.company_name,status:t.status,mrr:t.monthly_recurring_revenue}))}; const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='report-'+new Date().toISOString().split('T')[0]+'.json';a.click(); }
+// ROLES
+async function loadRolePermissions() {
+  rolePermissions = {
+    owner: [...ALL_NAV_BUTTONS.map(b => b.id), ...ALL_ACTION_BUTTONS.map(b => b.id)],
+    manager: ['Dashboard', 'Business', 'Customers', 'Vehicles', 'Settings', 'Service', 'Parts', 'Sales', 'Scheduler', 'Tasks'],
+    technician: ['Dashboard', 'Customers', 'Vehicles', 'Service', 'Parts', 'Tasks'],
+    admin: ['Dashboard', 'Business', 'Customers', 'Vehicles', 'Settings', 'Service', 'Parts', 'Sales', 'Scheduler', 'Tasks', 'Billing'],
+    sales: ['Dashboard', 'Customers', 'Vehicles', 'Sales', 'Leads', 'Calendar', 'Tasks']
+  };
+  
+  if (isConnected) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/role_permissions?select=*`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data) data.forEach(r => rolePermissions[r.role] = r.allowed_buttons || []);
+        saveLocal('rolePermissions', rolePermissions);
+      }
+    } catch (e) { console.error(e); }
+  }
+  
+  const saved = loadLocal('rolePermissions');
+  if (saved) rolePermissions = { ...rolePermissions, ...saved };
+}
 
+function populateRolePermissions() {
+  const all = [...ALL_NAV_BUTTONS.map(b => b.id), ...ALL_ACTION_BUTTONS.map(b => b.id)];
+  ['manager', 'technician', 'admin', 'sales'].forEach(role => {
+    const c = document.getElementById(role + 'Buttons');
+    if (c) c.innerHTML = all.map(b => `<label class="checkbox-item"><input type="checkbox" value="${b}" ${(rolePermissions[role] || []).includes(b) ? 'checked' : ''}><span>${b}</span></label>`).join('');
+  });
+}
+
+async function saveRolePermissions() {
+  for (const role of ['manager', 'technician', 'admin', 'sales']) {
+    const btns = [...document.querySelectorAll(`#${role}Buttons input:checked`)].map(c => c.value);
+    rolePermissions[role] = btns;
+    
+    if (isConnected) {
+      try {
+        // Try to upsert using POST with conflict resolution header
+        await fetch(`${SUPABASE_URL}/rest/v1/role_permissions`, {
+          method: 'POST',
+          headers: { 
+            'apikey': SUPABASE_KEY, 
+            'Authorization': `Bearer ${SUPABASE_KEY}`, 
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({ role, allowed_buttons: btns, updated_at: new Date().toISOString() })
+        });
+      } catch (e) { console.error(e); }
+    }
+  }
+  
+  saveLocal('rolePermissions', rolePermissions);
+  addAuditEntry('roles', 'Updated role permissions');
+  document.getElementById('rolesSaveMessage').innerHTML = '<div class="message success">Permissions saved successfully</div>';
+  setTimeout(() => document.getElementById('rolesSaveMessage').innerHTML = '', 3000);
+}
+
+// TENANTS
+async function loadTenants() {
+  if (isConnected) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/tenants?select=*,subscription_tiers(tier_display_name)&order=created_at.desc`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          tenants = data;
+          // Get owner emails and user counts
+          for (let t of tenants) {
+            try {
+              const ownerRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&role=eq.owner&select=email&limit=1`, {
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+              });
+              if (ownerRes.ok) {
+                const owners = await ownerRes.json();
+                t.owner = owners[0] || null;
+              }
+              
+              const countRes = await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${t.tenant_id}&select=user_id`, {
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Prefer': 'count=exact' }
+              });
+              t.user_count = parseInt(countRes.headers.get('content-range')?.split('/')[1]) || 1;
+            } catch (e) { t.owner = null; t.user_count = 1; }
+          }
+          saveLocal('tenants', tenants);
+        }
+      }
+    } catch (e) { console.error(e); }
+  }
+  
+  if (!tenants.length) tenants = loadLocal('tenants') || [];
+  renderTenants();
+  updateKPIs();
+}
+
+function renderTenants() {
+  document.getElementById('tenantsLoading').style.display = 'none';
+  document.getElementById('tenantsTable').style.display = 'table';
+  
+  if (!tenants.length) {
+    document.getElementById('tenantsTableBody').innerHTML = '<tr><td colspan="9" class="loading">No tenants yet. Create one above.</td></tr>';
+    return;
+  }
+  
+  document.getElementById('tenantsTableBody').innerHTML = tenants.map(t => `<tr>
+    <td><strong>${t.company_name || t.tenant_name}</strong><br><small style="color:var(--text-muted)">${t.domain || ''}</small></td>
+    <td>${t.owner?.email || t.billing_email || '-'}</td>
+    <td><span class="badge badge-cyan">${presets.find(p => p.id === t.ui_preset_id)?.name || '-'}</span></td>
+    <td><span class="badge badge-purple">${themes.find(th => th.id === t.theme_id)?.name || 'Default'}</span></td>
+    <td>${t.subscription_tiers?.tier_display_name || 'None'}</td>
+    <td style="color:var(--accent-green)">$${(t.monthly_recurring_revenue || 0).toFixed(2)}</td>
+    <td>${t.user_count || 1}</td>
+    <td><span class="status-dot ${t.status}"></span>${t.status}</td>
+    <td class="actions"><button class="btn btn-sm" onclick="editTenant('${t.tenant_id}')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteTenant('${t.tenant_id}')">Delete</button></td>
+  </tr>`).join('');
+}
+
+function filterTenants() {
+  const s = document.getElementById('tenantSearch').value.toLowerCase();
+  document.querySelectorAll('#tenantsTableBody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(s) ? '' : 'none');
+}
+
+async function addTenantAndUser() {
+  const name = document.getElementById('userName').value.trim();
+  const email = document.getElementById('userEmail').value.trim();
+  const company = document.getElementById('companyName').value.trim();
+  
+  if (!name || !email || !company) {
+    alert('Owner name, email, and company name are required');
+    return;
+  }
+  
+  const now = new Date().toISOString();
+  const tier = tiers.find(t => t.tier_id === document.getElementById('userTier').value);
+  
+  const tenantData = {
+    tenant_name: company,
+    company_name: company,
+    domain: document.getElementById('userDomain').value.trim() || null,
+    ui_preset_id: document.getElementById('uiPreset').value || null,
+    theme_id: document.getElementById('userTheme').value || null,
+    tier_id: document.getElementById('userTier').value || null,
+    status: document.getElementById('userStatus').value,
+    billing_cycle: document.getElementById('billingCycle').value,
+    billing_email: email,
+    monthly_recurring_revenue: tier?.monthly_price || 0,
+    metadata: { notes: document.getElementById('userNotes').value, trial_days: parseInt(document.getElementById('trialDays').value) || 14 },
+    updated_at: now
+  };
+  
+  if (editingTenantId) {
+    // Update existing
+    if (isConnected) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/tenants?tenant_id=eq.${editingTenantId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(tenantData)
+        });
+        addAuditEntry('tenant', `Updated tenant: ${company}`);
+      } catch (e) { console.error(e); }
+    }
+    
+    const idx = tenants.findIndex(t => t.tenant_id === editingTenantId);
+    if (idx >= 0) tenants[idx] = { ...tenants[idx], ...tenantData };
+    saveLocal('tenants', tenants);
+    
+    alert('Tenant updated successfully');
+    cancelEdit();
+    renderTenants();
+    updateKPIs();
+    return;
+  }
+  
+  // Create new
+  const tenantId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+  
+  tenantData.tenant_id = tenantId;
+  tenantData.created_at = now;
+  
+  if (isConnected) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify(tenantData)
+      });
+      
+      await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ user_id: userId, tenant_id: tenantId, email, role: 'owner', is_active: true, created_at: now, updated_at: now })
+      });
+      
+      const [first, ...rest] = name.split(' ');
+      await fetch(`${SUPABASE_URL}/rest/v1/employees`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ employee_id: crypto.randomUUID(), tenant_id: tenantId, user_id: userId, first_name: first, last_name: rest.join(' ') || '', email, role: 'owner', is_active: true, created_at: now })
+      });
+      
+      await fetch(`${SUPABASE_URL}/rest/v1/business_settings`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ tenant_id: tenantId, business_name: company, created_at: now, updated_at: now })
+      });
+      
+      addAuditEntry('tenant', `Created tenant: ${company}`);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  
+  // Add to local
+  tenantData.owner = { email };
+  tenantData.user_count = 1;
+  tenants.unshift(tenantData);
+  saveLocal('tenants', tenants);
+  
+  alert('Tenant created successfully: ' + company);
+  clearTenantForm();
+  renderTenants();
+  updateKPIs();
+}
+
+function editTenant(id) {
+  const t = tenants.find(x => x.tenant_id === id);
+  if (!t) return;
+  
+  editingTenantId = id;
+  document.getElementById('userName').value = t.tenant_name || '';
+  document.getElementById('userEmail').value = t.owner?.email || t.billing_email || '';
+  document.getElementById('companyName').value = t.company_name || '';
+  document.getElementById('userDomain').value = t.domain || '';
+  document.getElementById('uiPreset').value = t.ui_preset_id || '';
+  document.getElementById('userTheme').value = t.theme_id || '';
+  document.getElementById('userTier').value = t.tier_id || '';
+  document.getElementById('userStatus').value = t.status || 'active';
+  document.getElementById('billingCycle').value = t.billing_cycle || 'monthly';
+  document.getElementById('trialDays').value = t.metadata?.trial_days || 14;
+  document.getElementById('userNotes').value = t.metadata?.notes || '';
+  
+  document.getElementById('saveTenantBtn').textContent = 'Update Tenant';
+  document.getElementById('cancelEditBtn').style.display = 'inline-block';
+  window.scrollTo(0, 0);
+}
+
+function cancelEdit() {
+  editingTenantId = null;
+  clearTenantForm();
+  document.getElementById('saveTenantBtn').textContent = 'Add Tenant';
+  document.getElementById('cancelEditBtn').style.display = 'none';
+}
+
+function clearTenantForm() {
+  ['userName', 'userEmail', 'companyName', 'userDomain', 'userNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('trialDays').value = '14';
+}
+
+async function deleteTenant(id) {
+  if (!confirm('Delete this tenant and all associated data? This cannot be undone.')) return;
+  
+  if (isConnected) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/employees?tenant_id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/users?tenant_id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/business_settings?tenant_id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/tenants?tenant_id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch (e) { console.error(e); }
+  }
+  
+  const tenant = tenants.find(t => t.tenant_id === id);
+  tenants = tenants.filter(t => t.tenant_id !== id);
+  saveLocal('tenants', tenants);
+  addAuditEntry('tenant', `Deleted tenant: ${tenant?.company_name || id}`);
+  renderTenants();
+  updateKPIs();
+}
+
+// ANNOUNCEMENTS
+function loadAnnouncements() {
+  announcements = loadLocal('announcements') || [
+    { id: 1, title: 'Welcome to the Platform!', message: 'Thank you for joining us.', type: 'info', created_at: new Date().toISOString() },
+    { id: 2, title: 'Scheduled Maintenance', message: 'We will be performing maintenance on Saturday.', type: 'warning', created_at: new Date().toISOString() }
+  ];
+  renderAnnouncements();
+}
+
+function renderAnnouncements() {
+  document.getElementById('announcementsLoading').style.display = 'none';
+  document.getElementById('announcementsList').innerHTML = announcements.map(a => `
+    <div class="role-section" style="border-left: 3px solid var(--accent-${a.type === 'urgent' ? 'red' : a.type === 'warning' ? 'orange' : a.type === 'success' ? 'green' : 'cyan'});">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div>
+          <div style="font-weight:600;margin-bottom:4px;">${a.title}</div>
+          <div style="font-size:13px;color:var(--text-secondary);">${a.message}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Created: ${new Date(a.created_at).toLocaleDateString()}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="deleteAnnouncement(${a.id})">Delete</button>
+      </div>
+    </div>
+  `).join('') || '<div class="loading">No announcements</div>';
+}
+
+function openAnnouncementModal() { document.getElementById('announcementModal').classList.add('active'); }
+function closeAnnouncementModal() { document.getElementById('announcementModal').classList.remove('active'); }
+
+function saveAnnouncement() {
+  const title = document.getElementById('announcementTitle').value.trim();
+  const message = document.getElementById('announcementMessage').value.trim();
+  if (!title || !message) { alert('Title and message are required'); return; }
+  
+  announcements.unshift({
+    id: Date.now(),
+    title,
+    message,
+    type: document.getElementById('announcementType').value,
+    tier: document.getElementById('announcementTiers').value,
+    expires: document.getElementById('announcementExpires').value || null,
+    created_at: new Date().toISOString()
+  });
+  
+  saveLocal('announcements', announcements);
+  addAuditEntry('announcement', `Created announcement: ${title}`);
+  closeAnnouncementModal();
+  renderAnnouncements();
+  
+  document.getElementById('announcementTitle').value = '';
+  document.getElementById('announcementMessage').value = '';
+}
+
+function deleteAnnouncement(id) {
+  announcements = announcements.filter(a => a.id !== id);
+  saveLocal('announcements', announcements);
+  renderAnnouncements();
+}
+
+// FEATURE FLAGS
+function loadFeatureFlags() {
+  featureFlags = loadLocal('featureFlags') || [
+    { key: 'new_dashboard', name: 'New Dashboard', description: 'Redesigned dashboard UI', target: 'all', enabled: true },
+    { key: 'advanced_reports', name: 'Advanced Reports', description: 'Enhanced reporting features', target: 'tier', enabled: true },
+    { key: 'ai_assistant', name: 'AI Assistant', description: 'AI-powered help', target: 'none', enabled: false }
+  ];
+  renderFeatureFlags();
+}
+
+function renderFeatureFlags() {
+  document.getElementById('featuresLoading').style.display = 'none';
+  document.getElementById('featuresList').innerHTML = featureFlags.map(f => `
+    <div class="role-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:600;">${f.name} <span class="badge badge-cyan">${f.key}</span></div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${f.description || 'No description'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="badge ${f.target === 'all' ? 'badge-green' : f.target === 'tier' ? 'badge-orange' : 'badge-red'}">${f.target === 'all' ? 'All Tenants' : f.target === 'tier' ? 'Specific Tiers' : 'Disabled'}</span>
+          <div class="toggle-switch ${f.target !== 'none' ? 'active' : ''}" onclick="toggleFeature('${f.key}')"></div>
+          <button class="btn btn-sm btn-danger" onclick="deleteFeature('${f.key}')">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('') || '<div class="loading">No feature flags</div>';
+}
+
+function openFeatureModal() { document.getElementById('featureModal').classList.add('active'); }
+function closeFeatureModal() { document.getElementById('featureModal').classList.remove('active'); }
+
+function saveFeature() {
+  const key = document.getElementById('featureKey').value.trim();
+  if (!key) { alert('Feature key is required'); return; }
+  
+  featureFlags.push({
+    key,
+    name: document.getElementById('featureName').value.trim() || key,
+    description: document.getElementById('featureDescription').value.trim(),
+    target: document.getElementById('featureTarget').value,
+    enabled: document.getElementById('featureTarget').value !== 'none'
+  });
+  
+  saveLocal('featureFlags', featureFlags);
+  addAuditEntry('feature', `Created feature flag: ${key}`);
+  closeFeatureModal();
+  renderFeatureFlags();
+  
+  document.getElementById('featureKey').value = '';
+  document.getElementById('featureName').value = '';
+  document.getElementById('featureDescription').value = '';
+}
+
+function toggleFeature(key) {
+  const f = featureFlags.find(x => x.key === key);
+  if (f) {
+    f.target = f.target === 'none' ? 'all' : 'none';
+    f.enabled = f.target !== 'none';
+    saveLocal('featureFlags', featureFlags);
+    addAuditEntry('feature', `Toggled feature: ${key} -> ${f.target}`);
+    renderFeatureFlags();
+  }
+}
+
+function deleteFeature(key) {
+  featureFlags = featureFlags.filter(f => f.key !== key);
+  saveLocal('featureFlags', featureFlags);
+  renderFeatureFlags();
+}
+
+// AUDIT LOG
+function addAuditEntry(type, action) {
+  auditLog.unshift({
+    id: Date.now(),
+    type,
+    action,
+    user: 'Admin',
+    timestamp: new Date().toISOString()
+  });
+  
+  // Keep last 100 entries
+  if (auditLog.length > 100) auditLog = auditLog.slice(0, 100);
+  saveLocal('auditLog', auditLog);
+}
+
+function loadAuditLog() {
+  auditLog = loadLocal('auditLog') || [];
+  renderAuditLog();
+}
+
+function renderAuditLog() {
+  const filter = document.getElementById('auditFilter')?.value || 'all';
+  const filtered = filter === 'all' ? auditLog : auditLog.filter(a => a.type === filter);
+  
+  document.getElementById('auditLogContent').innerHTML = filtered.length ? filtered.map(a => `
+    <div class="audit-item">
+      <div class="audit-time">${new Date(a.timestamp).toLocaleString()}</div>
+      <div class="audit-action">
+        <span class="badge badge-${a.type === 'tenant' ? 'green' : a.type === 'tier' ? 'cyan' : a.type === 'preset' ? 'purple' : 'orange'}">${a.type}</span>
+        ${a.action}
+      </div>
+      <div class="audit-user">${a.user}</div>
+    </div>
+  `).join('') : '<div class="loading">No audit entries</div>';
+}
+
+function filterAuditLog() { renderAuditLog(); }
+
+// SETTINGS
+function saveSettings() {
+  const settings = {
+    platformName: document.getElementById('settingPlatformName').value,
+    supportEmail: document.getElementById('settingSupportEmail').value,
+    trialDays: document.getElementById('settingTrialDays').value,
+    maxUsers: document.getElementById('settingMaxUsers').value,
+    welcomeEmail: document.getElementById('settingWelcomeEmail').value
+  };
+  saveLocal('platformSettings', settings);
+  addAuditEntry('settings', 'Updated platform settings');
+  alert('Settings saved successfully');
+}
+
+function exportAllData() {
+  const data = {
+    exported: new Date().toISOString(),
+    tenants,
+    tiers,
+    presets,
+    themes,
+    rolePermissions,
+    announcements,
+    featureFlags,
+    auditLog
+  };
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'platform-backup-' + new Date().toISOString().split('T')[0] + '.json';
+  a.click();
+}
+
+function clearLocalData() {
+  if (!confirm('Clear all local cache? This will not affect the database.')) return;
+  ['tiers', 'tenants', 'presets', 'themes', 'rolePermissions', 'announcements', 'featureFlags', 'auditLog', 'platformSettings'].forEach(k => localStorage.removeItem('admin_' + k));
+  location.reload();
+}
+
+// UTILITIES
+function refreshAllData() {
+  loadTiers();
+  loadTenants();
+  loadPresets();
+  loadThemes();
+  loadRolePermissions();
+  loadAnnouncements();
+  loadFeatureFlags();
+  loadAuditLog();
+}
+
+function exportReport() {
+  const report = {
+    generated: new Date().toISOString(),
+    summary: {
+      total_tenants: tenants.length,
+      active_tenants: tenants.filter(t => t.status === 'active').length,
+      trial_tenants: tenants.filter(t => t.status === 'trial').length,
+      total_mrr: tenants.reduce((s, t) => s + (t.monthly_recurring_revenue || 0), 0),
+      total_users: tenants.reduce((s, t) => s + (t.user_count || 1), 0)
+    },
+    tiers: tiers.map(t => ({
+      name: t.tier_display_name,
+      price: t.monthly_price,
+      subscribers: tenants.filter(tn => tn.tier_id === t.tier_id).length
+    })),
+    tenants: tenants.map(t => ({
+      company: t.company_name,
+      status: t.status,
+      mrr: t.monthly_recurring_revenue
+    }))
+  };
+  
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'platform-report-' + new Date().toISOString().split('T')[0] + '.json';
+  a.click();
+}
+
+// Initialize
 init();
 </script>
 </body>
