@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
+    [data-theme="slate"] { --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155; --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --accent-primary: #6366f1; --accent-light: #818cf8; }
+    [data-theme="midnight"] { --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228; --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4; --accent-primary: #8b5cf6; --accent-light: #a78bfa; }
+    [data-theme="ocean"] { --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35; --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5; --accent-primary: #14b8a6; --accent-light: #2dd4bf; }
+    [data-theme="light-blue"] { --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0; --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569; --accent-primary: #2563eb; --accent-light: #3b82f6; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; padding-bottom: 140px; }
+
+    .theme-toggle-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .theme-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+    .desktop-header { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-default); }
+    .mobile-top-header { display: none; position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
+    .mobile-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px; gap: 12px; }
+    .mobile-menu-toggle { background: transparent; border: none; color: var(--text-secondary); font-size: 20px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .mobile-header-center { flex: 1; }
+    .mobile-header-title { font-size: 18px; font-weight: 600; }
+    .business-name { font-size: 12px; color: var(--accent-light); }
+    .mobile-header-right { display: flex; align-items: center; gap: 12px; }
+    .mobile-header-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .mobile-header-content.expanded { max-height: 200px; }
+    .mobile-header-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px 12px 12px; background: var(--bg-primary); border-top: 1px solid var(--border-default); }
+    .mobile-header-actions button { padding: 10px; font-size: 13px; background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent); color: var(--accent-light); border-radius: 8px; cursor: pointer; }
+
+    .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); padding: 8px; z-index: 100; border-top: 1px solid var(--border-default); }
+    .mobile-nav-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .mobile-nav-row:last-child { margin-bottom: 0; }
+    .mobile-nav-row.three-col { grid-template-columns: 1fr 1fr 1fr; }
+    .mobile-nav-btn { padding: 10px 8px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; justify-content: center; min-height: 44px; }
+    .mobile-nav-btn:active { transform: scale(0.95); }
+    .mobile-nav-btn.active { background: color-mix(in srgb, var(--accent-primary) 60%, transparent); border-color: var(--accent-primary); color: var(--text-primary); }
+
+    .content { padding: 20px; max-width: 900px; margin: 0 auto; }
+
+    .card { background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .card-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
+    .card-icon { font-size: 20px; color: var(--text-secondary); transition: transform 0.2s; }
+    .card-header.active .card-icon { transform: rotate(180deg); }
+    .card-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .card-content.active { max-height: 3000px; }
+    .card-inner { padding-top: 20px; }
+
+    .section-title { font-size: 14px; color: var(--accent-light); border-bottom: 1px solid var(--border-default); padding-bottom: 8px; margin-bottom: 16px; }
+
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border-default); gap: 16px; }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 14px; font-weight: 500; }
+    .setting-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+    input[type="text"], input[type="number"], input[type="email"], input[type="tel"], input[type="date"], textarea, select {
+      padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; width: 220px;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-primary); }
+    textarea { min-height: 80px; resize: vertical; }
+
+    input[type="color"] { width: 50px; height: 40px; padding: 4px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); cursor: pointer; }
+
+    .btn { padding: 12px 20px; border-radius: 10px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; cursor: pointer; }
+    .btn:hover { background: var(--bg-hover); }
+    .btn-primary { background: var(--accent-primary); border-color: var(--accent-primary); color: #fff; }
+    .btn-primary:hover { background: var(--accent-light); }
+    .btn-danger { border-color: #991b1b; color: #991b1b; }
+
+    .success { color: #10b981; font-size: 12px; margin-top: 8px; }
+    .error { color: #991b1b; font-size: 12px; margin-top: 8px; }
+
+    .employee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 16px; }
+    .employee-card { background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s; }
+    .employee-card:hover { border-color: var(--accent-primary); transform: translateY(-2px); }
+    .employee-avatar { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 28px; color: #fff; overflow: hidden; background-size: cover; background-position: center; }
+    .employee-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .employee-role { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+    .employee-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-secondary); }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
+    .stat-card { background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 16px; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 700; }
+    .stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; }
+
+    .color-picker-row { display: flex; align-items: center; gap: 12px; }
+    .color-preview { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border-default); }
+    .color-options { display: flex; gap: 8px; flex-wrap: wrap; }
+    .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+    .color-option:hover { transform: scale(1.1); }
+    .color-option.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-primary); }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: flex-end; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border-radius: 20px 20px 0 0; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-default); position: sticky; top: 0; background: var(--bg-secondary); z-index: 10; }
+    .modal-title { font-size: 20px; font-weight: 700; }
+    .modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 28px; cursor: pointer; }
+    .modal-body { padding: 20px; }
+    .modal-footer { padding: 16px 20px 24px; border-top: 1px solid var(--border-default); }
+
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
+    .theme-card { background: var(--bg-primary); border: 2px solid var(--border-default); border-radius: 12px; padding: 16px; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .theme-card:hover { border-color: var(--accent-primary); }
+    .theme-card.active { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
+    .theme-preview { height: 60px; border-radius: 8px; margin-bottom: 12px; display: flex; gap: 4px; padding: 8px; }
+    .theme-preview div { flex: 1; border-radius: 4px; }
+    .theme-name { font-size: 13px; font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .desktop-header { display: none !important; }
+      .mobile-top-header { display: block; }
+      .mobile-bottom-nav { display: block; }
+      .setting-row { flex-direction: column; align-items: flex-start; }
+      input[type="text"], input[type="number"], input[type="email"], input[type="tel"], input[type="date"], textarea, select { width: 100%; }
+      .form-row { grid-template-columns: 1fr; }
+      .employee-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 769px) {
+      .mobile-top-header { display: none !important; }
+      .mobile-bottom-nav { display: none !important; }
+      .modal-overlay { align-items: center; padding: 20px; }
+      .modal-content { border-radius: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="mobile-top-header">
+  <div class="mobile-header-bar">
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
+    <div class="mobile-header-center">
+      <div class="mobile-header-title">Settings</div>
+      <div class="business-name" id="mobileBusinessName">Loading...</div>
+    </div>
+    <div class="mobile-header-right">
+      <button class="theme-toggle-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button>
+    </div>
+  </div>
+  <div class="mobile-header-content" id="mobileHeaderContent">
+    <div class="mobile-header-actions">
+      <button onclick="location.href='sharklaw-settings.html'">Settings</button>
+      <button onclick="location.href='support.html'">Support</button>
+      <button onclick="location.href='account.html'">Account</button>
+    </div>
+  </div>
+</div>
+
+<div class="desktop-header">
+  <div style="padding:16px 24px 8px; display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1 style="margin:0; font-size:32px; font-weight:600;">Settings</h1>
+      <div class="business-name" id="desktopBusinessName">Loading...</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <button class="theme-toggle-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button>
+      <a onclick="logout()" style="color:var(--text-secondary); cursor:pointer; font-size:14px;">Logout</a>
+    </div>
+  </div>
+  <div style="padding:0 24px 12px;">
+    <nav style="display:flex; gap:24px;">
+      <a href="dashboard-sharklaw.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Dashboard</a>
+      <a href="sharklaw-scheduler.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Scheduler</a>
+      <a href="sharklaw-contacts.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Contacts</a>
+      <a href="sharklaw-swag.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Swag</a>
+      <a href="sharklaw-settings.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Settings</a>
+    </nav>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- Business Settings -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Business Information</h2>
+      <span class="card-icon">▼</span>
+    </div>
+    <div class="card-content">
+      <div class="card-inner">
+        <div class="setting-row">
+          <div><div class="setting-label">Business Name</div><div class="setting-desc">Your company name</div></div>
+          <input type="text" id="businessName" placeholder="Business Name">
+        </div>
+        <div class="setting-row">
+          <div><div class="setting-label">Contact Email</div></div>
+          <input type="email" id="contactEmail" placeholder="email@example.com">
+        </div>
+        <div class="setting-row">
+          <div><div class="setting-label">Contact Phone</div></div>
+          <input type="tel" id="contactPhone" placeholder="555-555-5555">
+        </div>
+        <div class="setting-row">
+          <div><div class="setting-label">Address</div></div>
+          <input type="text" id="businessAddress" placeholder="123 Main St">
+        </div>
+        <div class="setting-row">
+          <div><div class="setting-label">City, State ZIP</div></div>
+          <input type="text" id="businessCityStateZip" placeholder="City, ST 12345">
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="saveBusinessSettings()">Save Business Settings</button>
+        <div id="businessSaveMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employees -->
+  <div class="card">
+    <div class="card-header active" onclick="toggleCard(this)">
+      <h2>Team Members</h2>
+      <span class="card-icon">▼</span>
+    </div>
+    <div class="card-content active">
+      <div class="card-inner">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+          <div class="setting-desc">Manage team members and their profile colors</div>
+          <button class="btn btn-primary" onclick="openAddEmployeeModal()">+ Add Team Member</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total</div></div>
+          <div class="stat-card"><div class="stat-value" id="statActive">0</div><div class="stat-label">Active</div></div>
+        </div>
+
+        <div id="employeeGrid" class="employee-grid">
+          <div style="text-align:center; color:var(--text-secondary); padding:40px;">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Appearance -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Appearance</h2>
+      <span class="card-icon">▼</span>
+    </div>
+    <div class="card-content">
+      <div class="card-inner">
+        <div class="setting-desc" style="margin-bottom:16px;">Choose your preferred color scheme</div>
+        <div class="theme-grid">
+          <div class="theme-card" onclick="setTheme('dark-blue')" data-theme="dark-blue">
+            <div class="theme-preview" style="background:#0b0f14;"><div style="background:#1a2535;"></div><div style="background:#3b82f6;"></div><div style="background:#60a5fa;"></div></div>
+            <div class="theme-name">Dark Blue</div>
+          </div>
+          <div class="theme-card" onclick="setTheme('slate')" data-theme="slate">
+            <div class="theme-preview" style="background:#0f172a;"><div style="background:#273549;"></div><div style="background:#6366f1;"></div><div style="background:#818cf8;"></div></div>
+            <div class="theme-name">Slate</div>
+          </div>
+          <div class="theme-card" onclick="setTheme('midnight')" data-theme="midnight">
+            <div class="theme-preview" style="background:#09090b;"><div style="background:#18181d;"></div><div style="background:#8b5cf6;"></div><div style="background:#a78bfa;"></div></div>
+            <div class="theme-name">Midnight</div>
+          </div>
+          <div class="theme-card" onclick="setTheme('ocean')" data-theme="ocean">
+            <div class="theme-preview" style="background:#0a1214;"><div style="background:#152228;"></div><div style="background:#14b8a6;"></div><div style="background:#2dd4bf;"></div></div>
+            <div class="theme-name">Ocean</div>
+          </div>
+          <div class="theme-card" onclick="setTheme('light-blue')" data-theme="light-blue">
+            <div class="theme-preview" style="background:#f8fafc;"><div style="background:#ffffff;"></div><div style="background:#2563eb;"></div><div style="background:#3b82f6;"></div></div>
+            <div class="theme-name">Light</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Add/Edit Employee Modal -->
+<div class="modal-overlay" id="employeeModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="employeeModalTitle">Add Team Member</div>
+      <button class="modal-close" onclick="closeEmployeeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" id="empFirstName" style="width:100%;" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" id="empLastName" style="width:100%;" placeholder="Smith">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="empEmail" style="width:100%;" placeholder="john@company.com">
+        <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Required for task assignments</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input type="tel" id="empPhone" style="width:100%;" placeholder="555-123-4567">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <select id="empDepartment" style="width:100%;">
+            <option value="">Select...</option>
+            <option value="operations">Operations</option>
+            <option value="sales">Sales</option>
+            <option value="marketing">Marketing</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select id="empRole" style="width:100%;">
+            <option value="staff">Staff</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Profile Color</label>
+        <div class="setting-desc" style="margin-bottom:12px;">This color represents them on tasks, schedules, and charts</div>
+        <div class="color-options" id="colorOptions">
+          <div class="color-option" style="background:#3b82f6;" data-color="#3b82f6" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#10b981;" data-color="#10b981" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#f59e0b;" data-color="#f59e0b" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#8b5cf6;" data-color="#8b5cf6" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#ec4899;" data-color="#ec4899" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#14b8a6;" data-color="#14b8a6" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#f97316;" data-color="#f97316" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#6366f1;" data-color="#6366f1" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#84cc16;" data-color="#84cc16" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#06b6d4;" data-color="#06b6d4" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#ef4444;" data-color="#ef4444" onclick="selectColor(this)"></div>
+          <div class="color-option" style="background:#a855f7;" data-color="#a855f7" onclick="selectColor(this)"></div>
+        </div>
+        <input type="hidden" id="empColor" value="#3b82f6">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div style="display:flex; gap:10px;" id="modalFooterAdd">
+        <button class="btn btn-primary" style="flex:1;" onclick="saveEmployee()">Add Team Member</button>
+        <button class="btn" style="flex:1;" onclick="closeEmployeeModal()">Cancel</button>
+      </div>
+      <div style="display:none; gap:10px;" id="modalFooterEdit">
+        <button class="btn btn-primary" style="flex:1;" onclick="saveEmployee()">Save Changes</button>
+        <button class="btn btn-danger" style="flex:1;" onclick="deleteEmployee()">Delete</button>
+        <button class="btn" onclick="closeEmployeeModal()">Cancel</button>
+      </div>
+      <div id="employeeModalMsg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="mobile-bottom-nav">
+  <div class="mobile-nav-row">
+    <a href="dashboard-sharklaw.html" class="mobile-nav-btn">Dashboard</a>
+    <a href="sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a>
+  </div>
+  <div class="mobile-nav-row three-col">
+    <a href="sharklaw-contacts.html" class="mobile-nav-btn">Contacts</a>
+    <a href="sharklaw-swag.html" class="mobile-nav-btn">Swag</a>
+    <a href="sharklaw-settings.html" class="mobile-nav-btn active">Settings</a>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let currentTenantId=null,userEmail=null;
+let allEmployees=[],editingEmployeeId=null;
+
+var themes=['dark-blue','slate','midnight','ocean','light-blue'];
+var themeIndex=0;
+function loadTheme(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);themeIndex=themes.indexOf(t);if(themeIndex<0)themeIndex=0;updateThemeCards();}
+function cycleTheme(){themeIndex=(themeIndex+1)%themes.length;setTheme(themes[themeIndex]);}
+function setTheme(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem('app-theme',t);themeIndex=themes.indexOf(t);updateThemeCards();}
+function updateThemeCards(){document.querySelectorAll('.theme-card').forEach(function(card){card.classList.toggle('active',card.dataset.theme===themes[themeIndex]);});}
+loadTheme();
+
+function toggleMobileMenu(){document.getElementById('mobileHeaderContent').classList.toggle('expanded');}
+function toggleCard(header){header.classList.toggle('active');header.nextElementSibling.classList.toggle('active');}
+async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('login.html');}
+
+function selectColor(el){document.querySelectorAll('.color-option').forEach(function(o){o.classList.remove('selected');});el.classList.add('selected');document.getElementById('empColor').value=el.dataset.color;}
+
+async function checkAuth(){
+  var r=await sb.auth.getSession();
+  var session=r.data.session;
+  if(!session){
+    var token=localStorage.getItem('sb_access_token'),refresh=localStorage.getItem('sb_refresh_token');
+    if(token&&refresh){var sr=await sb.auth.setSession({access_token:token,refresh_token:refresh});session=sr.data?.session;}
+    if(!session){window.location.href='login.html';return null;}
+  }
+  userEmail=session.user.email;
+  return session;
+}
+
+function updateEmailDisplay(){
+  if(userEmail){
+    document.getElementById('desktopBusinessName').textContent=userEmail;
+    document.getElementById('mobileBusinessName').textContent=userEmail;
+  }
+}
+
+async function loadBusinessSettings(){
+  if(!currentTenantId)return;
+  var r=await sb.from('business_settings').select('*').eq('tenant_id',currentTenantId).single();
+  if(r.data){
+    document.getElementById('businessName').value=r.data.business_name||'';
+    document.getElementById('contactEmail').value=r.data.contact_email||'';
+    document.getElementById('contactPhone').value=r.data.contact_phone||'';
+    document.getElementById('businessAddress').value=r.data.address||'';
+    document.getElementById('businessCityStateZip').value=r.data.city_state_zip||'';
+  }
+}
+
+async function saveBusinessSettings(){
+  var data={
+    business_name:document.getElementById('businessName').value.trim()||null,
+    contact_email:document.getElementById('contactEmail').value.trim()||null,
+    contact_phone:document.getElementById('contactPhone').value.trim()||null,
+    address:document.getElementById('businessAddress').value.trim()||null,
+    city_state_zip:document.getElementById('businessCityStateZip').value.trim()||null,
+    updated_at:new Date().toISOString()
+  };
+  var r=await sb.from('business_settings').update(data).eq('tenant_id',currentTenantId);
+  if(r.error){document.getElementById('businessSaveMsg').innerHTML='<span class="error">Error: '+r.error.message+'</span>';}
+  else{document.getElementById('businessSaveMsg').innerHTML='<span class="success">Saved!</span>';setTimeout(function(){document.getElementById('businessSaveMsg').innerHTML='';},3000);}
+}
+
+async function loadEmployees(){
+  if(!currentTenantId)return;
+  var r=await sb.from('employees').select('*').eq('tenant_id',currentTenantId).order('last_name');
+  allEmployees=r.data||[];
+  renderEmployees();
+  updateEmployeeStats();
+}
+
+function renderEmployees(){
+  var grid=document.getElementById('employeeGrid');
+  if(allEmployees.length===0){grid.innerHTML='<div style="text-align:center; color:var(--text-secondary); padding:40px; grid-column:1/-1;">No team members yet. Add your first!</div>';return;}
+  grid.innerHTML=allEmployees.map(function(emp){
+    var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';
+    var initials=((emp.first_name||'?')[0]+((emp.last_name||'')[0]||'')).toUpperCase();
+    var color=emp.profile_color||'#3b82f6';
+    var role=(emp.role||'staff').replace(/_/g,' ');
+    role=role.charAt(0).toUpperCase()+role.slice(1);
+    var avatarStyle=emp.avatar_url?'background-image:url('+emp.avatar_url+');background-size:cover;':'background:'+color+';';
+    return '<div class="employee-card" onclick="openEditEmployee(\''+emp.employee_id+'\')">'+
+      '<div class="employee-avatar" style="'+avatarStyle+'">'+(emp.avatar_url?'':initials)+'</div>'+
+      '<div class="employee-name">'+name+'</div>'+
+      '<div class="employee-role">'+role+'</div>'+
+      '<div class="employee-meta">'+(emp.department||'No dept')+'</div>'+
+      '</div>';
+  }).join('');
+}
+
+function updateEmployeeStats(){
+  document.getElementById('statTotal').textContent=allEmployees.length;
+  document.getElementById('statActive').textContent=allEmployees.filter(function(e){return e.is_active!==false;}).length;
+}
+
+function openAddEmployeeModal(){
+  editingEmployeeId=null;
+  document.getElementById('employeeModalTitle').textContent='Add Team Member';
+  document.getElementById('empFirstName').value='';
+  document.getElementById('empLastName').value='';
+  document.getElementById('empEmail').value='';
+  document.getElementById('empPhone').value='';
+  document.getElementById('empDepartment').value='';
+  document.getElementById('empRole').value='staff';
+  document.getElementById('empColor').value='#3b82f6';
+  document.querySelectorAll('.color-option').forEach(function(o){o.classList.remove('selected');});
+  document.querySelector('.color-option[data-color="#3b82f6"]').classList.add('selected');
+  document.getElementById('modalFooterAdd').style.display='flex';
+  document.getElementById('modalFooterEdit').style.display='none';
+  document.getElementById('employeeModalMsg').innerHTML='';
+  document.getElementById('employeeModal').classList.add('active');
+}
+
+function openEditEmployee(id){
+  var emp=allEmployees.find(function(e){return e.employee_id===id;});
+  if(!emp)return;
+  editingEmployeeId=id;
+  document.getElementById('employeeModalTitle').textContent='Edit Team Member';
+  document.getElementById('empFirstName').value=emp.first_name||'';
+  document.getElementById('empLastName').value=emp.last_name||'';
+  document.getElementById('empEmail').value=emp.email||'';
+  document.getElementById('empPhone').value=emp.phone||'';
+  document.getElementById('empDepartment').value=emp.department||'';
+  document.getElementById('empRole').value=emp.role||'staff';
+  var color=emp.profile_color||'#3b82f6';
+  document.getElementById('empColor').value=color;
+  document.querySelectorAll('.color-option').forEach(function(o){o.classList.toggle('selected',o.dataset.color===color);});
+  document.getElementById('modalFooterAdd').style.display='none';
+  document.getElementById('modalFooterEdit').style.display='flex';
+  document.getElementById('employeeModalMsg').innerHTML='';
+  document.getElementById('employeeModal').classList.add('active');
+}
+
+function closeEmployeeModal(){document.getElementById('employeeModal').classList.remove('active');}
+
+async function saveEmployee(){
+  var firstName=document.getElementById('empFirstName').value.trim();
+  var lastName=document.getElementById('empLastName').value.trim();
+  if(!firstName||!lastName){document.getElementById('employeeModalMsg').innerHTML='<span class="error">First and last name required</span>';return;}
+  
+  var data={
+    first_name:firstName,
+    last_name:lastName,
+    email:document.getElementById('empEmail').value.trim()||null,
+    phone:document.getElementById('empPhone').value.trim()||null,
+    department:document.getElementById('empDepartment').value||null,
+    role:document.getElementById('empRole').value||'staff',
+    profile_color:document.getElementById('empColor').value||'#3b82f6'
+  };
+  
+  try{
+    var r;
+    if(editingEmployeeId){
+      r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
+    }else{
+      data.tenant_id=currentTenantId;
+      data.is_active=true;
+      data.created_at=new Date().toISOString();
+      r=await sb.from('employees').insert(data);
+    }
+    if(r.error)throw r.error;
+    closeEmployeeModal();
+    loadEmployees();
+  }catch(e){
+    document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
+  }
+}
+
+async function deleteEmployee(){
+  if(!editingEmployeeId||!confirm('Delete this team member?'))return;
+  try{
+    var r=await sb.from('employees').delete().eq('employee_id',editingEmployeeId);
+    if(r.error)throw r.error;
+    closeEmployeeModal();
+    loadEmployees();
+  }catch(e){
+    document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
+  }
+}
+
+async function init(){
+  var session=await checkAuth();
+  if(!session)return;
+  var email=session.user?.email;
+  if(email){
+    var r=await sb.from('users').select('tenant_id').eq('email',email).single();
+    if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;
+  }
+  if(!currentTenantId){
+    var r=await sb.from('business_settings').select('tenant_id').limit(1).single();
+    if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;
+  }
+  if(!currentTenantId){console.error('No tenant');return;}
+  updateEmailDisplay();
+  await loadBusinessSettings();
+  await loadEmployees();
+}
+
+init();
+</script>
+</body>
+</html>
