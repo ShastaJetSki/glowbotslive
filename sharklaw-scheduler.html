@@ -105,8 +105,8 @@
     .lanes-date-chip .day-name { font-size: 9px; text-transform: uppercase; opacity: 0.8; }
     .lanes-date-chip .day-num { font-size: 16px; font-weight: 700; margin-top: 2px; }
     .lanes-date-chip .job-count { font-size: 8px; margin-top: 2px; opacity: 0.8; }
-    .content-area { position: relative; overflow-x: hidden; overflow-y: auto; min-height: calc(100vh - 350px); -webkit-overflow-scrolling: touch; }
-    .swipe-page { position: absolute; top: 0; left: 0; width: 100%; min-height: 100%; will-change: transform, opacity; }
+    .content-area { position: relative; overflow-x: hidden; overflow-y: auto; min-height: calc(100vh - 350px); -webkit-overflow-scrolling: touch; touch-action: pan-y pinch-zoom; }
+    .swipe-page { position: absolute; top: 0; left: 0; width: 100%; min-height: 100%; will-change: transform, opacity; transform: translateX(0); opacity: 1; }
     .swipe-page.current { position: relative; transform: translateX(0); opacity: 1; z-index: 2; }
     .swipe-page.prev { transform: translateX(-100%); opacity: 0; z-index: 1; }
     .swipe-page.next { transform: translateX(100%); opacity: 0; z-index: 1; }
@@ -389,7 +389,7 @@
 </div>
 <div class="edge-indicator left" id="edgeLeft"><span class="edge-arrow">◀</span><div class="date-preview" id="edgeLeftPreview"></div></div>
 <div class="edge-indicator right" id="edgeRight"><span class="edge-arrow">▶</span><div class="date-preview" id="edgeRightPreview"></div></div>
-<div class="content-area" id="contentArea">
+<div class="content-area" id="contentArea" ontouchstart="handleTouchStart(event)" ontouchmove="handleTouchMove(event)" ontouchend="handleTouchEnd(event)">
   <div class="swipe-page current" id="currentPage"></div>
   <div class="swipe-page prev" id="prevPage"></div>
   <div class="swipe-page next" id="nextPage"></div>
@@ -748,6 +748,13 @@ function selectDateAndSwitchToLanes(offset){selectedDate=offset;currentViewStyle
 function renderPages(){var content='';if(currentViewStyle==='stack'){content=renderStackView(selectedDate);}else if(currentViewStyle==='grid'){content=renderGridView(selectedDate);}else{content=renderLanesView(selectedDate);}document.getElementById('currentPage').innerHTML=content;document.getElementById('prevPage').innerHTML='';document.getElementById('nextPage').innerHTML='';}
 function renderAll(){renderLanesControls();var dc=document.getElementById('lanesDateChips');dc.style.display='flex';renderLanesDateChips();renderPages();}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
+var touchStartX=null,touchStartY=null,touchStartTime=null,isSwiping=false;
+function handleTouchStart(e){if(currentViewStyle!=='lanes'&&currentViewStyle!=='stack')return;if(e.target.closest('.lane-cards')||e.target.closest('.lanes-date-chips'))return;var touch=e.touches[0];touchStartX=touch.clientX;touchStartY=touch.clientY;touchStartTime=Date.now();isSwiping=false;}
+function handleTouchMove(e){if((currentViewStyle!=='lanes'&&currentViewStyle!=='stack')||touchStartX===null)return;var touch=e.touches[0];var deltaX=touch.clientX-touchStartX;var deltaY=touch.clientY-touchStartY;if(Math.abs(deltaX)>Math.abs(deltaY)&&Math.abs(deltaX)>10){isSwiping=true;}}
+function handleTouchEnd(e){if((currentViewStyle!=='lanes'&&currentViewStyle!=='stack')||touchStartX===null||!isSwiping)return;var touch=e.changedTouches[0];var deltaX=touch.clientX-touchStartX;var deltaTime=Date.now()-touchStartTime;var velocity=Math.abs(deltaX)/deltaTime;var threshold=50;var velocityThreshold=0.3;if(Math.abs(deltaX)>threshold||velocity>velocityThreshold){if(deltaX<0){swipeToNextDay();}else{swipeToPrevDay();}}touchStartX=null;touchStartY=null;isSwiping=false;}
+function swipeToNextDay(){var contentArea=document.getElementById('contentArea');var currentPage=document.getElementById('currentPage');currentPage.style.transition='transform 0.25s ease-out, opacity 0.25s ease-out';currentPage.style.transform='translateX(-100%)';currentPage.style.opacity='0';setTimeout(function(){selectedDate++;currentPage.style.transition='none';currentPage.style.transform='translateX(100%)';currentPage.style.opacity='0';renderAll();scrollToSelectedChip();setTimeout(function(){currentPage.style.transition='transform 0.25s ease-out, opacity 0.25s ease-out';currentPage.style.transform='translateX(0)';currentPage.style.opacity='1';},20);},250);}
+function swipeToPrevDay(){var contentArea=document.getElementById('contentArea');var currentPage=document.getElementById('currentPage');currentPage.style.transition='transform 0.25s ease-out, opacity 0.25s ease-out';currentPage.style.transform='translateX(100%)';currentPage.style.opacity='0';setTimeout(function(){selectedDate--;currentPage.style.transition='none';currentPage.style.transform='translateX(-100%)';currentPage.style.opacity='0';renderAll();scrollToSelectedChip();setTimeout(function(){currentPage.style.transition='transform 0.25s ease-out, opacity 0.25s ease-out';currentPage.style.transform='translateX(0)';currentPage.style.opacity='1';},20);},250);}
+function scrollToSelectedChip(){var chips=document.querySelectorAll('.lanes-date-chip');chips.forEach(function(c){if(parseInt(c.getAttribute('data-offset'))===selectedDate){c.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}});}
 
 // Event Modal Functions
 function openNewEventModal(){document.getElementById('eventTitle').value='';document.getElementById('eventOrganization').value='';document.getElementById('eventType').value='';document.getElementById('eventTicketPrice').value='';document.getElementById('eventAttendance').value='';document.getElementById('eventLocation').value='';document.getElementById('eventNotes').value='';var td=new Date();td.setDate(td.getDate()+selectedDate);document.getElementById('eventDate').value=td.toISOString().split('T')[0];document.getElementById('eventTime').value='10:00';document.getElementById('newEventModal').classList.add('active');}
