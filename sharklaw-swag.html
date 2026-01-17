@@ -180,7 +180,7 @@
   <div class="inventory-list">
     <div class="inventory-header">
       <div>Item Name</div>
-      <div>Category</div>
+      <div>Description</div>
       <div>Quantity</div>
       <div>Unit Cost</div>
       <div>Actions</div>
@@ -198,17 +198,7 @@
     </div>
     <div class="modal-body">
       <div class="form-group"><label class="form-label">Item Name <span class="required">*</span></label><input type="text" class="form-input" id="itemName" placeholder="e.g., T-Shirt, Sticker, Hat"></div>
-      <div class="form-group"><label class="form-label">Category</label>
-        <select class="form-select" id="itemCategory">
-          <option value="">-- Select --</option>
-          <option value="Apparel">Apparel</option>
-          <option value="Accessories">Accessories</option>
-          <option value="Stickers">Stickers</option>
-          <option value="Drinkware">Drinkware</option>
-          <option value="Promotional">Promotional</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Description / Type</label><input type="text" class="form-input" id="itemDescription" placeholder="e.g., Apparel, Accessories, Promotional"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Quantity <span class="required">*</span></label><input type="number" class="form-input" id="itemQuantity" placeholder="0" min="0"></div>
         <div class="form-group"><label class="form-label">Unit Cost</label><input type="number" class="form-input" id="itemCost" placeholder="0.00" step="0.01" min="0"></div>
@@ -217,7 +207,6 @@
         <div class="form-group"><label class="form-label">Reorder Point</label><input type="number" class="form-input" id="itemReorderPoint" placeholder="5" min="0"></div>
         <div class="form-group"><label class="form-label">SKU / Part #</label><input type="text" class="form-input" id="itemSku" placeholder="Optional"></div>
       </div>
-      <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="itemDescription" placeholder="Optional description..." style="min-height:60px;resize:vertical;"></textarea></div>
     </div>
     <div class="modal-footer">
       <div class="modal-footer-buttons" id="addFooter">
@@ -300,19 +289,19 @@ async function logout(){await sb.auth.signOut();localStorage.clear();location.re
 
 async function loadItems(){if(!currentTenantId)return;var r=await sb.from('parts_inventory').select('*').eq('tenant_id',currentTenantId).order('part_name',{ascending:true});allItems=r.data||[];renderItems();updateStats();}
 
-function renderItems(){var container=document.getElementById('inventoryItems');var searchTerm=(document.getElementById('searchBox').value||'').toLowerCase();var filtered=allItems.filter(function(item){return!searchTerm||(item.part_name||'').toLowerCase().includes(searchTerm)||(item.category||'').toLowerCase().includes(searchTerm);});if(filtered.length===0){container.innerHTML='<div class="empty-state">'+(allItems.length===0?'No swag items yet. Add your first item!':'No items match your search.')+'</div>';return;}container.innerHTML=filtered.map(function(item){var qty=item.quantity_on_hand||0;var isLow=qty>0&&qty<=(item.reorder_point||5);var isOut=qty===0;var rowClass='inventory-item'+(isOut?' out-of-stock':(isLow?' low-stock':''));var qtyClass='item-qty'+(isOut?' out':(isLow?' low':''));return'<div class="'+rowClass+'"><div><div class="item-name">'+(item.part_name||'Unknown')+'</div><div class="item-category">'+(item.category||'--')+'</div></div><div>'+(item.category||'--')+'</div><div class="'+qtyClass+'">'+qty+'</div><div class="item-cost">'+(item.unit_cost?'$'+parseFloat(item.unit_cost).toFixed(2):'--')+'</div><div class="item-actions"><button class="item-action-btn" onclick="openAdjustModal(\''+item.part_id+'\')">Adjust</button><button class="item-action-btn" onclick="editItem(\''+item.part_id+'\')">Edit</button></div></div>';}).join('');}
+function renderItems(){var container=document.getElementById('inventoryItems');var searchTerm=(document.getElementById('searchBox').value||'').toLowerCase();var filtered=allItems.filter(function(item){return!searchTerm||(item.part_name||'').toLowerCase().includes(searchTerm)||(item.description||'').toLowerCase().includes(searchTerm);});if(filtered.length===0){container.innerHTML='<div class="empty-state">'+(allItems.length===0?'No swag items yet. Add your first item!':'No items match your search.')+'</div>';return;}container.innerHTML=filtered.map(function(item){var qty=item.quantity_on_hand||0;var isLow=qty>0&&qty<=(item.reorder_point||5);var isOut=qty===0;var rowClass='inventory-item'+(isOut?' out-of-stock':(isLow?' low-stock':''));var qtyClass='item-qty'+(isOut?' out':(isLow?' low':''));var desc=item.description||'--';return'<div class="'+rowClass+'"><div><div class="item-name">'+(item.part_name||'Unknown')+'</div><div class="item-category">'+desc+'</div></div><div>'+desc+'</div><div class="'+qtyClass+'">'+qty+'</div><div class="item-cost">'+(item.unit_cost?'$'+parseFloat(item.unit_cost).toFixed(2):'--')+'</div><div class="item-actions"><button class="item-action-btn" onclick="openAdjustModal(\''+item.part_id+'\')">Adjust</button><button class="item-action-btn" onclick="editItem(\''+item.part_id+'\')">Edit</button></div></div>';}).join('');}
 
 function filterItems(){renderItems();}
 
 function updateStats(){var totalQty=allItems.reduce(function(sum,i){return sum+(i.quantity_on_hand||0);},0);var totalValue=allItems.reduce(function(sum,i){return sum+((i.quantity_on_hand||0)*(i.unit_cost||0));},0);var lowStock=allItems.filter(function(i){var q=i.quantity_on_hand||0;return q>0&&q<=(i.reorder_point||5);}).length;var outOfStock=allItems.filter(function(i){return(i.quantity_on_hand||0)===0;}).length;document.getElementById('statTotalItems').textContent=totalQty;document.getElementById('statTotalValue').textContent='$'+totalValue.toFixed(2);document.getElementById('statLowStock').textContent=lowStock;document.getElementById('statOutOfStock').textContent=outOfStock;}
 
-function openAddItemModal(){editingItemId=null;document.getElementById('itemModalTitle').textContent='Add Item';document.getElementById('itemName').value='';document.getElementById('itemCategory').value='';document.getElementById('itemQuantity').value='';document.getElementById('itemCost').value='';document.getElementById('itemReorderPoint').value='5';document.getElementById('itemSku').value='';document.getElementById('itemDescription').value='';document.getElementById('addFooter').style.display='grid';document.getElementById('editFooter').style.display='none';document.getElementById('itemModal').classList.add('active');}
+function openAddItemModal(){editingItemId=null;document.getElementById('itemModalTitle').textContent='Add Item';document.getElementById('itemName').value='';document.getElementById('itemDescription').value='';document.getElementById('itemQuantity').value='';document.getElementById('itemCost').value='';document.getElementById('itemReorderPoint').value='5';document.getElementById('itemSku').value='';document.getElementById('addFooter').style.display='grid';document.getElementById('editFooter').style.display='none';document.getElementById('itemModal').classList.add('active');}
 
-function editItem(itemId){var item=allItems.find(function(i){return i.part_id===itemId;});if(!item)return;editingItemId=itemId;document.getElementById('itemModalTitle').textContent='Edit Item';document.getElementById('itemName').value=item.part_name||'';document.getElementById('itemCategory').value=item.category||'';document.getElementById('itemQuantity').value=item.quantity_on_hand||0;document.getElementById('itemCost').value=item.unit_cost||'';document.getElementById('itemReorderPoint').value=item.reorder_point||5;document.getElementById('itemSku').value=item.part_number||'';document.getElementById('itemDescription').value=item.description||'';document.getElementById('addFooter').style.display='none';document.getElementById('editFooter').style.display='grid';document.getElementById('itemModal').classList.add('active');}
+function editItem(itemId){var item=allItems.find(function(i){return i.part_id===itemId;});if(!item)return;editingItemId=itemId;document.getElementById('itemModalTitle').textContent='Edit Item';document.getElementById('itemName').value=item.part_name||'';document.getElementById('itemDescription').value=item.description||'';document.getElementById('itemQuantity').value=item.quantity_on_hand||0;document.getElementById('itemCost').value=item.unit_cost||'';document.getElementById('itemReorderPoint').value=item.reorder_point||5;document.getElementById('itemSku').value=item.part_number||'';document.getElementById('addFooter').style.display='none';document.getElementById('editFooter').style.display='grid';document.getElementById('itemModal').classList.add('active');}
 
 function closeItemModal(){document.getElementById('itemModal').classList.remove('active');}
 
-async function saveItem(){var name=document.getElementById('itemName').value.trim();var qty=parseInt(document.getElementById('itemQuantity').value)||0;if(!name){alert('Enter item name');return;}if(qty<0){alert('Quantity cannot be negative');return;}var itemData={part_name:name,category:document.getElementById('itemCategory').value||null,quantity_on_hand:qty,unit_cost:parseFloat(document.getElementById('itemCost').value)||null,reorder_point:parseInt(document.getElementById('itemReorderPoint').value)||5,part_number:document.getElementById('itemSku').value.trim()||null,description:document.getElementById('itemDescription').value.trim()||null};try{var r;if(editingItemId){r=await sb.from('parts_inventory').update(itemData).eq('part_id',editingItemId).select().single();}else{itemData.tenant_id=currentTenantId;itemData.created_at=new Date().toISOString();r=await sb.from('parts_inventory').insert(itemData).select().single();}if(r.error)throw r.error;closeItemModal();loadItems();}catch(e){alert('Error: '+(e.message||'Failed to save'));}}
+async function saveItem(){var name=document.getElementById('itemName').value.trim();var qty=parseInt(document.getElementById('itemQuantity').value)||0;if(!name){alert('Enter item name');return;}if(qty<0){alert('Quantity cannot be negative');return;}var itemData={part_name:name,quantity_on_hand:qty,unit_cost:parseFloat(document.getElementById('itemCost').value)||null,reorder_point:parseInt(document.getElementById('itemReorderPoint').value)||5,part_number:document.getElementById('itemSku').value.trim()||null,description:document.getElementById('itemDescription').value.trim()||null};try{var r;if(editingItemId){r=await sb.from('parts_inventory').update(itemData).eq('part_id',editingItemId).select().single();}else{itemData.tenant_id=currentTenantId;itemData.created_at=new Date().toISOString();r=await sb.from('parts_inventory').insert(itemData).select().single();}if(r.error)throw r.error;closeItemModal();loadItems();}catch(e){alert('Error: '+(e.message||'Failed to save'));}}
 
 async function deleteItem(){if(!editingItemId)return;if(!confirm('Delete this item?'))return;try{var r=await sb.from('parts_inventory').delete().eq('part_id',editingItemId);if(r.error)throw r.error;closeItemModal();loadItems();}catch(e){alert('Error: '+(e.message||'Failed to delete'));}}
 
