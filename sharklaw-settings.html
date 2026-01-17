@@ -97,9 +97,9 @@
     .color-picker-row { display: flex; align-items: center; gap: 12px; }
     .color-preview { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border-default); }
     .color-options { display: flex; gap: 8px; flex-wrap: wrap; }
-    .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
-    .color-option:hover { transform: scale(1.1); }
-    .color-option.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-primary); }
+    .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; opacity: 0.81; }
+    .color-option:hover { transform: scale(1.1); opacity: 1; }
+    .color-option.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-primary); opacity: 1; }
 
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: flex-end; justify-content: center; }
     .modal-overlay.active { display: flex; }
@@ -383,6 +383,10 @@ const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let currentTenantId=null,userEmail=null;
 let allEmployees=[],editingEmployeeId=null;
+let employeeColors=JSON.parse(localStorage.getItem('employeeColors')||'{}');
+
+function saveEmployeeColor(empId,color){employeeColors[empId]=color;localStorage.setItem('employeeColors',JSON.stringify(employeeColors));}
+function getEmployeeColorById(empId){return employeeColors[empId]||null;}
 
 var themes=['dark-blue','slate','midnight','ocean','light-blue'];
 var themeIndex=0;
@@ -457,10 +461,10 @@ function renderEmployees(){
   grid.innerHTML=allEmployees.map(function(emp){
     var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';
     var initials=((emp.first_name||'?')[0]+((emp.last_name||'')[0]||'')).toUpperCase();
-    var color=emp.profile_color||'#3b82f6';
+    var color=getEmployeeColorById(emp.employee_id)||'#3b82f6';
     var role=(emp.role||'staff').replace(/_/g,' ');
     role=role.charAt(0).toUpperCase()+role.slice(1);
-    var avatarStyle=emp.avatar_url?'background-image:url('+emp.avatar_url+');background-size:cover;':'background:'+color+';';
+    var avatarStyle=emp.avatar_url?'background-image:url('+emp.avatar_url+');background-size:cover;':'background:'+hexToRgba(color,0.81)+';';
     return '<div class="employee-card" onclick="openEditEmployee(\''+emp.employee_id+'\')">'+
       '<div class="employee-avatar" style="'+avatarStyle+'">'+(emp.avatar_url?'':initials)+'</div>'+
       '<div class="employee-name">'+name+'</div>'+
@@ -469,6 +473,8 @@ function renderEmployees(){
       '</div>';
   }).join('');
 }
+
+function hexToRgba(hex,alpha){var r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);if(!r)return hex;return'rgba('+parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16)+','+alpha+')';}
 
 function updateEmployeeStats(){
   document.getElementById('statTotal').textContent=allEmployees.length;
@@ -504,7 +510,7 @@ function openEditEmployee(id){
   document.getElementById('empPhone').value=emp.phone||'';
   document.getElementById('empDepartment').value=emp.department||'';
   document.getElementById('empRole').value=emp.role||'staff';
-  var color=emp.profile_color||'#3b82f6';
+  var color=getEmployeeColorById(id)||'#3b82f6';
   document.getElementById('empColor').value=color;
   document.querySelectorAll('.color-option').forEach(function(o){o.classList.toggle('selected',o.dataset.color===color);});
   document.getElementById('modalFooterAdd').style.display='none';
@@ -526,19 +532,24 @@ async function saveEmployee(){
     email:document.getElementById('empEmail').value.trim()||null,
     phone:document.getElementById('empPhone').value.trim()||null,
     department:document.getElementById('empDepartment').value||null,
-    role:document.getElementById('empRole').value||'staff',
-    profile_color:document.getElementById('empColor').value||'#3b82f6'
+    role:document.getElementById('empRole').value||'staff'
   };
+  
+  var selectedColor=document.getElementById('empColor').value||'#3b82f6';
   
   try{
     var r;
     if(editingEmployeeId){
       r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
+      if(!r.error)saveEmployeeColor(editingEmployeeId,selectedColor);
     }else{
       data.tenant_id=currentTenantId;
       data.is_active=true;
       data.created_at=new Date().toISOString();
-      r=await sb.from('employees').insert(data);
+      r=await sb.from('employees').insert(data).select();
+      if(!r.error&&r.data&&r.data[0]){
+        saveEmployeeColor(r.data[0].employee_id,selectedColor);
+      }
     }
     if(r.error)throw r.error;
     closeEmployeeModal();
