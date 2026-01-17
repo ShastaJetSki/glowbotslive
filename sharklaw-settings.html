@@ -81,13 +81,14 @@
     .success { color: #10b981; font-size: 12px; margin-top: 8px; }
     .error { color: #991b1b; font-size: 12px; margin-top: 8px; }
 
-    .employee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 16px; }
-    .employee-card { background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s; }
-    .employee-card:hover { border-color: var(--accent-primary); transform: translateY(-2px); }
-    .employee-avatar { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 28px; color: #fff; overflow: hidden; background-size: cover; background-position: center; }
-    .employee-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-    .employee-role { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
-    .employee-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-secondary); }
+    .employee-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .emp-strip { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+    .emp-strip:hover { border-color: var(--accent-primary); background: var(--bg-hover); }
+    .emp-avatar { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; flex-shrink: 0; }
+    .emp-info { flex: 1; min-width: 0; }
+    .emp-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .emp-role { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+    .emp-arrow { font-size: 24px; color: var(--text-secondary); }
 
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
     .stat-card { background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 16px; text-align: center; }
@@ -129,7 +130,6 @@
       .setting-row { flex-direction: column; align-items: flex-start; }
       input[type="text"], input[type="number"], input[type="email"], input[type="tel"], input[type="date"], textarea, select { width: 100%; }
       .form-row { grid-template-columns: 1fr; }
-      .employee-grid { grid-template-columns: 1fr 1fr; }
     }
     @media (min-width: 769px) {
       .mobile-top-header { display: none !important; }
@@ -457,22 +457,31 @@ async function loadEmployees(){
 
 function renderEmployees(){
   var grid=document.getElementById('employeeGrid');
-  if(allEmployees.length===0){grid.innerHTML='<div style="text-align:center; color:var(--text-secondary); padding:40px; grid-column:1/-1;">No team members yet. Add your first!</div>';return;}
-  grid.innerHTML=allEmployees.map(function(emp){
+  if(allEmployees.length===0){grid.innerHTML='<div style="text-align:center; color:var(--text-secondary); padding:40px;">No team members yet. Add your first!</div>';return;}
+  
+  var roleOrder={'owner':1,'manager':2,'admin':3,'sales_manager':2,'staff':4,'technician':4,'sales_consultant':4};
+  var sorted=allEmployees.slice().sort(function(a,b){
+    var ra=roleOrder[(a.role||'staff').toLowerCase()]||5;
+    var rb=roleOrder[(b.role||'staff').toLowerCase()]||5;
+    if(ra!==rb)return ra-rb;
+    return((a.last_name||'')+(a.first_name||'')).localeCompare((b.last_name||'')+(b.first_name||''));
+  });
+  
+  grid.innerHTML=sorted.map(function(emp){
     var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';
     var initials=((emp.first_name||'?')[0]+((emp.last_name||'')[0]||'')).toUpperCase();
-    var color=getEmployeeColorById(emp.employee_id)||'#3b82f6';
+    var color=getEmployeeColorById(emp.employee_id)||getDefaultColor(name);
     var role=(emp.role||'staff').replace(/_/g,' ');
     role=role.charAt(0).toUpperCase()+role.slice(1);
-    var avatarStyle=emp.avatar_url?'background-image:url('+emp.avatar_url+');background-size:cover;':'background:'+hexToRgba(color,0.81)+';';
-    return '<div class="employee-card" onclick="openEditEmployee(\''+emp.employee_id+'\')">'+
-      '<div class="employee-avatar" style="'+avatarStyle+'">'+(emp.avatar_url?'':initials)+'</div>'+
-      '<div class="employee-name">'+name+'</div>'+
-      '<div class="employee-role">'+role+'</div>'+
-      '<div class="employee-meta">'+(emp.department||'No dept')+'</div>'+
+    return '<div class="emp-strip" onclick="openEditEmployee(\''+emp.employee_id+'\')">'+
+      '<div class="emp-avatar" style="background:'+hexToRgba(color,0.81)+';">'+initials+'</div>'+
+      '<div class="emp-info"><div class="emp-name">'+name+'</div><div class="emp-role">'+role+(emp.department?' • '+emp.department:'')+'</div></div>'+
+      '<div class="emp-arrow">›</div>'+
       '</div>';
   }).join('');
 }
+
+function getDefaultColor(name){var colors=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4'];var hash=0;for(var i=0;i<name.length;i++){hash=name.charCodeAt(i)+((hash<<5)-hash);}return colors[Math.abs(hash)%colors.length];}
 
 function hexToRgba(hex,alpha){var r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);if(!r)return hex;return'rgba('+parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16)+','+alpha+')';}
 
@@ -510,7 +519,8 @@ function openEditEmployee(id){
   document.getElementById('empPhone').value=emp.phone||'';
   document.getElementById('empDepartment').value=emp.department||'';
   document.getElementById('empRole').value=emp.role||'staff';
-  var color=getEmployeeColorById(id)||'#3b82f6';
+  var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
+  var color=getEmployeeColorById(id)||getDefaultColor(name);
   document.getElementById('empColor').value=color;
   document.querySelectorAll('.color-option').forEach(function(o){o.classList.toggle('selected',o.dataset.color===color);});
   document.getElementById('modalFooterAdd').style.display='none';
@@ -526,6 +536,8 @@ async function saveEmployee(){
   var lastName=document.getElementById('empLastName').value.trim();
   if(!firstName||!lastName){document.getElementById('employeeModalMsg').innerHTML='<span class="error">First and last name required</span>';return;}
   
+  var selectedColor=document.getElementById('empColor').value||'#3b82f6';
+  
   var data={
     first_name:firstName,
     last_name:lastName,
@@ -535,25 +547,23 @@ async function saveEmployee(){
     role:document.getElementById('empRole').value||'staff'
   };
   
-  var selectedColor=document.getElementById('empColor').value||'#3b82f6';
-  
   try{
-    var r;
     if(editingEmployeeId){
-      r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
-      if(!r.error)saveEmployeeColor(editingEmployeeId,selectedColor);
+      var r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
+      if(r.error)throw r.error;
+      saveEmployeeColor(editingEmployeeId,selectedColor);
     }else{
       data.tenant_id=currentTenantId;
       data.is_active=true;
       data.created_at=new Date().toISOString();
-      r=await sb.from('employees').insert(data).select();
-      if(!r.error&&r.data&&r.data[0]){
+      var r=await sb.from('employees').insert(data).select('employee_id');
+      if(r.error)throw r.error;
+      if(r.data&&r.data[0]&&r.data[0].employee_id){
         saveEmployeeColor(r.data[0].employee_id,selectedColor);
       }
     }
-    if(r.error)throw r.error;
     closeEmployeeModal();
-    loadEmployees();
+    await loadEmployees();
   }catch(e){
     document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
   }
