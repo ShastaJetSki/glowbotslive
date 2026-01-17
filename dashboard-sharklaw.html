@@ -478,13 +478,13 @@ function switchInboxTab(tab,btn){currentInboxTab=tab;document.querySelectorAll('
 async function openMessageDetail(id){var msg=allNotifications.find(function(n){return n.notification_id===id;});if(!msg)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);msg.is_read=true;renderInbox();updateInboxBadge();var quickReplies='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><button class="inbox-action-btn" onclick="quickReply(\'Got it, thanks!\')">Got it!</button><button class="inbox-action-btn" onclick="quickReply(\'On my way\')">On my way</button><button class="inbox-action-btn" onclick="quickReply(\'Will do\')">Will do</button><button class="inbox-action-btn" onclick="quickReply(\'Call me\')">Call me</button></div>';document.getElementById('messageDetailBody').innerHTML='<div class="message-detail"><div class="message-detail-header"><div class="message-detail-title">'+(msg.title||'Notification')+'</div><div class="message-detail-meta">'+new Date(msg.created_at).toLocaleString()+'</div></div><div class="message-detail-body" style="white-space:pre-wrap;">'+(msg.body||'No content')+'</div><div class="message-reply-form"><div style="font-weight:600;margin-bottom:8px;">Quick Reply:</div>'+quickReplies+'<textarea class="message-reply-input" id="messageReplyText" placeholder="Or type a custom reply..."></textarea><div style="display:flex;gap:8px;"><button class="message-reply-btn" onclick="sendCustomReply(\''+id+'\')">Send Reply</button><button class="inbox-action-btn danger" style="border-color:#991b1b;color:#991b1b;" onclick="deleteMessage(\''+id+'\')">Delete</button></div></div></div>';currentMessageId=id;document.getElementById('messageDetailModal').classList.add('active');}
 var currentMessageId=null;
 function closeMessageDetailModal(){document.getElementById('messageDetailModal').classList.remove('active');currentMessageId=null;}
-async function quickReply(text){if(!currentMessageId)return;try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: Reply',body:text,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;closeMessageDetailModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
-async function sendCustomReply(originalId){var replyText=document.getElementById('messageReplyText').value.trim();if(!replyText){alert('Enter a reply message');return;}try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: Reply',body:replyText,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;closeMessageDetailModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
+async function quickReply(text){if(!currentMessageId)return;try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: Reply',body:text,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;await incrementStat('messages_sent');closeMessageDetailModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
+async function sendCustomReply(originalId){var replyText=document.getElementById('messageReplyText').value.trim();if(!replyText){alert('Enter a reply message');return;}try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: Reply',body:replyText,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;await incrementStat('messages_sent');closeMessageDetailModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
 async function deleteMessage(id){if(!confirm('Delete this message?'))return;try{var r=await sb.from('notifications').delete().eq('notification_id',id);if(r.error)throw r.error;closeMessageDetailModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to delete'));}}
 function openComposeModal(){document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';populateRecipients();document.getElementById('composeModal').classList.add('active');}
 function closeComposeModal(){document.getElementById('composeModal').classList.remove('active');}
 function populateRecipients(){var sel=document.getElementById('composeTo');sel.innerHTML='<option value="">-- Select Recipient --</option><option value="all">All Team Members</option>';allEmployeesData.forEach(function(emp){var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';sel.innerHTML+='<option value="'+emp.employee_id+'">'+name+'</option>';});}
-async function sendNewMessage(){var subject=document.getElementById('composeSubject').value.trim();var body=document.getElementById('composeBody').value.trim();if(!subject){alert('Enter a subject');return;}if(!body){alert('Enter a message');return;}try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: '+subject,body:body,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;closeComposeModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
+async function sendNewMessage(){var subject=document.getElementById('composeSubject').value.trim();var body=document.getElementById('composeBody').value.trim();if(!subject){alert('Enter a subject');return;}if(!body){alert('Enter a message');return;}try{var r=await sb.from('notifications').insert({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: '+subject,body:body,is_read:true,created_at:new Date().toISOString()});if(r.error)throw r.error;await incrementStat('messages_sent');closeComposeModal();loadInboxData();}catch(e){alert('Error: '+(e.message||'Failed to send'));}}
 async function markAllNotificationsRead(){await sb.from('notifications').update({is_read:true}).eq('tenant_id',currentTenantId).eq('is_read',false);loadInboxData();}
 function updateInboxBadge(){var count=allNotifications.filter(function(n){return!n.is_read;}).length;var badge=document.getElementById('messagesBadge');badge.textContent=count;badge.style.display=count>0?'inline-block':'none';}
 
@@ -509,7 +509,7 @@ function closeTaskDetailModal(){document.getElementById('taskDetailModal').class
 async function saveTaskChanges(){if(!currentTaskId)return;var task=allTasks.find(function(t){return t.task_id===currentTaskId;});if(!task)return;var newStatus=document.getElementById('editTaskStatus').value;var newPriority=document.getElementById('editTaskPriority').value;var newDue=document.getElementById('editTaskDue').value;var newAssignId=document.getElementById('editTaskAssign').value;var descClean=(task.description||'').replace(/\[Assigned to: [^\]]+\]/g,'').trim();var newAssigneeName='';if(newAssignId){var emp=allEmployeesData.find(function(e){return e.employee_id===newAssignId;});if(emp)newAssigneeName=((emp.first_name||'')+' '+(emp.last_name||'')).trim();}var newDesc=descClean;if(newAssigneeName){newDesc=(descClean?descClean+'\n':'')+'[Assigned to: '+newAssigneeName+']';}var updateData={status:newStatus,priority:newPriority,description:newDesc||null,due_at:newDue?new Date(newDue).toISOString():null,updated_at:new Date().toISOString()};if(newStatus==='completed'&&task.status!=='completed'){updateData.completed_at=new Date().toISOString();}else if(newStatus!=='completed'){updateData.completed_at=null;}try{var r=await sb.from('tasks').update(updateData).eq('task_id',currentTaskId);if(r.error)throw r.error;closeTaskDetailModal();loadTasksData();}catch(e){alert('Error: '+(e.message||'Failed to save'));}}
 async function deleteTask(taskId){if(!confirm('Delete this task?'))return;try{var r=await sb.from('tasks').delete().eq('task_id',taskId);if(r.error)throw r.error;closeTaskDetailModal();loadTasksData();}catch(e){alert('Error: '+(e.message||'Failed to delete'));}}
 function switchTasksTab(tab,btn){currentTasksTab=tab;document.querySelectorAll('.tasks-tab').forEach(function(t){t.classList.remove('active');});btn.classList.add('active');renderTasks();}
-async function toggleTaskComplete(taskId,completed){var updateData={status:completed?'completed':'pending',updated_at:new Date().toISOString()};if(completed){updateData.completed_at=new Date().toISOString();}else{updateData.completed_at=null;}await sb.from('tasks').update(updateData).eq('task_id',taskId);loadTasksData();}
+async function toggleTaskComplete(taskId,completed){var updateData={status:completed?'completed':'pending',updated_at:new Date().toISOString()};if(completed){updateData.completed_at=new Date().toISOString();}else{updateData.completed_at=null;}await sb.from('tasks').update(updateData).eq('task_id',taskId);if(completed)await incrementStat('tasks_completed');loadTasksData();}
 function updateTasksBadge(){var count=allTasks.filter(function(t){return t.status!=='completed';}).length;var badge=document.getElementById('tasksBadge');badge.textContent=count;badge.style.display=count>0?'inline-block':'none';}
 
 async function loadSwagData(){if(!currentTenantId)return;var r=await sb.from('parts_inventory').select('*').eq('tenant_id',currentTenantId).order('part_name',{ascending:true});allSwagItems=r.data||[];renderSwag();updateSwagBadge();}
@@ -522,7 +522,60 @@ function populateTaskAssignees(){var sel=document.getElementById('taskAssignee')
 
 function openNewTaskModal(){document.getElementById('taskTitle').value='';document.getElementById('taskDescription').value='';document.getElementById('taskAssignee').value='';document.getElementById('taskPriority').value='normal';document.getElementById('taskDueDate').value=new Date(Date.now()+86400000).toISOString().split('T')[0];document.getElementById('newTaskModal').classList.add('active');}
 function closeNewTaskModal(){document.getElementById('newTaskModal').classList.remove('active');}
-async function saveNewTask(){var title=document.getElementById('taskTitle').value.trim();if(!title){alert('Enter a task title');return;}var assigneeId=document.getElementById('taskAssignee').value||null;var assigneeName=null;if(assigneeId){var emp=allEmployeesData.find(function(e){return e.employee_id===assigneeId;});if(emp)assigneeName=((emp.first_name||'')+' '+(emp.last_name||'')).trim();}var desc=document.getElementById('taskDescription').value.trim()||'';if(assigneeName){desc=(desc?desc+'\n':'')+'[Assigned to: '+assigneeName+']';}var r=await sb.from('tasks').insert({tenant_id:currentTenantId,title:title,description:desc||null,priority:document.getElementById('taskPriority').value,status:'pending',due_at:document.getElementById('taskDueDate').value?new Date(document.getElementById('taskDueDate').value).toISOString():null,created_by:currentUserId});if(r.error){alert('Error: '+r.error.message);return;}closeNewTaskModal();loadTasksData();}
+async function saveNewTask(){var title=document.getElementById('taskTitle').value.trim();if(!title){alert('Enter a task title');return;}var assigneeId=document.getElementById('taskAssignee').value||null;var assigneeName=null;if(assigneeId){var emp=allEmployeesData.find(function(e){return e.employee_id===assigneeId;});if(emp)assigneeName=((emp.first_name||'')+' '+(emp.last_name||'')).trim();}var desc=document.getElementById('taskDescription').value.trim()||'';if(assigneeName){desc=(desc?desc+'\n':'')+'[Assigned to: '+assigneeName+']';}var r=await sb.from('tasks').insert({tenant_id:currentTenantId,title:title,description:desc||null,priority:document.getElementById('taskPriority').value,status:'pending',due_at:document.getElementById('taskDueDate').value?new Date(document.getElementById('taskDueDate').value).toISOString():null,created_by:currentUserId});if(r.error){alert('Error: '+r.error.message);return;}await incrementStat('tasks_created');closeNewTaskModal();loadTasksData();}
+
+async function incrementStat(statName,amount){
+  if(!currentUserId||!currentTenantId)return;
+  amount=amount||1;
+  // Get or create user_stats record
+  var r=await sb.from('user_stats').select('*').eq('user_id',currentUserId).single();
+  var stats=r.data;
+  if(!stats){
+    stats={user_id:currentUserId,tenant_id:currentTenantId};
+    stats[statName]=amount;
+    await sb.from('user_stats').insert(stats);
+  }else{
+    var update={};
+    update[statName]=(stats[statName]||0)+amount;
+    update.updated_at=new Date().toISOString();
+    // Handle daily task tracking
+    if(statName==='tasks_completed'){
+      var today=new Date().toISOString().split('T')[0];
+      if(stats.tasks_completed_today_date===today){
+        update.tasks_completed_today=(stats.tasks_completed_today||0)+amount;
+      }else{
+        update.tasks_completed_today=amount;
+        update.tasks_completed_today_date=today;
+      }
+    }
+    // Handle login streak
+    if(statName==='login'){
+      var today=new Date().toISOString().split('T')[0];
+      var lastLogin=stats.last_login_date;
+      if(lastLogin){
+        var yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
+        if(lastLogin===yesterday){
+          update.current_login_streak=(stats.current_login_streak||0)+1;
+          if((update.current_login_streak)>(stats.longest_login_streak||0)){
+            update.longest_login_streak=update.current_login_streak;
+          }
+        }else if(lastLogin!==today){
+          update.current_login_streak=1;
+        }
+      }else{
+        update.current_login_streak=1;
+      }
+      update.last_login_date=today;
+      // Early bird check (before 7am)
+      var hour=new Date().getHours();
+      if(hour<7){
+        update.early_bird_count=(stats.early_bird_count||0)+1;
+      }
+      delete update.login;
+    }
+    await sb.from('user_stats').update(update).eq('user_id',currentUserId);
+  }
+}
 
 function openNewEventModal(){document.getElementById('eventTitle').value='';document.getElementById('eventOrganization').value='';document.getElementById('eventType').value='';document.getElementById('eventTicketPrice').value='';document.getElementById('eventAttendance').value='';document.getElementById('eventLocation').value='';document.getElementById('eventNotes').value='';document.getElementById('eventDate').value=new Date().toISOString().split('T')[0];document.getElementById('eventTime').value='10:00';document.getElementById('newEventModal').classList.add('active');}
 function closeNewEventModal(){document.getElementById('newEventModal').classList.remove('active');}
@@ -540,7 +593,7 @@ async function loadBusinessSettings(){var r=await sb.from('business_settings').s
 
 function updateEmailDisplay(){if(userEmail){document.getElementById('desktopBusinessName').textContent=userEmail;document.getElementById('mobileBusinessName').textContent=userEmail;}}
 
-async function init(){var session=await checkAuth();if(!session)return;var email=session.user?.email;if(email){var r=await sb.from('users').select('*').eq('email',email).single();if(r.data?.tenant_id){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;}}if(!currentTenantId){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;}if(!currentTenantId){console.error('No tenant_id');return;}await loadBusinessSettings();updateEmailDisplay();await loadEmployeesData();await Promise.all([loadInboxData(),loadTasksData(),loadSwagData()]);}
+async function init(){var session=await checkAuth();if(!session)return;var email=session.user?.email;if(email){var r=await sb.from('users').select('*').eq('email',email).single();if(r.data?.tenant_id){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;}}if(!currentTenantId){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;}if(!currentTenantId){console.error('No tenant_id');return;}await loadBusinessSettings();updateEmailDisplay();await loadEmployeesData();await Promise.all([loadInboxData(),loadTasksData(),loadSwagData()]);if(currentUserId)await incrementStat('login');}
 
 init();
 </script>
