@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dashboard</title>
+  <link rel="stylesheet" href="themes.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -11,11 +12,6 @@
       --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
       --accent-primary: #3b82f6; --accent-light: #60a5fa;
     }
-    [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
-    [data-theme="slate"] { --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155; --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --accent-primary: #6366f1; --accent-light: #818cf8; }
-    [data-theme="midnight"] { --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228; --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4; --accent-primary: #8b5cf6; --accent-light: #a78bfa; }
-    [data-theme="ocean"] { --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35; --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5; --accent-primary: #14b8a6; --accent-light: #2dd4bf; }
-    [data-theme="light-blue"] { --bg-primary: #f8fafc; --bg-secondary: #f1f5f9; --bg-card: #ffffff; --bg-hover: #e2e8f0; --border-default: #cbd5e1; --text-primary: #0f172a; --text-secondary: #475569; --accent-primary: #2563eb; --accent-light: #3b82f6; }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html { background: var(--bg-primary); min-height: 100%; }
@@ -459,10 +455,12 @@ let currentUserId=null,currentTenantId=null,userEmail=null;
 let currentInboxTab='all',currentTasksTab='pending';
 let allNotifications=[],allTasks=[],allEmployeesData=[],allSwagItems=[];
 
-var themes=['dark-blue','slate','midnight','ocean','light-blue'];
+var THEME_NAMES={'dark-blue':'Dark Blue','blue-light':'Blue Light','slate-dark':'Slate Dark','slate-light':'Slate Light','ocean-dark':'Ocean Dark','ocean-light':'Ocean Light','midnight-dark':'Midnight','lavender-light':'Lavender','forest-dark':'Forest','mint-light':'Mint','crimson-dark':'Crimson','coral-light':'Coral','amber-dark':'Amber','honey-light':'Honey','rose-dark':'Rose','sky-light':'Sky','cyber-dark':'Cyber','sand-light':'Sand'};
+var userThemeBank=['dark-blue'];
 var themeIndex=0;
-function loadTheme(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);themeIndex=themes.indexOf(t);if(themeIndex<0)themeIndex=0;}
-function cycleTheme(){themeIndex=(themeIndex+1)%themes.length;var t=themes[themeIndex];document.documentElement.setAttribute('data-theme',t);localStorage.setItem('app-theme',t);showThemeToast('Theme: '+t);}
+function loadTheme(){var t=localStorage.getItem('app-theme')||'dark-blue';if(!userThemeBank.includes(t))t='dark-blue';document.documentElement.setAttribute('data-theme',t);themeIndex=userThemeBank.indexOf(t);if(themeIndex<0)themeIndex=0;}
+function cycleTheme(){if(userThemeBank.length<=1){showThemeToast('Unlock more themes in Settings!');return;}themeIndex=(themeIndex+1)%userThemeBank.length;var t=userThemeBank[themeIndex];document.documentElement.setAttribute('data-theme',t);localStorage.setItem('app-theme',t);showThemeToast(THEME_NAMES[t]||t);}
+async function loadUserThemeBank(){if(!currentUserId)return;try{var r=await sb.from('user_theme_bank').select('theme_key').eq('user_id',currentUserId);if(r.data&&r.data.length>0){userThemeBank=['dark-blue'].concat(r.data.map(function(t){return t.theme_key;}));userThemeBank=[...new Set(userThemeBank)];}loadTheme();}catch(e){console.error('Error loading theme bank:',e);}}
 function showThemeToast(msg){var toast=document.getElementById('themeToast');if(!toast){toast=document.createElement('div');toast.id='themeToast';toast.className='theme-toast';document.body.appendChild(toast);}toast.textContent=msg;toast.classList.add('show');setTimeout(function(){toast.classList.remove('show');},2000);}
 loadTheme();
 
@@ -593,7 +591,7 @@ async function loadBusinessSettings(){var r=await sb.from('business_settings').s
 
 function updateEmailDisplay(){if(userEmail){document.getElementById('desktopBusinessName').textContent=userEmail;document.getElementById('mobileBusinessName').textContent=userEmail;}}
 
-async function init(){var session=await checkAuth();if(!session)return;var email=session.user?.email;if(email){var r=await sb.from('users').select('*').eq('email',email).single();if(r.data?.tenant_id){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;}}if(!currentTenantId){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;}if(!currentTenantId){console.error('No tenant_id');return;}await loadBusinessSettings();updateEmailDisplay();await loadEmployeesData();await Promise.all([loadInboxData(),loadTasksData(),loadSwagData()]);if(currentUserId)await incrementStat('login');}
+async function init(){var session=await checkAuth();if(!session)return;var email=session.user?.email;if(email){var r=await sb.from('users').select('*').eq('email',email).single();if(r.data?.tenant_id){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;}}if(!currentTenantId){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;}if(!currentTenantId){console.error('No tenant_id');return;}await loadBusinessSettings();updateEmailDisplay();await loadUserThemeBank();await loadEmployeesData();await Promise.all([loadInboxData(),loadTasksData(),loadSwagData()]);if(currentUserId)await incrementStat('login');}
 
 init();
 </script>
