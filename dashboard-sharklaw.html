@@ -247,15 +247,17 @@
     .voice-assistant-container {
       display: none;
       position: fixed;
-      bottom: 140px;
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 100px;
+      right: 20px;
       z-index: 500;
       flex-direction: column;
       align-items: center;
       gap: 12px;
     }
     .voice-assistant-container.active { display: flex; }
+    @media (min-width: 769px) {
+      .voice-assistant-container { bottom: 30px; right: 30px; }
+    }
     
     .voice-orb {
       width: 80px;
@@ -311,25 +313,35 @@
       white-space: nowrap;
     }
     
-    .voice-close-btn {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: var(--bg-card);
-      border: 1px solid var(--border-default);
-      color: var(--text-secondary);
-      font-size: 14px;
+    /* Assistant Button Styles */
+    .assistant-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid #5af2ff;
+      background: transparent;
+      color: #5af2ff;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      transition: all 0.3s ease;
+      opacity: 0.6;
     }
-    .voice-close-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-    
-    .orb-wrapper { position: relative; }
+    .assistant-btn:hover { opacity: 0.8; }
+    .assistant-btn.active {
+      background: rgba(90, 242, 255, 0.2);
+      box-shadow: 0 0 15px rgba(90, 242, 255, 0.4);
+      opacity: 1;
+    }
+    .mobile-nav-btn.assistant-btn {
+      border-color: #5af2ff;
+      color: #5af2ff;
+    }
+    .mobile-nav-btn.assistant-btn.active {
+      background: rgba(90, 242, 255, 0.3);
+      border-color: #5af2ff;
+      color: #5af2ff;
+      box-shadow: 0 0 12px rgba(90, 242, 255, 0.4);
+    }
     
     @keyframes orbPulse {
       0%, 100% { box-shadow: 0 8px 30px rgba(90, 242, 255, 0.4), 0 12px 20px rgba(0, 0, 0, 0.4), inset 0 -12px 25px rgba(0, 0, 0, 0.35), inset 0 12px 25px rgba(255, 255, 255, 0.25); }
@@ -381,12 +393,13 @@
     </div>
   </div>
   <div style="padding:0 24px 12px;">
-    <nav style="display:flex; gap:24px;">
+    <nav style="display:flex; gap:24px; align-items:center;">
       <a href="dashboard-sharklaw.html" style="padding:12px 0; color:var(--accent-primary); text-decoration:none; font-size:14px; border-bottom:2px solid var(--accent-primary);">Dashboard</a>
       <a href="sharklaw-scheduler.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Scheduler</a>
       <a href="sharklaw-contacts.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Contacts</a>
       <a href="sharklaw-swag.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Swag</a>
       <a href="sharklaw-settings.html" style="padding:12px 0; color:var(--text-secondary); text-decoration:none; font-size:14px;">Settings</a>
+      <button id="desktopAssistantBtn" onclick="toggleVoiceAssistant()" class="assistant-btn">Assistant</button>
     </nav>
   </div>
 </div>
@@ -572,10 +585,7 @@
 
 <!-- Voice Assistant Container -->
 <div class="voice-assistant-container" id="voiceAssistant">
-  <div class="orb-wrapper">
-    <button class="voice-orb" id="voiceOrb"></button>
-    <button class="voice-close-btn" onclick="closeVoiceAssistant()">&times;</button>
-  </div>
+  <button class="voice-orb" id="voiceOrb"></button>
   <div class="voice-status" id="voiceStatus">Tap to speak</div>
 </div>
 
@@ -586,7 +596,7 @@
     <a href="sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a>
   </div>
   <div class="mobile-nav-row three-col">
-    <button class="mobile-nav-btn" onclick="toggleVoiceAssistant()">Assistant</button>
+    <button id="mobileAssistantBtn" class="mobile-nav-btn assistant-btn" onclick="toggleVoiceAssistant()">Assistant</button>
     <a href="sharklaw-contacts.html" class="mobile-nav-btn">Contacts</a>
     <a href="sharklaw-swag.html" class="mobile-nav-btn">Swag</a>
   </div>
@@ -739,31 +749,54 @@ function updateEmailDisplay(){if(userEmail){document.getElementById('desktopBusi
 
 /* ========================================
    VOICE ASSISTANT - VAPI Integration
+   Matches GlowbotsLive working implementation
    ======================================== */
 var vapi = null;
 var voiceAssistantOpen = false;
 
-function toggleVoiceAssistant() {
-  var container = document.getElementById('voiceAssistant');
-  voiceAssistantOpen = !voiceAssistantOpen;
-  if (voiceAssistantOpen) {
-    container.classList.add('active');
-    if (!vapi) initVapi();
-  } else {
-    container.classList.remove('active');
-    if (vapi) vapi.stop();
+function setAssistantButtonState(active) {
+  var desktopBtn = document.getElementById('desktopAssistantBtn');
+  var mobileBtn = document.getElementById('mobileAssistantBtn');
+  if (desktopBtn) {
+    if (active) desktopBtn.classList.add('active');
+    else desktopBtn.classList.remove('active');
+  }
+  if (mobileBtn) {
+    if (active) mobileBtn.classList.add('active');
+    else mobileBtn.classList.remove('active');
   }
 }
 
-function closeVoiceAssistant() {
+function toggleVoiceAssistant() {
   var container = document.getElementById('voiceAssistant');
-  container.classList.remove('active');
-  voiceAssistantOpen = false;
-  if (vapi) vapi.stop();
+  var orb = document.getElementById('voiceOrb');
+  
+  if (!vapi) {
+    initVapi();
+  }
+  
+  if (voiceAssistantOpen) {
+    // Hang up
+    if (vapi) vapi.stop();
+    container.classList.remove('active');
+    orb.classList.remove('listening');
+    setAssistantButtonState(false);
+    setVoiceStatus('Tap to speak');
+    voiceAssistantOpen = false;
+  } else {
+    // Show orb and connect
+    container.classList.add('active');
+    setAssistantButtonState(true);
+    voiceAssistantOpen = true;
+    setVoiceStatus('Connecting...');
+    // Use same assistant ID as GlowbotsLive
+    vapi.start("78a7055c-03c4-4d29-8621-b2bf2b7333ad");
+  }
 }
 
 function setVoiceStatus(text) {
-  document.getElementById('voiceStatus').textContent = text;
+  var el = document.getElementById('voiceStatus');
+  if (el) el.textContent = text;
 }
 
 function initVapi() {
@@ -773,15 +806,20 @@ function initVapi() {
     return;
   }
   
+  // Use same API key as GlowbotsLive
   vapi = new window.Vapi("b66ad6e7-ec9d-421c-88b7-157068b27f6d");
   
   vapi.on("call-start", function() {
     document.getElementById('voiceOrb').classList.add('listening');
-    setVoiceStatus('Connected - Listening...');
+    setVoiceStatus('Connected');
+    setAssistantButtonState(true);
   });
   
   vapi.on("call-end", function() {
     document.getElementById('voiceOrb').classList.remove('listening');
+    document.getElementById('voiceAssistant').classList.remove('active');
+    setAssistantButtonState(false);
+    voiceAssistantOpen = false;
     setVoiceStatus('Call ended');
     setTimeout(function() { setVoiceStatus('Tap to speak'); }, 2000);
   });
@@ -790,207 +828,19 @@ function initVapi() {
     console.error('VAPI error:', e);
     setVoiceStatus('Error occurred');
     document.getElementById('voiceOrb').classList.remove('listening');
+    setAssistantButtonState(false);
   });
-  
-  setVoiceStatus('Tap to speak');
 }
 
-// Voice orb click handler
+// Orb click also toggles
 document.addEventListener('DOMContentLoaded', function() {
   var orb = document.getElementById('voiceOrb');
   if (orb) {
     orb.addEventListener('click', function() {
-      if (!vapi) {
-        initVapi();
-        return;
-      }
-      if (orb.classList.contains('listening')) {
-        vapi.stop();
-      } else {
-        setVoiceStatus('Connecting...');
-        // Start call with assistant that has customer lookup tools
-        vapi.start({
-          assistant: {
-            model: {
-              provider: "openai",
-              model: "gpt-4o-mini",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a helpful assistant for SharkLaw. You can look up customers by phone number, create new customers, and update existing customer information. When the user provides a phone number, use the lookupCustomerByPhone function. You cannot delete customers. Be concise and helpful. After looking up a customer, tell the user what you found including their name, phone, email, organization, and funnel stage."
-                }
-              ],
-              tools: [
-                {
-                  type: "function",
-                  function: {
-                    name: "lookupCustomerByPhone",
-                    description: "Look up a customer by their phone number",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        phone: { type: "string", description: "The phone number to search for" }
-                      },
-                      required: ["phone"]
-                    }
-                  },
-                  async: true
-                },
-                {
-                  type: "function",
-                  function: {
-                    name: "createCustomer",
-                    description: "Create a new customer record",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string", description: "Customer full name" },
-                        phone: { type: "string", description: "Phone number" },
-                        email: { type: "string", description: "Email address" },
-                        organization: { type: "string", description: "Organization or company name" },
-                        notes: { type: "string", description: "Any notes about the customer" }
-                      },
-                      required: ["name"]
-                    }
-                  },
-                  async: true
-                },
-                {
-                  type: "function",
-                  function: {
-                    name: "updateCustomer",
-                    description: "Update an existing customer record",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        customer_id: { type: "string", description: "The customer ID to update" },
-                        name: { type: "string", description: "New name" },
-                        phone: { type: "string", description: "New phone number" },
-                        email: { type: "string", description: "New email address" },
-                        organization: { type: "string", description: "New organization name" },
-                        notes: { type: "string", description: "Updated notes" },
-                        funnel_stage: { type: "number", description: "Funnel stage 1-6" }
-                      },
-                      required: ["customer_id"]
-                    }
-                  },
-                  async: true
-                }
-              ]
-            },
-            voice: {
-              provider: "11labs",
-              voiceId: "21m00Tcm4TlvDq8ikWAM"
-            },
-            firstMessage: "Hi, I'm your SharkLaw assistant. I can look up customers by phone number, create new contacts, or update existing ones. What would you like to do?"
-          }
-        });
-      }
+      toggleVoiceAssistant();
     });
   }
 });
-
-// Handle VAPI tool calls
-if (typeof window !== 'undefined') {
-  window.addEventListener('message', async function(event) {
-    if (event.data && event.data.type === 'vapi-tool-call') {
-      var toolName = event.data.toolName;
-      var args = event.data.arguments;
-      var result = await handleVapiToolCall(toolName, args);
-      window.postMessage({ type: 'vapi-tool-result', result: result }, '*');
-    }
-  });
-}
-
-async function handleVapiToolCall(toolName, args) {
-  try {
-    switch (toolName) {
-      case 'lookupCustomerByPhone':
-        return await lookupCustomerByPhone(args.phone);
-      case 'createCustomer':
-        return await vapiCreateCustomer(args);
-      case 'updateCustomer':
-        return await vapiUpdateCustomer(args);
-      default:
-        return { success: false, error: 'Unknown tool: ' + toolName };
-    }
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-}
-
-async function lookupCustomerByPhone(phone) {
-  if (!phone) return { success: false, error: 'Phone number required' };
-  var cleanPhone = phone.replace(/\D/g, '');
-  var { data, error } = await sb.from('customers')
-    .select('*')
-    .eq('tenant_id', currentTenantId)
-    .or('phone.ilike.%' + cleanPhone + '%,phone.ilike.%' + phone + '%')
-    .limit(5);
-  if (error) return { success: false, error: error.message };
-  if (!data || data.length === 0) {
-    return { success: true, found: false, message: 'No customer found with phone ' + phone };
-  }
-  var customers = data.map(function(c) {
-    return {
-      customer_id: c.customer_id,
-      name: c.full_name || ((c.first_name || '') + ' ' + (c.last_name || '')).trim(),
-      phone: c.phone,
-      email: c.email,
-      organization: c.organization_name,
-      funnel_stage: c.funnel_stage,
-      customer_type: c.customer_type,
-      notes: c.notes
-    };
-  });
-  return { success: true, found: true, customers: customers, count: customers.length };
-}
-
-async function vapiCreateCustomer(args) {
-  if (!args.name && !args.phone) {
-    return { success: false, error: 'Name or phone required' };
-  }
-  var nameParts = (args.name || '').split(' ');
-  var firstName = nameParts[0] || '';
-  var lastName = nameParts.slice(1).join(' ') || '';
-  var customerData = {
-    tenant_id: currentTenantId,
-    full_name: args.name || null,
-    first_name: firstName,
-    last_name: lastName,
-    phone: args.phone || null,
-    email: args.email || null,
-    organization_name: args.organization || null,
-    customer_type: 'prospect',
-    funnel_stage: 1,
-    notes: args.notes || null,
-    created_at: new Date().toISOString()
-  };
-  var { data, error } = await sb.from('customers').insert(customerData).select().single();
-  if (error) return { success: false, error: error.message };
-  return { success: true, message: 'Customer created successfully', customer_id: data.customer_id, name: args.name };
-}
-
-async function vapiUpdateCustomer(args) {
-  if (!args.customer_id) {
-    return { success: false, error: 'Customer ID required' };
-  }
-  var updateData = { updated_at: new Date().toISOString() };
-  if (args.name) {
-    var nameParts = args.name.split(' ');
-    updateData.full_name = args.name;
-    updateData.first_name = nameParts[0] || '';
-    updateData.last_name = nameParts.slice(1).join(' ') || '';
-  }
-  if (args.phone) updateData.phone = args.phone;
-  if (args.email) updateData.email = args.email;
-  if (args.organization) updateData.organization_name = args.organization;
-  if (args.notes) updateData.notes = args.notes;
-  if (args.funnel_stage) updateData.funnel_stage = args.funnel_stage;
-  var { error } = await sb.from('customers').update(updateData).eq('customer_id', args.customer_id);
-  if (error) return { success: false, error: error.message };
-  return { success: true, message: 'Customer updated successfully' };
-}
 
 async function init(){var session=await checkAuth();if(!session)return;var email=session.user?.email;if(email){var r=await sb.from('users').select('*').eq('email',email).single();if(r.data?.tenant_id){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;}}if(!currentTenantId){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;}if(!currentTenantId){console.error('No tenant_id');return;}await loadBusinessSettings();updateEmailDisplay();await loadUserThemeBank();await loadEmployeesData();await Promise.all([loadInboxData(),loadTasksData(),loadSwagData()]);if(currentUserId)await incrementStat('login');}
 
