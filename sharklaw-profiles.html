@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Customer Profile</title>
+  <link rel="stylesheet" href="themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044;
+      --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3;
+      --accent-primary: #3b82f6; --accent-light: #60a5fa;
+    }
+    [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
+    [data-theme="blue-light"] { --bg-primary: #f0f5ff; --bg-secondary: #e0eaff; --bg-card: #ffffff; --bg-hover: #d0e0ff; --border-default: #b0c8f0; --text-primary: #1a2744; --text-secondary: #4a5a74; --accent-primary: #2563eb; --accent-light: #3b82f6; }
+    [data-theme="slate-dark"],[data-theme="slate"] { --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-card: #273549; --bg-hover: #334155; --border-default: #334155; --text-primary: #f1f5f9; --text-secondary: #94a3b8; --accent-primary: #64748b; --accent-light: #94a3b8; }
+    [data-theme="ocean-dark"],[data-theme="ocean"] { --bg-primary: #0a1214; --bg-secondary: #0e181c; --bg-card: #152228; --bg-hover: #1c2d35; --border-default: #243842; --text-primary: #e5f0f3; --text-secondary: #8faab5; --accent-primary: #14b8a6; --accent-light: #2dd4bf; }
+    [data-theme="midnight-dark"],[data-theme="midnight"] { --bg-primary: #09090b; --bg-secondary: #0f0f12; --bg-card: #18181d; --bg-hover: #222228; --border-default: #27272f; --text-primary: #eeeef0; --text-secondary: #9898a4; --accent-primary: #8b5cf6; --accent-light: #a78bfa; }
+    [data-theme="forest-dark"],[data-theme="forest"] { --bg-primary: #071209; --bg-secondary: #0c1f10; --bg-card: #132a18; --bg-hover: #1a3820; --border-default: #234428; --text-primary: #e5f5e8; --text-secondary: #8fb898; --accent-primary: #22c55e; --accent-light: #4ade80; }
+    [data-theme="crimson-dark"],[data-theme="crimson"] { --bg-primary: #0f0708; --bg-secondary: #1a0c0e; --bg-card: #261214; --bg-hover: #331a1c; --border-default: #442225; --text-primary: #fee2e2; --text-secondary: #c9a3a5; --accent-primary: #dc2626; --accent-light: #ef4444; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: var(--bg-primary); }
+    body { font-family: system-ui; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; padding-bottom: 100px; }
+
+    .header { position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+    .back-btn { background: transparent; border: 1px solid var(--border-default); color: var(--text-secondary); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+    .back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-title { font-size: 18px; font-weight: 600; flex: 1; }
+    .save-btn { background: var(--accent-primary); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+    .save-btn:hover { opacity: 0.9; }
+
+    .profile-hero { background: var(--bg-secondary); padding: 24px 16px; text-align: center; border-bottom: 1px solid var(--border-default); }
+    .profile-avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent-light); margin: 0 auto 12px; border: 3px solid var(--accent-primary); }
+    .profile-name { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+    .profile-company { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
+    .profile-stage { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; background: var(--accent-primary); color: #fff; }
+    .profile-actions { display: flex; justify-content: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+    .profile-action { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); cursor: pointer; font-size: 13px; text-decoration: none; }
+    .profile-action:hover { background: var(--bg-hover); }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
+    @media (min-width: 500px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+    .kpi-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px; padding: 16px; text-align: center; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: var(--accent-primary); }
+    .kpi-label { font-size: 10px; color: var(--text-secondary); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .section { margin: 16px; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .section-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .section-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px; overflow: hidden; }
+
+    .field-row { display: flex; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-default); align-items: center; }
+    .field-row:last-child { border-bottom: none; }
+    .field-label { font-size: 13px; color: var(--text-secondary); }
+    .field-value { font-size: 14px; color: var(--text-primary); text-align: right; max-width: 60%; word-break: break-word; }
+    .field-value a { color: var(--accent-light); text-decoration: none; }
+
+    .form-group { padding: 12px 16px; border-bottom: 1px solid var(--border-default); }
+    .form-group:last-child { border-bottom: none; }
+    .form-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: block; }
+    .form-input { width: 100%; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; }
+    .form-input:focus { outline: none; border-color: var(--accent-primary); }
+    .form-textarea { width: 100%; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; min-height: 80px; resize: vertical; font-family: inherit; }
+    .form-select { width: 100%; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { flex: 1; padding: 12px 0; }
+    .form-row .form-group:first-child { padding-left: 16px; }
+    .form-row .form-group:last-child { padding-right: 16px; }
+
+    .swag-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-default); }
+    .swag-item:last-child { border-bottom: none; }
+    .swag-name { font-size: 14px; color: var(--text-primary); }
+    .swag-date { font-size: 11px; color: var(--text-secondary); }
+    .swag-value { font-size: 14px; font-weight: 600; color: var(--accent-primary); }
+
+    .activity-item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-default); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent-primary); margin-top: 5px; flex-shrink: 0; }
+    .activity-text { font-size: 13px; color: var(--text-primary); }
+    .activity-date { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+    .mobile-nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); border-top: 1px solid var(--border-default); display: flex; justify-content: space-around; padding: 8px 0 max(8px, env(safe-area-inset-bottom)); z-index: 100; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; padding: 8px 12px; color: var(--text-secondary); text-decoration: none; font-size: 10px; }
+    .nav-item svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; fill: none; margin-bottom: 3px; }
+    .nav-item.active { color: var(--accent-primary); }
+
+    .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent-primary); padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 1000; display: none; }
+    .toast.show { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .loading { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-state { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <button class="back-btn" onclick="goBack()">← Back</button>
+  <div class="header-title">Customer Profile</div>
+  <button class="save-btn" onclick="saveProfile()">Save</button>
+</div>
+
+<div id="profileContent">
+  <div class="loading">Loading profile...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<nav class="mobile-nav">
+  <a href="dashboard-sharklaw.html" class="nav-item"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>Home</a>
+  <a href="sharklaw-scheduler.html" class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>Schedule</a>
+  <a href="sharklaw-contacts.html" class="nav-item active"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Contacts</a>
+  <a href="sharklaw-swag.html" class="nav-item"><svg viewBox="0 0 24 24"><path d="M20 12v10H4V12"></path><path d="M2 7h20v5H2z"></path><path d="M12 22V7"></path><path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"></path></svg>Swag</a>
+  <a href="sharklaw-settings.html" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>Settings</a>
+</nav>
+
+<script>
+const SUPABASE_URL = 'https://jnbcwwapxchfkbhgmgsd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuYmN3d2FweGNoZmtiaGdtZ3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM3OTk3MDUsImV4cCI6MjA1OTM3NTcwNX0.hg9-2GqdCgpJB7ihGbbk7tYYjRKwXkjc3xoN9Qblvbs';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentTenantId = null;
+let currentUserId = null;
+let customerId = null;
+let customerData = null;
+let profileData = null;
+let swagHistory = [];
+let activityLog = [];
+
+const STAGES = {
+  1: { name: '1st Contact', color: '#3b82f6' },
+  2: { name: 'Swag Approved', color: '#06b6d4' },
+  3: { name: 'Receive Artwork', color: '#8b5cf6' },
+  4: { name: 'Opt-in Contact', color: '#f59e0b' },
+  5: { name: 'Deliver Pop Up', color: '#10b981' },
+  6: { name: 'Lead', color: '#ef4444' }
+};
+
+const BIKE_BRANDS = ['Harley-Davidson', 'Indian', 'Honda', 'Yamaha', 'Kawasaki', 'Suzuki', 'BMW', 'Triumph', 'Ducati', 'Victory', 'Can-Am', 'Other'];
+const BIKE_STYLES = ['Cruiser', 'Touring', 'Sport', 'Adventure', 'Bagger', 'Bobber', 'Chopper', 'Trike', 'Standard'];
+const RIDING_CLUBS = ['HOG', 'Indian Riders Group', 'BACA', 'VFW Riders', 'Legion Riders', 'Independent', 'Local Club', 'None'];
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { window.location.href = 'index-sharklaw.html'; return null; }
+  return session;
+}
+
+function loadTheme() {
+  const t = localStorage.getItem('app-theme') || 'dark-blue';
+  document.documentElement.setAttribute('data-theme', t);
+}
+
+function goBack() { window.location.href = 'sharklaw-contacts.html'; }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatCurrency(val) { return '$' + (parseFloat(val) || 0).toFixed(2); }
+
+function daysSince(dateStr) {
+  if (!dateStr) return '—';
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'Today';
+  if (days === 1) return '1 day';
+  return days + ' days';
+}
+
+async function loadProfile() {
+  const urlParams = new URLSearchParams(window.location.search);
+  customerId = urlParams.get('id');
+  
+  if (!customerId) {
+    document.getElementById('profileContent').innerHTML = '<div class="loading">No customer ID. <a href="sharklaw-contacts.html">Go back</a></div>';
+    return;
+  }
+
+  try {
+    const { data: customer, error } = await sb.from('customers').select('*').eq('customer_id', customerId).single();
+    if (error || !customer) {
+      document.getElementById('profileContent').innerHTML = '<div class="loading">Customer not found. <a href="sharklaw-contacts.html">Go back</a></div>';
+      return;
+    }
+    customerData = customer;
+    currentTenantId = customer.tenant_id;
+
+    const { data: profile } = await sb.from('customer_profiles').select('*').eq('customer_id', customerId).single();
+    profileData = profile || { customer_id: customerId };
+
+    const { data: swag } = await sb.from('swag_given').select('*').eq('customer_id', customerId).order('given_date', { ascending: false });
+    swagHistory = swag || [];
+
+    const { data: activity } = await sb.from('funnel_activity').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(10);
+    activityLog = activity || [];
+
+    renderProfile();
+  } catch (e) {
+    console.error('Error:', e);
+    document.getElementById('profileContent').innerHTML = '<div class="loading">Error loading profile</div>';
+  }
+}
+
+function calculateKPIs() {
+  const totalSwagValue = swagHistory.reduce((sum, s) => sum + (parseFloat(s.value) || 0), 0);
+  const totalItems = swagHistory.reduce((sum, s) => sum + (parseInt(s.quantity) || 1), 0);
+  let lastContact = customerData.updated_at || customerData.created_at;
+  if (activityLog.length > 0) lastContact = activityLog[0].created_at;
+  const daysInFunnel = customerData.created_at ? Math.floor((Date.now() - new Date(customerData.created_at).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+  return { totalSwagValue, totalItems, lastContact, daysInFunnel };
+}
+
+function renderProfile() {
+  const kpis = calculateKPIs();
+  const name = ((customerData.first_name || '') + ' ' + (customerData.last_name || '')).trim() || customerData.full_name || 'Unknown';
+  const initials = name.split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || 'U';
+  const stage = customerData.funnel_stage || 1;
+  const stageInfo = STAGES[stage] || STAGES[1];
+
+  document.getElementById('profileContent').innerHTML = `
+    <div class="profile-hero">
+      <div class="profile-avatar">${initials}</div>
+      <div class="profile-name">${name}</div>
+      ${customerData.organization_name ? '<div class="profile-company">' + customerData.organization_name + '</div>' : ''}
+      <div class="profile-stage" style="background:${stageInfo.color}">${stageInfo.name}</div>
+      <div class="profile-actions">
+        ${customerData.phone ? '<a href="tel:' + customerData.phone + '" class="profile-action">📞 Call</a><a href="sms:' + customerData.phone + '" class="profile-action">💬 Text</a>' : ''}
+        ${customerData.email ? '<a href="mailto:' + customerData.email + '" class="profile-action">✉️ Email</a>' : ''}
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-value">${formatCurrency(kpis.totalSwagValue)}</div><div class="kpi-label">Swag Value</div></div>
+      <div class="kpi-card"><div class="kpi-value">${kpis.totalItems}</div><div class="kpi-label">Items Given</div></div>
+      <div class="kpi-card"><div class="kpi-value">${daysSince(kpis.lastContact)}</div><div class="kpi-label">Last Contact</div></div>
+      <div class="kpi-card"><div class="kpi-value">${kpis.daysInFunnel}</div><div class="kpi-label">Days in Funnel</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Contact Info</div></div>
+      <div class="section-card">
+        <div class="field-row"><span class="field-label">Phone</span><span class="field-value">${customerData.phone ? '<a href="tel:' + customerData.phone + '">' + customerData.phone + '</a>' : '—'}</span></div>
+        <div class="field-row"><span class="field-label">Email</span><span class="field-value">${customerData.email ? '<a href="mailto:' + customerData.email + '">' + customerData.email + '</a>' : '—'}</span></div>
+        <div class="field-row"><span class="field-label">Company</span><span class="field-value">${customerData.organization_name || '—'}</span></div>
+        <div class="field-row"><span class="field-label">Type</span><span class="field-value">${customerData.customer_type || 'prospect'}</span></div>
+        <div class="field-row"><span class="field-label">Added</span><span class="field-value">${formatDate(customerData.created_at)}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Address</div></div>
+      <div class="section-card">
+        <div class="form-group"><label class="form-label">Street</label><input type="text" class="form-input" id="streetAddress" value="${profileData.street_address || ''}" placeholder="123 Main St"></div>
+        <div class="form-group"><label class="form-label">City</label><input type="text" class="form-input" id="city" value="${profileData.city || ''}" placeholder="City"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">State</label><input type="text" class="form-input" id="state" value="${profileData.state || ''}" placeholder="CA"></div>
+          <div class="form-group"><label class="form-label">ZIP</label><input type="text" class="form-input" id="zipCode" value="${profileData.zip_code || ''}" placeholder="12345"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Rider Info</div></div>
+      <div class="section-card">
+        <div class="form-group">
+          <label class="form-label">Bike Brand</label>
+          <select class="form-select" id="bikeBrand">
+            <option value="">Select brand...</option>
+            ${BIKE_BRANDS.map(b => '<option value="' + b + '"' + (profileData.bike_brand === b ? ' selected' : '') + '>' + b + '</option>').join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Bike Model</label><input type="text" class="form-input" id="bikeModel" value="${profileData.bike_model || ''}" placeholder="e.g. Road King, Scout"></div>
+        <div class="form-group"><label class="form-label">Bike Year</label><input type="text" class="form-input" id="bikeYear" value="${profileData.bike_year || ''}" placeholder="2024"></div>
+        <div class="form-group">
+          <label class="form-label">Riding Style</label>
+          <select class="form-select" id="rideStyle">
+            <option value="">Select style...</option>
+            ${BIKE_STYLES.map(s => '<option value="' + s + '"' + (profileData.ride_style === s ? ' selected' : '') + '>' + s + '</option>').join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Riding Club</label>
+          <select class="form-select" id="ridingClub">
+            <option value="">Select club...</option>
+            ${RIDING_CLUBS.map(c => '<option value="' + c + '"' + (profileData.riding_club === c ? ' selected' : '') + '>' + c + '</option>').join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">T-Shirt Size</label><input type="text" class="form-input" id="shirtSize" value="${profileData.shirt_size || ''}" placeholder="M, L, XL, 2XL..."></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Swag History</div></div>
+      <div class="section-card">
+        ${swagHistory.length > 0 ? swagHistory.map(s => `
+          <div class="swag-item">
+            <div><div class="swag-name">${s.item_name || 'Swag Item'}</div><div class="swag-date">${formatDate(s.given_date)} • Qty: ${s.quantity || 1}</div></div>
+            <div class="swag-value">${formatCurrency(s.value)}</div>
+          </div>
+        `).join('') : '<div class="empty-state">No swag given yet</div>'}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Activity</div></div>
+      <div class="section-card">
+        ${activityLog.length > 0 ? activityLog.map(a => `
+          <div class="activity-item">
+            <div class="activity-dot" style="background:${STAGES[a.new_stage]?.color || '#3b82f6'}"></div>
+            <div><div class="activity-text">${a.action || 'Moved to ' + (STAGES[a.new_stage]?.name || 'stage')}</div><div class="activity-date">${formatDate(a.created_at)}</div></div>
+          </div>
+        `).join('') : '<div class="empty-state">No activity yet</div>'}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">Notes</div></div>
+      <div class="section-card">
+        <div class="form-group"><textarea class="form-textarea" id="profileNotes" placeholder="Add notes...">${profileData.notes || customerData.notes || ''}</textarea></div>
+      </div>
+    </div>
+  `;
+}
+
+async function saveProfile() {
+  const data = {
+    customer_id: customerId,
+    street_address: document.getElementById('streetAddress')?.value || null,
+    city: document.getElementById('city')?.value || null,
+    state: document.getElementById('state')?.value || null,
+    zip_code: document.getElementById('zipCode')?.value || null,
+    bike_brand: document.getElementById('bikeBrand')?.value || null,
+    bike_model: document.getElementById('bikeModel')?.value || null,
+    bike_year: document.getElementById('bikeYear')?.value || null,
+    ride_style: document.getElementById('rideStyle')?.value || null,
+    riding_club: document.getElementById('ridingClub')?.value || null,
+    shirt_size: document.getElementById('shirtSize')?.value || null,
+    notes: document.getElementById('profileNotes')?.value || null,
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const { error } = await sb.from('customer_profiles').upsert(data, { onConflict: 'customer_id' });
+    if (error) throw error;
+    showToast('Profile saved!');
+  } catch (e) {
+    console.error('Save error:', e);
+    showToast('Error: ' + (e.message || 'Failed'));
+  }
+}
+
+// VAPI Voice AI Integration - Expose functions globally
+window.vapiUpdateProfile = async function(field, value) {
+  const validFields = ['street_address', 'city', 'state', 'zip_code', 'bike_brand', 'bike_model', 'bike_year', 'ride_style', 'riding_club', 'shirt_size', 'notes'];
+  if (!validFields.includes(field)) return { success: false, error: 'Invalid field' };
+  try {
+    const { error } = await sb.from('customer_profiles').upsert({ customer_id: customerId, [field]: value, updated_at: new Date().toISOString() }, { onConflict: 'customer_id' });
+    if (error) throw error;
+    await loadProfile();
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+window.vapiGetProfile = function() {
+  return { customer: customerData, profile: profileData, kpis: calculateKPIs(), swagHistory, activity: activityLog };
+};
+
+window.vapiAddSwag = async function(itemName, value, quantity) {
+  try {
+    const { error } = await sb.from('swag_given').insert({ customer_id: customerId, tenant_id: currentTenantId, item_name: itemName, value: parseFloat(value) || 0, quantity: parseInt(quantity) || 1, given_date: new Date().toISOString() });
+    if (error) throw error;
+    await loadProfile();
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+window.vapiLogActivity = async function(action, newStage) {
+  try {
+    const { error } = await sb.from('funnel_activity').insert({ customer_id: customerId, tenant_id: currentTenantId, action, old_stage: customerData.funnel_stage, new_stage: newStage || customerData.funnel_stage, created_at: new Date().toISOString() });
+    if (error) throw error;
+    await loadProfile();
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+async function init() {
+  loadTheme();
+  const session = await checkAuth();
+  if (!session) return;
+  const email = session.user?.email;
+  if (email) {
+    const { data } = await sb.from('users').select('*').eq('email', email).single();
+    if (data?.tenant_id) { currentTenantId = data.tenant_id; currentUserId = data.user_id; }
+  }
+  await loadProfile();
+}
+
+init();
+</script>
+</body>
+</html>
