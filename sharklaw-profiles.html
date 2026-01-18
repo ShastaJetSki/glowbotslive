@@ -143,8 +143,20 @@ const BIKE_STYLES = ['Cruiser', 'Touring', 'Sport', 'Adventure', 'Bagger', 'Bobb
 const RIDING_CLUBS = ['HOG', 'Indian Riders Group', 'BACA', 'VFW Riders', 'Legion Riders', 'Independent', 'Local Club', 'None'];
 
 async function checkAuth() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) { window.location.href = 'index-sharklaw.html'; return null; }
+  var r = await sb.auth.getSession();
+  var session = r.data.session;
+  if (!session) {
+    var token = localStorage.getItem('sb_access_token');
+    var refresh = localStorage.getItem('sb_refresh_token');
+    if (token && refresh) {
+      var sr = await sb.auth.setSession({ access_token: token, refresh_token: refresh });
+      session = sr.data?.session;
+    }
+    if (!session) {
+      window.location.href = 'login.html';
+      return null;
+    }
+  }
   return session;
 }
 
@@ -187,22 +199,35 @@ async function loadProfile() {
   }
 
   try {
+    console.log('Loading customer:', customerId);
     const { data: customer, error } = await sb.from('customers').select('*').eq('customer_id', customerId).single();
-    if (error || !customer) {
+    if (error) {
+      console.error('Customer load error:', error);
+      document.getElementById('profileContent').innerHTML = '<div class="loading">Error: ' + error.message + '. <a href="sharklaw-contacts.html">Go back</a></div>';
+      return;
+    }
+    if (!customer) {
       document.getElementById('profileContent').innerHTML = '<div class="loading">Customer not found. <a href="sharklaw-contacts.html">Go back</a></div>';
       return;
     }
     customerData = customer;
     currentTenantId = customer.tenant_id;
 
-    const { data: profile } = await sb.from('customer_profiles').select('*').eq('customer_id', customerId).single();
-    profileData = profile || { customer_id: customerId };
+    // These may fail if tables don't exist yet - that's ok
+    try {
+      const { data: profile } = await sb.from('customer_profiles').select('*').eq('customer_id', customerId).single();
+      profileData = profile || { customer_id: customerId };
+    } catch (e) { profileData = { customer_id: customerId }; }
 
-    const { data: swag } = await sb.from('swag_given').select('*').eq('customer_id', customerId).order('given_date', { ascending: false });
-    swagHistory = swag || [];
+    try {
+      const { data: swag } = await sb.from('swag_given').select('*').eq('customer_id', customerId).order('given_date', { ascending: false });
+      swagHistory = swag || [];
+    } catch (e) { swagHistory = []; }
 
-    const { data: activity } = await sb.from('funnel_activity').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(10);
-    activityLog = activity || [];
+    try {
+      const { data: activity } = await sb.from('funnel_activity').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(10);
+      activityLog = activity || [];
+    } catch (e) { activityLog = []; }
 
     renderProfile();
   } catch (e) {
@@ -395,14 +420,19 @@ window.vapiLogActivity = async function(action, newStage) {
 
 async function init() {
   loadTheme();
-  const session = await checkAuth();
-  if (!session) return;
-  const email = session.user?.email;
-  if (email) {
-    const { data } = await sb.from('users').select('*').eq('email', email).single();
-    if (data?.tenant_id) { currentTenantId = data.tenant_id; currentUserId = data.user_id; }
+  try {
+    const session = await checkAuth();
+    if (!session) return;
+    const email = session.user?.email;
+    if (email) {
+      const { data } = await sb.from('users').select('*').eq('email', email).single();
+      if (data?.tenant_id) { currentTenantId = data.tenant_id; currentUserId = data.user_id; }
+    }
+    await loadProfile();
+  } catch (e) {
+    console.error('Init error:', e);
+    document.getElementById('profileContent').innerHTML = '<div class="loading">Error loading: ' + e.message + '. <a href="sharklaw-contacts.html">Go back</a></div>';
   }
-  await loadProfile();
 }
 
 init();
