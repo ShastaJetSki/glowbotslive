@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="themes.css">
   <!-- Load SDKs synchronously to ensure they're ready -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/@vapi-ai/web@latest/dist/vapi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@vapi-ai/web/dist/vapi.umd.min.js"></script>
   <style>
     :root { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
     [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
@@ -308,10 +308,18 @@ function warmVapiAgent() {
  * Creates the VAPI object early so it's ready when user clicks
  */
 function initVapi() {
-  if (vapiInitialized || !window.Vapi) return;
+  if (vapiInitialized) return;
+  
+  // Try different ways the SDK might expose Vapi
+  var VapiClass = window.Vapi || window.VapiWeb || (window.vapi && window.vapi.Vapi);
+  
+  if (!VapiClass) {
+    console.log('[VAPI] SDK not found, will retry...');
+    return;
+  }
   
   try {
-    vapi = new window.Vapi(VAPI_PUBLIC_KEY);
+    vapi = new VapiClass(VAPI_PUBLIC_KEY);
     
     // Set up event handlers
     vapi.on("call-start", () => {
@@ -370,7 +378,8 @@ async function toggleVoiceAssistant() {
   // Ensure VAPI is initialized
   if (!vapi) initVapi();
   if (!vapi) {
-    console.error('[VAPI] SDK not available');
+    console.error('[VAPI] SDK not available - check console for loading errors');
+    console.log('[VAPI] Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('vapi')));
     return;
   }
   
@@ -449,7 +458,8 @@ async function toggleVoiceAssistant() {
  * This runs as early as possible to have VAPI ready
  */
 function waitForVapiAndInit() {
-  if (window.Vapi) {
+  var VapiClass = window.Vapi || window.VapiWeb || (window.vapi && window.vapi.Vapi);
+  if (VapiClass) {
     initVapi();
     // Also warm up the agent
     setTimeout(warmVapiAgent, 100);
