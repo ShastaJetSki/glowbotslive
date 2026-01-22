@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Support Admin</title>
+  <script>
+    (function() {
+      var theme = localStorage.getItem('app-theme') || 'dark-blue';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
+    [data-theme="dark-blue"] { --bg-primary: #0b0f14; --bg-secondary: #0f1621; --bg-card: #1a2535; --bg-hover: #223044; --border-default: #223044; --text-primary: #e8eef6; --text-secondary: #9fb0c3; --accent-primary: #3b82f6; --accent-light: #60a5fa; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: var(--bg-primary); }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+
+    .layout { display: flex; min-height: 100vh; }
+    
+    .sidebar { width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border-default); padding: 20px; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { margin-bottom: 24px; }
+    .sidebar-title { font-size: 20px; font-weight: 700; color: var(--accent-light); }
+    .sidebar-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    
+    .sidebar-section { margin-bottom: 24px; }
+    .sidebar-section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    
+    .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--text-secondary); cursor: pointer; margin-bottom: 4px; font-size: 14px; }
+    .sidebar-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .sidebar-item.active { background: var(--accent-primary); color: #fff; }
+    .sidebar-item .count { margin-left: auto; background: var(--bg-hover); padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+    .sidebar-item.active .count { background: rgba(255,255,255,0.2); }
+
+    .main { flex: 1; margin-left: 260px; }
+    
+    .header { padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .header-title { font-size: 24px; font-weight: 600; }
+    .header-actions { display: flex; gap: 12px; align-items: center; }
+    
+    .content { padding: 24px; }
+    
+    .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border-default); }
+    .stat-value { font-size: 32px; font-weight: 700; }
+    .stat-label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+    .stat-card.urgent .stat-value { color: #ef4444; }
+    .stat-card.open .stat-value { color: #3b82f6; }
+    .stat-card.progress .stat-value { color: #fbbf24; }
+    .stat-card.resolved .stat-value { color: #22c55e; }
+
+    .filters-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+    .filter-select { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; }
+    .filter-input { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; min-width: 250px; }
+    .filter-btn { padding: 10px 20px; border-radius: 8px; border: none; background: var(--accent-primary); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .filter-btn:hover { background: var(--accent-light); }
+    .filter-btn.secondary { background: transparent; border: 1px solid var(--border-default); color: var(--text-secondary); }
+
+    .tickets-table { width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-default); }
+    .tickets-table th { text-align: left; padding: 14px 16px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
+    .tickets-table td { padding: 14px 16px; border-bottom: 1px solid var(--border-default); font-size: 14px; vertical-align: middle; }
+    .tickets-table tr:hover { background: var(--bg-hover); cursor: pointer; }
+    .tickets-table tr:last-child td { border-bottom: none; }
+
+    .ticket-subject { font-weight: 600; color: var(--text-primary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ticket-email { color: var(--text-secondary); font-size: 13px; }
+    .ticket-project { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .project-sharklaw { background: rgba(20, 184, 166, 0.2); color: #2dd4bf; }
+    .project-worklogic_pro, .project-worklogic { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .project-general { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+    .ticket-status { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .status-open { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .status-in_progress { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .status-waiting_on_customer { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+    .status-resolved { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .status-closed { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+    .ticket-priority { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .priority-low { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .priority-normal { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .priority-high { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .priority-urgent { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    .empty-state-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+
+    /* Ticket Detail Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 24px; border-bottom: 1px solid var(--border-default); position: sticky; top: 0; background: var(--bg-secondary); z-index: 10; }
+    .modal-title { font-size: 20px; font-weight: 700; }
+    .modal-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+    .modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 28px; cursor: pointer; padding: 0; line-height: 1; }
+    .modal-body { padding: 24px; }
+
+    .detail-section { margin-bottom: 24px; }
+    .detail-section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 12px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .detail-item { }
+    .detail-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; }
+    .detail-value { font-size: 14px; font-weight: 500; }
+
+    .detail-description { background: var(--bg-card); border-radius: 10px; padding: 16px; line-height: 1.6; white-space: pre-wrap; }
+
+    .detail-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .action-select { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; }
+    .action-btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .action-btn.primary { background: var(--accent-primary); color: #fff; }
+    .action-btn.success { background: #22c55e; color: #fff; }
+    .action-btn.danger { background: #ef4444; color: #fff; }
+
+    .replies-section { margin-top: 24px; border-top: 1px solid var(--border-default); padding-top: 24px; }
+    .reply-item { background: var(--bg-card); border-radius: 10px; padding: 16px; margin-bottom: 12px; border-left: 3px solid var(--border-default); }
+    .reply-item.admin { border-left-color: var(--accent-primary); }
+    .reply-item.customer { border-left-color: #22c55e; }
+    .reply-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+    .reply-author { font-weight: 600; }
+    .reply-author.admin { color: var(--accent-light); }
+    .reply-author.customer { color: #22c55e; }
+    .reply-time { color: var(--text-secondary); }
+    .reply-message { line-height: 1.6; white-space: pre-wrap; }
+
+    .reply-form { margin-top: 20px; }
+    .reply-textarea { width: 100%; padding: 14px; border-radius: 10px; border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 14px; min-height: 100px; resize: vertical; font-family: inherit; }
+    .reply-textarea:focus { outline: none; border-color: var(--accent-primary); }
+
+    .quick-replies { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .quick-reply-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+    .quick-reply-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .admin-badge { background: var(--accent-primary); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px; }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; }
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+      .detail-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .tickets-table { font-size: 12px; }
+      .tickets-table th, .tickets-table td { padding: 10px 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">🎫 Support Admin</div>
+      <div class="sidebar-subtitle">Manage all tickets</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Filters</div>
+      <div class="sidebar-item active" onclick="filterByStatus('all')">
+        <span>📋</span> All Tickets <span class="count" id="countAll">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByStatus('open')">
+        <span>🔵</span> Open <span class="count" id="countOpen">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByStatus('in_progress')">
+        <span>🟡</span> In Progress <span class="count" id="countProgress">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByStatus('waiting_on_customer')">
+        <span>🟣</span> Waiting <span class="count" id="countWaiting">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByStatus('resolved')">
+        <span>🟢</span> Resolved <span class="count" id="countResolved">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByStatus('closed')">
+        <span>⚫</span> Closed <span class="count" id="countClosed">0</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Projects / Teams</div>
+      <div class="sidebar-item" onclick="filterByProject('all')">
+        <span>📁</span> All Projects
+      </div>
+      <div class="sidebar-item" onclick="filterByProject('sharklaw')">
+        <span>🦈</span> Shark Law
+      </div>
+      <div class="sidebar-item" onclick="filterByProject('worklogic_pro')">
+        <span>⚙️</span> WorkLogic Pro
+      </div>
+      <div class="sidebar-item" onclick="filterByProject('worklogic')">
+        <span>⚙️</span> WorkLogic
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Priority</div>
+      <div class="sidebar-item" onclick="filterByPriority('urgent')">
+        <span>🔴</span> Urgent <span class="count" id="countUrgent">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterByPriority('high')">
+        <span>🟠</span> High <span class="count" id="countHigh">0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="header">
+      <div class="header-title">Support Tickets</div>
+      <div class="header-actions">
+        <button class="filter-btn" onclick="loadTickets()">🔄 Refresh</button>
+        <span id="adminEmail" style="color: var(--text-secondary); font-size: 14px;"></span>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="stats-row">
+        <div class="stat-card open">
+          <div class="stat-value" id="statOpen">0</div>
+          <div class="stat-label">Open</div>
+        </div>
+        <div class="stat-card progress">
+          <div class="stat-value" id="statProgress">0</div>
+          <div class="stat-label">In Progress</div>
+        </div>
+        <div class="stat-card urgent">
+          <div class="stat-value" id="statUrgent">0</div>
+          <div class="stat-label">Urgent</div>
+        </div>
+        <div class="stat-card resolved">
+          <div class="stat-value" id="statResolved">0</div>
+          <div class="stat-label">Resolved Today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statTotal">0</div>
+          <div class="stat-label">Total</div>
+        </div>
+      </div>
+
+      <div class="filters-row">
+        <input type="text" class="filter-input" id="searchInput" placeholder="Search tickets..." oninput="applyFilters()">
+        <select class="filter-select" id="filterCategory" onchange="applyFilters()">
+          <option value="">All Categories</option>
+          <option value="general">General</option>
+          <option value="bug">Bug Report</option>
+          <option value="feature">Feature Request</option>
+          <option value="billing">Billing</option>
+          <option value="account">Account</option>
+          <option value="other">Other</option>
+        </select>
+        <select class="filter-select" id="filterSort" onchange="applyFilters()">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="priority">Priority</option>
+          <option value="updated">Recently Updated</option>
+        </select>
+      </div>
+
+      <table class="tickets-table" id="ticketsTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Subject</th>
+            <th>From</th>
+            <th>Project</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="ticketsBody">
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">
+                <div class="empty-state-icon">⏳</div>
+                <div class="empty-state-title">Loading tickets...</div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Ticket Detail Modal -->
+<div class="modal-overlay" id="ticketModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalTitle">Ticket Details</div>
+        <div class="modal-subtitle" id="modalSubtitle">#0000 • Created --</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-section">
+        <div class="detail-actions">
+          <select class="action-select" id="modalStatus">
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="waiting_on_customer">Waiting on Customer</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select class="action-select" id="modalPriority">
+            <option value="low">Low Priority</option>
+            <option value="normal">Normal Priority</option>
+            <option value="high">High Priority</option>
+            <option value="urgent">Urgent</option>
+          </select>
+          <button class="action-btn primary" onclick="updateTicket()">Update</button>
+          <button class="action-btn success" onclick="resolveTicket()">✓ Resolve</button>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-section-title">Customer Info</div>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <div class="detail-label">Name</div>
+            <div class="detail-value" id="modalName">--</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Email</div>
+            <div class="detail-value" id="modalEmail">--</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Project</div>
+            <div class="detail-value" id="modalProject">--</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-section-title">Description</div>
+        <div class="detail-description" id="modalDescription">Loading...</div>
+      </div>
+
+      <div class="replies-section">
+        <div class="detail-section-title">💬 Conversation</div>
+        <div id="modalReplies"></div>
+
+        <div class="reply-form">
+          <div class="quick-replies">
+            <button class="quick-reply-btn" onclick="insertQuickReply('thanks')">Thanks for reaching out!</button>
+            <button class="quick-reply-btn" onclick="insertQuickReply('working')">We're working on this</button>
+            <button class="quick-reply-btn" onclick="insertQuickReply('info')">Need more info</button>
+            <button class="quick-reply-btn" onclick="insertQuickReply('resolved')">This should be resolved</button>
+          </div>
+          <textarea class="reply-textarea" id="replyMessage" placeholder="Type your reply..."></textarea>
+          <div style="margin-top: 12px; display: flex; gap: 12px;">
+            <button class="action-btn primary" onclick="sendReply()">Send Reply</button>
+            <button class="action-btn" style="background: #22c55e; color: #fff;" onclick="sendReplyAndResolve()">Reply & Resolve</button>
+            <button class="action-btn" style="background: #fbbf24; color: #000;" onclick="sendInternalNote()">📝 Internal Note</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let adminEmail = null;
+let allTickets = [];
+let filteredTickets = [];
+let currentFilters = { status: 'all', project: 'all', priority: 'all' };
+let currentTicket = null;
+
+// Quick reply templates
+const quickReplies = {
+  thanks: "Thanks for reaching out! We've received your ticket and will look into this shortly.",
+  working: "We're actively working on this issue. I'll update you as soon as we have more information.",
+  info: "Thanks for contacting us. Could you please provide some additional information to help us resolve this?\n\n- ",
+  resolved: "This issue should now be resolved. Please let us know if you're still experiencing any problems."
+};
+
+// Load tickets
+async function loadTickets() {
+  try {
+    const { data, error } = await sb
+      .from('support_tickets')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    allTickets = data || [];
+    updateStats();
+    applyFilters();
+    
+  } catch (err) {
+    console.error('Error loading tickets:', err);
+    document.getElementById('ticketsBody').innerHTML = `
+      <tr><td colspan="7">
+        <div class="empty-state">
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-title">Error loading tickets</div>
+          <p>${err.message}</p>
+        </div>
+      </td></tr>
+    `;
+  }
+}
+
+function updateStats() {
+  const open = allTickets.filter(t => t.status === 'open').length;
+  const progress = allTickets.filter(t => t.status === 'in_progress').length;
+  const waiting = allTickets.filter(t => t.status === 'waiting_on_customer').length;
+  const resolved = allTickets.filter(t => t.status === 'resolved').length;
+  const closed = allTickets.filter(t => t.status === 'closed').length;
+  const urgent = allTickets.filter(t => t.priority === 'urgent' && t.status !== 'closed' && t.status !== 'resolved').length;
+  const high = allTickets.filter(t => t.priority === 'high' && t.status !== 'closed' && t.status !== 'resolved').length;
+  
+  const today = new Date().toDateString();
+  const resolvedToday = allTickets.filter(t => t.resolved_at && new Date(t.resolved_at).toDateString() === today).length;
+  
+  document.getElementById('statOpen').textContent = open;
+  document.getElementById('statProgress').textContent = progress;
+  document.getElementById('statUrgent').textContent = urgent;
+  document.getElementById('statResolved').textContent = resolvedToday;
+  document.getElementById('statTotal').textContent = allTickets.length;
+  
+  document.getElementById('countAll').textContent = allTickets.length;
+  document.getElementById('countOpen').textContent = open;
+  document.getElementById('countProgress').textContent = progress;
+  document.getElementById('countWaiting').textContent = waiting;
+  document.getElementById('countResolved').textContent = resolved;
+  document.getElementById('countClosed').textContent = closed;
+  document.getElementById('countUrgent').textContent = urgent;
+  document.getElementById('countHigh').textContent = high;
+}
+
+function filterByStatus(status) {
+  currentFilters.status = status;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  event.target.closest('.sidebar-item').classList.add('active');
+  applyFilters();
+}
+
+function filterByProject(project) {
+  currentFilters.project = project;
+  applyFilters();
+}
+
+function filterByPriority(priority) {
+  currentFilters.priority = priority;
+  applyFilters();
+}
+
+function applyFilters() {
+  let tickets = [...allTickets];
+  
+  // Status filter
+  if (currentFilters.status !== 'all') {
+    tickets = tickets.filter(t => t.status === currentFilters.status);
+  }
+  
+  // Project filter (uses 'team' column)
+  if (currentFilters.project !== 'all') {
+    tickets = tickets.filter(t => t.team === currentFilters.project);
+  }
+  
+  // Priority filter
+  if (currentFilters.priority !== 'all') {
+    tickets = tickets.filter(t => t.priority === currentFilters.priority);
+  }
+  
+  // Search filter
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  if (search) {
+    tickets = tickets.filter(t => 
+      t.subject.toLowerCase().includes(search) ||
+      t.submitter_email.toLowerCase().includes(search) ||
+      (t.submitter_name && t.submitter_name.toLowerCase().includes(search)) ||
+      (t.description && t.description.toLowerCase().includes(search))
+    );
+  }
+  
+  // Category filter
+  const category = document.getElementById('filterCategory').value;
+  if (category) {
+    tickets = tickets.filter(t => t.category === category);
+  }
+  
+  // Sort
+  const sort = document.getElementById('filterSort').value;
+  if (sort === 'oldest') {
+    tickets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  } else if (sort === 'priority') {
+    const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+    tickets.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  } else if (sort === 'updated') {
+    tickets.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  }
+  
+  filteredTickets = tickets;
+  renderTickets();
+}
+
+function renderTickets() {
+  const tbody = document.getElementById('ticketsBody');
+  
+  if (!filteredTickets.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="7">
+        <div class="empty-state">
+          <div class="empty-state-icon">🎫</div>
+          <div class="empty-state-title">No tickets found</div>
+          <p>Try adjusting your filters</p>
+        </div>
+      </td></tr>
+    `;
+    return;
+  }
+  
+  tbody.innerHTML = filteredTickets.map(t => `
+    <tr onclick="openTicket('${t.ticket_id}')">
+      <td>#${t.ticket_number || t.ticket_id.slice(0,6)}</td>
+      <td>
+        <div class="ticket-subject">${escapeHtml(t.subject)}</div>
+      </td>
+      <td>
+        <div class="ticket-email">${escapeHtml(t.submitter_name || t.submitter_email)}</div>
+      </td>
+      <td>
+        <span class="ticket-project project-${t.team || 'general'}">${formatProject(t.team)}</span>
+      </td>
+      <td>
+        <span class="ticket-status status-${t.status}">${formatStatus(t.status)}</span>
+      </td>
+      <td>
+        <span class="ticket-priority priority-${t.priority}">${t.priority}</span>
+      </td>
+      <td>${formatDate(t.created_at)}</td>
+    </tr>
+  `).join('');
+}
+
+function formatStatus(status) {
+  const map = {
+    'open': 'Open',
+    'in_progress': 'In Progress',
+    'waiting_on_customer': 'Waiting',
+    'resolved': 'Resolved',
+    'closed': 'Closed'
+  };
+  return map[status] || status;
+}
+
+function formatProject(team) {
+  const map = {
+    'sharklaw': 'Shark Law',
+    'worklogic_pro': 'WorkLogic',
+    'worklogic': 'WorkLogic',
+    'general': 'General'
+  };
+  return map[team] || team || 'General';
+}
+
+function formatDate(d) {
+  if (!d) return '--';
+  const date = new Date(d);
+  const now = new Date();
+  const diff = now - date;
+  
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+  
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(d) {
+  if (!d) return '--';
+  return new Date(d).toLocaleString('en-US', { 
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Open ticket modal
+async function openTicket(ticketId) {
+  currentTicket = allTickets.find(t => t.ticket_id === ticketId);
+  if (!currentTicket) return;
+  
+  document.getElementById('modalTitle').textContent = currentTicket.subject;
+  document.getElementById('modalSubtitle').textContent = `#${currentTicket.ticket_number || currentTicket.ticket_id.slice(0,6)} • Created ${formatDateTime(currentTicket.created_at)}`;
+  document.getElementById('modalName').textContent = currentTicket.submitter_name || '--';
+  document.getElementById('modalEmail').textContent = currentTicket.submitter_email;
+  document.getElementById('modalProject').innerHTML = `<span class="ticket-project project-${currentTicket.team || 'general'}">${formatProject(currentTicket.team)}</span>`;
+  document.getElementById('modalDescription').textContent = currentTicket.description;
+  document.getElementById('modalStatus').value = currentTicket.status;
+  document.getElementById('modalPriority').value = currentTicket.priority;
+  
+  // Load replies
+  loadReplies(ticketId);
+  
+  document.getElementById('ticketModal').classList.add('active');
+}
+
+async function loadReplies(ticketId) {
+  try {
+    const { data, error } = await sb
+      .from('ticket_comments')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    
+    const container = document.getElementById('modalReplies');
+    
+    if (!data || !data.length) {
+      container.innerHTML = '<p style="color: var(--text-secondary); font-size: 14px; padding: 16px 0;">No replies yet.</p>';
+      return;
+    }
+    
+    container.innerHTML = data.map(r => `
+      <div class="reply-item ${r.comment_type === 'agent' ? 'admin' : 'customer'}" style="${r.is_internal ? 'border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.05);' : ''}">
+        <div class="reply-header">
+          <span class="reply-author ${r.comment_type === 'agent' ? 'admin' : 'customer'}">
+            ${r.comment_type === 'agent' ? '👤 ' + (r.commenter_name || 'Support') : (r.commenter_name || 'Customer')}
+            ${r.comment_type === 'agent' ? '<span class="admin-badge">ADMIN</span>' : ''}
+            ${r.is_internal ? '<span class="admin-badge" style="background: #fbbf24; color: #000;">INTERNAL</span>' : ''}
+          </span>
+          <span class="reply-time">${formatDateTime(r.created_at)}</span>
+        </div>
+        <div class="reply-message">${escapeHtml(r.content)}</div>
+      </div>
+    `).join('');
+    
+  } catch (err) {
+    console.error('Error loading replies:', err);
+  }
+}
+
+function insertQuickReply(key) {
+  document.getElementById('replyMessage').value = quickReplies[key];
+}
+
+async function sendReply() {
+  const message = document.getElementById('replyMessage').value.trim();
+  if (!message) {
+    alert('Please enter a message');
+    return;
+  }
+  
+  try {
+    const { error } = await sb.from('ticket_comments').insert({
+      ticket_id: currentTicket.ticket_id,
+      commenter_email: adminEmail,
+      commenter_name: 'Support Team',
+      content: message,
+      comment_type: 'agent',
+      is_internal: false
+    });
+    
+    if (error) throw error;
+    
+    // Update ticket status if it was open (first response)
+    if (currentTicket.status === 'open') {
+      await sb.from('support_tickets').update({
+        status: 'in_progress',
+        first_response_at: currentTicket.first_response_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }).eq('ticket_id', currentTicket.ticket_id);
+    } else {
+      // Just update timestamp
+      await sb.from('support_tickets').update({
+        updated_at: new Date().toISOString()
+      }).eq('ticket_id', currentTicket.ticket_id);
+    }
+    
+    document.getElementById('replyMessage').value = '';
+    loadReplies(currentTicket.ticket_id);
+    loadTickets();
+    
+  } catch (err) {
+    console.error('Error sending reply:', err);
+    alert('Error: ' + err.message);
+  }
+}
+
+async function sendReplyAndResolve() {
+  await sendReply();
+  await resolveTicket();
+}
+
+async function sendInternalNote() {
+  const message = document.getElementById('replyMessage').value.trim();
+  if (!message) {
+    alert('Please enter a note');
+    return;
+  }
+  
+  try {
+    const { error } = await sb.from('ticket_comments').insert({
+      ticket_id: currentTicket.ticket_id,
+      commenter_email: adminEmail,
+      commenter_name: 'Support Team',
+      content: message,
+      comment_type: 'agent',
+      is_internal: true  // Internal note - not visible to customer
+    });
+    
+    if (error) throw error;
+    
+    document.getElementById('replyMessage').value = '';
+    loadReplies(currentTicket.ticket_id);
+    
+  } catch (err) {
+    console.error('Error adding internal note:', err);
+    alert('Error: ' + err.message);
+  }
+}
+
+async function updateTicket() {
+  const status = document.getElementById('modalStatus').value;
+  const priority = document.getElementById('modalPriority').value;
+  
+  try {
+    const update = {
+      status: status,
+      priority: priority,
+      updated_at: new Date().toISOString()
+    };
+    
+    if (status === 'resolved' && currentTicket.status !== 'resolved') {
+      update.resolved_at = new Date().toISOString();
+    }
+    if (status === 'closed' && currentTicket.status !== 'closed') {
+      update.closed_at = new Date().toISOString();
+    }
+    
+    const { error } = await sb.from('support_tickets')
+      .update(update)
+      .eq('ticket_id', currentTicket.ticket_id);
+    
+    if (error) throw error;
+    
+    loadTickets();
+    closeModal();
+    
+  } catch (err) {
+    console.error('Error updating ticket:', err);
+    alert('Error: ' + err.message);
+  }
+}
+
+async function resolveTicket() {
+  document.getElementById('modalStatus').value = 'resolved';
+  await updateTicket();
+}
+
+function closeModal() {
+  document.getElementById('ticketModal').classList.remove('active');
+  currentTicket = null;
+}
+
+// Auth check
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  
+  if (!session) {
+    const token = localStorage.getItem('sb_access_token');
+    const refresh = localStorage.getItem('sb_refresh_token');
+    if (token && refresh) {
+      const { data } = await sb.auth.setSession({ access_token: token, refresh_token: refresh });
+      if (data?.session) {
+        adminEmail = data.session.user.email;
+      }
+    }
+  } else {
+    adminEmail = session.user.email;
+  }
+  
+  if (adminEmail) {
+    document.getElementById('adminEmail').textContent = adminEmail;
+  }
+  
+  // TODO: Add admin check here
+  // For now, anyone logged in can access
+  
+  loadTickets();
+}
+
+// Close modal on escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Close modal on overlay click
+document.getElementById('ticketModal').addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) closeModal();
+});
+
+// Initialize
+checkAuth();
+</script>
+
+</body>
+</html>
