@@ -313,11 +313,79 @@ function initVapi() {
   try {
     vapi = new window.Vapi(VAPI_PUBLIC_KEY);
     
-    // Set up event handlers
+    // ========== LATENCY INSTRUMENTATION ==========
+    var callStartTime = null;
+    var userSpeechEndTime = null;
+    var transcriptReadyTime = null;
+    var firstLLMTokenTime = null;
+    var ttsStartTime = null;
+    
+    // 0. Call connected
     vapi.on("call-start", () => {
-      console.log('[VAPI] Call started');
+      callStartTime = performance.now();
+      console.log('[VAPI] ⏱️ T0: Call started');
       document.getElementById('voiceOrb').classList.add('listening');
       setAssistantButtonState(true);
+    });
+    
+    // 1. User stopped speaking (end-of-utterance)
+    vapi.on("speech-end", () => {
+      // This fires for both user and assistant - we track user's
+      if (!userSpeechEndTime && callStartTime) {
+        userSpeechEndTime = performance.now();
+        console.log('[VAPI] ⏱️ T1: User speech ended |', Math.round(userSpeechEndTime - callStartTime), 'ms from call start');
+      }
+    });
+    
+    // 2. Transcript ready (ASR done) + 3. LLM response
+    vapi.on("message", (msg) => {
+      var now = performance.now();
+      
+      // User transcript (ASR complete)
+      if (msg.type === 'transcript' && msg.role === 'user' && msg.transcriptType === 'final') {
+        transcriptReadyTime = now;
+        console.log('[VAPI] ⏱️ T2: Transcript ready |', Math.round(now - callStartTime), 'ms from call start');
+        if (userSpeechEndTime) {
+          console.log('[VAPI]     └─ ASR processing:', Math.round(transcriptReadyTime - userSpeechEndTime), 'ms');
+        }
+      }
+      
+      // Assistant response started (first LLM token)
+      if (msg.type === 'transcript' && msg.role === 'assistant' && !firstLLMTokenTime) {
+        firstLLMTokenTime = now;
+        console.log('[VAPI] ⏱️ T3: First LLM token |', Math.round(now - callStartTime), 'ms from call start');
+        if (transcriptReadyTime) {
+          console.log('[VAPI]     └─ LLM latency:', Math.round(firstLLMTokenTime - transcriptReadyTime), 'ms');
+        }
+      }
+      
+      // Log all messages for debugging
+      if (msg.type === 'transcript') {
+        console.log('[VAPI] 📝', msg.role, ':', msg.transcript?.substring(0, 50) || '(empty)');
+      }
+    });
+    
+    // 4. TTS audio started playing
+    vapi.on("speech-start", () => {
+      var now = performance.now();
+      if (vapiStartTime && !ttsStartTime) {
+        ttsStartTime = now;
+        console.log('[VAPI] ⏱️ T4: TTS audio start |', Math.round(now - callStartTime), 'ms from call start');
+        console.log('[VAPI] ═══════════════════════════════════════');
+        console.log('[VAPI] 📊 LATENCY BREAKDOWN:');
+        console.log('[VAPI]    Total (button → audio):', Math.round(now - vapiStartTime), 'ms');
+        if (firstLLMTokenTime && ttsStartTime) {
+          console.log('[VAPI]    TTS generation:', Math.round(ttsStartTime - firstLLMTokenTime), 'ms');
+        }
+        console.log('[VAPI] ═══════════════════════════════════════');
+        vapiStartTime = null; // Only log once per call
+      }
+      
+      // Reset for next turn
+      userSpeechEndTime = null;
+      transcriptReadyTime = null;
+      firstLLMTokenTime = null;
+      ttsStartTime = null;
     });
     
     vapi.on("call-end", () => {
@@ -328,15 +396,6 @@ function initVapi() {
       voiceAssistantOpen = false;
     });
     
-    // OPTIMIZATION Step 8: Measure connection latency (first speech only)
-    vapi.on("speech-start", () => {
-      if (vapiStartTime) {
-        const latency = performance.now() - vapiStartTime;
-        console.log('[VAPI] First speech latency:', Math.round(latency), 'ms');
-        vapiStartTime = null; // Only log once per call
-      }
-    });
-    
     vapi.on("error", (e) => {
       console.error('[VAPI] Error:', e);
       document.getElementById('voiceOrb').classList.remove('listening');
@@ -344,7 +403,7 @@ function initVapi() {
     });
     
     vapiInitialized = true;
-    console.log('[VAPI] Client pre-initialized and ready');
+    console.log('[VAPI] Client pre-initialized and ready (with latency instrumentation)');
   } catch (e) {
     console.error('[VAPI] Failed to initialize:', e);
   }
