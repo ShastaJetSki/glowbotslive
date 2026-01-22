@@ -11,6 +11,13 @@
       document.documentElement.setAttribute('data-theme', theme);
     })();
   </script>
+  
+  <!-- VAPI LATENCY OPTIMIZATION: Step 1 - Preconnect to CDN and API domains -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://api.vapi.ai">
+  <link rel="dns-prefetch" href="https://api.vapi.ai">
+  
   <link rel="stylesheet" href="themes.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -189,7 +196,9 @@
     @keyframes swirlRotate { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
     @keyframes swirlFloat { 0%,100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-45%, -55%) scale(1.1); } }
   </style>
-  <script src="https://cdn.jsdelivr.net/gh/balacodeio/Vapi-Web-UMD@latest/dist/latest/vapi-web-bundle.min.js"></script>
+  
+  <!-- VAPI LATENCY OPTIMIZATION: Step 1 - Load SDK with defer -->
+  <script src="https://cdn.jsdelivr.net/gh/balacodeio/Vapi-Web-UMD@latest/dist/latest/vapi-web-bundle.min.js" defer></script>
 </head>
 <body>
 <div class="mobile-top-header"><div class="mobile-header-bar"><button class="mobile-menu-toggle" onclick="toggleMobileMenu(this)">☰</button><div class="mobile-header-center"><div class="mobile-header-title">Dashboard</div><div class="business-name" id="mobileBusinessName">Loading...</div></div><div class="mobile-header-right"><button class="theme-toggle-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button><a onclick="logout()" style="color:var(--text-secondary);cursor:pointer;font-size:14px;">Logout</a></div></div><div class="mobile-header-content" id="mobileHeaderContent"><div class="mobile-header-actions"><button onclick="location.href='sharklaw-settings.html'">Settings</button><button onclick="location.href='support.html'">Support</button><button onclick="location.href='account.html'">Account</button></div></div></div>
@@ -274,89 +283,201 @@ async function checkAuth(){var r=await sb.auth.getSession(),s=r.data.session;if(
 function updateEmailDisplay(){if(userEmail){document.getElementById('desktopBusinessName').textContent=userEmail;document.getElementById('mobileBusinessName').textContent=userEmail;}}
 
 // ============================================================================
-// VOICE ASSISTANT WITH USER IDENTIFICATION
+// VAPI VOICE ASSISTANT - LATENCY OPTIMIZED
 // ============================================================================
-var vapi=null,voiceAssistantOpen=false;
 
-function setAssistantButtonState(a){
-  var d=document.getElementById('desktopAssistantBtn'),m=document.getElementById('mobileAssistantBtn');
-  if(d){if(a)d.classList.add('active');else d.classList.remove('active');}
-  if(m){if(a)m.classList.add('active');else m.classList.remove('active');}
+var vapi = null;
+var voiceAssistantOpen = false;
+var vapiInitialized = false;
+var vapiStartTime = null; // For latency measurement
+
+// VAPI Configuration
+const VAPI_PUBLIC_KEY = "b66ad6e7-ec9d-421c-88b7-157068b27f6d";
+const VAPI_AGENT_ID = "65bb531d-a9bf-4074-93d9-13b75a731265";
+
+/**
+ * OPTIMIZATION Step 2: Warm the VAPI API in background
+ * This keeps the agent container warm for faster startup
+ */
+function warmVapiAgent() {
+  fetch("https://api.vapi.ai/health").catch(() => {});
+  console.log('[VAPI] Agent warm-up ping sent');
 }
 
-function toggleVoiceAssistant(){
-  var c=document.getElementById('voiceAssistant'),o=document.getElementById('voiceOrb');
-  if(!vapi)initVapi();
-  if(voiceAssistantOpen){
-    if(vapi)vapi.stop();
-    c.classList.remove('active');
-    o.classList.remove('listening');
-    setAssistantButtonState(false);
-    voiceAssistantOpen=false;
-  }else{
-    c.classList.add('active');
-    setAssistantButtonState(true);
-    voiceAssistantOpen=true;
+/**
+ * OPTIMIZATION Step 3: Pre-initialize VAPI client on page load
+ * Creates the VAPI object early so it's ready when user clicks
+ */
+function initVapi() {
+  if (vapiInitialized || !window.Vapi) return;
+  
+  try {
+    vapi = new window.Vapi(VAPI_PUBLIC_KEY);
     
-    // Find logged-in user in employees by email
-    var currentEmployee = allEmployeesData.find(e => e.email && e.email.toLowerCase() === (userEmail || '').toLowerCase());
-    var userName = currentEmployee ? ((currentEmployee.first_name || '') + ' ' + (currentEmployee.last_name || '')).trim() : '';
-    var userFirstName = currentEmployee ? (currentEmployee.first_name || '') : '';
-    var userId = currentEmployee ? currentEmployee.employee_id : currentUserId;
-    var userDepartment = currentEmployee ? (currentEmployee.department || '') : '';
-    var userRole = currentEmployee ? (currentEmployee.role || '') : '';
+    // Set up event handlers
+    vapi.on("call-start", () => {
+      console.log('[VAPI] Call started');
+      document.getElementById('voiceOrb').classList.add('listening');
+      setAssistantButtonState(true);
+    });
     
-    console.log('Starting VAPI with user context:', { userName, userId, userEmail, currentTenantId });
+    vapi.on("call-end", () => {
+      console.log('[VAPI] Call ended');
+      document.getElementById('voiceOrb').classList.remove('listening');
+      document.getElementById('voiceAssistant').classList.remove('active');
+      setAssistantButtonState(false);
+      voiceAssistantOpen = false;
+    });
     
-    // Start VAPI with user context
-    vapi.start("65bb531d-a9bf-4074-93d9-13b75a731265", {
-      variableValues: {
-        user_id: userId || '',
-        user_name: userName || userFirstName || userEmail || 'there',
-        user_first_name: userFirstName || '',
-        user_type: currentEmployee ? 'employee' : 'user',
-        user_email: userEmail || '',
-        user_department: userDepartment,
-        user_role: userRole,
-        tenant_id: currentTenantId || '55555555-5555-5555-5555-555555555555'
+    // OPTIMIZATION Step 8: Measure connection latency
+    vapi.on("speech-start", () => {
+      if (vapiStartTime) {
+        const latency = performance.now() - vapiStartTime;
+        console.log('[VAPI] First speech latency:', Math.round(latency), 'ms');
       }
     });
+    
+    vapi.on("error", (e) => {
+      console.error('[VAPI] Error:', e);
+      document.getElementById('voiceOrb').classList.remove('listening');
+      setAssistantButtonState(false);
+    });
+    
+    vapiInitialized = true;
+    console.log('[VAPI] Client pre-initialized and ready');
+  } catch (e) {
+    console.error('[VAPI] Failed to initialize:', e);
   }
 }
 
-function initVapi(){
-  if(!window.Vapi){console.error('VAPI SDK not loaded');return;}
-  vapi=new window.Vapi("b66ad6e7-ec9d-421c-88b7-157068b27f6d");
-  vapi.on("call-start",()=>{
-    document.getElementById('voiceOrb').classList.add('listening');
-    setAssistantButtonState(true);
-  });
-  vapi.on("call-end",()=>{
-    document.getElementById('voiceOrb').classList.remove('listening');
-    document.getElementById('voiceAssistant').classList.remove('active');
-    setAssistantButtonState(false);
-    voiceAssistantOpen=false;
-  });
-  vapi.on("error",e=>{
-    console.error('VAPI error:',e);
-    document.getElementById('voiceOrb').classList.remove('listening');
-    setAssistantButtonState(false);
-  });
+function setAssistantButtonState(active) {
+  var d = document.getElementById('desktopAssistantBtn');
+  var m = document.getElementById('mobileAssistantBtn');
+  if (d) d.classList.toggle('active', active);
+  if (m) m.classList.toggle('active', active);
 }
 
-document.addEventListener('DOMContentLoaded',()=>{
-  var o=document.getElementById('voiceOrb');
-  if(o)o.addEventListener('click',()=>toggleVoiceAssistant());
-  // Pre-initialize VAPI after SDK loads
-  function tryInitVapi() {
-    if(window.Vapi) {
-      initVapi();
-    } else {
-      setTimeout(tryInitVapi, 500);
+/**
+ * OPTIMIZATION Step 4 & 5: Toggle voice assistant with mic pre-unlock
+ * - Requests microphone permission FIRST (required user gesture)
+ * - Then starts the VAPI call
+ * - Uses stop() instead of destroying the instance
+ */
+async function toggleVoiceAssistant() {
+  var container = document.getElementById('voiceAssistant');
+  var orb = document.getElementById('voiceOrb');
+  
+  // Ensure VAPI is initialized
+  if (!vapi) initVapi();
+  if (!vapi) {
+    console.error('[VAPI] SDK not available');
+    return;
+  }
+  
+  if (voiceAssistantOpen) {
+    // OPTIMIZATION Step 5: Use stop() to keep instance alive
+    vapi.stop();
+    container.classList.remove('active');
+    orb.classList.remove('listening');
+    setAssistantButtonState(false);
+    voiceAssistantOpen = false;
+    console.log('[VAPI] Stopped (instance kept alive)');
+  } else {
+    container.classList.add('active');
+    setAssistantButtonState(true);
+    voiceAssistantOpen = true;
+    
+    // Start latency measurement
+    vapiStartTime = performance.now();
+    
+    try {
+      // OPTIMIZATION Step 4: Request mic permission FIRST (user gesture required)
+      console.log('[VAPI] Requesting microphone permission...');
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[VAPI] Mic permission granted in', Math.round(performance.now() - vapiStartTime), 'ms');
+      
+      // Build user context from logged-in user
+      var currentEmployee = allEmployeesData.find(e => 
+        e.email && e.email.toLowerCase() === (userEmail || '').toLowerCase()
+      );
+      var userName = currentEmployee 
+        ? ((currentEmployee.first_name || '') + ' ' + (currentEmployee.last_name || '')).trim() 
+        : '';
+      var userFirstName = currentEmployee ? (currentEmployee.first_name || '') : '';
+      var userId = currentEmployee ? currentEmployee.employee_id : currentUserId;
+      var userDepartment = currentEmployee ? (currentEmployee.department || '') : '';
+      var userRole = currentEmployee ? (currentEmployee.role || '') : '';
+      
+      console.log('[VAPI] Starting call with user context:', { 
+        userName, 
+        userId, 
+        userEmail, 
+        currentTenantId 
+      });
+      
+      // Start VAPI call with user context
+      vapi.start(VAPI_AGENT_ID, {
+        variableValues: {
+          user_id: userId || '',
+          user_name: userName || userFirstName || userEmail || 'there',
+          user_first_name: userFirstName || '',
+          user_type: currentEmployee ? 'employee' : 'user',
+          user_email: userEmail || '',
+          user_department: userDepartment,
+          user_role: userRole,
+          tenant_id: currentTenantId || '55555555-5555-5555-5555-555555555555'
+        }
+      });
+      
+      console.log('[VAPI] Call initiated in', Math.round(performance.now() - vapiStartTime), 'ms');
+      
+    } catch (e) {
+      console.error('[VAPI] Failed to start:', e);
+      container.classList.remove('active');
+      setAssistantButtonState(false);
+      voiceAssistantOpen = false;
+      
+      if (e.name === 'NotAllowedError') {
+        alert('Microphone access is required for the voice assistant. Please allow microphone access and try again.');
+      }
     }
   }
-  setTimeout(tryInitVapi, 1000);
+}
+
+/**
+ * OPTIMIZATION: Initialize VAPI immediately when SDK loads
+ * This runs as early as possible to have VAPI ready
+ */
+function waitForVapiAndInit() {
+  if (window.Vapi) {
+    initVapi();
+    // Also warm up the agent
+    setTimeout(warmVapiAgent, 100);
+  } else {
+    // SDK not loaded yet, wait and retry
+    setTimeout(waitForVapiAndInit, 100);
+  }
+}
+
+// Start waiting for VAPI SDK as soon as this script runs
+waitForVapiAndInit();
+
+// Also set up orb click handler when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  var orb = document.getElementById('voiceOrb');
+  if (orb) {
+    orb.addEventListener('click', () => toggleVoiceAssistant());
+  }
 });
+
+// OPTIMIZATION Step 2: Warm agent after full page load
+window.addEventListener("load", () => {
+  setTimeout(warmVapiAgent, 800);
+});
+
+// ============================================================================
+// MAIN INITIALIZATION
+// ============================================================================
 
 async function init(){
   var s=await checkAuth();
