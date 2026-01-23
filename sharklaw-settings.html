@@ -387,7 +387,7 @@
         <div class="form-group">
           <label class="form-label">Role</label>
           <select id="empRole" style="width:100%;">
-            <option value="staff">Staff</option>
+            <option value="associate">Associate</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
             <option value="owner">Owner</option>
@@ -408,7 +408,7 @@
       </div>
       <div style="display:none; gap:10px;" id="modalFooterEdit">
         <button class="btn btn-primary" style="flex:1;" onclick="saveEmployee()">Save Changes</button>
-        <button class="btn btn-danger" style="flex:1;" onclick="deleteEmployee()">Delete</button>
+        <button class="btn btn-danger" style="flex:1;" id="empDeleteBtn" onclick="deleteEmployee()">Delete</button>
         <button class="btn" onclick="closeEmployeeModal()">Cancel</button>
       </div>
       <div id="employeeModalMsg"></div>
@@ -433,7 +433,7 @@ const SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-let currentTenantId=null,userEmail=null;
+let currentTenantId=null,userEmail=null,currentUserRole=null;
 let allEmployees=[],editingEmployeeId=null;
 
 // Get employee color from database (using employee-utils.js pattern)
@@ -610,7 +610,7 @@ function openAddEmployeeModal(){
   document.getElementById('empEmail').value='';
   document.getElementById('empPhone').value='';
   document.getElementById('empDepartment').value='';
-  document.getElementById('empRole').value='staff';
+  document.getElementById('empRole').value='associate';
   document.getElementById('empColor').value='#3b82f6';
   renderColorOptions('#3b82f6');
   document.getElementById('modalFooterAdd').style.display='flex';
@@ -641,6 +641,13 @@ function openEditEmployee(id){
   
   document.getElementById('modalFooterAdd').style.display='none';
   document.getElementById('modalFooterEdit').style.display='flex';
+  
+  // Only show delete button for admin/owner roles
+  var managementRoles = ['owner', 'admin'];
+  var isAdmin = managementRoles.includes(currentUserRole);
+  var deleteBtn = document.getElementById('empDeleteBtn');
+  if(deleteBtn) deleteBtn.style.display = isAdmin ? '' : 'none';
+  
   document.getElementById('employeeModalMsg').innerHTML='';
   document.getElementById('employeeModal').classList.add('active');
 }
@@ -663,7 +670,7 @@ async function saveEmployee(){
     email:document.getElementById('empEmail').value.trim()||null,
     phone:document.getElementById('empPhone').value.trim()||null,
     department:document.getElementById('empDepartment').value||null,
-    role:document.getElementById('empRole').value||'staff',
+    role:document.getElementById('empRole').value||'associate',
     color: selectedColor  // Save color to database
   };
   
@@ -1022,10 +1029,11 @@ async function init(){
   if(!session)return;
   var email=session.user?.email;
   if(email){
-    var r=await sb.from('users').select('user_id, tenant_id').eq('email',email).single();
+    var r=await sb.from('users').select('user_id, tenant_id, role').eq('email',email).single();
     if(r.data){
       currentTenantId=r.data.tenant_id;
       currentUserId=r.data.user_id;
+      currentUserRole=r.data.role||null;
     }
   }
   if(!currentTenantId){
@@ -1033,6 +1041,13 @@ async function init(){
     if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;
   }
   if(!currentTenantId){console.error('No tenant');return;}
+  
+  // Also check employees table for role if not set
+  if(!currentUserRole && email){
+    var empR=await sb.from('employees').select('role').eq('email',email).single();
+    if(empR.data?.role) currentUserRole=empR.data.role;
+  }
+  
   updateEmailDisplay();
   await loadBusinessSettings();
   await loadEmployees();
