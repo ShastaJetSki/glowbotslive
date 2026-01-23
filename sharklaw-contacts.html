@@ -140,6 +140,9 @@
     .modal-footer { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid var(--border-default); }
     .btn-secondary { padding: 10px 20px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 14px; cursor: pointer; }
     .btn-primary { padding: 10px 20px; border-radius: 6px; border: none; background: var(--accent-primary); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .btn-primary:hover { background: var(--accent-light); }
+    .btn-danger { padding: 10px 20px; border-radius: 6px; border: none; background: #dc2626; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; width: 100%; }
+    .btn-danger:hover { background: #ef4444; }
 
     .contact-detail-header { text-align: center; padding-bottom: 16px; border-bottom: 1px solid var(--border-default); margin-bottom: 16px; }
     .contact-detail-avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; color: var(--accent-light); margin: 0 auto 12px; border: 3px solid var(--border-default); }
@@ -476,7 +479,7 @@ const SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-let currentUserId=null,currentTenantId=null,userEmail=null;
+let currentUserId=null,currentTenantId=null,userEmail=null,currentUserRole=null;
 let allContacts=[];
 let allEmployees=[];
 let draggedCard=null;
@@ -674,62 +677,197 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatDateForInput(dateStr) {
+  if (!dateStr) return '';
+  return dateStr.split('T')[0];
+}
+
+var currentEditingContact = null;
+
+function buildAssignDropdownOptions(selectedId) {
+  var html = '<option value="">-- Unassigned --</option>';
+  allEmployees.forEach(function(emp) {
+    var name = ((emp.first_name||'') + ' ' + (emp.last_name||'')).trim() || emp.email || 'Unknown';
+    var selected = emp.employee_id === selectedId ? ' selected' : '';
+    html += '<option value="'+emp.employee_id+'"'+selected+'>'+name+'</option>';
+  });
+  return html;
+}
+
 function openContactDetail(contact){
+  currentEditingContact = contact;
   var name=((contact.first_name||'')+' '+(contact.last_name||'')).trim()||contact.full_name||'Unknown';
   var initials=name.split(' ').map(function(n){return n[0]||'';}).join('').toUpperCase().slice(0,2)||'U';
   var stage=contact.funnel_stage||1;
   var empColor = getContactEmployeeColor(contact.assigned_to);
-  var empName = getEmployeeNameById(contact.assigned_to);
+  
+  // Check if user is admin
+  var isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner';
+  var deleteBtn = isAdmin ? '<button class="btn-danger" onclick="deleteContact(\''+contact.customer_id+'\')">Delete Contact</button>' : '';
   
   document.getElementById('contactDetailBody').innerHTML=
     '<div class="contact-detail-header">'+
       '<div class="contact-detail-avatar" style="border-color:'+empColor+'">'+initials+'</div>'+
       '<div class="contact-detail-name">'+name+'</div>'+
-      (contact.company?'<div class="contact-detail-company">'+contact.company+'</div>':'')+
+      (contact.organization_name?'<div class="contact-detail-company">'+contact.organization_name+'</div>':'')+
       '<div class="contact-actions">'+
         (contact.phone?'<a href="tel:'+contact.phone+'" class="contact-action-btn">Call</a><a href="sms:'+contact.phone+'" class="contact-action-btn">Text</a>':'')+
         (contact.email?'<a href="mailto:'+contact.email+'" class="contact-action-btn">Email</a>':'')+
-        '<a href="sharklaw-profiles.html?id='+contact.customer_id+'" class="contact-action-btn" style="background:var(--accent-primary);color:#fff;">Profile</a>'+
       '</div>'+
     '</div>'+
+    
     '<div class="contact-section">'+
-      '<div class="contact-section-title">Assigned To</div>'+
-      '<div class="contact-field">'+
-        '<span class="contact-field-label">Employee</span>'+
-        '<span class="contact-field-value" style="display:flex;align-items:center;gap:6px;">'+
-          '<span style="width:10px;height:10px;border-radius:50%;background:'+empColor+';display:inline-block;"></span>'+
-          empName+
-        '</span>'+
+      '<div class="contact-section-title">Basic Info</div>'+
+      '<div class="form-row" style="margin-bottom:12px;">'+
+        '<div class="form-group" style="margin-bottom:0;"><label class="form-label">First Name</label><input type="text" class="form-input" id="editFirstName" value="'+(contact.first_name||'')+'"></div>'+
+        '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Last Name</label><input type="text" class="form-input" id="editLastName" value="'+(contact.last_name||'')+'"></div>'+
       '</div>'+
+      '<div class="form-group"><label class="form-label">Organization</label><input type="text" class="form-input" id="editOrganization" value="'+(contact.organization_name||'')+'"></div>'+
     '</div>'+
-    '<div class="contact-section">'+
-      '<div class="contact-section-title">Move in Funnel</div>'+
-      '<div class="stage-selector">'+
-        [1,2,3,4,5,6].map(function(s){
-          return '<button class="stage-option '+(s===stage?'active':'')+'" data-stage="'+s+'" onclick="changeStage(\''+contact.customer_id+'\','+s+')">'+STAGES[s].name+'</button>';
-        }).join('')+
-      '</div>'+
-    '</div>'+
+    
     '<div class="contact-section">'+
       '<div class="contact-section-title">Contact Info</div>'+
-      '<div class="contact-field"><span class="contact-field-label">Phone</span><span class="contact-field-value">'+(contact.phone?'<a href="tel:'+contact.phone+'">'+contact.phone+'</a>':'—')+'</span></div>'+
-      '<div class="contact-field"><span class="contact-field-label">Email</span><span class="contact-field-value">'+(contact.email?'<a href="mailto:'+contact.email+'">'+contact.email+'</a>':'—')+'</span></div>'+
-      '<div class="contact-field"><span class="contact-field-label">Company</span><span class="contact-field-value">'+(contact.company||'—')+'</span></div>'+
-      '<div class="contact-field"><span class="contact-field-label">Type</span><span class="contact-field-value">'+(contact.contact_type||'prospect')+'</span></div>'+
-      '<div class="contact-field"><span class="contact-field-label">Added</span><span class="contact-field-value">'+(contact.created_at?new Date(contact.created_at).toLocaleDateString():'—')+'</span></div>'+
+      '<div class="form-group"><label class="form-label">Phone</label><input type="tel" class="form-input" id="editPhone" value="'+(contact.phone||'')+'"></div>'+
+      '<div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="editEmail" value="'+(contact.email||'')+'"></div>'+
     '</div>'+
+    
+    '<div class="contact-section">'+
+      '<div class="contact-section-title">Classification</div>'+
+      '<div class="form-row" style="margin-bottom:12px;">'+
+        '<div class="form-group" style="margin-bottom:0;">'+
+          '<label class="form-label">Client Type</label>'+
+          '<select class="form-select" id="editClientType">'+
+            '<option value="">-- Select --</option>'+
+            '<option value="RC"'+(contact.customer_type==='RC'?' selected':'')+'>RC</option>'+
+            '<option value="HOG"'+(contact.customer_type==='HOG'?' selected':'')+'>HOG</option>'+
+            '<option value="Independent"'+(contact.customer_type==='Independent'?' selected':'')+'>Independent</option>'+
+            '<option value="Other"'+(contact.customer_type==='Other'?' selected':'')+'>Other</option>'+
+            '<option value="prospect"'+(contact.customer_type==='prospect'?' selected':'')+'>Prospect</option>'+
+          '</select>'+
+        '</div>'+
+        '<div class="form-group" style="margin-bottom:0;">'+
+          '<label class="form-label">Assigned To</label>'+
+          '<select class="form-select" id="editAssignedTo">'+buildAssignDropdownOptions(contact.assigned_to)+'</select>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    
+    '<div class="contact-section">'+
+      '<div class="contact-section-title">Funnel Stage</div>'+
+      '<div class="stage-selector">'+
+        [1,2,3,4,5,6].map(function(s){
+          return '<button type="button" class="stage-option '+(s===stage?'active':'')+'" data-stage="'+s+'" onclick="selectStageInEdit('+s+')">'+STAGES[s].name+'</button>';
+        }).join('')+
+      '</div>'+
+      '<input type="hidden" id="editFunnelStage" value="'+stage+'">'+
+    '</div>'+
+    
     '<div class="contact-section">'+
       '<div class="contact-section-title">Important Dates</div>'+
-      '<div class="contact-field"><span class="contact-field-label">Birthday</span><span class="contact-field-value">'+formatDate(contact.birthday)+'</span></div>'+
-      '<div class="contact-field"><span class="contact-field-label">Anniversary</span><span class="contact-field-value">'+formatDate(contact.anniversary)+'</span></div>'+
+      '<div class="form-row">'+
+        '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Birthday</label><input type="date" class="form-input" id="editBirthday" value="'+formatDateForInput(contact.birthday)+'"></div>'+
+        '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Anniversary</label><input type="date" class="form-input" id="editAnniversary" value="'+formatDateForInput(contact.anniversary)+'"></div>'+
+      '</div>'+
     '</div>'+
-    (contact.notes?'<div class="contact-section"><div class="contact-section-title">Notes</div><p style="font-size:13px;color:var(--text-secondary);">'+contact.notes+'</p></div>':'');
+    
+    '<div class="contact-section">'+
+      '<div class="contact-section-title">Notes</div>'+
+      '<textarea class="form-textarea" id="editNotes" placeholder="Additional notes...">'+(contact.notes||'')+'</textarea>'+
+    '</div>'+
+    
+    '<div class="contact-section" style="padding-top:16px;border-top:1px solid var(--border-default);display:flex;flex-direction:column;gap:12px;">'+
+      '<button class="btn-primary" style="width:100%;padding:12px;" onclick="saveContactChanges()">Save Changes</button>'+
+      '<a href="sharklaw-profiles.html?id='+contact.customer_id+'" class="btn-secondary" style="width:100%;padding:12px;text-align:center;text-decoration:none;display:block;">View Full Profile</a>'+
+      deleteBtn+
+    '</div>';
   
   document.getElementById('contactDetailModal').classList.add('active');
 }
-function closeContactDetailModal(){document.getElementById('contactDetailModal').classList.remove('active');}
 
-async function changeStage(contactId,newStage){var contact=allContacts.find(function(c){return c.customer_id==contactId;});if(contact){contact.funnel_stage=newStage;var r=await sb.from('customers').update({funnel_stage:newStage}).eq('customer_id',contact.customer_id).select();if(r.error){alert('Error saving: '+r.error.message);}renderContacts();updateStats();openContactDetail(contact);}}
+function selectStageInEdit(stage) {
+  document.getElementById('editFunnelStage').value = stage;
+  document.querySelectorAll('#contactDetailBody .stage-option').forEach(function(btn) {
+    btn.classList.remove('active');
+    if (parseInt(btn.dataset.stage) === stage) {
+      btn.classList.add('active');
+    }
+  });
+}
+
+async function saveContactChanges() {
+  if (!currentEditingContact) return;
+  
+  var updateData = {
+    first_name: document.getElementById('editFirstName').value.trim(),
+    last_name: document.getElementById('editLastName').value.trim(),
+    organization_name: document.getElementById('editOrganization').value.trim() || null,
+    phone: document.getElementById('editPhone').value.trim(),
+    email: document.getElementById('editEmail').value.trim(),
+    customer_type: document.getElementById('editClientType').value || 'prospect',
+    assigned_to: document.getElementById('editAssignedTo').value || null,
+    funnel_stage: parseInt(document.getElementById('editFunnelStage').value) || 1,
+    birthday: document.getElementById('editBirthday').value || null,
+    anniversary: document.getElementById('editAnniversary').value || null,
+    notes: document.getElementById('editNotes').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  
+  // Update full_name
+  updateData.full_name = (updateData.first_name + ' ' + updateData.last_name).trim();
+  
+  try {
+    var r = await sb.from('customers')
+      .update(updateData)
+      .eq('customer_id', currentEditingContact.customer_id)
+      .select()
+      .single();
+    
+    if (r.error) throw r.error;
+    
+    // Update local data
+    var idx = allContacts.findIndex(function(c) { return c.customer_id === currentEditingContact.customer_id; });
+    if (idx >= 0) {
+      allContacts[idx] = Object.assign(allContacts[idx], updateData);
+    }
+    
+    closeContactDetailModal();
+    renderContacts();
+    updateStats();
+    showToast('Contact saved!');
+  } catch(e) {
+    alert('Error saving: ' + (e.message || 'Unknown error'));
+  }
+}
+
+async function deleteContact(contactId) {
+  if (!confirm('Are you sure you want to delete this contact? This cannot be undone.')) return;
+  
+  try {
+    var r = await sb.from('customers')
+      .delete()
+      .eq('customer_id', contactId);
+    
+    if (r.error) throw r.error;
+    
+    // Remove from local data
+    allContacts = allContacts.filter(function(c) { return c.customer_id !== contactId; });
+    
+    closeContactDetailModal();
+    renderContacts();
+    updateStats();
+    showToast('Contact deleted');
+  } catch(e) {
+    alert('Error deleting: ' + (e.message || 'Unknown error'));
+  }
+}
+
+function showToast(msg) {
+  var toast = document.getElementById('themeToast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 2000);
+}
+function closeContactDetailModal(){document.getElementById('contactDetailModal').classList.remove('active');}
 
 function importCSV(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){var lines=e.target.result.split('\n');var imported=0;for(var i=1;i<lines.length;i++){var vals=lines[i].split(',').map(function(v){return v.trim().replace(/^"|"$/g,'');});if(vals.length>=2&&vals[0]){await sb.from('customers').insert({tenant_id:currentTenantId,first_name:vals[0],last_name:vals[1]||'',phone:vals[2]||'',email:vals[3]||null,company:vals[4]||null,customer_type:'prospect',funnel_stage:1});imported++;}}alert('Imported '+imported+' contacts!');await loadContacts();};reader.readAsText(file);event.target.value='';}
 
@@ -821,6 +959,7 @@ async function init(){
     if(r.data?.tenant_id){
       currentTenantId=r.data.tenant_id;
       currentUserId=r.data.user_id;
+      currentUserRole=r.data.role||null;
     }
   }
   if(!currentTenantId){
@@ -828,6 +967,13 @@ async function init(){
     if(r.data?.tenant_id)currentTenantId=r.data.tenant_id;
   }
   if(!currentTenantId){console.error('No tenant');return;}
+  
+  // Also check employees table for role if not set
+  if(!currentUserRole && email){
+    var empR=await sb.from('employees').select('role').eq('email',email).single();
+    if(empR.data?.role) currentUserRole=empR.data.role;
+  }
+  
   updateEmailDisplay();
   await loadUserThemeBank();
   await loadEmployees();
