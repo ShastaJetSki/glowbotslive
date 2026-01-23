@@ -556,7 +556,16 @@ async function loadBusinessSettings(){var r=await sb.from('business_settings').s
 
 function getCurrentStaff(){return allEmployees.filter(function(e){return e.role!=='owner'&&e.role!=='admin';});}
 
-async function loadAllData(){if(!tenantId)return;var ar=await sb.from('sales_appointments').select('*').eq('tenant_id',tenantId);allAppointments=ar.data||[];var er=await sb.from('events').select('*').eq('tenant_id',tenantId);allEvents=er.data||[];var emr=await sb.from('employees').select('*').eq('tenant_id',tenantId).order('last_name');allEmployees=emr.data||[];var cr=await sb.from('customers').select('customer_id,full_name,phone').eq('tenant_id',tenantId);allCustomers=cr.data||[];}
+async function loadAllData(){if(!tenantId)return;
+  var ar=await sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
+  allAppointments=ar.data||[];
+  var er=await sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
+  allEvents=er.data||[];
+  var emr=await sb.from('employees').select('*').eq('tenant_id',tenantId).order('last_name');
+  allEmployees=emr.data||[];
+  var cr=await sb.from('customers').select('customer_id,full_name,phone,email').eq('tenant_id',tenantId);
+  allCustomers=cr.data||[];
+}
 
 async function loadEvents(){var er=await sb.from('events').select('*').eq('tenant_id',tenantId);allEvents=er.data||[];}
 
@@ -577,14 +586,11 @@ function getJobsForDateOffset(offset){
   var jobs=[];
   allAppointments.forEach(function(a){
     if(a.appointment_date===dateStr){
-      // Check assigned_salesperson_id for employee matching
-      var assignedEmp = a.assigned_salesperson_id || null;
-      // Get customer name from customers array
-      var cust = allCustomers.find(function(c){ return c.customer_id === a.customer_id; });
-      var custName = cust ? cust.full_name : 'Unknown';
+      // Use assigned_to column from new schema
+      var assignedEmp = a.assigned_to || null;
       jobs.push({
         id:a.appointment_id,
-        customer:custName,
+        customer:a.customer_name||'Unknown',
         time:a.appointment_time||'09:00',
         tech:assignedEmp,
         status:a.status||'scheduled',
@@ -774,7 +780,7 @@ function openNewApptModal(empId){
 }
 function closeNewApptModal(){document.getElementById('newApptModal').classList.remove('active');}
 
-// FIX: Use only existing database fields
+// Save appointment with new schema columns
 async function saveNewAppt(){
   var custId=document.getElementById('apptCustomer').value;
   var date=document.getElementById('apptDate').value;
@@ -784,21 +790,28 @@ async function saveNewAppt(){
   
   var empId=document.getElementById('apptAssign').value||null;
   
+  // Get customer info for display
+  var selectedCust = allCustomers.find(function(c){ return c.customer_id === custId; });
+  var customerName = selectedCust ? selectedCust.full_name : 'Unknown';
+  var customerPhone = selectedCust ? selectedCust.phone : null;
+  var customerEmail = selectedCust ? selectedCust.email : null;
+  
   var data={
     tenant_id:tenantId,
     customer_id:custId,
+    customer_name:customerName,
+    customer_phone:customerPhone,
+    customer_email:customerEmail,
     appointment_date:date,
     appointment_time:time,
+    duration_minutes:60,
     service_type:document.getElementById('apptService').value||null,
     notes:document.getElementById('apptNotes').value||null,
+    assigned_to:empId,
     status:'scheduled',
-    created_at:new Date().toISOString()
+    created_at:new Date().toISOString(),
+    created_by:userId
   };
-  
-  // Only use assigned_salesperson_id (original field)
-  if(empId){
-    data.assigned_salesperson_id=empId;
-  }
   
   var r=await sb.from('sales_appointments').insert(data).select().single();
   if(r.error){showToast('Error: '+r.error.message);return;}
@@ -807,7 +820,7 @@ async function saveNewAppt(){
   showToast('Appointment created!');
   await loadAllData();
   
-  // Navigate to the correct date after saving
+  // FIX #3: Navigate to the correct date after saving
   var today = new Date();
   today.setHours(0,0,0,0);
   var apptDate = new Date(date + 'T00:00:00'); // Parse as local date
@@ -816,7 +829,7 @@ async function saveNewAppt(){
   
   renderAll();
   
-  // Auto-expand the assigned employee's lane (desktop only)
+  // FIX #4: Auto-expand the assigned employee's lane (desktop only)
   if(empId && window.innerWidth > 768) {
     setTimeout(function(){
       var lane = document.querySelector('.tech-lane[data-employee-id="'+empId+'"]');
@@ -832,25 +845,34 @@ function openApptDetail(id){
   var appt=allAppointments.find(function(a){return a.appointment_id===id||a.id===id;});
   if(!appt){showToast('Appointment not found');return;}
   var cust=allCustomers.find(function(c){return c.customer_id===appt.customer_id;})||{};
-  // Use assigned_salesperson_id for employee lookup
-  var assignedId = appt.assigned_salesperson_id;
+  // Use assigned_to from new schema
+  var assignedId = appt.assigned_to;
   var emp=allEmployees.find(function(e){return e.employee_id===assignedId;})||{};
   var empName=emp.first_name?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';
-  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
+  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(appt.customer_name||cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
   document.getElementById('apptDetailModal').classList.add('active');
 }
 function closeApptDetailModal(){document.getElementById('apptDetailModal').classList.remove('active');}
 function editCurrentAppt(){closeApptDetailModal();showToast('Edit feature coming soon');}
 async function completeCurrentAppt(){
   if(!currentApptId)return;
-  var r=await sb.from('sales_appointments').update({status:'completed'}).eq('appointment_id',currentApptId).select();
+  var r=await sb.from('sales_appointments').update({
+    status:'completed',
+    updated_at:new Date().toISOString(),
+    updated_by:userId
+  }).eq('appointment_id',currentApptId).select();
   if(r.error){showToast('Error: '+r.error.message);return;}
   closeApptDetailModal();showToast('Appointment completed!');await loadAllData();renderAll();
 }
 async function deleteCurrentAppt(){
   if(!currentApptId)return;
   if(!confirm('Delete this appointment?'))return;
-  var r=await sb.from('sales_appointments').delete().eq('appointment_id',currentApptId);
+  // Soft delete with audit trail
+  var r=await sb.from('sales_appointments').update({
+    is_deleted:true,
+    deleted_at:new Date().toISOString(),
+    deleted_by:userId
+  }).eq('appointment_id',currentApptId);
   if(r.error){showToast('Error: '+r.error.message);return;}
   closeApptDetailModal();showToast('Appointment deleted');await loadAllData();renderAll();
 }
@@ -904,19 +926,23 @@ async function saveNewEvent(){
   var data={
     tenant_id:tenantId,
     event_name:title,
-    description:document.getElementById('eventOrganization').value.trim()||null,
+    organization:document.getElementById('eventOrganization').value.trim()||null,
     event_date:date,
     event_time:document.getElementById('eventTime').value||null,
     event_type:document.getElementById('eventType').value||null,
     location:document.getElementById('eventLocation').value.trim()||null,
     notes:document.getElementById('eventNotes').value.trim()||null,
-    assigned_to:assignedTo
+    assigned_to:assignedTo,
+    status:'scheduled'
   };
   var r;
   if(currentEventId){
+    data.updated_at=new Date().toISOString();
+    data.updated_by=userId;
     r=await sb.from('events').update(data).eq('event_id',currentEventId).select();
   }else{
     data.created_at=new Date().toISOString();
+    data.created_by=userId;
     r=await sb.from('events').insert(data).select().single();
   }
   if(r.error){showToast('Error: '+r.error.message);return;}
@@ -925,7 +951,7 @@ async function saveNewEvent(){
   showToast(currentEventId?'Event updated!':'Event created!');
   await loadAllData();
   
-  // FIX #3: Navigate to the correct date after saving event
+  // Navigate to the correct date after saving event
   var today = new Date();
   today.setHours(0,0,0,0);
   var eventDate = new Date(date + 'T00:00:00'); // Parse as local date
@@ -938,7 +964,12 @@ async function saveNewEvent(){
 async function deleteCurrentEvent(){
   if(!currentEventId)return;
   if(!confirm('Delete this event?'))return;
-  var r=await sb.from('events').delete().eq('event_id',currentEventId);
+  // Soft delete with audit trail
+  var r=await sb.from('events').update({
+    is_deleted:true,
+    deleted_at:new Date().toISOString(),
+    deleted_by:userId
+  }).eq('event_id',currentEventId);
   if(r.error){showToast('Error: '+r.error.message);return;}
   closeNewEventModal();showToast('Event deleted');await loadAllData();renderAll();
 }
