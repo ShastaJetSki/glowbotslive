@@ -562,13 +562,85 @@ async function loadEvents(){var er=await sb.from('events').select('*').eq('tenan
 
 function getDateLabel(offset){var d=new Date();d.setDate(d.getDate()+offset);var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return days[d.getDay()]+' '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 
-function getJobsForDateOffset(offset){var target=new Date();target.setDate(target.getDate()+offset);var dateStr=target.toISOString().split('T')[0];var jobs=[];allAppointments.forEach(function(a){if(a.appointment_date===dateStr){jobs.push({id:a.appointment_id,customer:a.customer_name||'Unknown',time:a.appointment_time||'09:00',tech:a.assigned_salesperson_id||a.assigned_to,status:a.status||'scheduled',isEvent:false,org:'',data:a});}});allEvents.forEach(function(e){if(e.event_date===dateStr){jobs.push({id:e.event_id,customer:e.event_name||'Event',time:e.event_time||'10:00',tech:e.assigned_to,status:'event',isEvent:true,org:e.description||e.location||'',data:e});}});jobs.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});return jobs;}
+// FIX #1: Helper function to format date locally (avoids timezone shift)
+function formatLocalDate(d) {
+  var year = d.getFullYear();
+  var month = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
+}
+
+function getJobsForDateOffset(offset){
+  var target=new Date();
+  target.setDate(target.getDate()+offset);
+  var dateStr=formatLocalDate(target); // FIX: Use local date formatting
+  var jobs=[];
+  allAppointments.forEach(function(a){
+    if(a.appointment_date===dateStr){
+      // FIX #2: Check both assigned_salesperson_id AND assigned_to for employee matching
+      var assignedEmp = a.assigned_salesperson_id || a.assigned_to || null;
+      jobs.push({
+        id:a.appointment_id,
+        customer:a.customer_name||'Unknown',
+        time:a.appointment_time||'09:00',
+        tech:assignedEmp,
+        status:a.status||'scheduled',
+        isEvent:false,
+        org:'',
+        data:a
+      });
+    }
+  });
+  allEvents.forEach(function(e){
+    if(e.event_date===dateStr){
+      jobs.push({
+        id:e.event_id,
+        customer:e.event_name||'Event',
+        time:e.event_time||'10:00',
+        tech:e.assigned_to,
+        status:'event',
+        isEvent:true,
+        org:e.description||e.location||'',
+        data:e
+      });
+    }
+  });
+  jobs.sort(function(a,b){return(a.time||'').localeCompare(b.time||'');});
+  return jobs;
+}
 
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
 
 function renderLanesControls(){var row=document.getElementById('lanesControlsRow');row.innerHTML='<button class="lanes-today-btn" onclick="goToToday()">Today</button><button class="lanes-filter-btn" onclick="openNewApptModal()">+ Appt</button><button class="lanes-filter-btn" onclick="openNewEventModal()">+ Event</button><button class="expand-toggle-btn '+(allExpanded?'expanded':'')+'" onclick="toggleAllLanes()" title="'+(allExpanded?'Collapse':'Expand')+' all">'+(allExpanded?'▲':'▼')+'</button>';}
 
-function renderLanesDateChips(){var dc=document.getElementById('lanesDateChips');var months={};for(var i=-14;i<=60;i++){var d=new Date();d.setDate(d.getDate()+i);var mk=d.getFullYear()+'-'+d.getMonth();if(!months[mk])months[mk]={month:d.getMonth(),year:d.getFullYear(),days:[]};months[mk].days.push(i);}var mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];var html='',midx=0;Object.keys(months).forEach(function(k){var m=months[k],cls=midx%2===0?'even':'odd';html+='<div class="month-section '+cls+'"><div class="month-label">'+mn[m.month]+'</div><div class="month-days">';m.days.forEach(function(off){var dt=new Date();dt.setDate(dt.getDate()+off);var dn=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];var jobs=getJobsForDateOffset(off);var isToday=off===0,isActive=off===selectedDate;html+='<button class="lanes-date-chip'+(isActive?' active':'')+(isToday?' today':'')+'" data-offset="'+off+'" onclick="selectDate('+off+')"><span class="day-name">'+dn+'</span><span class="day-num">'+dt.getDate()+'</span>'+(jobs.length?'<span class="job-count">'+jobs.length+'</span>':'')+'</button>';});html+='</div></div>';midx++;});dc.innerHTML=html;}
+function renderLanesDateChips(){
+  var dc=document.getElementById('lanesDateChips');
+  var months={};
+  for(var i=-14;i<=60;i++){
+    var d=new Date();
+    d.setDate(d.getDate()+i);
+    var mk=d.getFullYear()+'-'+d.getMonth();
+    if(!months[mk])months[mk]={month:d.getMonth(),year:d.getFullYear(),days:[]};
+    months[mk].days.push(i);
+  }
+  var mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var html='',midx=0;
+  Object.keys(months).forEach(function(k){
+    var m=months[k],cls=midx%2===0?'even':'odd';
+    html+='<div class="month-section '+cls+'"><div class="month-label">'+mn[m.month]+'</div><div class="month-days">';
+    m.days.forEach(function(off){
+      var dt=new Date();
+      dt.setDate(dt.getDate()+off);
+      var dn=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+      var jobs=getJobsForDateOffset(off);
+      var isToday=off===0,isActive=off===selectedDate;
+      html+='<button class="lanes-date-chip'+(isActive?' active':'')+(isToday?' today':'')+'" data-offset="'+off+'" onclick="selectDate('+off+')"><span class="day-name">'+dn+'</span><span class="day-num">'+dt.getDate()+'</span>'+(jobs.length?'<span class="job-count">'+jobs.length+'</span>':'')+'</button>';
+    });
+    html+='</div></div>';
+    midx++;
+  });
+  dc.innerHTML=html;
+}
 
 function selectDate(off){selectedDate=off;renderAll();}
 function goToToday(){selectedDate=0;calendarMonth=new Date();renderAll();centerOnToday();}
@@ -576,14 +648,55 @@ function centerOnToday(){var dc=document.getElementById('lanesDateChips');var ch
 
 function toggleAllLanes(){allExpanded=!allExpanded;var desktopBtn=document.getElementById('desktopExpandBtn');if(desktopBtn){desktopBtn.classList.toggle('expanded',allExpanded);}renderAll();}
 
-function renderLanesView(dof){var jobs=getJobsForDateOffset(dof);var staff=getCurrentStaff();if(!staff.length&&!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No staff or appointments</div></div>';var empColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];var h='<div class="lanes-container">';staff.forEach(function(emp,idx){var empJobs=jobs.filter(function(j){return j.tech===emp.employee_id&&!j.isEvent;});var initials=((emp.first_name||'')[0]||'')+((emp.last_name||'')[0]||'');var color=empColors[idx%empColors.length];h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+(emp.role||'Staff')+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';empJobs.forEach(function(j){h+='<div class="wo-card status-'+j.status+'" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';});h+='<div class="add-card" onclick="openNewApptModal(\''+emp.employee_id+'\')"><div class="add-card-icon">+</div><span>Add</span></div></div></div></div>';});var unassignedJobs=jobs.filter(function(j){return !j.tech&&!j.isEvent;});if(unassignedJobs.length){h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#6b7280">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassignedJobs.length+' jobs</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';unassignedJobs.forEach(function(j){h+='<div class="wo-card status-'+j.status+'" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';});h+='</div></div></div>';}var evts=jobs.filter(function(j){return j.isEvent;});if(evts.length){h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#f97316">E</div><div class="tech-details"><h3>Events</h3><span>'+evts.length+' scheduled</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';evts.forEach(function(e){h+='<div class="wo-card event-card" data-id="'+e.id+'"><div class="card-time">'+formatTime(e.time)+'</div><div class="card-customer">'+e.customer+'<span class="event-badge">EVENT</span></div><div class="card-info-row"><span class="card-status event">Event</span></div><button class="card-details-btn" onclick="event.stopPropagation();editEvent(\''+e.id+'\')">Details</button></div>';});h+='</div></div></div>';}h+='</div>';return h;}
+function renderLanesView(dof){
+  var jobs=getJobsForDateOffset(dof);
+  var staff=getCurrentStaff();
+  if(!staff.length&&!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No staff or appointments</div></div>';
+  var empColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
+  var h='<div class="lanes-container">';
+  
+  staff.forEach(function(emp,idx){
+    // FIX #2: Match jobs using employee_id against both tech field values
+    var empJobs=jobs.filter(function(j){
+      return j.tech===emp.employee_id && !j.isEvent;
+    });
+    var initials=((emp.first_name||'')[0]||'')+((emp.last_name||'')[0]||'');
+    var color=empColors[idx%empColors.length];
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="'+emp.employee_id+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+(emp.role||'Staff')+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    empJobs.forEach(function(j){
+      h+='<div class="wo-card status-'+j.status+'" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
+    });
+    h+='<div class="add-card" onclick="openNewApptModal(\''+emp.employee_id+'\')"><div class="add-card-icon">+</div><span>Add</span></div></div></div></div>';
+  });
+  
+  var unassignedJobs=jobs.filter(function(j){return !j.tech&&!j.isEvent;});
+  if(unassignedJobs.length){
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#6b7280">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassignedJobs.length+' jobs</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    unassignedJobs.forEach(function(j){
+      h+='<div class="wo-card status-'+j.status+'" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
+    });
+    h+='</div></div></div>';
+  }
+  
+  var evts=jobs.filter(function(j){return j.isEvent;});
+  if(evts.length){
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#f97316">E</div><div class="tech-details"><h3>Events</h3><span>'+evts.length+' scheduled</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    evts.forEach(function(e){
+      h+='<div class="wo-card event-card" data-id="'+e.id+'"><div class="card-time">'+formatTime(e.time)+'</div><div class="card-customer">'+e.customer+'<span class="event-badge">EVENT</span></div><div class="card-info-row"><span class="card-status event">Event</span></div><button class="card-details-btn" onclick="event.stopPropagation();editEvent(\''+e.id+'\')">Details</button></div>';
+    });
+    h+='</div></div></div>';
+  }
+  h+='</div>';
+  return h;
+}
 
 function toggleLane(el){el.parentElement.classList.toggle('expanded');}
 function formatTime(t){if(!t)return'';var p=t.split(':'),h=parseInt(p[0]),m=p[1]||'00',ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+m+' '+ap;}
 
 function renderStackView(dof){var jobs=getJobsForDateOffset(dof);if(!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No appointments for this day</div></div>';var staff=getCurrentStaff();var groups={};jobs.forEach(function(j){var k=j.isEvent?'events':(j.tech||'unassigned');if(!groups[k])groups[k]=[];groups[k].push(j);});var h='<div class="stack-container">';Object.keys(groups).forEach(function(k){var items=groups[k],title='Unassigned',color='var(--text-secondary)';if(k==='events'){title='Events';color='#f97316';}else{var emp=staff.find(function(e){return e.employee_id===k;});if(emp){title=((emp.first_name||'')+' '+(emp.last_name||'')).trim();color='var(--accent-primary)';}}h+='<div class="stack-section-header" style="background:var(--bg-card);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;color:'+color+';">'+title+'</span><span style="font-size:12px;color:var(--text-secondary);">'+items.length+' items</span></div>';items.forEach(function(j){h+='<div class="stack-card status-'+(j.isEvent?'event':j.status)+'" data-id="'+j.id+'"><div class="stack-card-left"><div class="stack-time">'+formatTime(j.time)+'</div><div class="stack-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div></div><div class="stack-card-right"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':j.status)+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';});});h+='</div>';return h;}
 
-function renderGridView(dof){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['January','February','March','April','May','June','July','August','September','October','November','December'];var today=new Date();today.setHours(0,0,0,0);var year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();var firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);var startDay=firstDay.getDay(),daysInMonth=lastDay.getDate();var prevMonth=new Date(year,month,0),daysInPrevMonth=prevMonth.getDate();var isDesktop=window.innerWidth>768;var h='<div class="calendar-container">';h+='<div class="calendar-nav"><button class="calendar-nav-btn" onclick="prevMonth()">◀ Prev</button><div class="calendar-month-title">'+months[month]+' '+year+'</div><button class="calendar-nav-btn" onclick="nextMonth()">Next ▶</button></div>';h+='<div class="calendar-header">';for(var d=0;d<7;d++)h+='<div class="calendar-header-day">'+days[d]+'</div>';h+='</div><div class="calendar-grid'+(isDesktop?' desktop-grid':'')+'">';var staff=getCurrentStaff();var staffIndexMap={};staff.forEach(function(s,i){staffIndexMap[s.employee_id]=i;});var empColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];for(var i=0;i<startDay;i++){var dn=daysInPrevMonth-startDay+i+1;h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+dn+'</div></div>';}for(var d=1;d<=daysInMonth;d++){var cellDate=new Date(year,month,d);var dateStr=cellDate.toISOString().split('T')[0];var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var empIndex=staffIndexMap[job.tech];var color=job.isEvent?'#f97316':(empIndex>=0?empColors[empIndex%empColors.length]:'#6b7280');var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];if(job.isEvent){h+='<div class="calendar-dot event"></div>';}else{var empIndex=staffIndexMap[job.tech];if(empIndex===undefined)empIndex=-1;var dotClass=empIndex>=0?'emp-'+empIndex:'unassigned';h+='<div class="calendar-dot '+dotClass+'"></div>';}dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
+function renderGridView(dof){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['January','February','March','April','May','June','July','August','September','October','November','December'];var today=new Date();today.setHours(0,0,0,0);var year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();var firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);var startDay=firstDay.getDay(),daysInMonth=lastDay.getDate();var prevMonth=new Date(year,month,0),daysInPrevMonth=prevMonth.getDate();var isDesktop=window.innerWidth>768;var h='<div class="calendar-container">';h+='<div class="calendar-nav"><button class="calendar-nav-btn" onclick="prevMonth()">◀ Prev</button><div class="calendar-month-title">'+months[month]+' '+year+'</div><button class="calendar-nav-btn" onclick="nextMonth()">Next ▶</button></div>';h+='<div class="calendar-header">';for(var d=0;d<7;d++)h+='<div class="calendar-header-day">'+days[d]+'</div>';h+='</div><div class="calendar-grid'+(isDesktop?' desktop-grid':'')+'">';var staff=getCurrentStaff();var staffIndexMap={};staff.forEach(function(s,i){staffIndexMap[s.employee_id]=i;});var empColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];for(var i=0;i<startDay;i++){var dn=daysInPrevMonth-startDay+i+1;h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+dn+'</div></div>';}for(var d=1;d<=daysInMonth;d++){var cellDate=new Date(year,month,d);var dateStr=formatLocalDate(cellDate); // FIX: Use local date formatting
+var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var empIndex=staffIndexMap[job.tech];var color=job.isEvent?'#f97316':(empIndex>=0?empColors[empIndex%empColors.length]:'#6b7280');var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];if(job.isEvent){h+='<div class="calendar-dot event"></div>';}else{var empIndex=staffIndexMap[job.tech];if(empIndex===undefined)empIndex=-1;var dotClass=empIndex>=0?'emp-'+empIndex:'unassigned';h+='<div class="calendar-dot '+dotClass+'"></div>';}dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
 
 function prevMonth(){calendarMonth.setMonth(calendarMonth.getMonth()-1);renderPages();}
 function nextMonth(){calendarMonth.setMonth(calendarMonth.getMonth()+1);renderPages();}
@@ -642,30 +755,79 @@ function populateEventDropdowns(){
   });
 }
 
+// FIX #1: Use local date formatting instead of toISOString()
 function openNewApptModal(empId){
   currentApptId=null;
-  var today=new Date();today.setDate(today.getDate()+selectedDate);
-  document.getElementById('apptDate').value=today.toISOString().split('T')[0];
+  var targetDate=new Date();
+  targetDate.setDate(targetDate.getDate()+selectedDate);
+  // FIX: Use formatLocalDate instead of toISOString to avoid timezone shift
+  document.getElementById('apptDate').value=formatLocalDate(targetDate);
   document.getElementById('apptTime').value='09:00';
   document.getElementById('apptService').value='';
   document.getElementById('apptNotes').value='';
+  document.getElementById('apptCustomer').value='';
   populateApptDropdowns(empId);
   document.getElementById('newApptModal').classList.add('active');
 }
 function closeNewApptModal(){document.getElementById('newApptModal').classList.remove('active');}
 
+// FIX #2: Save both assigned_salesperson_id AND assigned_to for compatibility
 async function saveNewAppt(){
   var custId=document.getElementById('apptCustomer').value;
   var date=document.getElementById('apptDate').value;
   var time=document.getElementById('apptTime').value;
   if(!custId){showToast('Select a customer');return;}
   if(!date){showToast('Select a date');return;}
+  
   var empId=document.getElementById('apptAssign').value||null;
-  var data={tenant_id:tenantId,customer_id:custId,appointment_date:date,appointment_time:time,service_type:document.getElementById('apptService').value||null,notes:document.getElementById('apptNotes').value||null,status:'scheduled',created_at:new Date().toISOString()};
-  if(empId)data.assigned_salesperson_id=empId;
+  
+  // Get customer name for display
+  var selectedCust = allCustomers.find(function(c){ return c.customer_id === custId; });
+  var customerName = selectedCust ? selectedCust.full_name : 'Unknown';
+  
+  var data={
+    tenant_id:tenantId,
+    customer_id:custId,
+    customer_name:customerName, // Store customer name for display
+    appointment_date:date,
+    appointment_time:time,
+    service_type:document.getElementById('apptService').value||null,
+    notes:document.getElementById('apptNotes').value||null,
+    status:'scheduled',
+    created_at:new Date().toISOString()
+  };
+  
+  // FIX: Set BOTH fields to ensure lane matching works
+  if(empId){
+    data.assigned_salesperson_id=empId;
+    data.assigned_to=empId; // Also set assigned_to for compatibility
+  }
+  
   var r=await sb.from('sales_appointments').insert(data).select().single();
   if(r.error){showToast('Error: '+r.error.message);return;}
-  closeNewApptModal();showToast('Appointment created!');await loadAllData();renderAll();
+  
+  closeNewApptModal();
+  showToast('Appointment created!');
+  await loadAllData();
+  
+  // FIX #3: Navigate to the correct date after saving
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  var apptDate = new Date(date + 'T00:00:00'); // Parse as local date
+  var dayDiff = Math.round((apptDate - today) / (1000 * 60 * 60 * 24));
+  selectedDate = dayDiff;
+  
+  renderAll();
+  
+  // FIX #4: Auto-expand the assigned employee's lane (desktop only)
+  if(empId && window.innerWidth > 768) {
+    setTimeout(function(){
+      var lane = document.querySelector('.tech-lane[data-employee-id="'+empId+'"]');
+      if(lane && !lane.classList.contains('expanded')){
+        lane.classList.add('expanded');
+      }
+    }, 100);
+  }
 }
 
 function openApptDetail(id){
@@ -673,9 +835,11 @@ function openApptDetail(id){
   var appt=allAppointments.find(function(a){return a.appointment_id===id||a.id===id;});
   if(!appt){showToast('Appointment not found');return;}
   var cust=allCustomers.find(function(c){return c.customer_id===appt.customer_id;})||{};
-  var emp=allEmployees.find(function(e){return e.employee_id===appt.assigned_to;})||{};
+  // FIX: Check both fields for assigned employee
+  var assignedId = appt.assigned_salesperson_id || appt.assigned_to;
+  var emp=allEmployees.find(function(e){return e.employee_id===assignedId;})||{};
   var empName=emp.first_name?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';
-  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
+  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(appt.customer_name||cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
   document.getElementById('apptDetailModal').classList.add('active');
 }
 function closeApptDetailModal(){document.getElementById('apptDetailModal').classList.remove('active');}
@@ -694,13 +858,16 @@ async function deleteCurrentAppt(){
   closeApptDetailModal();showToast('Appointment deleted');await loadAllData();renderAll();
 }
 
+// FIX #1: Use local date formatting for events too
 function openNewEventModal(){
   currentEventId=null;
   document.getElementById('eventModalTitle').textContent='New Event';
   document.getElementById('eventSaveBtn').textContent='Create Event';
   document.getElementById('eventDeleteBtn').style.display='none';
-  var today=new Date();today.setDate(today.getDate()+selectedDate);
-  document.getElementById('eventDate').value=today.toISOString().split('T')[0];
+  var targetDate=new Date();
+  targetDate.setDate(targetDate.getDate()+selectedDate);
+  // FIX: Use formatLocalDate instead of toISOString to avoid timezone shift
+  document.getElementById('eventDate').value=formatLocalDate(targetDate);
   document.getElementById('eventTime').value='10:00';
   document.getElementById('eventTitle').value='';
   document.getElementById('eventOrganization').value='';
@@ -737,7 +904,17 @@ async function saveNewEvent(){
   if(!title){showToast('Enter event title');return;}
   if(!date){showToast('Select a date');return;}
   var assignedTo=document.getElementById('eventAssign').value||null;
-  var data={tenant_id:tenantId,event_name:title,description:document.getElementById('eventOrganization').value.trim()||null,event_date:date,event_time:document.getElementById('eventTime').value||null,event_type:document.getElementById('eventType').value||null,location:document.getElementById('eventLocation').value.trim()||null,notes:document.getElementById('eventNotes').value.trim()||null,assigned_to:assignedTo};
+  var data={
+    tenant_id:tenantId,
+    event_name:title,
+    description:document.getElementById('eventOrganization').value.trim()||null,
+    event_date:date,
+    event_time:document.getElementById('eventTime').value||null,
+    event_type:document.getElementById('eventType').value||null,
+    location:document.getElementById('eventLocation').value.trim()||null,
+    notes:document.getElementById('eventNotes').value.trim()||null,
+    assigned_to:assignedTo
+  };
   var r;
   if(currentEventId){
     r=await sb.from('events').update(data).eq('event_id',currentEventId).select();
@@ -746,7 +923,19 @@ async function saveNewEvent(){
     r=await sb.from('events').insert(data).select().single();
   }
   if(r.error){showToast('Error: '+r.error.message);return;}
-  closeNewEventModal();showToast(currentEventId?'Event updated!':'Event created!');await loadAllData();renderAll();
+  
+  closeNewEventModal();
+  showToast(currentEventId?'Event updated!':'Event created!');
+  await loadAllData();
+  
+  // FIX #3: Navigate to the correct date after saving event
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  var eventDate = new Date(date + 'T00:00:00'); // Parse as local date
+  var dayDiff = Math.round((eventDate - today) / (1000 * 60 * 60 * 24));
+  selectedDate = dayDiff;
+  
+  renderAll();
 }
 
 async function deleteCurrentEvent(){
