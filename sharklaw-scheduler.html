@@ -535,16 +535,17 @@ const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 var tenantId=null,userId=null,selectedDate=0,currentViewStyle='lanes',calendarMonth=new Date(),allExpanded=false;
 var allAppointments=[],allEvents=[],allEmployees=[],allCustomers=[];
 var defaultColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
+var UNASSIGNED_COLOR='#eab308'; // Gold for unassigned
 
 function getEmployeeColor(empId){
-  if(!empId) return '#6b7280'; // gray for unassigned
+  if(!empId) return UNASSIGNED_COLOR; // Gold for unassigned
   var emp=allEmployees.find(function(e){return e.employee_id===empId;});
-  if(!emp) return '#6b7280';
+  if(!emp) return UNASSIGNED_COLOR;
   // Use stored color if available, otherwise fall back to default by index
   if(emp.color) return emp.color;
   var staff=getCurrentStaff();
   var idx=staff.findIndex(function(e){return e.employee_id===empId;});
-  return idx>=0 ? defaultColors[idx%defaultColors.length] : '#6b7280';
+  return idx>=0 ? defaultColors[idx%defaultColors.length] : UNASSIGNED_COLOR;
 }
 
 // Theme system - matching dashboard
@@ -676,41 +677,81 @@ function renderLanesView(dof){
   var h='<div class="lanes-container">';
   
   staff.forEach(function(emp,idx){
+    // Get both appointments AND events assigned to this employee
     var empJobs=jobs.filter(function(j){
-      return j.tech===emp.employee_id && !j.isEvent;
+      return j.tech===emp.employee_id;
     });
     var initials=((emp.first_name||'')[0]||'')+((emp.last_name||'')[0]||'');
     var color=getEmployeeColor(emp.employee_id);
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="'+emp.employee_id+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+(emp.role||'Staff')+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="'+emp.employee_id+'" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\''+emp.employee_id+'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+(emp.role||'Staff')+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
     empJobs.forEach(function(j){
-      h+='<div class="wo-card status-'+j.status+'" style="border-left-color:'+color+'" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
+      var cardHtml='<div class="wo-card '+(j.isEvent?'event-card':'')+' status-'+(j.isEvent?'event':j.status)+'" style="border-left-color:'+color+'" data-id="'+j.id+'" data-type="'+(j.isEvent?'event':'appt')+'" draggable="true" ondragstart="cardDragStart(event,\''+j.id+'\',\''+(j.isEvent?'event':'appt')+'\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div><div class="card-info-row"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':(j.status||'scheduled'))+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';
+      h+=cardHtml;
     });
     h+='<div class="add-card" onclick="openNewApptModal(\''+emp.employee_id+'\')"><div class="add-card-icon">+</div><span>Add</span></div></div></div></div>';
   });
   
-  var unassignedJobs=jobs.filter(function(j){return !j.tech&&!j.isEvent;});
-  if(unassignedJobs.length){
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#6b7280">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassignedJobs.length+' jobs</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
-    unassignedJobs.forEach(function(j){
-      h+='<div class="wo-card status-'+j.status+'" style="border-left-color:#6b7280" data-id="'+j.id+'"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
+  // Unassigned appointments
+  var unassignedAppts=jobs.filter(function(j){return !j.tech&&!j.isEvent;});
+  if(unassignedAppts.length){
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+UNASSIGNED_COLOR+'">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassignedAppts.length+' appointments</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    unassignedAppts.forEach(function(j){
+      h+='<div class="wo-card status-'+j.status+'" style="border-left-color:'+UNASSIGNED_COLOR+'" data-id="'+j.id+'" data-type="appt" draggable="true" ondragstart="cardDragStart(event,\''+j.id+'\',\'appt\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
     });
     h+='</div></div></div>';
   }
   
-  var evts=jobs.filter(function(j){return j.isEvent;});
-  if(evts.length){
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#f97316">E</div><div class="tech-details"><h3>Events</h3><span>'+evts.length+' scheduled</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
-    evts.forEach(function(e){
-      var evtColor=e.tech?getEmployeeColor(e.tech):'#f97316';
-      h+='<div class="wo-card event-card" style="border-left-color:'+evtColor+'" data-id="'+e.id+'"><div class="card-time">'+formatTime(e.time)+'</div><div class="card-customer">'+e.customer+'<span class="event-badge">EVENT</span></div><div class="card-info-row"><span class="card-status event">Event</span></div><button class="card-details-btn" onclick="event.stopPropagation();editEvent(\''+e.id+'\')">Details</button></div>';
+  // Unassigned events
+  var unassignedEvts=jobs.filter(function(j){return !j.tech&&j.isEvent;});
+  if(unassignedEvts.length){
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#f97316">E</div><div class="tech-details"><h3>Unassigned Events</h3><span>'+unassignedEvts.length+' events</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    unassignedEvts.forEach(function(e){
+      h+='<div class="wo-card event-card" style="border-left-color:#f97316" data-id="'+e.id+'" data-type="event" draggable="true" ondragstart="cardDragStart(event,\''+e.id+'\',\'event\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(e.time)+'</div><div class="card-customer">'+e.customer+'<span class="event-badge">EVENT</span></div><div class="card-info-row"><span class="card-status event">Event</span></div><button class="card-details-btn" onclick="event.stopPropagation();editEvent(\''+e.id+'\')">Details</button></div>';
     });
-    h+='</div></div></div>';
+    h+='<div class="add-card" onclick="openNewEventModal()"><div class="add-card-icon">+</div><span>Event</span></div></div></div></div>';
   }
   h+='</div>';
   return h;
 }
 
 function toggleLane(el){el.parentElement.classList.toggle('expanded');}
+
+// Card drag and drop between lanes
+var draggedCardId=null,draggedCardType=null;
+function cardDragStart(e,id,type){
+  draggedCardId=id;
+  draggedCardType=type;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',id);
+}
+function cardDragEnd(e){
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.tech-lane').forEach(function(l){l.classList.remove('drop-target');});
+  draggedCardId=null;
+  draggedCardType=null;
+}
+function laneDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  var lane=e.target.closest('.tech-lane');
+  if(lane)lane.classList.add('drop-target');
+}
+async function laneDrop(e,empId){
+  e.preventDefault();
+  var lane=e.target.closest('.tech-lane');
+  if(lane)lane.classList.remove('drop-target');
+  if(!draggedCardId)return;
+  var newAssign=empId||null;
+  var table=draggedCardType==='event'?'events':'sales_appointments';
+  var idCol=draggedCardType==='event'?'event_id':'appointment_id';
+  var r=await sb.from(table).update({assigned_to:newAssign,updated_at:new Date().toISOString(),updated_by:userId}).eq(idCol,draggedCardId);
+  if(r.error){showToast('Error: '+r.error.message);return;}
+  var empName=empId?allEmployees.find(function(e){return e.employee_id===empId;}):null;
+  showToast('Assigned to '+(empName?((empName.first_name||'')+' '+(empName.last_name||'')).trim():'Unassigned'));
+  await loadAllData();
+  renderAll();
+}
 function formatTime(t){if(!t)return'';var p=t.split(':'),h=parseInt(p[0]),m=p[1]||'00',ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+m+' '+ap;}
 
 function renderStackView(dof){
@@ -725,7 +766,7 @@ function renderStackView(dof){
   });
   var h='<div class="stack-container">';
   Object.keys(groups).forEach(function(k){
-    var items=groups[k],title='Unassigned',color='#6b7280';
+    var items=groups[k],title='Unassigned',color=UNASSIGNED_COLOR;
     if(k==='events'){
       title='Events';
       color='#f97316';
@@ -738,7 +779,7 @@ function renderStackView(dof){
     }
     h+='<div class="stack-section-header" style="background:var(--bg-card);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;color:'+color+';">'+title+'</span><span style="font-size:12px;color:var(--text-secondary);">'+items.length+' items</span></div>';
     items.forEach(function(j){
-      var cardColor=j.isEvent?(j.tech?getEmployeeColor(j.tech):'#f97316'):color;
+      var cardColor=j.isEvent?getEmployeeColor(j.tech):(j.tech?color:UNASSIGNED_COLOR);
       h+='<div class="stack-card status-'+(j.isEvent?'event':j.status)+'" style="border-left-color:'+cardColor+'" data-id="'+j.id+'"><div class="stack-card-left"><div class="stack-time">'+formatTime(j.time)+'</div><div class="stack-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div></div><div class="stack-card-right"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':j.status)+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';
     });
   });
@@ -747,7 +788,7 @@ function renderStackView(dof){
 }
 
 function renderGridView(dof){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['January','February','March','April','May','June','July','August','September','October','November','December'];var today=new Date();today.setHours(0,0,0,0);var year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();var firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);var startDay=firstDay.getDay(),daysInMonth=lastDay.getDate();var prevMonth=new Date(year,month,0),daysInPrevMonth=prevMonth.getDate();var isDesktop=window.innerWidth>768;var h='<div class="calendar-container">';h+='<div class="calendar-nav"><button class="calendar-nav-btn" onclick="prevMonth()">◀ Prev</button><div class="calendar-month-title">'+months[month]+' '+year+'</div><button class="calendar-nav-btn" onclick="nextMonth()">Next ▶</button></div>';h+='<div class="calendar-header">';for(var d=0;d<7;d++)h+='<div class="calendar-header-day">'+days[d]+'</div>';h+='</div><div class="calendar-grid'+(isDesktop?' desktop-grid':'')+'">';var staff=getCurrentStaff();var staffIndexMap={};staff.forEach(function(s,i){staffIndexMap[s.employee_id]=i;});for(var i=0;i<startDay;i++){var dn=daysInPrevMonth-startDay+i+1;h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+dn+'</div></div>';}for(var d=1;d<=daysInMonth;d++){var cellDate=new Date(year,month,d);var dateStr=formatLocalDate(cellDate); // FIX: Use local date formatting
-var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var empIndex=staffIndexMap[job.tech];var color=job.isEvent?'#f97316':getEmployeeColor(job.tech);var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];if(job.isEvent){h+='<div class="calendar-dot" style="border:1px solid var(--text-secondary);background:transparent;"></div>';}else{var dotColor=getEmployeeColor(job.tech);h+='<div class="calendar-dot" style="background:'+dotColor+'"></div>';}dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
+var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var empIndex=staffIndexMap[job.tech];var color=getEmployeeColor(job.tech);if(job.isEvent&&!job.tech)color='#f97316';var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];var dotColor=getEmployeeColor(job.tech);if(job.isEvent&&!job.tech)dotColor='#f97316';h+='<div class="calendar-dot" style="background:'+dotColor+(job.isEvent?';border:2px solid white':'')+'"></div>';dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
 
 function prevMonth(){calendarMonth.setMonth(calendarMonth.getMonth()-1);renderPages();}
 function nextMonth(){calendarMonth.setMonth(calendarMonth.getMonth()+1);renderPages();}
