@@ -529,7 +529,17 @@ function getEmployeeNameById(empId) {
   return ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim() || emp.email || 'Unknown';
 }
 
-async function loadContacts(){if(!currentTenantId)return;var r=await sb.from('customers').select('*').eq('tenant_id',currentTenantId).order('created_at',{ascending:false});allContacts=(r.data||[]).map(function(c){return Object.assign({},c,{funnel_stage:c.funnel_stage||1});});renderContacts();updateStats();}
+async function loadContacts(){
+  if(!currentTenantId)return;
+  var r=await sb.from('customers')
+    .select('*')
+    .eq('tenant_id',currentTenantId)
+    .or('is_deleted.is.null,is_deleted.eq.false')
+    .order('created_at',{ascending:false});
+  allContacts=(r.data||[]).map(function(c){return Object.assign({},c,{funnel_stage:c.funnel_stage||1});});
+  renderContacts();
+  updateStats();
+}
 
 function renderContacts(){for(var i=1;i<=6;i++)document.getElementById('stage'+i).innerHTML='';var searchTerm=(document.getElementById('searchBox').value||'').toLowerCase();var stageCounts={1:0,2:0,3:0,4:0,5:0,6:0};allContacts.forEach(function(contact){var name=((contact.first_name||'')+' '+(contact.last_name||'')+' '+(contact.full_name||'')).toLowerCase();var matchesSearch=!searchTerm||name.includes(searchTerm)||(contact.phone||'').includes(searchTerm)||(contact.email||'').toLowerCase().includes(searchTerm);if(matchesSearch){var stage=contact.funnel_stage||1;stageCounts[stage]++;var card=createContactCard(contact);document.getElementById('stage'+stage).appendChild(card);}});for(var i=1;i<=6;i++)document.getElementById('count'+i).textContent=stageCounts[i];}
 
@@ -841,11 +851,15 @@ async function saveContactChanges() {
 }
 
 async function deleteContact(contactId) {
-  if (!confirm('Are you sure you want to delete this contact? This cannot be undone.')) return;
+  if (!confirm('Are you sure you want to delete this contact?')) return;
   
   try {
+    // Soft delete - set is_deleted flag
     var r = await sb.from('customers')
-      .delete()
+      .update({ 
+        is_deleted: true,
+        deleted_at: new Date().toISOString()
+      })
       .eq('customer_id', contactId);
     
     if (r.error) throw r.error;
@@ -947,6 +961,7 @@ async function loadEmployees(){
   var r=await sb.from('employees')
     .select('employee_id, first_name, last_name, email, color, role')
     .eq('tenant_id',currentTenantId)
+    .or('is_active.is.null,is_active.eq.true')
     .order('last_name');
   allEmployees=r.data||[];
 }
