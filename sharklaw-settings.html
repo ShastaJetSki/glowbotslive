@@ -633,7 +633,7 @@ function openEditEmployee(id){
   document.getElementById('empEmail').value=emp.email||'';
   document.getElementById('empPhone').value=emp.phone||'';
   document.getElementById('empDepartment').value=emp.department||'';
-  document.getElementById('empRole').value=emp.role||'staff';
+  document.getElementById('empRole').value=emp.role||'associate';
   
   // Use database color or fallback
   var defaultColors = (typeof DEFAULT_EMPLOYEE_COLORS !== 'undefined') ? DEFAULT_EMPLOYEE_COLORS : ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
@@ -646,11 +646,36 @@ function openEditEmployee(id){
   document.getElementById('modalFooterAdd').style.display='none';
   document.getElementById('modalFooterEdit').style.display='flex';
   
-  // Only show delete button for admin/owner roles
-  var managementRoles = ['owner', 'admin'];
-  var isAdmin = managementRoles.includes(currentUserRole);
+  // Only owner can delete
+  var isOwner = currentUserRole === 'owner';
   var deleteBtn = document.getElementById('empDeleteBtn');
-  if(deleteBtn) deleteBtn.style.display = isAdmin ? '' : 'none';
+  if(deleteBtn) deleteBtn.style.display = isOwner ? '' : 'none';
+  
+  // Only owner can change manager/admin/owner roles
+  var roleSelect = document.getElementById('empRole');
+  var isProtectedRole = ['manager', 'admin', 'owner'].includes(emp.role);
+  if(isProtectedRole && !isOwner){
+    roleSelect.disabled = true;
+    roleSelect.title = 'Only owner can change this role';
+  } else {
+    roleSelect.disabled = false;
+    roleSelect.title = '';
+  }
+  
+  // Non-owners can't promote to manager/admin/owner
+  if(!isOwner){
+    Array.from(roleSelect.options).forEach(function(opt){
+      if(['manager', 'admin', 'owner'].includes(opt.value)){
+        opt.disabled = true;
+      } else {
+        opt.disabled = false;
+      }
+    });
+  } else {
+    Array.from(roleSelect.options).forEach(function(opt){
+      opt.disabled = false;
+    });
+  }
   
   document.getElementById('employeeModalMsg').innerHTML='';
   document.getElementById('employeeModal').classList.add('active');
@@ -1051,6 +1076,14 @@ async function init(){
   if(!currentUserRole && email){
     var empR=await sb.from('employees').select('role').eq('email',email).single();
     if(empR.data?.role) currentUserRole=empR.data.role;
+  }
+  
+  // Access control: only owner and manager can access Settings
+  var allowedRoles = ['owner', 'manager'];
+  if(!allowedRoles.includes(currentUserRole)){
+    alert('Access denied. Only owners and managers can access settings.');
+    window.location.href = 'dashboard-sharklaw.html';
+    return;
   }
   
   updateEmailDisplay();
