@@ -577,11 +577,14 @@ function getJobsForDateOffset(offset){
   var jobs=[];
   allAppointments.forEach(function(a){
     if(a.appointment_date===dateStr){
-      // FIX #2: Check both assigned_salesperson_id AND assigned_to for employee matching
-      var assignedEmp = a.assigned_salesperson_id || a.assigned_to || null;
+      // Check assigned_salesperson_id for employee matching
+      var assignedEmp = a.assigned_salesperson_id || null;
+      // Get customer name from customers array
+      var cust = allCustomers.find(function(c){ return c.customer_id === a.customer_id; });
+      var custName = cust ? cust.full_name : 'Unknown';
       jobs.push({
         id:a.appointment_id,
-        customer:a.customer_name||'Unknown',
+        customer:custName,
         time:a.appointment_time||'09:00',
         tech:assignedEmp,
         status:a.status||'scheduled',
@@ -771,7 +774,7 @@ function openNewApptModal(empId){
 }
 function closeNewApptModal(){document.getElementById('newApptModal').classList.remove('active');}
 
-// FIX #2: Save both assigned_salesperson_id AND assigned_to for compatibility
+// FIX: Use only existing database fields
 async function saveNewAppt(){
   var custId=document.getElementById('apptCustomer').value;
   var date=document.getElementById('apptDate').value;
@@ -781,14 +784,9 @@ async function saveNewAppt(){
   
   var empId=document.getElementById('apptAssign').value||null;
   
-  // Get customer name for display
-  var selectedCust = allCustomers.find(function(c){ return c.customer_id === custId; });
-  var customerName = selectedCust ? selectedCust.full_name : 'Unknown';
-  
   var data={
     tenant_id:tenantId,
     customer_id:custId,
-    customer_name:customerName, // Store customer name for display
     appointment_date:date,
     appointment_time:time,
     service_type:document.getElementById('apptService').value||null,
@@ -797,10 +795,9 @@ async function saveNewAppt(){
     created_at:new Date().toISOString()
   };
   
-  // FIX: Set BOTH fields to ensure lane matching works
+  // Only use assigned_salesperson_id (original field)
   if(empId){
     data.assigned_salesperson_id=empId;
-    data.assigned_to=empId; // Also set assigned_to for compatibility
   }
   
   var r=await sb.from('sales_appointments').insert(data).select().single();
@@ -810,7 +807,7 @@ async function saveNewAppt(){
   showToast('Appointment created!');
   await loadAllData();
   
-  // FIX #3: Navigate to the correct date after saving
+  // Navigate to the correct date after saving
   var today = new Date();
   today.setHours(0,0,0,0);
   var apptDate = new Date(date + 'T00:00:00'); // Parse as local date
@@ -819,7 +816,7 @@ async function saveNewAppt(){
   
   renderAll();
   
-  // FIX #4: Auto-expand the assigned employee's lane (desktop only)
+  // Auto-expand the assigned employee's lane (desktop only)
   if(empId && window.innerWidth > 768) {
     setTimeout(function(){
       var lane = document.querySelector('.tech-lane[data-employee-id="'+empId+'"]');
@@ -835,11 +832,11 @@ function openApptDetail(id){
   var appt=allAppointments.find(function(a){return a.appointment_id===id||a.id===id;});
   if(!appt){showToast('Appointment not found');return;}
   var cust=allCustomers.find(function(c){return c.customer_id===appt.customer_id;})||{};
-  // FIX: Check both fields for assigned employee
-  var assignedId = appt.assigned_salesperson_id || appt.assigned_to;
+  // Use assigned_salesperson_id for employee lookup
+  var assignedId = appt.assigned_salesperson_id;
   var emp=allEmployees.find(function(e){return e.employee_id===assignedId;})||{};
   var empName=emp.first_name?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';
-  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(appt.customer_name||cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
+  document.getElementById('apptDetailBody').innerHTML='<div class="detail-section"><div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">'+(cust.full_name||'Unknown')+'</span></div><div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">'+(cust.phone||'—')+'</span></div><div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">'+(appt.appointment_date||'—')+'</span></div><div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">'+(appt.appointment_time||'—')+'</span></div><div class="detail-row"><span class="detail-label">Assigned To</span><span class="detail-value">'+empName+'</span></div><div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="text-transform:capitalize;">'+(appt.status||'scheduled')+'</span></div>'+(appt.notes?'<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">'+appt.notes+'</span></div>':'')+'</div>';
   document.getElementById('apptDetailModal').classList.add('active');
 }
 function closeApptDetailModal(){document.getElementById('apptDetailModal').classList.remove('active');}
