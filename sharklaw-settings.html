@@ -408,7 +408,7 @@
       </div>
       <div style="display:none; gap:10px;" id="modalFooterEdit">
         <button class="btn btn-primary" style="flex:1;" onclick="saveEmployee()">Save Changes</button>
-        <button class="btn btn-danger" style="flex:1;" id="empDeleteBtn" onclick="deleteEmployee()">Delete</button>
+        <button class="btn btn-danger" style="flex:1;" id="empDeleteBtn" onclick="deleteEmployee()">Deactivate</button>
         <button class="btn" onclick="closeEmployeeModal()">Cancel</button>
       </div>
       <div id="employeeModalMsg"></div>
@@ -561,8 +561,12 @@ async function saveBusinessSettings(){
 
 async function loadEmployees(){
   if(!currentTenantId)return;
-  // Include color field in query
-  var r=await sb.from('employees').select('employee_id, first_name, last_name, email, phone, department, role, color, is_active, created_at').eq('tenant_id',currentTenantId).order('last_name');
+  // Only load active employees (exclude soft-deleted)
+  var r=await sb.from('employees')
+    .select('employee_id, first_name, last_name, email, phone, department, role, color, is_active, created_at')
+    .eq('tenant_id',currentTenantId)
+    .or('is_active.is.null,is_active.eq.true')
+    .order('last_name');
   allEmployees=r.data||[];
   renderEmployees();
   updateEmployeeStats();
@@ -716,9 +720,10 @@ async function incrementUserStat(statName,amount){
 }
 
 async function deleteEmployee(){
-  if(!editingEmployeeId||!confirm('Delete this team member?'))return;
+  if(!editingEmployeeId||!confirm('Deactivate this team member? They will be hidden but historical data preserved.'))return;
   try{
-    var r=await sb.from('employees').delete().eq('employee_id',editingEmployeeId);
+    // Soft delete - set is_active to false instead of deleting
+    var r=await sb.from('employees').update({ is_active: false }).eq('employee_id',editingEmployeeId);
     if(r.error)throw r.error;
     closeEmployeeModal();
     loadEmployees();
