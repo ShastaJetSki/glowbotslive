@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <link rel="stylesheet" href="themes.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="employee-utils.js"></script>
 
   <style>
     :root {
@@ -396,20 +397,7 @@
       <div class="form-group">
         <label class="form-label">Profile Color</label>
         <div class="setting-desc" style="margin-bottom:12px;">This color represents them on tasks, schedules, and charts</div>
-        <div class="color-options" id="colorOptions">
-          <div class="color-option" style="background:#3b82f6;" data-color="#3b82f6" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#10b981;" data-color="#10b981" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#f59e0b;" data-color="#f59e0b" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#8b5cf6;" data-color="#8b5cf6" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#ec4899;" data-color="#ec4899" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#14b8a6;" data-color="#14b8a6" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#f97316;" data-color="#f97316" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#6366f1;" data-color="#6366f1" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#84cc16;" data-color="#84cc16" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#06b6d4;" data-color="#06b6d4" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#ef4444;" data-color="#ef4444" onclick="selectColor(this)"></div>
-          <div class="color-option" style="background:#a855f7;" data-color="#a855f7" onclick="selectColor(this)"></div>
-        </div>
+        <div class="color-options" id="colorOptions"></div>
         <input type="hidden" id="empColor" value="#3b82f6">
       </div>
     </div>
@@ -447,13 +435,24 @@ const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let currentTenantId=null,userEmail=null;
 let allEmployees=[],editingEmployeeId=null;
-let employeeColors=JSON.parse(localStorage.getItem('employeeColors')||'{}');
 
-function saveEmployeeColor(empId,color){
-  employeeColors[empId]=color;
-  localStorage.setItem('employeeColors',JSON.stringify(employeeColors));
+// Get employee color from database (using employee-utils.js pattern)
+function getEmployeeColorById(empId){
+  var emp = allEmployees.find(function(e){ return e.employee_id === empId; });
+  if (!emp) return null;
+  return emp.color || null;
 }
-function getEmployeeColorById(empId){return employeeColors[empId]||null;}
+
+// Save employee color to database
+async function saveEmployeeColorToDb(empId, color) {
+  var r = await sb.from('employees').update({ color: color }).eq('employee_id', empId);
+  if (!r.error) {
+    // Update local cache
+    var emp = allEmployees.find(function(e){ return e.employee_id === empId; });
+    if (emp) emp.color = color;
+  }
+  return r;
+}
 
 var userThemeBankLocal=['dark-blue'];
 var themeIndex=0;
@@ -467,16 +466,50 @@ function toggleMobileMenu(){document.getElementById('mobileHeaderContent').class
 function toggleCard(header){header.classList.toggle('active');header.nextElementSibling.classList.toggle('active');}
 async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('login.html');}
 
-function selectColor(el){
+// Render color options using COLOR_OPTIONS from employee-utils.js
+function renderColorOptions(selectedColor) {
+  var container = document.getElementById('colorOptions');
+  // Use COLOR_OPTIONS from employee-utils.js if available, otherwise use defaults
+  var colors = (typeof COLOR_OPTIONS !== 'undefined') ? COLOR_OPTIONS : [
+    { value: '#3b82f6', name: 'Blue' },
+    { value: '#22c55e', name: 'Green' },
+    { value: '#f97316', name: 'Orange' },
+    { value: '#8b5cf6', name: 'Purple' },
+    { value: '#ec4899', name: 'Pink' },
+    { value: '#14b8a6', name: 'Teal' },
+    { value: '#eab308', name: 'Yellow' },
+    { value: '#ef4444', name: 'Red' },
+    { value: '#6366f1', name: 'Indigo' },
+    { value: '#84cc16', name: 'Lime' },
+    { value: '#06b6d4', name: 'Cyan' },
+    { value: '#a855f7', name: 'Violet' }
+  ];
+  
+  container.innerHTML = colors.map(function(c) {
+    var isSelected = c.value === selectedColor;
+    return '<div class="color-option' + (isSelected ? ' selected' : '') + '" style="background:' + c.value + ';" data-color="' + c.value + '" title="' + c.name + '" onclick="selectColor(this)"></div>';
+  }).join('');
+}
+
+async function selectColor(el){
   document.querySelectorAll('.color-option').forEach(function(o){o.classList.remove('selected');});
   el.classList.add('selected');
   var color=el.dataset.color;
   document.getElementById('empColor').value=color;
-  // If editing, save color immediately and show feedback
+  
+  // If editing, save color immediately to database
   if(editingEmployeeId){
-    saveEmployeeColor(editingEmployeeId,color);
     el.style.transform='scale(1.3)';
     el.style.boxShadow='0 0 12px '+color;
+    
+    var r = await saveEmployeeColorToDb(editingEmployeeId, color);
+    if (r.error) {
+      document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error saving color</span>';
+    } else {
+      // Update the display
+      renderEmployees();
+    }
+    
     setTimeout(function(){el.style.transform='';el.style.boxShadow='';},300);
   }
 }
@@ -528,7 +561,8 @@ async function saveBusinessSettings(){
 
 async function loadEmployees(){
   if(!currentTenantId)return;
-  var r=await sb.from('employees').select('*').eq('tenant_id',currentTenantId).order('last_name');
+  // Include color field in query
+  var r=await sb.from('employees').select('employee_id, first_name, last_name, email, phone, department, role, color, is_active, created_at').eq('tenant_id',currentTenantId).order('last_name');
   allEmployees=r.data||[];
   renderEmployees();
   updateEmployeeStats();
@@ -546,23 +580,23 @@ function renderEmployees(){
     return((a.last_name||'')+(a.first_name||'')).localeCompare((b.last_name||'')+(b.first_name||''));
   });
   
-  grid.innerHTML=sorted.map(function(emp){
+  // Use DEFAULT_EMPLOYEE_COLORS from employee-utils.js for fallback
+  var defaultColors = (typeof DEFAULT_EMPLOYEE_COLORS !== 'undefined') ? DEFAULT_EMPLOYEE_COLORS : ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
+  
+  grid.innerHTML=sorted.map(function(emp, idx){
     var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';
     var initials=((emp.first_name||'?')[0]+((emp.last_name||'')[0]||'')).toUpperCase();
-    var color=getEmployeeColorById(emp.employee_id)||getDefaultColor(name);
+    // Use database color, fallback to default by index
+    var color = emp.color || defaultColors[idx % defaultColors.length];
     var role=(emp.role||'staff').replace(/_/g,' ');
     role=role.charAt(0).toUpperCase()+role.slice(1);
     return '<div class="emp-strip" onclick="openEditEmployee(\''+emp.employee_id+'\')">'+
-      '<div class="emp-avatar" style="background:'+hexToRgba(color,0.81)+';">'+initials+'</div>'+
+      '<div class="emp-avatar" style="background:'+color+';">'+initials+'</div>'+
       '<div class="emp-info"><div class="emp-name">'+name+'</div><div class="emp-role">'+role+(emp.department?' • '+emp.department:'')+'</div></div>'+
       '<div class="emp-arrow">›</div>'+
       '</div>';
   }).join('');
 }
-
-function getDefaultColor(name){var colors=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4'];var hash=0;for(var i=0;i<name.length;i++){hash=name.charCodeAt(i)+((hash<<5)-hash);}return colors[Math.abs(hash)%colors.length];}
-
-function hexToRgba(hex,alpha){var r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);if(!r)return hex;return'rgba('+parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16)+','+alpha+')';}
 
 function updateEmployeeStats(){
   document.getElementById('employeeCount').textContent=allEmployees.length;
@@ -578,8 +612,7 @@ function openAddEmployeeModal(){
   document.getElementById('empDepartment').value='';
   document.getElementById('empRole').value='staff';
   document.getElementById('empColor').value='#3b82f6';
-  document.querySelectorAll('.color-option').forEach(function(o){o.classList.remove('selected');});
-  document.querySelector('.color-option[data-color="#3b82f6"]').classList.add('selected');
+  renderColorOptions('#3b82f6');
   document.getElementById('modalFooterAdd').style.display='flex';
   document.getElementById('modalFooterEdit').style.display='none';
   document.getElementById('employeeModalMsg').innerHTML='';
@@ -597,10 +630,15 @@ function openEditEmployee(id){
   document.getElementById('empPhone').value=emp.phone||'';
   document.getElementById('empDepartment').value=emp.department||'';
   document.getElementById('empRole').value=emp.role||'staff';
-  var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
-  var color=getEmployeeColorById(id)||getDefaultColor(name);
+  
+  // Use database color or fallback
+  var defaultColors = (typeof DEFAULT_EMPLOYEE_COLORS !== 'undefined') ? DEFAULT_EMPLOYEE_COLORS : ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
+  var idx = allEmployees.findIndex(function(e){ return e.employee_id === id; });
+  var color = emp.color || defaultColors[idx % defaultColors.length];
+  
   document.getElementById('empColor').value=color;
-  document.querySelectorAll('.color-option').forEach(function(o){o.classList.toggle('selected',o.dataset.color===color);});
+  renderColorOptions(color);
+  
   document.getElementById('modalFooterAdd').style.display='none';
   document.getElementById('modalFooterEdit').style.display='flex';
   document.getElementById('employeeModalMsg').innerHTML='';
@@ -609,8 +647,6 @@ function openEditEmployee(id){
 
 function closeEmployeeModal(){
   document.getElementById('employeeModal').classList.remove('active');
-  // Reload to show any color changes
-  renderEmployees();
   editingEmployeeId=null;
 }
 
@@ -627,13 +663,13 @@ async function saveEmployee(){
     email:document.getElementById('empEmail').value.trim()||null,
     phone:document.getElementById('empPhone').value.trim()||null,
     department:document.getElementById('empDepartment').value||null,
-    role:document.getElementById('empRole').value||'staff'
+    role:document.getElementById('empRole').value||'staff',
+    color: selectedColor  // Save color to database
   };
   
   try{
     if(editingEmployeeId){
-      // Editing existing - save color immediately
-      saveEmployeeColor(editingEmployeeId,selectedColor);
+      // Editing existing
       var r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
       if(r.error)throw r.error;
     }else{
@@ -642,9 +678,6 @@ async function saveEmployee(){
       data.created_at=new Date().toISOString();
       var r=await sb.from('employees').insert(data).select('employee_id');
       if(r.error)throw r.error;
-      if(r.data&&r.data[0]&&r.data[0].employee_id){
-        saveEmployeeColor(r.data[0].employee_id,selectedColor);
-      }
       // Track achievement stat
       await incrementUserStat('team_members_added');
     }
@@ -716,7 +749,7 @@ var THEMES = {
   'sky-light': { name: 'Sky', type: 'light', bg: '#f0f9ff', card: '#ffffff', accent: '#0284c7', light: '#0ea5e9' },
   'cyber-dark': { name: 'Cyber', type: 'dark', bg: '#0a0a0f', card: '#161622', accent: '#00ffaa', light: '#50ffcc' },
   'sand-light': { name: 'Sand', type: 'light', bg: '#fdfcfb', card: '#ffffff', accent: '#a8a29e', light: '#d6d3d1' },
-  // Backwards compatibility aliases (old keys without -dark/-light suffix)
+  // Backwards compatibility aliases
   'midnight': { name: 'Midnight', type: 'dark', bg: '#09090b', card: '#18181d', accent: '#8b5cf6', light: '#a78bfa' },
   'lavender': { name: 'Lavender', type: 'light', bg: '#faf5ff', card: '#ffffff', accent: '#7c3aed', light: '#8b5cf6' },
   'forest': { name: 'Forest', type: 'dark', bg: '#071209', card: '#132618', accent: '#22c55e', light: '#4ade80' },
@@ -734,22 +767,19 @@ var THEMES = {
   'light-blue': { name: 'Blue Light', type: 'light', bg: '#f0f5ff', card: '#ffffff', accent: '#2563eb', light: '#3b82f6' }
 };
 
-// Achievement definitions (no icons)
+// Achievement definitions
 var ACHIEVEMENTS = [
-  // First 5 - Easy "First Time" achievements
   { key: 'first_message', name: 'First Words', desc: 'Send your first message', theme: 'blue-light', stat: 'messages_sent', target: 1, difficulty: 'easy' },
   { key: 'first_task', name: 'Task Starter', desc: 'Create your first task', theme: 'slate-dark', stat: 'tasks_created', target: 1, difficulty: 'easy' },
   { key: 'first_contact', name: 'People Person', desc: 'Add your first contact', theme: 'slate-light', stat: 'contacts_added', target: 1, difficulty: 'easy' },
   { key: 'first_appointment', name: 'On the Books', desc: 'Create your first appointment', theme: 'ocean-dark', stat: 'appointments_created', target: 1, difficulty: 'easy' },
   { key: 'first_complete', name: 'Done Deal', desc: 'Complete your first task', theme: 'ocean-light', stat: 'tasks_completed', target: 1, difficulty: 'easy' },
-  // Medium achievements
   { key: 'task_10', name: 'Task Tackler', desc: 'Complete 10 tasks', theme: 'midnight-dark', stat: 'tasks_completed', target: 10, difficulty: 'medium' },
   { key: 'appointments_10', name: 'Fully Booked', desc: 'Complete 10 appointments', theme: 'lavender-light', stat: 'appointments_completed', target: 10, difficulty: 'medium' },
   { key: 'contacts_25', name: 'Rolodex', desc: 'Add 25 contacts', theme: 'forest-dark', stat: 'contacts_added', target: 25, difficulty: 'medium' },
   { key: 'messages_25', name: 'Messenger', desc: 'Send 25 messages', theme: 'mint-light', stat: 'messages_sent', target: 25, difficulty: 'medium' },
   { key: 'streak_7', name: 'Consistency', desc: '7-day login streak', theme: 'crimson-dark', stat: 'current_login_streak', target: 7, difficulty: 'medium' },
   { key: 'team_3', name: 'Team Player', desc: 'Add 3 team members', theme: 'coral-light', stat: 'team_members_added', target: 3, difficulty: 'medium' },
-  // Hard achievements
   { key: 'task_50', name: 'Task Master', desc: 'Complete 50 tasks', theme: 'amber-dark', stat: 'tasks_completed', target: 50, difficulty: 'hard' },
   { key: 'appointments_100', name: 'Appointment King', desc: 'Complete 100 appointments', theme: 'honey-light', stat: 'appointments_completed', target: 100, difficulty: 'hard' },
   { key: 'contacts_100', name: 'Networking Pro', desc: 'Add 100 contacts', theme: 'rose-dark', stat: 'contacts_added', target: 100, difficulty: 'hard' },
@@ -774,7 +804,6 @@ async function loadUserStats() {
   if (r.data) {
     userStats = r.data;
   } else {
-    // Create initial stats record
     userStats = { user_id: currentUserId, tenant_id: currentTenantId };
     await sb.from('user_stats').insert(userStats);
   }
@@ -794,7 +823,7 @@ async function loadUserThemeBank() {
 }
 
 function isThemeUnlocked(themeKey) {
-  if (themeKey === 'dark-blue') return true; // Default always available
+  if (themeKey === 'dark-blue') return true;
   return userAchievements.some(function(a) { return a.theme_key === themeKey; });
 }
 
@@ -850,15 +879,10 @@ async function removeThemeFromBank(themeKey) {
 
 function renderThemeBank() {
   var grid = document.getElementById('themeBankGrid');
-  
-  // Always show dark-blue default + unlocked themes in bank
   var bankThemes = ['dark-blue'].concat(userThemeBank.map(function(t) { return t.theme_key; }));
-  bankThemes = [...new Set(bankThemes)]; // Remove duplicates
-  
-  // Filter to only themes that exist in THEMES object
+  bankThemes = [...new Set(bankThemes)];
   bankThemes = bankThemes.filter(function(key) { return THEMES[key]; });
   
-  // Count excludes dark-blue (it's always free)
   var count = bankThemes.length - 1;
   document.getElementById('themeBankCount').textContent = '(' + count + '/10)';
   
@@ -881,7 +905,6 @@ function renderThemeBank() {
     '</div>';
   }).join('');
   
-  // Update current theme display
   var ct = THEMES[currentTheme] || THEMES['dark-blue'];
   document.getElementById('currentThemePreview').innerHTML = 
     '<div style="flex:1;border-radius:3px;background:' + ct.card + ';"></div>' +
@@ -926,13 +949,11 @@ function showAchievementUnlock(achievement) {
   var t = THEMES[achievement.theme];
   var container = document.getElementById('unlockEffects');
   
-  // Flash effect
   var flash = document.createElement('div');
   flash.className = 'unlock-flash';
   flash.style.background = t.accent;
   container.appendChild(flash);
   
-  // Particle burst
   var overlay = document.createElement('div');
   overlay.className = 'unlock-overlay';
   var colors = [t.accent, t.light, t.card, '#ffffff'];
@@ -953,7 +974,6 @@ function showAchievementUnlock(achievement) {
   }
   container.appendChild(overlay);
   
-  // Toast notification
   var toast = document.createElement('div');
   toast.className = 'unlock-toast';
   toast.style.borderColor = t.accent;
@@ -963,7 +983,6 @@ function showAchievementUnlock(achievement) {
     '<div class="unlock-toast-theme">' + t.name + '</div>';
   container.appendChild(toast);
   
-  // Cleanup after animation
   setTimeout(function() {
     container.innerHTML = '';
   }, 2500);
@@ -978,7 +997,6 @@ async function checkAndUnlockAchievements() {
     
     var progress = userStats[ach.stat] || 0;
     if (progress >= ach.target) {
-      // Unlock achievement!
       var r = await sb.from('user_achievements').insert({
         user_id: currentUserId,
         tenant_id: currentTenantId,
@@ -987,14 +1005,13 @@ async function checkAndUnlockAchievements() {
       });
       if (!r.error) {
         userAchievements.push({ achievement_key: ach.key, theme_key: ach.theme });
-        // Auto-add to bank if space
         if (userThemeBank.length < 10) {
           await addThemeToBank(ach.theme);
         }
         showAchievementUnlock(ach);
         renderAchievements();
         renderThemeBank();
-        break; // Show one at a time
+        break;
       }
     }
   }
@@ -1020,7 +1037,6 @@ async function init(){
   await loadBusinessSettings();
   await loadEmployees();
   
-  // Load achievement system
   if(currentUserId){
     await loadUserStats();
     await loadUserAchievements();
