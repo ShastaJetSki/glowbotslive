@@ -651,9 +651,9 @@ function openEditEmployee(id){
   var deleteBtn = document.getElementById('empDeleteBtn');
   if(deleteBtn) deleteBtn.style.display = isOwner ? '' : 'none';
   
-  // Only owner can change manager/admin/owner roles
+  // Only owner can change admin/owner roles
   var roleSelect = document.getElementById('empRole');
-  var isProtectedRole = ['manager', 'admin', 'owner'].includes(emp.role);
+  var isProtectedRole = ['admin', 'owner'].includes(emp.role);
   if(isProtectedRole && !isOwner){
     roleSelect.disabled = true;
     roleSelect.title = 'Only owner can change this role';
@@ -662,10 +662,10 @@ function openEditEmployee(id){
     roleSelect.title = '';
   }
   
-  // Non-owners can't promote to manager/admin/owner
+  // Non-owners can't promote to admin/owner
   if(!isOwner){
     Array.from(roleSelect.options).forEach(function(opt){
-      if(['manager', 'admin', 'owner'].includes(opt.value)){
+      if(['admin', 'owner'].includes(opt.value)){
         opt.disabled = true;
       } else {
         opt.disabled = false;
@@ -692,14 +692,16 @@ async function saveEmployee(){
   if(!firstName||!lastName){document.getElementById('employeeModalMsg').innerHTML='<span class="error">First and last name required</span>';return;}
   
   var selectedColor=document.getElementById('empColor').value||'#3b82f6';
+  var selectedRole=document.getElementById('empRole').value||'associate';
+  var employeeEmail=document.getElementById('empEmail').value.trim()||null;
   
   var data={
     first_name:firstName,
     last_name:lastName,
-    email:document.getElementById('empEmail').value.trim()||null,
+    email:employeeEmail,
     phone:document.getElementById('empPhone').value.trim()||null,
     department:document.getElementById('empDepartment').value||null,
-    role:document.getElementById('empRole').value||'associate',
+    role:selectedRole,
     color: selectedColor  // Save color to database
   };
   
@@ -708,6 +710,11 @@ async function saveEmployee(){
       // Editing existing
       var r=await sb.from('employees').update(data).eq('employee_id',editingEmployeeId);
       if(r.error)throw r.error;
+      
+      // Also update users table role if employee has email
+      if(employeeEmail){
+        await sb.from('users').update({ role: selectedRole }).eq('email', employeeEmail);
+      }
     }else{
       data.tenant_id=currentTenantId;
       data.is_active=true;
@@ -1078,10 +1085,10 @@ async function init(){
     if(empR.data?.role) currentUserRole=empR.data.role;
   }
   
-  // Access control: only owner and manager can access Settings
-  var allowedRoles = ['owner', 'manager'];
+  // Access control: only owner and admin can access Settings
+  var allowedRoles = ['owner', 'admin'];
   if(!allowedRoles.includes(currentUserRole)){
-    alert('Access denied. Only owners and managers can access settings.');
+    alert('Access denied. Only owners and admins can access settings.');
     window.location.href = 'dashboard-sharklaw.html';
     return;
   }
