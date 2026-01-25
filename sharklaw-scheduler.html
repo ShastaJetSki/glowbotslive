@@ -38,7 +38,6 @@
     html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg-primary); color: var(--text-primary); overflow-x: hidden; user-select: none; -webkit-user-select: none; }
     body { padding-bottom: 120px; }
 
-    /* Theme Toggle Button - matching dashboard */
     .theme-toggle-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
     .theme-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; }
@@ -48,7 +47,6 @@
     .theme-toast { position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--border-default); color: var(--text-primary); padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 1000; display: none; }
     .theme-toast.show { display: block; }
 
-    /* Desktop Header - matching dashboard exactly */
     .desktop-header { position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border-default); }
 
     .mobile-top-header { display: block; position: sticky; top: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-default); }
@@ -210,17 +208,6 @@
     .calendar-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .calendar-dot.event { border: 1px solid var(--text-secondary); background: transparent; }
     .calendar-dot.appt { background: var(--accent-primary); }
-    .calendar-dot.emp-0 { background: #3b82f6; }
-    .calendar-dot.emp-1 { background: #22c55e; }
-    .calendar-dot.emp-2 { background: #f97316; }
-    .calendar-dot.emp-3 { background: #8b5cf6; }
-    .calendar-dot.emp-4 { background: #ec4899; }
-    .calendar-dot.emp-5 { background: #14b8a6; }
-    .calendar-dot.emp-6 { background: #eab308; }
-    .calendar-dot.emp-7 { background: #ef4444; }
-    .calendar-dot.emp-8 { background: #6366f1; }
-    .calendar-dot.emp-9 { background: #84cc16; }
-    .calendar-dot.unassigned { background: var(--text-secondary); }
     .calendar-more { font-size: 9px; color: var(--text-secondary); margin-top: 2px; }
     .calendar-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 4px; }
     .calendar-nav-btn { background: var(--bg-card); border: 1px solid var(--border-default); color: var(--text-primary); padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; }
@@ -251,7 +238,6 @@
     .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
     .empty-state-text { font-size: 16px; }
 
-    /* Mobile Bottom Nav */
     .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); padding: 8px; z-index: 100; border-top: 1px solid var(--border-default); }
     .mobile-nav-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
     .mobile-nav-row:last-child { margin-bottom: 0; }
@@ -331,7 +317,6 @@
   </style>
 </head>
 <body>
-<!-- Desktop Header - MATCHING DASHBOARD EXACTLY -->
 <div class="desktop-header">
   <div style="padding:16px 24px 8px;display:flex;justify-content:space-between;align-items:center;">
     <div>
@@ -399,7 +384,6 @@
 <div id="toast" class="toast"></div>
 <div class="theme-toast" id="themeToast"></div>
 
-<!-- Mobile Bottom Nav -->
 <div class="mobile-bottom-nav">
   <div class="mobile-nav-row">
     <a href="dashboard-sharklaw.html" class="mobile-nav-btn">Dashboard</a>
@@ -538,17 +522,14 @@ var defaultColors=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','
 var UNASSIGNED_COLOR='#eab308'; // Gold for unassigned
 
 function getEmployeeColor(empId){
-  if(!empId) return UNASSIGNED_COLOR; // Gold for unassigned
+  if(!empId) return UNASSIGNED_COLOR;
   var emp=allEmployees.find(function(e){return e.employee_id===empId;});
   if(!emp) return UNASSIGNED_COLOR;
-  // Use stored color if available, otherwise fall back to default by index
   if(emp.color) return emp.color;
-  var staff=getCurrentStaff();
-  var idx=staff.findIndex(function(e){return e.employee_id===empId;});
+  var idx=allEmployees.findIndex(function(e){return e.employee_id===empId;});
   return idx>=0 ? defaultColors[idx%defaultColors.length] : UNASSIGNED_COLOR;
 }
 
-// Theme system - matching dashboard
 var THEME_NAMES={'dark-blue':'Dark Blue','blue-light':'Blue Light','slate-dark':'Slate Dark','slate-light':'Slate Light','ocean-dark':'Ocean Dark','ocean-light':'Ocean Light','midnight-dark':'Midnight','lavender-light':'Lavender','forest-dark':'Forest','mint-light':'Mint','crimson-dark':'Crimson','coral-light':'Coral','amber-dark':'Amber','honey-light':'Honey','rose-dark':'Rose','sky-light':'Sky','cyber-dark':'Cyber','sand-light':'Sand'};
 var userThemeBank=['dark-blue'],themeIndex=0;
 
@@ -567,13 +548,21 @@ async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session
 
 async function loadBusinessSettings(){var r=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r.data){tenantId=r.data.tenant_id;}}
 
-function getCurrentStaff(){return allEmployees.filter(function(e){return e.is_active !== false;});}
-async function loadAllData(){if(!tenantId)return;
+// FIXED: Get ALL active employees (not filtering by role)
+function getActiveEmployees(){
+  return allEmployees.filter(function(e){
+    return e.is_active !== false; // Show all active employees regardless of role
+  });
+}
+
+async function loadAllData(){
+  if(!tenantId)return;
   var ar=await sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
   allAppointments=ar.data||[];
   var er=await sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
   allEvents=er.data||[];
- var emr=await sb.from('employees').select('*').eq('tenant_id',tenantId).or('is_active.is.null,is_active.eq.true').order('last_name');
+  // Load only active employees
+  var emr=await sb.from('employees').select('*').eq('tenant_id',tenantId).or('is_active.is.null,is_active.eq.true').order('last_name');
   allEmployees=emr.data||[];
   var cr=await sb.from('customers').select('customer_id,full_name,phone,email').eq('tenant_id',tenantId);
   allCustomers=cr.data||[];
@@ -583,7 +572,6 @@ async function loadEvents(){var er=await sb.from('events').select('*').eq('tenan
 
 function getDateLabel(offset){var d=new Date();d.setDate(d.getDate()+offset);var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return days[d.getDay()]+' '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 
-// FIX #1: Helper function to format date locally (avoids timezone shift)
 function formatLocalDate(d) {
   var year = d.getFullYear();
   var month = String(d.getMonth() + 1).padStart(2, '0');
@@ -594,11 +582,10 @@ function formatLocalDate(d) {
 function getJobsForDateOffset(offset){
   var target=new Date();
   target.setDate(target.getDate()+offset);
-  var dateStr=formatLocalDate(target); // FIX: Use local date formatting
+  var dateStr=formatLocalDate(target);
   var jobs=[];
   allAppointments.forEach(function(a){
     if(a.appointment_date===dateStr){
-      // Use assigned_to column from new schema
       var assignedEmp = a.assigned_to || null;
       jobs.push({
         id:a.appointment_id,
@@ -669,20 +656,27 @@ function centerOnToday(){var dc=document.getElementById('lanesDateChips');var ch
 
 function toggleAllLanes(){allExpanded=!allExpanded;var desktopBtn=document.getElementById('desktopExpandBtn');if(desktopBtn){desktopBtn.classList.toggle('expanded',allExpanded);}renderAll();}
 
+// FIXED: Show ALL jobs for ALL employees - lanes view shows employee with their assigned jobs
 function renderLanesView(dof){
   var jobs=getJobsForDateOffset(dof);
-  var staff=getCurrentStaff();
-  if(!staff.length&&!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No staff or appointments</div></div>';
+  var activeEmployees=getActiveEmployees();
+  
+  if(!activeEmployees.length&&!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No staff or appointments</div></div>';
+  
   var h='<div class="lanes-container">';
   
-  staff.forEach(function(emp,idx){
-    // Get both appointments AND events assigned to this employee
+  // Show a lane for each active employee
+  activeEmployees.forEach(function(emp,idx){
     var empJobs=jobs.filter(function(j){
       return j.tech===emp.employee_id;
     });
     var initials=((emp.first_name||'')[0]||'')+((emp.last_name||'')[0]||'');
     var color=getEmployeeColor(emp.employee_id);
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="'+emp.employee_id+'" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\''+emp.employee_id+'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+(emp.role||'Staff')+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    var roleDisplay=(emp.role||'Staff').replace(/_/g,' ');
+    roleDisplay=roleDisplay.charAt(0).toUpperCase()+roleDisplay.slice(1);
+    
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="'+emp.employee_id+'" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\''+emp.employee_id+'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+color+'">'+initials+'</div><div class="tech-details"><h3>'+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'</h3><span>'+roleDisplay+'</span></div></div><div class="lane-header-right"><div class="lane-stats"><div class="stat-item"><div class="stat-value">'+empJobs.length+'</div><div class="stat-label">Jobs</div></div></div><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    
     empJobs.forEach(function(j){
       var cardHtml='<div class="wo-card '+(j.isEvent?'event-card':'')+' status-'+(j.isEvent?'event':j.status)+'" style="border-left-color:'+color+'" data-id="'+j.id+'" data-type="'+(j.isEvent?'event':'appt')+'" draggable="true" ondragstart="cardDragStart(event,\''+j.id+'\',\''+(j.isEvent?'event':'appt')+'\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div><div class="card-info-row"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':(j.status||'scheduled'))+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';
       h+=cardHtml;
@@ -690,32 +684,22 @@ function renderLanesView(dof){
     h+='<div class="add-card" onclick="openNewApptModal(\''+emp.employee_id+'\')"><div class="add-card-icon">+</div><span>Add</span></div></div></div></div>';
   });
   
-  // Unassigned appointments
-  var unassignedAppts=jobs.filter(function(j){return !j.tech&&!j.isEvent;});
-  if(unassignedAppts.length){
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+UNASSIGNED_COLOR+'">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassignedAppts.length+' appointments</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
-    unassignedAppts.forEach(function(j){
-      h+='<div class="wo-card status-'+j.status+'" style="border-left-color:'+UNASSIGNED_COLOR+'" data-id="'+j.id+'" data-type="appt" draggable="true" ondragstart="cardDragStart(event,\''+j.id+'\',\'appt\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+'</div><div class="card-info-row"><span class="card-status '+j.status+'">'+(j.status||'scheduled')+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();openApptDetail(\''+j.id+'\')">Details</button></div>';
+  // Unassigned section (appointments and events without assigned_to)
+  var unassigned=jobs.filter(function(j){return !j.tech;});
+  if(unassigned.length){
+    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:'+UNASSIGNED_COLOR+'">?</div><div class="tech-details"><h3>Unassigned</h3><span>'+unassigned.length+' items</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
+    unassigned.forEach(function(j){
+      h+='<div class="wo-card '+(j.isEvent?'event-card':'')+' status-'+(j.isEvent?'event':j.status)+'" style="border-left-color:'+UNASSIGNED_COLOR+'" data-id="'+j.id+'" data-type="'+(j.isEvent?'event':'appt')+'" draggable="true" ondragstart="cardDragStart(event,\''+j.id+'\',\''+(j.isEvent?'event':'appt')+'\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(j.time)+'</div><div class="card-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div><div class="card-info-row"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':j.status)+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';
     });
-    h+='</div></div></div>';
+    h+='<div class="add-card" onclick="openNewApptModal()"><div class="add-card-icon">+</div><span>Add</span></div></div></div></div>';
   }
   
-  // Unassigned events
-  var unassignedEvts=jobs.filter(function(j){return !j.tech&&j.isEvent;});
-  if(unassignedEvts.length){
-    h+='<div class="tech-lane'+(allExpanded?' expanded':'')+'" data-employee-id="" ondragover="laneDragOver(event)" ondrop="laneDrop(event,\'\')"><div class="lane-header" onclick="toggleLane(this)"><div class="lane-info"><div class="tech-avatar" style="background:#f97316">E</div><div class="tech-details"><h3>Unassigned Events</h3><span>'+unassignedEvts.length+' events</span></div></div><div class="lane-header-right"><span class="lane-expand-icon">▼</span></div></div><div class="lane-cards-wrapper"><div class="lane-cards">';
-    unassignedEvts.forEach(function(e){
-      h+='<div class="wo-card event-card" style="border-left-color:#f97316" data-id="'+e.id+'" data-type="event" draggable="true" ondragstart="cardDragStart(event,\''+e.id+'\',\'event\')" ondragend="cardDragEnd(event)"><div class="card-time">'+formatTime(e.time)+'</div><div class="card-customer">'+e.customer+'<span class="event-badge">EVENT</span></div><div class="card-info-row"><span class="card-status event">Event</span></div><button class="card-details-btn" onclick="event.stopPropagation();editEvent(\''+e.id+'\')">Details</button></div>';
-    });
-    h+='<div class="add-card" onclick="openNewEventModal()"><div class="add-card-icon">+</div><span>Event</span></div></div></div></div>';
-  }
   h+='</div>';
   return h;
 }
 
 function toggleLane(el){el.parentElement.classList.toggle('expanded');}
 
-// Card drag and drop between lanes
 var draggedCardId=null,draggedCardType=null;
 function cardDragStart(e,id,type){
   draggedCardId=id;
@@ -756,21 +740,18 @@ function formatTime(t){if(!t)return'';var p=t.split(':'),h=parseInt(p[0]),m=p[1]
 function renderStackView(dof){
   var jobs=getJobsForDateOffset(dof);
   if(!jobs.length)return'<div class="empty-state"><div class="empty-state-text">No appointments for this day</div></div>';
-  var staff=getCurrentStaff();
+  var activeEmployees=getActiveEmployees();
   var groups={};
   jobs.forEach(function(j){
-    var k=j.isEvent?'events':(j.tech||'unassigned');
+    var k=j.tech||'unassigned';
     if(!groups[k])groups[k]=[];
     groups[k].push(j);
   });
   var h='<div class="stack-container">';
   Object.keys(groups).forEach(function(k){
     var items=groups[k],title='Unassigned',color=UNASSIGNED_COLOR;
-    if(k==='events'){
-      title='Events';
-      color='#f97316';
-    }else if(k!=='unassigned'){
-      var emp=staff.find(function(e){return e.employee_id===k;});
+    if(k!=='unassigned'){
+      var emp=activeEmployees.find(function(e){return e.employee_id===k;});
       if(emp){
         title=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
         color=getEmployeeColor(k);
@@ -778,7 +759,7 @@ function renderStackView(dof){
     }
     h+='<div class="stack-section-header" style="background:var(--bg-card);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;color:'+color+';">'+title+'</span><span style="font-size:12px;color:var(--text-secondary);">'+items.length+' items</span></div>';
     items.forEach(function(j){
-      var cardColor=j.isEvent?getEmployeeColor(j.tech):(j.tech?color:UNASSIGNED_COLOR);
+      var cardColor=j.tech?color:UNASSIGNED_COLOR;
       h+='<div class="stack-card status-'+(j.isEvent?'event':j.status)+'" style="border-left-color:'+cardColor+'" data-id="'+j.id+'"><div class="stack-card-left"><div class="stack-time">'+formatTime(j.time)+'</div><div class="stack-customer">'+j.customer+(j.isEvent?'<span class="event-badge">EVENT</span>':'')+'</div></div><div class="stack-card-right"><span class="card-status '+(j.isEvent?'event':j.status)+'">'+(j.isEvent?'Event':j.status)+'</span></div><button class="card-details-btn" onclick="event.stopPropagation();'+(j.isEvent?'editEvent':'openApptDetail')+'(\''+j.id+'\')">Details</button></div>';
     });
   });
@@ -786,14 +767,12 @@ function renderStackView(dof){
   return h;
 }
 
-function renderGridView(dof){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['January','February','March','April','May','June','July','August','September','October','November','December'];var today=new Date();today.setHours(0,0,0,0);var year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();var firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);var startDay=firstDay.getDay(),daysInMonth=lastDay.getDate();var prevMonth=new Date(year,month,0),daysInPrevMonth=prevMonth.getDate();var isDesktop=window.innerWidth>768;var h='<div class="calendar-container">';h+='<div class="calendar-nav"><button class="calendar-nav-btn" onclick="prevMonth()">◀ Prev</button><div class="calendar-month-title">'+months[month]+' '+year+'</div><button class="calendar-nav-btn" onclick="nextMonth()">Next ▶</button></div>';h+='<div class="calendar-header">';for(var d=0;d<7;d++)h+='<div class="calendar-header-day">'+days[d]+'</div>';h+='</div><div class="calendar-grid'+(isDesktop?' desktop-grid':'')+'">';var staff=getCurrentStaff();var staffIndexMap={};staff.forEach(function(s,i){staffIndexMap[s.employee_id]=i;});for(var i=0;i<startDay;i++){var dn=daysInPrevMonth-startDay+i+1;h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+dn+'</div></div>';}for(var d=1;d<=daysInMonth;d++){var cellDate=new Date(year,month,d);var dateStr=formatLocalDate(cellDate); // FIX: Use local date formatting
-var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var empIndex=staffIndexMap[job.tech];var color=getEmployeeColor(job.tech);if(job.isEvent&&!job.tech)color='#f97316';var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];var dotColor=getEmployeeColor(job.tech);if(job.isEvent&&!job.tech)dotColor='#f97316';h+='<div class="calendar-dot" style="background:'+dotColor+(job.isEvent?';border:2px solid white':'')+'"></div>';dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
+function renderGridView(dof){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['January','February','March','April','May','June','July','August','September','October','November','December'];var today=new Date();today.setHours(0,0,0,0);var year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();var firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);var startDay=firstDay.getDay(),daysInMonth=lastDay.getDate();var prevMonth=new Date(year,month,0),daysInPrevMonth=prevMonth.getDate();var isDesktop=window.innerWidth>768;var h='<div class="calendar-container">';h+='<div class="calendar-nav"><button class="calendar-nav-btn" onclick="prevMonth()">◀ Prev</button><div class="calendar-month-title">'+months[month]+' '+year+'</div><button class="calendar-nav-btn" onclick="nextMonth()">Next ▶</button></div>';h+='<div class="calendar-header">';for(var d=0;d<7;d++)h+='<div class="calendar-header-day">'+days[d]+'</div>';h+='</div><div class="calendar-grid'+(isDesktop?' desktop-grid':'')+'">';var activeEmployees=getActiveEmployees();var staffIndexMap={};activeEmployees.forEach(function(s,i){staffIndexMap[s.employee_id]=i;});for(var i=0;i<startDay;i++){var dn=daysInPrevMonth-startDay+i+1;h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+dn+'</div></div>';}for(var d=1;d<=daysInMonth;d++){var cellDate=new Date(year,month,d);var dateStr=formatLocalDate(cellDate);var isToday=cellDate.getTime()===today.getTime();var offset=Math.round((cellDate-today)/(1000*60*60*24));var isSelected=offset===selectedDate;var jobs=getJobsForDateOffset(offset);var cls='calendar-day';if(isToday)cls+=' today';if(isSelected)cls+=' selected';h+='<div class="'+cls+'" data-date="'+dateStr+'" ondragover="calendarDragOver(event)" ondrop="calendarDrop(event,\''+dateStr+'\')" ondragenter="calendarDragEnter(event)" ondragleave="calendarDragLeave(event)"><div class="calendar-day-num" onclick="selectDateAndSwitchToLanes('+offset+')">'+d+'</div>';if(isDesktop){h+='<div class="calendar-strips">';for(var j=0;j<jobs.length;j++){var job=jobs[j];var color=getEmployeeColor(job.tech);var timeStr=job.time?formatTime(job.time):'';var emp=allEmployees.find(function(e){return e.employee_id===job.tech;});var empName=emp?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';var orgName=job.isEvent?(job.org||''):'';h+='<div class="calendar-strip" draggable="true" data-id="'+job.id+'" data-type="'+(job.isEvent?'event':'appt')+'" style="background:'+color+';" ondragstart="stripDragStart(event,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')" ondragend="stripDragEnd(event)" onclick="toggleStripExpand(event,this,\''+job.id+'\',\''+(job.isEvent?'event':'appt')+'\')">';h+='<div class="strip-row strip-row-1"><span class="strip-time">'+timeStr+'</span><span class="strip-name">'+job.customer+'</span></div>';h+='<div class="strip-row strip-row-2">'+dateStr+(orgName?' | '+orgName:'')+'</div>';h+='<div class="strip-row strip-row-3">'+empName+'</div>';h+='</div>';}h+='</div>';}else{h+='<div class="calendar-dots">';var dotCount=0,maxDots=10;for(var j=0;j<jobs.length&&dotCount<maxDots;j++){var job=jobs[j];var dotColor=getEmployeeColor(job.tech);h+='<div class="calendar-dot" style="background:'+dotColor+(job.isEvent?';border:2px solid white':'')+'"></div>';dotCount++;}if(jobs.length>maxDots)h+='<div class="calendar-more">+'+(jobs.length-maxDots)+'</div>';h+='</div>';}h+='</div>';}var totalCells=startDay+daysInMonth,remaining=totalCells%7===0?0:7-totalCells%7;for(var i=1;i<=remaining;i++)h+='<div class="calendar-day other-month"><div class="calendar-day-num">'+i+'</div></div>';h+='</div></div>';return h;}
 
 function prevMonth(){calendarMonth.setMonth(calendarMonth.getMonth()-1);renderPages();}
 function nextMonth(){calendarMonth.setMonth(calendarMonth.getMonth()+1);renderPages();}
 function selectDateAndSwitchToLanes(offset){selectedDate=offset;setViewStyle('lanes');showToast(getDateLabel(offset));}
 
-// Calendar drag and drop
 var draggedStripId=null,draggedStripType=null;
 function stripDragStart(e,id,type){draggedStripId=id;draggedStripType=type;e.target.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',id);}
 function stripDragEnd(e){e.target.classList.remove('dragging');document.querySelectorAll('.calendar-day').forEach(function(d){d.classList.remove('drag-over');});draggedStripId=null;draggedStripType=null;}
@@ -815,13 +794,11 @@ function toggleStripExpand(e,el,id,type){
 function renderPages(){var content='';if(currentViewStyle==='stack'){content=renderStackView(selectedDate);}else if(currentViewStyle==='grid'){content=renderGridView(selectedDate);}else{content=renderLanesView(selectedDate);}document.getElementById('currentPage').innerHTML=content;}
 function renderAll(){renderLanesControls();renderLanesDateChips();renderPages();}
 
-// Touch handling for swipe
 var touchStartX=null,touchStartY=null,isSwiping=false;
 function handleTouchStart(e){if(currentViewStyle!=='lanes'&&currentViewStyle!=='stack')return;if(e.target.closest('.lane-cards')||e.target.closest('.lanes-date-chips'))return;var touch=e.touches[0];touchStartX=touch.clientX;touchStartY=touch.clientY;isSwiping=false;}
 function handleTouchMove(e){if((currentViewStyle!=='lanes'&&currentViewStyle!=='stack')||touchStartX===null)return;var touch=e.touches[0];var deltaX=touch.clientX-touchStartX;var deltaY=touch.clientY-touchStartY;if(Math.abs(deltaX)>Math.abs(deltaY)&&Math.abs(deltaX)>10)isSwiping=true;}
 function handleTouchEnd(e){if((currentViewStyle!=='lanes'&&currentViewStyle!=='stack')||touchStartX===null||!isSwiping)return;var touch=e.changedTouches[0];var deltaX=touch.clientX-touchStartX;if(Math.abs(deltaX)>50){if(deltaX<0)selectedDate++;else selectedDate--;renderAll();}touchStartX=null;isSwiping=false;}
 
-// Modal functions
 var currentApptId=null,currentEventId=null;
 
 function populateApptDropdowns(preselectedEmpId){
@@ -846,12 +823,10 @@ function populateEventDropdowns(){
   });
 }
 
-// FIX #1: Use local date formatting instead of toISOString()
 function openNewApptModal(empId){
   currentApptId=null;
   var targetDate=new Date();
   targetDate.setDate(targetDate.getDate()+selectedDate);
-  // FIX: Use formatLocalDate instead of toISOString to avoid timezone shift
   document.getElementById('apptDate').value=formatLocalDate(targetDate);
   document.getElementById('apptTime').value='09:00';
   document.getElementById('apptService').value='';
@@ -862,7 +837,6 @@ function openNewApptModal(empId){
 }
 function closeNewApptModal(){document.getElementById('newApptModal').classList.remove('active');}
 
-// Save appointment with new schema columns
 async function saveNewAppt(){
   var custId=document.getElementById('apptCustomer').value;
   var date=document.getElementById('apptDate').value;
@@ -871,8 +845,6 @@ async function saveNewAppt(){
   if(!date){showToast('Select a date');return;}
   
   var empId=document.getElementById('apptAssign').value||null;
-  
-  // Get customer info for display
   var selectedCust = allCustomers.find(function(c){ return c.customer_id === custId; });
   var customerName = selectedCust ? selectedCust.full_name : 'Unknown';
   var customerPhone = selectedCust ? selectedCust.phone : null;
@@ -902,16 +874,14 @@ async function saveNewAppt(){
   showToast('Appointment created!');
   await loadAllData();
   
-  // FIX #3: Navigate to the correct date after saving
   var today = new Date();
   today.setHours(0,0,0,0);
-  var apptDate = new Date(date + 'T00:00:00'); // Parse as local date
+  var apptDate = new Date(date + 'T00:00:00');
   var dayDiff = Math.round((apptDate - today) / (1000 * 60 * 60 * 24));
   selectedDate = dayDiff;
   
   renderAll();
   
-  // FIX #4: Auto-expand the assigned employee's lane (desktop only)
   if(empId && window.innerWidth > 768) {
     setTimeout(function(){
       var lane = document.querySelector('.tech-lane[data-employee-id="'+empId+'"]');
@@ -927,7 +897,6 @@ function openApptDetail(id){
   var appt=allAppointments.find(function(a){return a.appointment_id===id||a.id===id;});
   if(!appt){showToast('Appointment not found');return;}
   var cust=allCustomers.find(function(c){return c.customer_id===appt.customer_id;})||{};
-  // Use assigned_to from new schema
   var assignedId = appt.assigned_to;
   var emp=allEmployees.find(function(e){return e.employee_id===assignedId;})||{};
   var empName=emp.first_name?((emp.first_name||'')+' '+(emp.last_name||'')).trim():'Unassigned';
@@ -949,7 +918,6 @@ async function completeCurrentAppt(){
 async function deleteCurrentAppt(){
   if(!currentApptId)return;
   if(!confirm('Delete this appointment?'))return;
-  // Soft delete with audit trail
   var r=await sb.from('sales_appointments').update({
     is_deleted:true,
     deleted_at:new Date().toISOString(),
@@ -959,7 +927,6 @@ async function deleteCurrentAppt(){
   closeApptDetailModal();showToast('Appointment deleted');await loadAllData();renderAll();
 }
 
-// FIX #1: Use local date formatting for events too
 function openNewEventModal(){
   currentEventId=null;
   document.getElementById('eventModalTitle').textContent='New Event';
@@ -967,7 +934,6 @@ function openNewEventModal(){
   document.getElementById('eventDeleteBtn').style.display='none';
   var targetDate=new Date();
   targetDate.setDate(targetDate.getDate()+selectedDate);
-  // FIX: Use formatLocalDate instead of toISOString to avoid timezone shift
   document.getElementById('eventDate').value=formatLocalDate(targetDate);
   document.getElementById('eventTime').value='10:00';
   document.getElementById('eventTitle').value='';
@@ -1033,10 +999,9 @@ async function saveNewEvent(){
   showToast(currentEventId?'Event updated!':'Event created!');
   await loadAllData();
   
-  // Navigate to the correct date after saving event
   var today = new Date();
   today.setHours(0,0,0,0);
-  var eventDate = new Date(date + 'T00:00:00'); // Parse as local date
+  var eventDate = new Date(date + 'T00:00:00');
   var dayDiff = Math.round((eventDate - today) / (1000 * 60 * 60 * 24));
   selectedDate = dayDiff;
   
@@ -1046,7 +1011,6 @@ async function saveNewEvent(){
 async function deleteCurrentEvent(){
   if(!currentEventId)return;
   if(!confirm('Delete this event?'))return;
-  // Soft delete with audit trail
   var r=await sb.from('events').update({
     is_deleted:true,
     deleted_at:new Date().toISOString(),
@@ -1078,7 +1042,22 @@ async function saveNewContact(){
   closeNewContactModal();showToast('Contact added!');await loadAllData();
 }
 
-async function init(){var s=await checkAuth();if(!s)return;await loadBusinessSettings();if(s.user&&s.user.email){document.getElementById('businessName').textContent=s.user.email;document.getElementById('desktopEmail').textContent=s.user.email;var ur=await sb.from('users').select('user_id').eq('email',s.user.email).single();if(ur.data)userId=ur.data.user_id;}await loadUserThemeBank();await loadAllData();currentViewStyle=localStorage.getItem('scheduler-view-style')||'lanes';setViewStyle(currentViewStyle);requestAnimationFrame(function(){requestAnimationFrame(centerOnToday);});}
+async function init(){
+  var s=await checkAuth();
+  if(!s)return;
+  await loadBusinessSettings();
+  if(s.user&&s.user.email){
+    document.getElementById('businessName').textContent=s.user.email;
+    document.getElementById('desktopEmail').textContent=s.user.email;
+    var ur=await sb.from('users').select('user_id').eq('email',s.user.email).single();
+    if(ur.data)userId=ur.data.user_id;
+  }
+  await loadUserThemeBank();
+  await loadAllData();
+  currentViewStyle=localStorage.getItem('scheduler-view-style')||'lanes';
+  setViewStyle(currentViewStyle);
+  requestAnimationFrame(function(){requestAnimationFrame(centerOnToday);});
+}
 init();
 </script>
 </body>
