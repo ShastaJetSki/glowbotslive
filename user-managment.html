@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management - GlowBots Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0b0f14; color: #e8eef6; min-height: 100vh; }
+    .header { background: #0f1621; border-bottom: 1px solid #223044; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .back-btn { padding: 8px 16px; background: transparent; border: 1px solid #223044; color: #9fb0c3; border-radius: 8px; cursor: pointer; font-size: 14px; text-decoration: none; }
+    .back-btn:hover { background: #1a2535; color: #fff; }
+    .header-title { font-size: 20px; font-weight: 700; color: #e8eef6; }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { background: #1a2535; border: 1px solid #223044; border-radius: 12px; padding: 20px; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #3b82f6; }
+    .stat-label { font-size: 13px; color: #9fb0c3; margin-top: 4px; }
+
+    .filters { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-input { padding: 10px 16px; border-radius: 8px; border: 1px solid #223044; background: #1a2535; color: #fff; font-size: 14px; min-width: 250px; }
+    .filter-select { padding: 10px 16px; border-radius: 8px; border: 1px solid #223044; background: #1a2535; color: #fff; font-size: 14px; }
+
+    .table-container { background: #1a2535; border: 1px solid #223044; border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 14px 16px; font-size: 12px; font-weight: 600; color: #9fb0c3; text-transform: uppercase; background: #0f1621; border-bottom: 1px solid #223044; }
+    td { padding: 14px 16px; border-bottom: 1px solid #223044; font-size: 14px; }
+    tr:hover { background: #223044; }
+    tr:last-child td { border-bottom: none; }
+    .user-email { font-weight: 600; }
+    .user-id { font-family: monospace; font-size: 11px; color: #9fb0c3; }
+    .role-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .role-super_admin { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .role-owner { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+    .role-admin { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .role-manager { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .role-associate, .role-staff { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .action-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #223044; background: transparent; color: #9fb0c3; font-size: 12px; cursor: pointer; margin-right: 8px; }
+    .action-btn:hover { background: #223044; color: #fff; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: #1a2535; border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; }
+    .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; color: #9fb0c3; margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #223044; background: #0b0f14; color: #fff; font-size: 14px; }
+    .form-input:focus { outline: none; border-color: #3b82f6; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
+    .btn { padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: transparent; border: 1px solid #223044; color: #9fb0c3; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <a href="admin-settings.html" class="back-btn">Back to Admin</a>
+    <span class="header-title">User Management</span>
+  </div>
+</div>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total Users</div></div>
+    <div class="stat-card"><div class="stat-value" id="statSuperAdmin">-</div><div class="stat-label">Super Admins</div></div>
+    <div class="stat-card"><div class="stat-value" id="statOwners">-</div><div class="stat-label">Owners</div></div>
+    <div class="stat-card"><div class="stat-value" id="statAdmins">-</div><div class="stat-label">Admins</div></div>
+  </div>
+
+  <div class="filters">
+    <input type="text" class="filter-input" id="searchInput" placeholder="Search by email..." oninput="loadUsers()">
+    <select class="filter-select" id="roleFilter" onchange="loadUsers()">
+      <option value="">All Roles</option>
+      <option value="super_admin">Super Admin</option>
+      <option value="owner">Owner</option>
+      <option value="admin">Admin</option>
+      <option value="manager">Manager</option>
+      <option value="associate">Associate</option>
+    </select>
+    <select class="filter-select" id="tenantFilter" onchange="loadUsers()">
+      <option value="">All Tenants</option>
+    </select>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Tenant</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="usersBody">
+        <tr><td colspan="5" style="text-align:center;padding:40px;color:#9fb0c3;">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal" id="userModal">
+  <div class="modal-content">
+    <div class="modal-title">Edit User</div>
+    <input type="hidden" id="userId">
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" class="form-input" id="userEmail" disabled>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select class="form-input" id="userRole">
+        <option value="owner">Owner</option>
+        <option value="admin">Admin</option>
+        <option value="manager">Manager</option>
+        <option value="associate">Associate</option>
+        <option value="staff">Staff</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tenant</label>
+      <select class="form-input" id="userTenant"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let tenantMap = {};
+
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      const token = localStorage.getItem('sb_access_token');
+      const refresh = localStorage.getItem('sb_refresh_token');
+      if (token && refresh) {
+        await sb.auth.setSession({ access_token: token, refresh_token: refresh });
+      } else {
+        window.location.href = 'login.html';
+        return;
+      }
+    }
+    await loadTenants();
+    loadStats();
+    loadUsers();
+  }
+
+  async function loadTenants() {
+    const { data: tenants } = await sb.from('tenants').select('tenant_id, tenant_name').order('tenant_name');
+    if (tenants) {
+      tenants.forEach(t => { tenantMap[t.tenant_id] = t.tenant_name; });
+      const select = document.getElementById('tenantFilter');
+      const modalSelect = document.getElementById('userTenant');
+      tenants.forEach(t => {
+        select.innerHTML += `<option value="${t.tenant_id}">${escapeHtml(t.tenant_name)}</option>`;
+        modalSelect.innerHTML += `<option value="${t.tenant_id}">${escapeHtml(t.tenant_name)}</option>`;
+      });
+    }
+  }
+
+  async function loadStats() {
+    const { data: users } = await sb.from('users').select('role');
+    if (users) {
+      document.getElementById('statTotal').textContent = users.length;
+      document.getElementById('statSuperAdmin').textContent = users.filter(u => u.role === 'super_admin').length;
+      document.getElementById('statOwners').textContent = users.filter(u => u.role === 'owner').length;
+      document.getElementById('statAdmins').textContent = users.filter(u => u.role === 'admin').length;
+    }
+  }
+
+  async function loadUsers() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const role = document.getElementById('roleFilter').value;
+    const tenant = document.getElementById('tenantFilter').value;
+
+    let query = sb.from('users').select('*').order('email');
+    if (role) query = query.eq('role', role);
+    if (tenant) query = query.eq('tenant_id', tenant);
+
+    const { data: users, error } = await query;
+    if (error) {
+      document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#ef4444;">Error: ' + error.message + '</td></tr>';
+      return;
+    }
+
+    let filtered = users || [];
+    if (search) {
+      filtered = filtered.filter(u => (u.email || '').toLowerCase().includes(search));
+    }
+
+    if (filtered.length === 0) {
+      document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9fb0c3;padding:40px;">No users found</td></tr>';
+      return;
+    }
+
+    document.getElementById('usersBody').innerHTML = filtered.map(u => `
+      <tr>
+        <td>
+          <div class="user-email">${escapeHtml(u.email)}</div>
+          <div class="user-id">${u.user_id}</div>
+        </td>
+        <td><span class="role-badge role-${u.role}">${u.role || 'N/A'}</span></td>
+        <td>${escapeHtml(tenantMap[u.tenant_id] || u.tenant_id?.substring(0, 8) + '...')}</td>
+        <td>${formatDate(u.created_at)}</td>
+        <td>
+          <button class="action-btn" onclick="editUser('${u.user_id}')">Edit</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function editUser(userId) {
+    const { data: user } = await sb.from('users').select('*').eq('user_id', userId).single();
+    if (user) {
+      document.getElementById('userId').value = user.user_id;
+      document.getElementById('userEmail').value = user.email;
+      document.getElementById('userRole').value = user.role || 'associate';
+      document.getElementById('userTenant').value = user.tenant_id || '';
+      document.getElementById('userModal').classList.add('active');
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('userModal').classList.remove('active');
+  }
+
+  async function saveUser() {
+    const userId = document.getElementById('userId').value;
+    const { error } = await sb.from('users').update({
+      role: document.getElementById('userRole').value,
+      tenant_id: document.getElementById('userTenant').value,
+      updated_at: new Date().toISOString()
+    }).eq('user_id', userId);
+
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      closeModal();
+      loadStats();
+      loadUsers();
+    }
+  }
+
+  function formatDate(d) {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  init();
+</script>
+</body>
+</html>
