@@ -180,36 +180,34 @@
     errorBox.style.display = "none";
   }
 
-  // Get user's tenant_id from various sources
-  async function getUserTenantId(userId, userEmail) {
-    // Try employees table first (most reliable)
-    const { data: emp } = await sb.from('employees')
-      .select('tenant_id')
-      .eq('email', userEmail)
-      .single();
-    if (emp?.tenant_id) return emp.tenant_id;
-    
-    // Try users table
+  // Get user info including role
+  async function getUserInfo(userId, userEmail) {
+    // Try users table first (has role)
     const { data: user } = await sb.from('users')
-      .select('tenant_id')
+      .select('tenant_id, role')
       .eq('email', userEmail)
       .single();
-    if (user?.tenant_id) return user.tenant_id;
-    
+    if (user?.tenant_id) return user;
+
     // Try users table by user_id
     const { data: userById } = await sb.from('users')
-      .select('tenant_id')
+      .select('tenant_id, role')
       .eq('user_id', userId)
       .single();
-    if (userById?.tenant_id) return userById.tenant_id;
+    if (userById?.tenant_id) return userById;
+
+    // Try employees table as fallback
+    const { data: emp } = await sb.from('employees')
+      .select('tenant_id, role')
+      .eq('email', userEmail)
+      .single();
+    if (emp?.tenant_id) return emp;
     
     return null;
   }
 
   // Get custom dashboard URL for tenant
-  // Each tenant can have their own dashboard (e.g., SharkLaw -> sharklaw-dashboard.html)
   async function getTenantDashboard(tenantId) {
-    // Default dashboard for tenants without a custom one
     const defaultDashboard = 'dashboard-business.html';
     
     if (!tenantId) return defaultDashboard;
@@ -219,8 +217,6 @@
       .eq('tenant_id', tenantId)
       .single();
     
-    // If tenant has a custom dashboard_url (like 'sharklaw-dashboard.html'), use it
-    // Otherwise fall back to the default
     return tenant?.dashboard_url || defaultDashboard;
   }
 
@@ -244,16 +240,30 @@
 
       console.log('Login successful:', data.session.user.email);
       
-      // Get user's tenant and check for custom dashboard
+      // Get user info
       loginBtn.textContent = "Loading dashboard...";
       
-      const tenantId = await getUserTenantId(data.session.user.id, data.session.user.email);
-      const dashboardUrl = await getTenantDashboard(tenantId);
+      const userInfo = await getUserInfo(data.session.user.id, data.session.user.email);
+      const userEmail = data.session.user.email.toLowerCase();
       
-      console.log('Tenant ID:', tenantId);
+      console.log('User Info:', userInfo);
+
+      // Determine dashboard based on role
+      let dashboardUrl;
+
+      // Super admin check - by role OR by email
+      if (userInfo?.role === 'super_admin' || userEmail === 'glowbotsapp@gmail.com') {
+        dashboardUrl = 'admin-settings.html';
+        console.log('Super admin detected');
+      } else {
+        dashboardUrl = await getTenantDashboard(userInfo?.tenant_id);
+      }
+      
+      console.log('Tenant ID:', userInfo?.tenant_id);
+      console.log('Role:', userInfo?.role);
       console.log('Redirecting to:', dashboardUrl);
       
-      // Redirect to tenant's dashboard
+      // Redirect to dashboard
       location.replace(dashboardUrl);
 
     } catch (err) {
