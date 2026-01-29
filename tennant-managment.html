@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tenant Management - GlowBots Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0b0f14; color: #e8eef6; min-height: 100vh; }
+    .header { background: #0f1621; border-bottom: 1px solid #223044; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .back-btn { padding: 8px 16px; background: transparent; border: 1px solid #223044; color: #9fb0c3; border-radius: 8px; cursor: pointer; font-size: 14px; text-decoration: none; }
+    .back-btn:hover { background: #1a2535; color: #fff; }
+    .header-title { font-size: 20px; font-weight: 700; color: #e8eef6; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .add-btn { padding: 10px 20px; background: #3b82f6; border: none; color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+    .add-btn:hover { background: #2563eb; }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { background: #1a2535; border: 1px solid #223044; border-radius: 12px; padding: 20px; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #3b82f6; }
+    .stat-label { font-size: 13px; color: #9fb0c3; margin-top: 4px; }
+
+    .filters { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-input { padding: 10px 16px; border-radius: 8px; border: 1px solid #223044; background: #1a2535; color: #fff; font-size: 14px; min-width: 250px; }
+    .filter-select { padding: 10px 16px; border-radius: 8px; border: 1px solid #223044; background: #1a2535; color: #fff; font-size: 14px; }
+
+    .table-container { background: #1a2535; border: 1px solid #223044; border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 14px 16px; font-size: 12px; font-weight: 600; color: #9fb0c3; text-transform: uppercase; background: #0f1621; border-bottom: 1px solid #223044; }
+    td { padding: 14px 16px; border-bottom: 1px solid #223044; font-size: 14px; }
+    tr:hover { background: #223044; }
+    tr:last-child td { border-bottom: none; }
+    .tenant-name { font-weight: 600; }
+    .tenant-id { font-family: monospace; font-size: 12px; color: #9fb0c3; }
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .status-active { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .status-inactive { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .status-trial { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .action-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #223044; background: transparent; color: #9fb0c3; font-size: 12px; cursor: pointer; margin-right: 8px; }
+    .action-btn:hover { background: #223044; color: #fff; }
+    .action-btn.danger { border-color: #ef4444; color: #ef4444; }
+    .action-btn.danger:hover { background: #ef4444; color: #fff; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: #1a2535; border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; }
+    .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; color: #9fb0c3; margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #223044; background: #0b0f14; color: #fff; font-size: 14px; }
+    .form-input:focus { outline: none; border-color: #3b82f6; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
+    .btn { padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: transparent; border: 1px solid #223044; color: #9fb0c3; }
+    .btn-secondary:hover { background: #223044; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <a href="admin-settings.html" class="back-btn">Back to Admin</a>
+    <span class="header-title">Tenant Management</span>
+  </div>
+  <div class="header-right">
+    <button class="add-btn" onclick="openModal()">Add Tenant</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total Tenants</div></div>
+    <div class="stat-card"><div class="stat-value" id="statActive">-</div><div class="stat-label">Active</div></div>
+    <div class="stat-card"><div class="stat-value" id="statTrial">-</div><div class="stat-label">Trial</div></div>
+    <div class="stat-card"><div class="stat-value" id="statInactive">-</div><div class="stat-label">Inactive</div></div>
+  </div>
+
+  <div class="filters">
+    <input type="text" class="filter-input" id="searchInput" placeholder="Search tenants..." oninput="loadTenants()">
+    <select class="filter-select" id="statusFilter" onchange="loadTenants()">
+      <option value="">All Status</option>
+      <option value="active">Active</option>
+      <option value="trial">Trial</option>
+      <option value="inactive">Inactive</option>
+    </select>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Tenant Name</th>
+          <th>Company</th>
+          <th>Status</th>
+          <th>Users</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tenantsBody">
+        <tr><td colspan="6" style="text-align:center;padding:40px;color:#9fb0c3;">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal" id="tenantModal">
+  <div class="modal-content">
+    <div class="modal-title" id="modalTitle">Add New Tenant</div>
+    <input type="hidden" id="tenantId">
+    <div class="form-group">
+      <label class="form-label">Tenant Name</label>
+      <input type="text" class="form-input" id="tenantName" placeholder="e.g., Acme Corp">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Company Name</label>
+      <input type="text" class="form-input" id="companyName" placeholder="e.g., Acme Corporation LLC">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Domain</label>
+      <input type="text" class="form-input" id="domain" placeholder="e.g., acme.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Dashboard URL</label>
+      <input type="text" class="form-input" id="dashboardUrl" placeholder="e.g., dashboard-business.html">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-input" id="tenantStatus">
+        <option value="active">Active</option>
+        <option value="trial">Trial</option>
+        <option value="inactive">Inactive</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Billing Email</label>
+      <input type="email" class="form-input" id="billingEmail" placeholder="billing@company.com">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTenant()">Save Tenant</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      const token = localStorage.getItem('sb_access_token');
+      const refresh = localStorage.getItem('sb_refresh_token');
+      if (token && refresh) {
+        await sb.auth.setSession({ access_token: token, refresh_token: refresh });
+      } else {
+        window.location.href = 'login.html';
+        return;
+      }
+    }
+    loadStats();
+    loadTenants();
+  }
+
+  async function loadStats() {
+    const { data: tenants } = await sb.from('tenants').select('status').neq('tenant_id', '00000000-0000-0000-0000-000000000000');
+    if (tenants) {
+      document.getElementById('statTotal').textContent = tenants.length;
+      document.getElementById('statActive').textContent = tenants.filter(t => t.status === 'active').length;
+      document.getElementById('statTrial').textContent = tenants.filter(t => t.status === 'trial').length;
+      document.getElementById('statInactive').textContent = tenants.filter(t => t.status === 'inactive').length;
+    }
+  }
+
+  async function loadTenants() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+
+    let query = sb.from('tenants').select('*').neq('tenant_id', '00000000-0000-0000-0000-000000000000').order('tenant_name');
+    if (status) query = query.eq('status', status);
+
+    const { data: tenants, error } = await query;
+    if (error) {
+      document.getElementById('tenantsBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;">Error: ' + error.message + '</td></tr>';
+      return;
+    }
+
+    let filtered = tenants || [];
+    if (search) {
+      filtered = filtered.filter(t =>
+        (t.tenant_name || '').toLowerCase().includes(search) ||
+        (t.company_name || '').toLowerCase().includes(search) ||
+        t.tenant_id.toLowerCase().includes(search)
+      );
+    }
+
+    if (filtered.length === 0) {
+      document.getElementById('tenantsBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9fb0c3;padding:40px;">No tenants found</td></tr>';
+      return;
+    }
+
+    document.getElementById('tenantsBody').innerHTML = filtered.map(t => `
+      <tr>
+        <td>
+          <div class="tenant-name">${escapeHtml(t.tenant_name || 'Unknown')}</div>
+          <div class="tenant-id">${t.tenant_id}</div>
+        </td>
+        <td>${escapeHtml(t.company_name || '-')}</td>
+        <td><span class="status-badge status-${t.status || 'active'}">${t.status || 'active'}</span></td>
+        <td>${t.total_users || 0}</td>
+        <td>${formatDate(t.created_at)}</td>
+        <td>
+          <button class="action-btn" onclick="editTenant('${t.tenant_id}')">Edit</button>
+          <button class="action-btn danger" onclick="deleteTenant('${t.tenant_id}')">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function openModal(tenantId = null) {
+    document.getElementById('modalTitle').textContent = tenantId ? 'Edit Tenant' : 'Add New Tenant';
+    document.getElementById('tenantId').value = tenantId || '';
+    if (!tenantId) {
+      document.getElementById('tenantName').value = '';
+      document.getElementById('companyName').value = '';
+      document.getElementById('domain').value = '';
+      document.getElementById('dashboardUrl').value = 'dashboard-business.html';
+      document.getElementById('tenantStatus').value = 'active';
+      document.getElementById('billingEmail').value = '';
+    }
+    document.getElementById('tenantModal').classList.add('active');
+  }
+
+  function closeModal() {
+    document.getElementById('tenantModal').classList.remove('active');
+  }
+
+  async function editTenant(tenantId) {
+    const { data: tenant } = await sb.from('tenants').select('*').eq('tenant_id', tenantId).single();
+    if (tenant) {
+      document.getElementById('tenantId').value = tenant.tenant_id;
+      document.getElementById('tenantName').value = tenant.tenant_name || '';
+      document.getElementById('companyName').value = tenant.company_name || '';
+      document.getElementById('domain').value = tenant.domain || '';
+      document.getElementById('dashboardUrl').value = tenant.dashboard_url || 'dashboard-business.html';
+      document.getElementById('tenantStatus').value = tenant.status || 'active';
+      document.getElementById('billingEmail').value = tenant.billing_email || '';
+      openModal(tenantId);
+    }
+  }
+
+  async function saveTenant() {
+    const tenantId = document.getElementById('tenantId').value;
+    const data = {
+      tenant_name: document.getElementById('tenantName').value,
+      company_name: document.getElementById('companyName').value,
+      domain: document.getElementById('domain').value,
+      dashboard_url: document.getElementById('dashboardUrl').value,
+      status: document.getElementById('tenantStatus').value,
+      billing_email: document.getElementById('billingEmail').value,
+      updated_at: new Date().toISOString()
+    };
+
+    let error;
+    if (tenantId) {
+      ({ error } = await sb.from('tenants').update(data).eq('tenant_id', tenantId));
+    } else {
+      data.tenant_id = crypto.randomUUID();
+      data.created_at = new Date().toISOString();
+      ({ error } = await sb.from('tenants').insert(data));
+    }
+
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      closeModal();
+      loadStats();
+      loadTenants();
+    }
+  }
+
+  async function deleteTenant(tenantId) {
+    if (!confirm('Are you sure you want to delete this tenant? This cannot be undone.')) return;
+    const { error } = await sb.from('tenants').delete().eq('tenant_id', tenantId);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      loadStats();
+      loadTenants();
+    }
+  }
+
+  function formatDate(d) {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  init();
+</script>
+</body>
+</html>
