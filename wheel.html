@@ -903,14 +903,14 @@
     return normAngle(slotCenter);
   }
 
-  // Check if angle is in the hidden zone (matches the cover: ~3 o'clock to ~9 o'clock)
+  // Check if angle is in the hidden zone (matches the cover: bottom half from ~3 o'clock to ~9 o'clock)
   function isInHiddenZone(ang) {
     const a = normAngle(ang);
-    // Cover is from 0.12*PI to 0.88*PI (just past 3 o'clock to just before 9 o'clock)
+    // Cover is from 0.12*PI to 0.88*PI (bottom half of wheel)
     return a > Math.PI * 0.12 && a < Math.PI * 0.88;
   }
 
-  // Update magic slots - repopulate when crossing into hidden zone
+  // Update magic slots - repopulate when crossing into OR out of hidden zone (either direction)
   function updateMagicSlots() {
     if (N <= VISIBLE_SLOTS) return;  // No magic needed if 6 or fewer members
 
@@ -918,12 +918,11 @@
       const currentAng = getSlotAngle(i);
       const prevAng = prevSlotAngles[i];
       
-      // Check if slot just entered hidden zone
       const wasHidden = isInHiddenZone(prevAng);
       const isHidden = isInHiddenZone(currentAng);
       
+      // Repopulate when slot ENTERS the hidden zone (from either direction)
       if (!wasHidden && isHidden) {
-        // Slot just went under the cover - assign next member
         slotMembers[i] = nextMemberIdx;
         nextMemberIdx = (nextMemberIdx + 1) % N;
       }
@@ -1245,20 +1244,13 @@
     // Update magic slots (repopulate when crossing into hidden zone)
     updateMagicSlots();
 
-    // Check for slot change under pointer
-    const slot = pointerSlot();
-    const memberIdx = pointerMemberIndex();
+    // Check for slot change under pointer and update center
+    checkSelectionChange();
     
-    if (slot !== lastPointerIdx && memberIdx >= 0) {
-      lastPointerIdx = slot;
-      updateCenter(memberIdx);
-      tickSound(Math.min(1, 0.3 + Math.abs(vel) * 2));
+    // Apply click loss when slot changes
+    const slot = pointerSlot();
+    if (slot !== lastPointerIdx) {
       vel *= clickLoss;
-
-      // Highlight in list
-      document.querySelectorAll('.family-item').forEach((el, i) => {
-        el.classList.toggle('selected', i === memberIdx);
-      });
     }
   }
 
@@ -1293,6 +1285,12 @@
     
     angle += delta;
     
+    // Update magic slots during drag too!
+    updateMagicSlots();
+    
+    // Check if selection changed - update center immediately
+    checkSelectionChange();
+    
     // Calculate velocity for momentum
     const dt = now - lastTime;
     if (dt > 0) {
@@ -1302,6 +1300,23 @@
     lastAngle = newAngle;
     lastTime = now;
     render();
+  }
+
+  // Check if the slot under pointer changed and update center
+  function checkSelectionChange() {
+    const slot = pointerSlot();
+    const memberIdx = pointerMemberIndex();
+    
+    if (slot !== lastPointerIdx && memberIdx >= 0) {
+      lastPointerIdx = slot;
+      updateCenter(memberIdx);
+      tickSound(Math.min(1, 0.4 + Math.abs(vel) * 1.5));
+      
+      // Highlight in list
+      document.querySelectorAll('.family-item').forEach((el, i) => {
+        el.classList.toggle('selected', i === memberIdx);
+      });
+    }
   }
 
   function onPointerUp(e) {
