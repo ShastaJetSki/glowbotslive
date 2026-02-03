@@ -178,6 +178,11 @@
     place-items: center;
     user-select: none;
     touch-action: none;
+    cursor: grab;
+  }
+
+  .wheel-shell:active {
+    cursor: grabbing;
   }
 
   canvas {
@@ -648,8 +653,7 @@
           </div>
 
           <div class="wheel-hint">
-            Drag the wheel to spin manually, or use the buttons.<br/>
-            The wheel has realistic tension and clicky detents.
+            <span id="wheelHint">Grab and spin the wheel, or use the buttons below</span>
           </div>
         </div>
       </div>
@@ -741,11 +745,8 @@
   // ============================================================
   const SUPABASE_URL = 'YOUR_SUPABASE_URL';
   const SUPABASE_KEY = 'YOUR_SUPABASE_KEY';
-  
-  // Demo mode - set to false when using real Supabase
   const DEMO_MODE = true;
 
-  // Demo family members
   const DEMO_MEMBERS = [
     { id: 1, name: "Sarah", relationship: "Daughter", photo_url: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face" },
     { id: 2, name: "Michael", relationship: "Son", photo_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face" },
@@ -782,27 +783,24 @@
   const TAU = Math.PI * 2;
   const ctx = canvas.getContext("2d");
 
-  // Futuristic color palette
   const sliceColors = [
     "#0ea5e9", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ec4899",
     "#06b6d4", "#10b981", "#6366f1", "#f97316", "#d946ef"
   ];
 
-  // Physics settings
-  const friction = 0.985;
-  const maxVel = 0.40;
-  const detentStrength = 0.020;
-  const detentDamping = 0.11;
-  const clickLossBase = 0.86;
-  const coverCropBias = 0.58;
-  const imgScale = 1.18;
+  // Physics
+  const friction = 0.988;
+  const maxVel = 0.45;
+  const detentStrength = 0.018;
+  const detentDamping = 0.12;
+  const clickLoss = 0.88;
 
   // ---- State
   let angle = 0;
   let vel = 0;
   let dragging = false;
-  let dragStartAngle = 0;
-  let dragStartRot = 0;
+  let lastAngle = 0;
+  let lastTime = 0;
   let lastPointerIdx = -1;
   let MEMBERS = [];
   let N = 0;
@@ -810,7 +808,7 @@
   let audioCtx = null;
   let pendingPhotoData = null;
 
-  // ---- Audio
+  // ---- Audio click
   function tickSound(intensity = 1) {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -820,15 +818,15 @@
       o.type = "sine";
       o.frequency.setValueAtTime(600 + 400 * intensity, t);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.06 * intensity, t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.08 * intensity, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
       o.connect(g).connect(audioCtx.destination);
       o.start(t);
-      o.stop(t + 0.05);
+      o.stop(t + 0.06);
     } catch (e) {}
   }
 
-  // ---- Canvas
+  // ---- Canvas setup
   function resize() {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const r = shell.getBoundingClientRect();
@@ -837,80 +835,84 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function normRad(a) {
+  // Normalize angle to 0..TAU
+  function normAngle(a) {
     a = a % TAU;
-    if (a < 0) a += TAU;
-    return a;
+    return a < 0 ? a + TAU : a;
   }
 
+  // Get index of slice under pointer (top)
   function pointerIndex() {
     if (N === 0) return -1;
-    const a = normRad(-angle);
+    // Slice 0 is at top when angle = 0
+    // Positive angle rotates clockwise, so slice under pointer decreases
+    const a = normAngle(-angle);
     return Math.floor((a + slice / 2) / slice) % N;
   }
 
-  function nearestDetentTarget() {
-    const a = normRad(angle);
-    const k = Math.round(a / slice);
-    return k * slice;
+  // Target angle to center current slice under pointer
+  function nearestDetent() {
+    const idx = pointerIndex();
+    return -idx * slice;
   }
 
-  function angDiff(a, b) {
+  // Angle difference handling wrap-around
+  function angleDiff(a, b) {
     let d = (a - b) % TAU;
     if (d > Math.PI) d -= TAU;
     if (d < -Math.PI) d += TAU;
     return d;
   }
 
-  function drawWedgeImage(img, cx, cy, innerR, outerR, start, end) {
+  // ---- Draw wedge image (head toward rim, chest toward center, 60% opacity)
+  function drawWedgeImage(img, cx, cy, innerR, outerR, startAngle, endAngle) {
     ctx.save();
     ctx.translate(cx, cy);
 
+    // Clip to wedge
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, outerR, start, end);
+    ctx.arc(0, 0, outerR, startAngle, endAngle);
     ctx.closePath();
     ctx.clip();
 
-    const mid = (start + end) / 2;
-    ctx.rotate(mid);
+    // Rotate canvas so wedge center points up
+    const midAngle = (startAngle + endAngle) / 2;
+    ctx.rotate(midAngle + Math.PI / 2);
 
+    // Image placement: head at top (toward rim), chest at bottom (toward center)
     const span = outerR - innerR;
-    const rectH = span * 1.08;
-    const rectW = rectH * 0.78;
-    const yOut = -(innerR + span * coverCropBias);
-    const rectY = yOut - rectH * 0.50;
-    const rectX = -rectW / 2;
+    const imgH = span * 0.95;
+    const imgW = imgH * 0.8;
+    
+    // Position: center in slice, pushed toward outer edge
+    const dist = innerR + span * 0.55;
+    const x = -imgW / 2;
+    const y = -dist - imgH * 0.45;
 
-    const sW = img.naturalWidth;
-    const sH = img.naturalHeight;
-    const tW = rectW * imgScale;
-    const tH = rectH * imgScale;
-    const scale = Math.max(tW / sW, tH / sH);
-    const dW = sW * scale;
-    const dH = sH * scale;
-    const dx = rectX + (rectW - dW) / 2;
-    const dy = rectY + (rectH - dH) / 2;
+    // Scale to cover
+    const scaleX = imgW / img.naturalWidth;
+    const scaleY = imgH / img.naturalHeight;
+    const sc = Math.max(scaleX, scaleY) * 1.2;
+    const dw = img.naturalWidth * sc;
+    const dh = img.naturalHeight * sc;
+    const dx = x + (imgW - dw) / 2;
+    const dy = y + (imgH - dh) / 2;
 
-    ctx.globalAlpha = 0.95;
-    ctx.drawImage(img, dx, dy, dW, dH);
-
-    // Vignette
-    const grad = ctx.createRadialGradient(0, yOut, innerR * 0.2, 0, yOut, outerR * 0.95);
-    grad.addColorStop(0, "rgba(0,0,0,0.00)");
-    grad.addColorStop(1, "rgba(0,0,0,0.25)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(-outerR, -outerR, outerR * 2, outerR * 2);
+    // 60% opacity
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(img, dx, dy, dw, dh);
 
     ctx.restore();
   }
 
+  // ---- Draw wheel
   function drawWheel() {
     const w = shell.clientWidth;
     const h = shell.clientHeight;
     const cx = w / 2, cy = h / 2;
     const outerR = Math.min(w, h) / 2 - 8;
-    const innerR = outerR * 0.34;
+    const innerR = outerR * 0.35;
     const rimR = outerR - 4;
 
     ctx.clearRect(0, 0, w, h);
@@ -935,23 +937,27 @@
       return;
     }
 
-    // Background glow
+    // Outer glow
     ctx.save();
     ctx.translate(cx, cy);
+    const glow = ctx.createRadialGradient(0, 0, outerR * 0.8, 0, 0, outerR + 25);
+    glow.addColorStop(0, "transparent");
+    glow.addColorStop(1, "rgba(14, 165, 233, 0.12)");
     ctx.beginPath();
-    ctx.arc(0, 0, outerR + 20, 0, TAU);
-    const glowGrad = ctx.createRadialGradient(0, 0, outerR * 0.8, 0, 0, outerR + 30);
-    glowGrad.addColorStop(0, "transparent");
-    glowGrad.addColorStop(1, "rgba(14, 165, 233, 0.15)");
-    ctx.fillStyle = glowGrad;
+    ctx.arc(0, 0, outerR + 25, 0, TAU);
+    ctx.fillStyle = glow;
     ctx.fill();
     ctx.restore();
 
+    // Draw slices
     for (let i = 0; i < N; i++) {
-      const start = angle + i * slice - slice / 2;
-      const end = start + slice;
+      // Slice i is centered at top when angle = -i * slice
+      // Current position: top is at -PI/2 in canvas coords
+      const sliceCenter = -Math.PI / 2 + angle + i * slice;
+      const start = sliceCenter - slice / 2;
+      const end = sliceCenter + slice / 2;
 
-      // Slice color
+      // Background color
       ctx.save();
       ctx.translate(cx, cy);
       ctx.beginPath();
@@ -959,7 +965,7 @@
       ctx.arc(0, 0, rimR, start, end);
       ctx.closePath();
       ctx.fillStyle = sliceColors[i % sliceColors.length];
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = 0.75;
       ctx.fill();
       ctx.restore();
 
@@ -967,24 +973,24 @@
       const img = MEMBERS[i].img;
       if (img) drawWedgeImage(img, cx, cy, innerR, rimR, start, end);
 
-      // Separator
+      // Separator line
       ctx.save();
       ctx.translate(cx, cy);
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(Math.cos(start) * rimR, Math.sin(start) * rimR);
-      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
     }
 
-    // Inner ring glow
+    // Inner ring
     ctx.save();
     ctx.translate(cx, cy);
     ctx.beginPath();
-    ctx.arc(0, 0, innerR + 8, 0, TAU);
-    ctx.strokeStyle = "rgba(45, 212, 191, 0.4)";
+    ctx.arc(0, 0, innerR + 6, 0, TAU);
+    ctx.strokeStyle = "rgba(45, 212, 191, 0.5)";
     ctx.lineWidth = 3;
     ctx.stroke();
     ctx.restore();
@@ -994,32 +1000,29 @@
     ctx.translate(cx, cy);
     ctx.beginPath();
     ctx.arc(0, 0, outerR, 0, TAU);
-    ctx.strokeStyle = "rgba(14, 165, 233, 0.5)";
-    ctx.lineWidth = 8;
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.6)";
+    ctx.lineWidth = 6;
     ctx.stroke();
     ctx.restore();
   }
 
+  // ---- Update center display
   function updateCenter(idx) {
     if (idx < 0 || idx >= MEMBERS.length) return;
     const m = MEMBERS[idx];
     const photoUrl = m.photo_url || m.src;
     const initials = m.name.charAt(0).toUpperCase();
-    
-    // Update label
+
     centerLabel.textContent = m.name;
     selOut.textContent = m.name;
-    
-    // Set initials as backup
     centerInitials.textContent = initials;
-    
-    // Try to load image
+
     if (photoUrl) {
-      centerImg.onload = function() {
+      centerImg.onload = () => {
         centerImg.classList.remove('hidden');
         centerInitials.classList.remove('visible');
       };
-      centerImg.onerror = function() {
+      centerImg.onerror = () => {
         centerImg.classList.add('hidden');
         centerInitials.classList.add('visible');
       };
@@ -1031,8 +1034,8 @@
   }
 
   function updateDebug() {
-    rotOut.textContent = `${(normRad(angle) * 180 / Math.PI).toFixed(1)}°`;
-    velOut.textContent = `${vel.toFixed(3)}`;
+    rotOut.textContent = `${(normAngle(angle) * 180 / Math.PI).toFixed(1)}°`;
+    velOut.textContent = vel.toFixed(3);
   }
 
   function render() {
@@ -1040,38 +1043,102 @@
     updateDebug();
   }
 
+  // ---- Physics
   function applyPhysics() {
     if (dragging || N === 0) return;
 
     vel *= friction;
 
-    const target = nearestDetentTarget();
-    const err = angDiff(angle, target);
-    const spring = (-err) * detentStrength;
-    const damp = -vel * detentDamping;
-    const slowFactor = Math.max(0, 1 - (Math.abs(vel) / 0.20));
-    vel += (spring + damp) * (0.35 + 0.65 * slowFactor);
+    // Spring to nearest detent
+    const target = nearestDetent();
+    const err = angleDiff(target, angle);
+    const slowFactor = Math.max(0, 1 - Math.abs(vel) / 0.15);
+    vel += err * detentStrength * (0.4 + 0.6 * slowFactor);
+    vel -= vel * detentDamping * slowFactor;
+
     vel = Math.max(-maxVel, Math.min(maxVel, vel));
     angle += vel;
 
+    // Check for slice change
     const idx = pointerIndex();
     if (idx !== lastPointerIdx && idx >= 0) {
       lastPointerIdx = idx;
       updateCenter(idx);
-      const intensity = Math.min(1, 0.3 + Math.abs(vel) * 2.5);
-      tickSound(intensity);
-      vel *= (clickLossBase - 0.10 * Math.min(1, Math.abs(vel) * 3));
+      tickSound(Math.min(1, 0.3 + Math.abs(vel) * 2));
+      vel *= clickLoss;
 
-      // Highlight selected in list
+      // Highlight in list
       document.querySelectorAll('.family-item').forEach((el, i) => {
         el.classList.toggle('selected', i === idx);
       });
     }
   }
 
-  // ---- Controls
+  // ---- Pointer/Touch handling
+  function getAngle(clientX, clientY) {
+    const r = shell.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx);
+  }
+
+  function onPointerDown(e) {
+    e.preventDefault();
+    dragging = true;
+    vel = 0;
+    lastAngle = getAngle(e.clientX, e.clientY);
+    lastTime = performance.now();
+    shell.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    
+    const now = performance.now();
+    const newAngle = getAngle(e.clientX, e.clientY);
+    let delta = newAngle - lastAngle;
+    
+    // Handle wrap-around
+    if (delta > Math.PI) delta -= TAU;
+    if (delta < -Math.PI) delta += TAU;
+    
+    angle += delta;
+    
+    // Calculate velocity for momentum
+    const dt = now - lastTime;
+    if (dt > 0) {
+      vel = delta / (dt / 16.67) * 0.8; // Scale to ~60fps
+    }
+    
+    lastAngle = newAngle;
+    lastTime = now;
+    render();
+  }
+
+  function onPointerUp(e) {
+    if (!dragging) return;
+    dragging = false;
+    shell.releasePointerCapture(e.pointerId);
+    
+    // Clamp velocity
+    vel = Math.max(-maxVel, Math.min(maxVel, vel));
+  }
+
+  // Attach pointer events
+  shell.addEventListener("pointerdown", onPointerDown);
+  shell.addEventListener("pointermove", onPointerMove);
+  shell.addEventListener("pointerup", onPointerUp);
+  shell.addEventListener("pointercancel", onPointerUp);
+  shell.addEventListener("pointerleave", onPointerUp);
+
+  // Prevent default touch behavior
+  shell.addEventListener("touchstart", e => e.preventDefault(), { passive: false });
+  shell.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+
+  // ---- Button controls
   function nudge(dir) {
-    vel += dir * 0.085;
+    vel += dir * 0.1;
     vel = Math.max(-maxVel, Math.min(maxVel, vel));
   }
 
@@ -1079,10 +1146,10 @@
   fwdBtn.addEventListener("click", () => nudge(1));
   spinBtn.addEventListener("click", () => {
     const dir = Math.random() < 0.5 ? -1 : 1;
-    vel = dir * (0.18 + Math.random() * 0.20);
+    vel = dir * (0.2 + Math.random() * 0.2);
   });
   stopBtn.addEventListener("click", () => {
-    vel *= 0.20;
+    vel *= 0.15;
     if (Math.abs(vel) < 0.01) vel = 0;
   });
 
@@ -1090,33 +1157,6 @@
     if (e.key === "ArrowLeft") nudge(-1);
     if (e.key === "ArrowRight") nudge(1);
   });
-
-  // ---- Drag
-  function getAngleFromCenter(clientX, clientY) {
-    const r = shell.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    return Math.atan2(clientY - cy, clientX - cx) + Math.PI / 2;
-  }
-
-  shell.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    shell.setPointerCapture?.(e.pointerId);
-    dragging = true;
-    vel = 0;
-    dragStartRot = angle;
-    dragStartAngle = getAngleFromCenter(e.clientX, e.clientY);
-  });
-
-  window.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const a = getAngleFromCenter(e.clientX, e.clientY);
-    angle = dragStartRot + (a - dragStartAngle);
-    render();
-  });
-
-  window.addEventListener("pointerup", () => { dragging = false; });
-  window.addEventListener("pointercancel", () => { dragging = false; });
 
   // ---- Family List
   function renderFamilyList() {
@@ -1172,7 +1212,6 @@
       return;
     }
 
-    // Create new member
     const newMember = {
       id: Date.now(),
       name: name,
@@ -1181,7 +1220,6 @@
       img: null
     };
 
-    // Load image
     const img = new Image();
     img.onload = () => {
       newMember.img = img;
@@ -1191,14 +1229,12 @@
       renderFamilyList();
       render();
       
-      // Update center with current selection
       const idx = pointerIndex();
       if (idx >= 0) {
         lastPointerIdx = idx;
         updateCenter(idx);
       }
 
-      // Reset form
       memberName.value = "";
       memberRelation.value = "";
       photoInput.value = "";
@@ -1229,7 +1265,7 @@
     }
   };
 
-  // ---- Download Photos
+  // ---- Download
   downloadBtn.addEventListener("click", async () => {
     if (MEMBERS.length === 0) {
       alert("No family members to download");
@@ -1247,13 +1283,11 @@
         const m = MEMBERS[i];
         const url = m.photo_url || m.src;
         
-        // For data URLs, extract the base64
         if (url.startsWith("data:")) {
           const base64 = url.split(",")[1];
           const ext = url.includes("png") ? "png" : "jpg";
           folder.file(`${m.name.replace(/[^a-z0-9]/gi, '_')}_${i + 1}.${ext}`, base64, { base64: true });
         } else {
-          // For external URLs, fetch them
           try {
             const response = await fetch(url);
             const blob = await response.blob();
@@ -1279,21 +1313,16 @@
   function loadImages(members) {
     return Promise.all(members.map(m => new Promise((resolve) => {
       const im = new Image();
-      // Only set crossOrigin for data URLs or same-origin
-      const photoUrl = m.photo_url || m.src;
-      if (photoUrl && !photoUrl.startsWith('data:')) {
-        // Try without crossOrigin first for external images
-        im.crossOrigin = "anonymous";
-      }
+      im.crossOrigin = "anonymous";
       im.onload = () => resolve({ ...m, img: im, ok: true });
       im.onerror = () => {
-        // Retry without crossOrigin if it failed
+        // Retry without crossOrigin
         const im2 = new Image();
         im2.onload = () => resolve({ ...m, img: im2, ok: true });
         im2.onerror = () => resolve({ ...m, img: null, ok: false });
-        im2.src = photoUrl;
+        im2.src = m.photo_url || m.src;
       };
-      im.src = photoUrl;
+      im.src = m.photo_url || m.src;
     })));
   }
 
@@ -1301,18 +1330,7 @@
   async function init() {
     resize();
 
-    // Load members (demo or from Supabase)
     let membersData = DEMO_MODE ? DEMO_MEMBERS : [];
-
-    if (!DEMO_MODE) {
-      // TODO: Load from Supabase
-      // const { data, error } = await supabase
-      //   .from('gone_family_members')
-      //   .select('*')
-      //   .eq('is_active', true)
-      //   .order('display_order');
-      // if (data) membersData = data;
-    }
 
     const loaded = await loadImages(membersData);
     MEMBERS = loaded.filter(x => x.ok && x.img);
@@ -1326,7 +1344,6 @@
       if (lastPointerIdx < 0) lastPointerIdx = 0;
       updateCenter(lastPointerIdx);
       
-      // Highlight initial selection in list
       document.querySelectorAll('.family-item').forEach((el, i) => {
         el.classList.toggle('selected', i === lastPointerIdx);
       });
