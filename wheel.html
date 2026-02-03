@@ -803,10 +803,18 @@
   let lastTime = 0;
   let lastPointerIdx = -1;
   let MEMBERS = [];
-  let N = 0;
-  let slice = 0;
+  let N = 0;  // Total family members
   let audioCtx = null;
   let pendingPhotoData = null;
+
+  // === MAGIC WHEEL CONFIG ===
+  const VISIBLE_SLOTS = 6;  // Always appears to have 6 slices
+  const slice = TAU / VISIBLE_SLOTS;  // Each slice is 60 degrees
+  
+  // Track which member is in each visual slot
+  let slotMembers = [0, 1, 2, 3, 4, 5];  // Member indices for slots 0-5
+  let nextMemberIdx = 0;  // Next member to load when slot goes under cover
+  let prevSlotAngles = [];  // Track previous angles to detect crossing
 
   // ---- Audio click
   function tickSound(intensity = 1) {
@@ -841,19 +849,23 @@
     return a < 0 ? a + TAU : a;
   }
 
-  // Get index of slice under pointer (top)
-  function pointerIndex() {
-    if (N === 0) return -1;
-    // Slice 0 is at top when angle = 0
-    // Positive angle rotates clockwise, so slice under pointer decreases
+  // Get which visual SLOT is under the pointer (0-5)
+  function pointerSlot() {
     const a = normAngle(-angle);
-    return Math.floor((a + slice / 2) / slice) % N;
+    return Math.floor((a + slice / 2) / slice) % VISIBLE_SLOTS;
   }
 
-  // Target angle to center current slice under pointer
+  // Get the actual MEMBER index under the pointer
+  function pointerMemberIndex() {
+    if (N === 0) return -1;
+    const slot = pointerSlot();
+    return slotMembers[slot] % N;
+  }
+
+  // Target angle to center current slot under pointer
   function nearestDetent() {
-    const idx = pointerIndex();
-    return -idx * slice;
+    const slot = pointerSlot();
+    return -slot * slice;
   }
 
   // Angle difference handling wrap-around
@@ -862,6 +874,53 @@
     if (d > Math.PI) d -= TAU;
     if (d < -Math.PI) d += TAU;
     return d;
+  }
+
+  // Initialize slot assignments
+  function initSlots() {
+    slotMembers = [];
+    for (let i = 0; i < VISIBLE_SLOTS; i++) {
+      slotMembers[i] = i % Math.max(1, N);
+    }
+    nextMemberIdx = VISIBLE_SLOTS % Math.max(1, N);
+    prevSlotAngles = [];
+    for (let i = 0; i < VISIBLE_SLOTS; i++) {
+      prevSlotAngles[i] = getSlotAngle(i);
+    }
+  }
+
+  // Get the current angle of a slot's center (relative to top = -PI/2)
+  function getSlotAngle(slotIdx) {
+    const slotCenter = -Math.PI / 2 + angle + slotIdx * slice;
+    return normAngle(slotCenter);
+  }
+
+  // Check if angle is in the hidden zone (bottom half: PI/2 to 3*PI/2, i.e., 3 o'clock to 9 o'clock going down)
+  function isInHiddenZone(ang) {
+    const a = normAngle(ang);
+    return a > Math.PI * 0.4 && a < Math.PI * 1.6;  // Roughly 3 o'clock to 9 o'clock
+  }
+
+  // Update magic slots - repopulate when crossing into hidden zone
+  function updateMagicSlots() {
+    if (N <= VISIBLE_SLOTS) return;  // No magic needed if 6 or fewer members
+
+    for (let i = 0; i < VISIBLE_SLOTS; i++) {
+      const currentAng = getSlotAngle(i);
+      const prevAng = prevSlotAngles[i];
+      
+      // Check if slot just entered hidden zone
+      const wasHidden = isInHiddenZone(prevAng);
+      const isHidden = isInHiddenZone(currentAng);
+      
+      if (!wasHidden && isHidden) {
+        // Slot just went under the cover - assign next member
+        slotMembers[i] = nextMemberIdx;
+        nextMemberIdx = (nextMemberIdx + 1) % N;
+      }
+      
+      prevSlotAngles[i] = currentAng;
+    }
   }
 
   // ---- Draw wedge image (head toward rim, chest toward center, 60% opacity)
@@ -934,6 +993,7 @@
       ctx.fillText("Add family members", 0, -10);
       ctx.fillText("to spin the wheel", 0, 15);
       ctx.restore();
+      drawCover(cx, cy, outerR, innerR);
       return;
     }
 
@@ -949,13 +1009,16 @@
     ctx.fill();
     ctx.restore();
 
-    // Draw slices
-    for (let i = 0; i < N; i++) {
-      // Slice i is centered at top when angle = -i * slice
-      // Current position: top is at -PI/2 in canvas coords
-      const sliceCenter = -Math.PI / 2 + angle + i * slice;
-      const start = sliceCenter - slice / 2;
-      const end = sliceCenter + slice / 2;
+    // Draw all 6 visible slots
+    for (let i = 0; i < VISIBLE_SLOTS; i++) {
+      // Slot i center position
+      const slotCenter = -Math.PI / 2 + angle + i * slice;
+      const start = slotCenter - slice / 2;
+      const end = slotCenter + slice / 2;
+
+      // Get the member assigned to this slot
+      const memberIdx = slotMembers[i] % N;
+      const member = MEMBERS[memberIdx];
 
       // Background color
       ctx.save();
@@ -964,14 +1027,15 @@
       ctx.moveTo(0, 0);
       ctx.arc(0, 0, rimR, start, end);
       ctx.closePath();
-      ctx.fillStyle = sliceColors[i % sliceColors.length];
+      ctx.fillStyle = sliceColors[memberIdx % sliceColors.length];
       ctx.globalAlpha = 0.75;
       ctx.fill();
       ctx.restore();
 
-      // Photo
-      const img = MEMBERS[i].img;
-      if (img) drawWedgeImage(img, cx, cy, innerR, rimR, start, end);
+      // Photo (60% opacity)
+      if (member && member.img) {
+        drawWedgeImage(member.img, cx, cy, innerR, rimR, start, end);
+      }
 
       // Separator line
       ctx.save();
@@ -1000,9 +1064,81 @@
     ctx.translate(cx, cy);
     ctx.beginPath();
     ctx.arc(0, 0, outerR, 0, TAU);
-    ctx.strokeStyle = "rgba(14, 165, 233, 0.6)";
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.5)";
     ctx.lineWidth = 6;
     ctx.stroke();
+    ctx.restore();
+
+    // Draw the magic cover over bottom half
+    drawCover(cx, cy, outerR, innerR);
+  }
+
+  // Draw the futuristic cover over bottom half (3 o'clock to 9 o'clock)
+  function drawCover(cx, cy, outerR, innerR) {
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Cover arc from 3 o'clock (0) to 9 o'clock (PI), going through bottom (PI/2)
+    const coverStart = Math.PI * 0.15;  // Just past 3 o'clock
+    const coverEnd = Math.PI * 0.85;    // Just before 9 o'clock
+    
+    // Main cover - dark with gradient
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, outerR + 15, coverStart, coverEnd);
+    ctx.closePath();
+    
+    const coverGrad = ctx.createLinearGradient(0, 0, 0, outerR);
+    coverGrad.addColorStop(0, "rgba(10, 10, 10, 0.95)");
+    coverGrad.addColorStop(0.5, "rgba(15, 15, 20, 0.98)");
+    coverGrad.addColorStop(1, "rgba(10, 10, 10, 0.95)");
+    ctx.fillStyle = coverGrad;
+    ctx.fill();
+
+    // Futuristic edge glow on cover
+    ctx.beginPath();
+    ctx.arc(0, 0, outerR + 12, coverStart, coverEnd);
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.4)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Inner edge of cover
+    ctx.beginPath();
+    ctx.arc(0, 0, innerR - 5, coverStart, coverEnd);
+    ctx.strokeStyle = "rgba(45, 212, 191, 0.3)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Side lines of cover
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(coverStart) * (innerR - 5), Math.sin(coverStart) * (innerR - 5));
+    ctx.lineTo(Math.cos(coverStart) * (outerR + 12), Math.sin(coverStart) * (outerR + 12));
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.5)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(coverEnd) * (innerR - 5), Math.sin(coverEnd) * (innerR - 5));
+    ctx.lineTo(Math.cos(coverEnd) * (outerR + 12), Math.sin(coverEnd) * (outerR + 12));
+    ctx.stroke();
+
+    // Decorative circuit-like lines on cover
+    const midAngle = Math.PI / 2;
+    for (let i = 0; i < 3; i++) {
+      const r = innerR + (outerR - innerR) * (0.3 + i * 0.25);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, coverStart + 0.1, coverEnd - 0.1);
+      ctx.strokeStyle = `rgba(14, 165, 233, ${0.15 - i * 0.04})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // "LOADING" dots animation hint
+    ctx.fillStyle = "rgba(45, 212, 191, 0.6)";
+    ctx.font = "bold 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("● ● ●", 0, outerR * 0.65);
+
     ctx.restore();
   }
 
@@ -1059,17 +1195,22 @@
     vel = Math.max(-maxVel, Math.min(maxVel, vel));
     angle += vel;
 
-    // Check for slice change
-    const idx = pointerIndex();
-    if (idx !== lastPointerIdx && idx >= 0) {
-      lastPointerIdx = idx;
-      updateCenter(idx);
+    // Update magic slots (repopulate when crossing into hidden zone)
+    updateMagicSlots();
+
+    // Check for slot change under pointer
+    const slot = pointerSlot();
+    const memberIdx = pointerMemberIndex();
+    
+    if (slot !== lastPointerIdx && memberIdx >= 0) {
+      lastPointerIdx = slot;
+      updateCenter(memberIdx);
       tickSound(Math.min(1, 0.3 + Math.abs(vel) * 2));
       vel *= clickLoss;
 
       // Highlight in list
       document.querySelectorAll('.family-item').forEach((el, i) => {
-        el.classList.toggle('selected', i === idx);
+        el.classList.toggle('selected', i === memberIdx);
       });
     }
   }
@@ -1225,14 +1366,14 @@
       newMember.img = img;
       MEMBERS.push(newMember);
       N = MEMBERS.length;
-      slice = TAU / N;
+      initSlots();  // Reinitialize magic slots
       renderFamilyList();
       render();
       
-      const idx = pointerIndex();
-      if (idx >= 0) {
-        lastPointerIdx = idx;
-        updateCenter(idx);
+      const memberIdx = pointerMemberIndex();
+      if (memberIdx >= 0) {
+        lastPointerIdx = pointerSlot();
+        updateCenter(memberIdx);
       }
 
       memberName.value = "";
@@ -1247,15 +1388,15 @@
   window.removeMember = function(index) {
     MEMBERS.splice(index, 1);
     N = MEMBERS.length;
-    slice = N > 0 ? TAU / N : 0;
     lastPointerIdx = -1;
+    initSlots();  // Reinitialize magic slots
     renderFamilyList();
     render();
     
     if (N > 0) {
-      const idx = pointerIndex();
-      lastPointerIdx = idx;
-      updateCenter(idx);
+      const memberIdx = pointerMemberIndex();
+      lastPointerIdx = pointerSlot();
+      updateCenter(memberIdx);
     } else {
       centerImg.src = "";
       centerImg.classList.add('hidden');
@@ -1335,17 +1476,21 @@
     const loaded = await loadImages(membersData);
     MEMBERS = loaded.filter(x => x.ok && x.img);
     N = MEMBERS.length;
-    slice = N > 0 ? TAU / N : 0;
+    
+    // Initialize magic wheel slots
+    initSlots();
 
     renderFamilyList();
 
     if (N > 0) {
-      lastPointerIdx = pointerIndex();
-      if (lastPointerIdx < 0) lastPointerIdx = 0;
-      updateCenter(lastPointerIdx);
+      lastPointerIdx = pointerSlot();
+      const memberIdx = pointerMemberIndex();
+      if (memberIdx >= 0) {
+        updateCenter(memberIdx);
+      }
       
       document.querySelectorAll('.family-item').forEach((el, i) => {
-        el.classList.toggle('selected', i === lastPointerIdx);
+        el.classList.toggle('selected', i === memberIdx);
       });
     }
 
