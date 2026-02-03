@@ -166,6 +166,50 @@
       padding-top: 16px;
     }
 
+    /* Drag and Drop */
+    .draggable-card {
+      cursor: grab;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+    }
+
+    .draggable-card:active {
+      cursor: grabbing;
+    }
+
+    .draggable-card.dragging {
+      opacity: 0.5;
+      transform: scale(0.98);
+      box-shadow: 0 10px 40px rgba(14, 165, 233, 0.3);
+    }
+
+    .draggable-card.drag-over {
+      border: 2px dashed var(--primary) !important;
+      background: rgba(14, 165, 233, 0.05);
+    }
+
+    .drag-handle {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #444;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .draggable-card:hover .drag-handle {
+      opacity: 1;
+    }
+
+    .section {
+      position: relative;
+    }
+
     /* Assistant Mini Dashboard */
     .assistant-mini {
       padding: 0 !important;
@@ -1835,9 +1879,9 @@
     </div>
 
     <!-- Three Column: Assistant, Life Story, & Messaging -->
-    <div class="three-col">
+    <div class="three-col" id="dragContainer">
       <!-- Assistant Mini Dashboard -->
-      <div class="section assistant-mini">
+      <div class="section assistant-mini draggable-card" draggable="true" data-card="assistant">
         <div class="assistant-center">
           <div class="glowbot-container">
             <div class="glowbot-glow"></div>
@@ -1863,7 +1907,7 @@
       </div>
 
       <!-- Current Question -->
-      <div class="section">
+      <div class="section draggable-card" draggable="true" data-card="lifestory">
         <div class="section-header">
           <div class="section-title">Life Story</div>
           <div class="question-progress" id="questionProgress">0 of 48</div>
@@ -1885,7 +1929,7 @@
       </div>
 
       <!-- Messaging Card -->
-      <div class="section message-card">
+      <div class="section message-card draggable-card" draggable="true" data-card="messaging">
         <div class="section-header msg-header-with-tabs">
           <div class="header-tabs">
             <button class="header-tab" onclick="switchMsgTab('memory', this)">Memory</button>
@@ -2803,6 +2847,95 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('msgDate').value = '';
     document.getElementById('msgText').value = '';
   };
+  // Drag and Drop functionality for cards
+  function initDragAndDrop() {
+    const container = document.getElementById('dragContainer');
+    const cards = container.querySelectorAll('.draggable-card');
+    let draggedCard = null;
+
+    cards.forEach(card => {
+      // Add drag handle icon
+      const handle = document.createElement('div');
+      handle.className = 'drag-handle';
+      handle.innerHTML = '⋮⋮';
+      card.appendChild(handle);
+
+      card.addEventListener('dragstart', (e) => {
+        draggedCard = card;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.dataset.card);
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        cards.forEach(c => c.classList.remove('drag-over'));
+        draggedCard = null;
+        
+        // Save order to localStorage
+        saveCardOrder();
+      });
+
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (card !== draggedCard) {
+          card.classList.add('drag-over');
+        }
+      });
+
+      card.addEventListener('dragleave', () => {
+        card.classList.remove('drag-over');
+      });
+
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        
+        if (draggedCard && card !== draggedCard) {
+          // Get positions
+          const allCards = [...container.querySelectorAll('.draggable-card')];
+          const draggedIndex = allCards.indexOf(draggedCard);
+          const dropIndex = allCards.indexOf(card);
+          
+          // Swap positions
+          if (draggedIndex < dropIndex) {
+            card.parentNode.insertBefore(draggedCard, card.nextSibling);
+          } else {
+            card.parentNode.insertBefore(draggedCard, card);
+          }
+        }
+      });
+    });
+
+    // Load saved order
+    loadCardOrder();
+  }
+
+  function saveCardOrder() {
+    const container = document.getElementById('dragContainer');
+    const cards = container.querySelectorAll('.draggable-card');
+    const order = [...cards].map(card => card.dataset.card);
+    localStorage.setItem('goneCardOrder', JSON.stringify(order));
+  }
+
+  function loadCardOrder() {
+    const savedOrder = localStorage.getItem('goneCardOrder');
+    if (!savedOrder) return;
+    
+    const order = JSON.parse(savedOrder);
+    const container = document.getElementById('dragContainer');
+    
+    order.forEach(cardId => {
+      const card = container.querySelector(`[data-card="${cardId}"]`);
+      if (card) {
+        container.appendChild(card);
+      }
+    });
+  }
+
+  // Initialize drag and drop after DOM is ready
+  initDragAndDrop();
   
   init();
 });
