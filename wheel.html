@@ -9,9 +9,7 @@
       --wheel-size: 420px;
       --rim: 12px;
       --bg: #0b1020;
-      --panel: #101a33;
       --text: #e8eeff;
-      --muted: #9bb0ff;
       --shadow: 0 18px 45px rgba(0,0,0,.45);
     }
     *{box-sizing:border-box}
@@ -89,26 +87,6 @@
       pointer-events:none;
     }
 
-    /* center cap */
-    .cap{
-      position:absolute;
-      width:92px; height:92px;
-      border-radius:50%;
-      background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,.06));
-      border:1px solid rgba(255,255,255,.18);
-      box-shadow: 0 12px 24px rgba(0,0,0,.45), inset 0 0 0 10px rgba(0,0,0,.12);
-      display:grid; place-items:center;
-      z-index:5;
-      pointer-events:none;
-    }
-    .cap span{
-      font-weight:800;
-      letter-spacing:.4px;
-      font-size:12px;
-      color:rgba(255,255,255,.92);
-      text-transform:uppercase;
-    }
-
     /* pointer */
     .pointer{
       position:absolute;
@@ -120,7 +98,7 @@
       border-right:18px solid transparent;
       border-bottom:38px solid rgba(255,255,255,.92);
       filter: drop-shadow(0 10px 10px rgba(0,0,0,.45));
-      z-index:6;
+      z-index:8;
     }
     .pointer::after{
       content:"";
@@ -148,6 +126,54 @@
       pointer-events:none; /* wheel drag should still work */
     }
     .face svg{ width:62px; height:62px; display:block; }
+
+    /* BIG center avatar display (covers hub) */
+    .centerDisplay{
+      position:absolute;
+      width:170px;
+      height:170px;
+      border-radius:50%;
+      background: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.06));
+      border:1px solid rgba(255,255,255,.18);
+      box-shadow: 0 14px 28px rgba(0,0,0,.50), inset 0 0 0 12px rgba(0,0,0,.14);
+      display:grid;
+      place-items:center;
+      z-index:9;
+      pointer-events:none;
+    }
+
+    .centerInner{
+      width:126px;
+      height:126px;
+      border-radius:50%;
+      background: rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.14);
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+    }
+
+    .centerInner svg{
+      width:126px;
+      height:126px;
+      display:block;
+    }
+
+    .centerLabel{
+      position:absolute;
+      bottom:-14px;
+      left:50%;
+      transform:translateX(-50%);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.6px;
+      background: rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.14);
+      color: rgba(255,255,255,.92);
+      white-space:nowrap;
+    }
 
     /* controls */
     .controls{
@@ -235,7 +261,11 @@
           <!-- faces injected by JS -->
         </div>
 
-        <div class="cap" aria-hidden="true"><span>SPIN</span></div>
+        <!-- BIG center avatar display -->
+        <div class="centerDisplay" id="centerDisplay" aria-hidden="true">
+          <div class="centerInner" id="centerInner"></div>
+          <div class="centerLabel" id="centerLabel">—</div>
+        </div>
       </div>
 
       <div class="controls">
@@ -247,7 +277,7 @@
 
       <div class="hint">
         Grab the wheel and fling it, or use the buttons / keyboard arrows (← →).<br/>
-        This is a concept prototype (faces are placeholder icons).
+        As each slice crosses the pointer, that family member appears in the center.
       </div>
     </div>
 
@@ -266,8 +296,8 @@
       </div>
 
       <p class="small">
-        Want real photos? Replace the SVG face icons with &lt;img&gt; tags, or generate avatars per family member.
-        The placement logic already puts one icon on each slice near the rim.
+        Want real photos? Replace the SVG face icons with &lt;img&gt; tags (circle-cropped).
+        The logic already selects the slice under the top pointer and mirrors it in the center.
       </p>
     </div>
   </div>
@@ -281,6 +311,9 @@
   const velOut   = document.getElementById('velOut');
   const sliceOut = document.getElementById('sliceOut');
 
+  const centerInner = document.getElementById('centerInner');
+  const centerLabel = document.getElementById('centerLabel');
+
   const leftBtn  = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
   const spinBtn  = document.getElementById('spinBtn');
@@ -288,11 +321,11 @@
 
   // --- Config ---
   const members = [
-    { name: "Mom",   accent: "#ff4d7d", hair: "#3a2a1a" },
-    { name: "Dad",   accent: "#28d7ff", hair: "#1e1e1e" },
-    { name: "Sis",   accent: "#ffd24a", hair: "#8b3dff" },
-    { name: "Bro",   accent: "#7cff7c", hair: "#ff7a00" },
-    { name: "Nana",  accent: "#b48cff", hair: "#c7c7c7" },
+    { name: "Mom",  accent: "#ff4d7d", hair: "#3a2a1a" },
+    { name: "Dad",  accent: "#28d7ff", hair: "#1e1e1e" },
+    { name: "Sis",  accent: "#ffd24a", hair: "#8b3dff" },
+    { name: "Bro",  accent: "#7cff7c", hair: "#ff7a00" },
+    { name: "Nana", accent: "#b48cff", hair: "#c7c7c7" },
   ];
   const N = members.length;              // 5
   const sliceDeg = 360 / N;              // 72
@@ -308,24 +341,42 @@
   let lastMoveT = 0;
   let lastMoveDeg = 0;
 
+  // NEW: only rerender center when selected slice changes
+  let lastSelectedIdx = -1;
+
   // --- Helpers ---
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const normDeg = (d) => ((d % 360) + 360) % 360;
 
   function pointerSliceIndex(currentAngleDeg){
-    // Pointer is at "top" (0deg). Wheel rotates, so slice under pointer is based on inverse rotation.
-    // We consider slices centered at: 0, 72, 144...
-    const a = normDeg(-currentAngleDeg); // invert wheel rotation
+    // Pointer is at top. Slice under pointer is based on inverse rotation.
+    const a = normDeg(-currentAngleDeg);
     const idx = Math.floor((a + sliceDeg/2) / sliceDeg) % N;
     return idx;
+  }
+
+  function renderCenterMember(idx){
+    const m = members[idx];
+    if (!m) return;
+
+    // Reuse same SVG maker; centerInner scales it with CSS.
+    centerInner.innerHTML = makeFaceSVG(m, true);
+    centerLabel.textContent = m.name;
   }
 
   function updateUI(){
     wheel.style.transform = `rotate(${angleDeg}deg)`;
     rotOut.textContent = `${normDeg(angleDeg).toFixed(1)}°`;
     velOut.textContent = `${vel.toFixed(2)}`;
+
     const idx = pointerSliceIndex(angleDeg);
     sliceOut.textContent = members[idx]?.name ?? "—";
+
+    // Update center display only if selection changed
+    if (idx !== lastSelectedIdx){
+      lastSelectedIdx = idx;
+      renderCenterMember(idx);
+    }
   }
 
   function getAngleFromCenter(clientX, clientY){
@@ -342,21 +393,16 @@
   }
 
   function injectFaces(){
-    // Remove old faces
     wheel.querySelectorAll('.face').forEach(el => el.remove());
 
-    // Place 5 face icons around rim in the middle of each slice.
-    // The faces should rotate with the wheel (so they are children inside the wheel).
-    // We'll position them with polar coordinates relative to the wheel box.
     const rect = wheel.getBoundingClientRect();
     const size = rect.width || parseFloat(getComputedStyle(wheel).width);
-    const radius = size * 0.38; // where faces sit (near rim but inside)
+    const radius = size * 0.38; // near rim but inside
     const center = size / 2;
 
     members.forEach((m, i) => {
-      const mid = i * sliceDeg + sliceDeg/2; // slice midpoint angle (deg), 0 at top (after we adjust)
-      // convert to standard x/y: 0 at top, clockwise
-      const rad = (mid - 90) * Math.PI/180; // -90 to convert to 0 at +x for cos/sin
+      const mid = i * sliceDeg + sliceDeg/2; // slice midpoint angle (0 at top)
+      const rad = (mid - 90) * Math.PI/180;
       const x = center + radius * Math.cos(rad);
       const y = center + radius * Math.sin(rad);
 
@@ -364,26 +410,34 @@
       face.className = 'face';
       face.style.left = `${x}px`;
       face.style.top  = `${y}px`;
-      face.style.transform = `translate(-50%, -50%) rotate(${-mid}deg)`; 
-      // rotate face upright-ish relative to slice (optional)
 
-      face.innerHTML = makeFaceSVG(m);
+      // Keep each icon upright relative to viewer:
+      // We rotate opposite the slice direction so text/icon isn't spinning around.
+      face.style.transform = `translate(-50%, -50%) rotate(${-mid}deg)`;
+
+      face.innerHTML = makeFaceSVG(m, false);
       wheel.appendChild(face);
     });
   }
 
-  function makeFaceSVG(member){
+  function makeFaceSVG(member, isCenter){
     // Simple cartoon SVG face (placeholder icon) with different hair/accent.
-    // You can swap this for <img src="..."> later.
+    // If you want, you can make center version slightly different.
     const skin = "#ffd7b3";
     const blush = "rgba(255, 90, 120, .35)";
     const eye = "#1b1b1b";
     const mouth = "#7a2f2f";
 
+    const label = isCenter ? "" : `
+      <text x="32" y="60" text-anchor="middle" font-size="8.5" font-weight="900"
+            fill="rgba(255,255,255,.92)" style="letter-spacing:.6px">
+        ${member.name.toUpperCase()}
+      </text>`;
+
     return `
     <svg viewBox="0 0 64 64" aria-label="${member.name} face">
       <!-- accent ring -->
-      <circle cx="32" cy="32" r="30" fill="${member.accent}" opacity="0.9"/>
+      <circle cx="32" cy="32" r="30" fill="${member.accent}" opacity="0.92"/>
       <circle cx="32" cy="32" r="26" fill="rgba(255,255,255,.14)"/>
       <!-- hair -->
       <path d="M14 28c1-10 8-18 18-18s17 8 18 18c-4-6-10-9-18-9s-14 3-18 9z"
@@ -398,9 +452,7 @@
       <circle cx="38" cy="32" r="2.2" fill="${eye}"/>
       <!-- smile -->
       <path d="M26 41c2.5 3 9.5 3 12 0" fill="none" stroke="${mouth}" stroke-width="2.4" stroke-linecap="round"/>
-      <!-- label -->
-      <text x="32" y="60" text-anchor="middle" font-size="8.5" font-weight="800" fill="rgba(255,255,255,.92)"
-            style="letter-spacing:.6px">${member.name.toUpperCase()}</text>
+      ${label}
     </svg>`;
   }
 
@@ -423,7 +475,6 @@
 
   // --- Drag interactions ---
   function onPointerDown(e){
-    // Only primary button for mouse
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     wheel.setPointerCapture?.(e.pointerId);
 
@@ -450,7 +501,7 @@
     const dt = Math.max(1, now - lastMoveT);
     const ddeg = angleDeg - lastMoveDeg;
 
-    // Convert to degrees per frame-ish (assuming ~16ms frame)
+    // Convert to degrees per frame-ish (~16ms)
     vel = (ddeg / dt) * 16;
 
     lastMoveT = now;
@@ -462,12 +513,10 @@
   function onPointerUp(){
     if (!isDragging) return;
     isDragging = false;
-    // inertia continues with current vel
   }
 
   // --- Buttons / keyboard ---
   function nudge(direction){
-    // direction: -1 back, +1 forward
     vel += direction * 8; // kick
     vel = clamp(vel, -45, 45);
   }
@@ -476,7 +525,6 @@
   rightBtn.addEventListener('click', () => nudge(1));
 
   spinBtn.addEventListener('click', () => {
-    // random strong spin
     const dir = Math.random() < 0.5 ? -1 : 1;
     vel = dir * (20 + Math.random()*20);
   });
@@ -497,19 +545,19 @@
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
 
-  // Inject faces after layout (so wheel has size)
   requestAnimationFrame(() => {
     injectFaces();
+    // initial center
+    lastSelectedIdx = pointerSliceIndex(angleDeg);
+    renderCenterMember(lastSelectedIdx);
     updateUI();
     startLoop();
   });
 
-  // Re-position faces on resize (responsive)
   window.addEventListener('resize', () => {
     injectFaces();
     updateUI();
   });
-
 })();
 </script>
 </body>
