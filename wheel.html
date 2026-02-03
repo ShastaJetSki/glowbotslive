@@ -561,6 +561,34 @@
     opacity: 0.5;
   }
 
+  /* Mobile Bottom Bar */
+  .mobile-controls {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: rgba(10, 10, 10, 0.95);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .mobile-controls .ctrl-btn {
+    flex: 1;
+    max-width: 100px;
+    padding: 14px 12px;
+    font-size: 12px;
+  }
+
+  .mobile-controls .ctrl-btn.primary {
+    max-width: 120px;
+  }
+
   /* Responsive */
   @media (max-width: 900px) {
     .wheel-grid {
@@ -577,6 +605,11 @@
       width: 120px;
       height: 120px;
     }
+    .center-initials {
+      width: 120px;
+      height: 120px;
+      font-size: 40px;
+    }
     
     /* Hide on mobile */
     .page-title {
@@ -587,6 +620,16 @@
     }
     .wheel-hint {
       display: none;
+    }
+    
+    /* Show mobile bottom bar */
+    .mobile-controls {
+      display: flex;
+    }
+    
+    /* Add padding to main content for bottom bar */
+    .main {
+      padding-bottom: 80px;
     }
   }
 
@@ -950,6 +993,13 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- Mobile Bottom Controls -->
+<div class="mobile-controls">
+  <button class="ctrl-btn" id="mobileBackBtn" title="Spin backward">← Back</button>
+  <button class="ctrl-btn primary" id="mobileSpinBtn" title="Random spin">🎲 Spin!</button>
+  <button class="ctrl-btn" id="mobileFwdBtn" title="Spin forward">Forward →</button>
 </div>
 
 <!-- Script -->
@@ -1564,17 +1614,29 @@
     vel += dir * 0.1;
     vel = Math.max(-maxVel, Math.min(maxVel, vel));
   }
-
-  backBtn.addEventListener("click", () => nudge(-1));
-  fwdBtn.addEventListener("click", () => nudge(1));
-  spinBtn.addEventListener("click", () => {
+  
+  function spinRandom() {
     const dir = Math.random() < 0.5 ? -1 : 1;
     vel = dir * (0.2 + Math.random() * 0.2);
-  });
+  }
+
+  // Desktop buttons
+  backBtn.addEventListener("click", () => nudge(-1));
+  fwdBtn.addEventListener("click", () => nudge(1));
+  spinBtn.addEventListener("click", spinRandom);
   stopBtn.addEventListener("click", () => {
     vel *= 0.15;
     if (Math.abs(vel) < 0.01) vel = 0;
   });
+
+  // Mobile buttons
+  const mobileBackBtn = document.getElementById("mobileBackBtn");
+  const mobileFwdBtn = document.getElementById("mobileFwdBtn");
+  const mobileSpinBtn = document.getElementById("mobileSpinBtn");
+  
+  if (mobileBackBtn) mobileBackBtn.addEventListener("click", () => nudge(-1));
+  if (mobileFwdBtn) mobileFwdBtn.addEventListener("click", () => nudge(1));
+  if (mobileSpinBtn) mobileSpinBtn.addEventListener("click", spinRandom);
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") nudge(-1);
@@ -1762,16 +1824,47 @@
     // Initialize magic wheel slots
     initSlots();
 
+    // Start with random family member
+    if (N > 0) {
+      const randomMemberIdx = Math.floor(Math.random() * N);
+      // Put random member in slot 0 and set angle to show slot 0 at top
+      slotMembers[0] = randomMemberIdx;
+      angle = 0; // Slot 0 at top
+      
+      // Shuffle remaining slots with other members
+      let otherMembers = [];
+      for (let i = 0; i < N; i++) {
+        if (i !== randomMemberIdx) otherMembers.push(i);
+      }
+      // Shuffle
+      for (let i = otherMembers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [otherMembers[i], otherMembers[j]] = [otherMembers[j], otherMembers[i]];
+      }
+      // Assign to remaining visible slots
+      for (let s = 1; s < VISIBLE_SLOTS && s - 1 < otherMembers.length; s++) {
+        slotMembers[s] = otherMembers[s - 1];
+      }
+      
+      // Update tracking
+      lastPointerIdx = 0;
+      nextMemberIdx = (randomMemberIdx + VISIBLE_SLOTS) % N;
+      
+      // Update prev angles for magic slot tracking
+      for (let i = 0; i < VISIBLE_SLOTS; i++) {
+        prevSlotAngles[i] = getSlotAngle(i);
+      }
+    }
+
     renderFamilyList();
 
     if (N > 0) {
-      lastPointerIdx = pointerSlot();
       const memberIdx = pointerMemberIndex();
       if (memberIdx >= 0) {
         updateCenter(memberIdx);
       }
       
-      document.querySelectorAll('.family-item').forEach((el, i) => {
+      document.querySelectorAll('.family-strip').forEach((el, i) => {
         el.classList.toggle('selected', i === memberIdx);
       });
     }
