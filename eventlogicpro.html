@@ -441,19 +441,39 @@ function renderKPIs(){
   document.getElementById('progressCount').textContent=done+' / '+total+' tasks';
 }
 
-function getSortedDepartments(){
-  if(!currentMember) return allDepartments.slice().sort(function(a,b){return a.department_name.localeCompare(b.department_name);});
-  var myId=currentMember.member_id;
-  var myDepts=[],otherDepts=[];
+function getGroupedDepartments(){
+  // Group departments by lead, current user first, then other leads alpha, then unassigned
+  var groups={};
+  var unassigned=[];
   allDepartments.forEach(function(dept){
-    var isDeptLead=dept.lead_employee_id===myId;
-    var hasAssignedTask=allTasks.some(function(t){return t.event_department_id===dept.event_department_id&&(t.assigned_to===myId||t.lead_employee_id===myId);});
-    if(isDeptLead||hasAssignedTask) myDepts.push(dept);
-    else otherDepts.push(dept);
+    if(dept.lead_employee_id){
+      if(!groups[dept.lead_employee_id]) groups[dept.lead_employee_id]=[];
+      groups[dept.lead_employee_id].push(dept);
+    } else {
+      unassigned.push(dept);
+    }
   });
-  myDepts.sort(function(a,b){return a.department_name.localeCompare(b.department_name);});
-  otherDepts.sort(function(a,b){return a.department_name.localeCompare(b.department_name);});
-  return {mine:myDepts,others:otherDepts};
+  // Sort depts within each group alphabetically
+  Object.keys(groups).forEach(function(k){groups[k].sort(function(a,b){return a.department_name.localeCompare(b.department_name);});});
+  unassigned.sort(function(a,b){return a.department_name.localeCompare(b.department_name);});
+
+  // Build ordered list of groups: current user first, then other leads alpha by name, then unassigned
+  var orderedGroups=[];
+  var myId=currentMember?currentMember.member_id:null;
+  if(myId&&groups[myId]){
+    var memberName=currentMember?((currentMember.first_name||'')+' '+(currentMember.last_name||'')).trim():'You';
+    orderedGroups.push({label:memberName,depts:groups[myId],isMine:true});
+  }
+  // Other leads sorted by name
+  var otherLeadIds=Object.keys(groups).filter(function(k){return k!==myId;});
+  otherLeadIds.sort(function(a,b){return empName(a).localeCompare(empName(b));});
+  otherLeadIds.forEach(function(id){
+    orderedGroups.push({label:empName(id),depts:groups[id],isMine:false});
+  });
+  if(unassigned.length){
+    orderedGroups.push({label:'Unassigned',depts:unassigned,isMine:false});
+  }
+  return orderedGroups;
 }
 
 function renderDepartments(){
@@ -461,20 +481,13 @@ function renderDepartments(){
   if(!currentProjectId){area.innerHTML='<div class="empty-state">Select or create an event to get started</div>';return;}
   if(!allDepartments.length){area.innerHTML='<div class="empty-state">No departments yet'+(canAdmin()?'<br><button class="btn-primary" style="margin-top:12px;" onclick="addDepartmentPrompt()">+ Add Department</button>':'')+'</div>';return;}
 
-  var sorted=getSortedDepartments();
+  var groups=getGroupedDepartments();
   var html='';
 
-  if(sorted.mine&&sorted.mine.length>0){
-    var memberName=currentMember?((currentMember.first_name||'')+' '+(currentMember.last_name||'')).trim():'You';
-    html+='<div class="section-label">'+memberName+'\'s Departments</div>';
-    sorted.mine.forEach(function(dept){html+=renderDeptCard(dept,true);});
-  }
-
-  var others=sorted.others||sorted;
-  if(others.length>0){
-    if(sorted.mine&&sorted.mine.length>0) html+='<div class="section-label">All Other Departments</div>';
-    others.forEach(function(dept){html+=renderDeptCard(dept,false);});
-  }
+  groups.forEach(function(group){
+    html+='<div class="section-label">'+group.label+(group.isMine?'':' ')+'</div>';
+    group.depts.forEach(function(dept){html+=renderDeptCard(dept,group.isMine);});
+  });
 
   html+='<div style="padding:12px 0;display:flex;gap:8px;">';
   if(canAdmin()) html+='<button class="btn-primary" onclick="addDepartmentPrompt()" style="font-size:13px;padding:10px 16px;">+ Add Department</button>';
