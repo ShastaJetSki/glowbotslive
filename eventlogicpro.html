@@ -125,9 +125,12 @@
     .task-row:last-child{border-bottom:none;}
     .task-row:hover{background:var(--bg-hover);}
     .task-row.completed{opacity:.6;}
+    .task-row.cancelled{opacity:.5;}
+    .task-row.cancelled .task-title{text-decoration:line-through;color:#ef4444;}
     .task-checkbox{width:24px;height:24px;border-radius:6px;border:2px solid var(--accent-light);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;transition:all .2s;-webkit-appearance:none;background:transparent;color:transparent;font-size:14px;opacity:.7;}
     .task-checkbox:hover{border-color:var(--accent-primary);opacity:1;}
-    .task-checkbox.checked{background:#22c55e;border-color:#22c55e;color:#fff;}
+    .task-checkbox.checked{background:#22c55e;border-color:#22c55e;color:#fff;opacity:1;}
+    .task-checkbox.cancelled{background:#ef4444;border-color:#ef4444;color:#fff;opacity:1;}
     .task-content{flex:1;min-width:0;cursor:pointer;}
     .task-title{font-size:14px;font-weight:500;margin-bottom:4px;}
     .task-row.completed .task-title{text-decoration:line-through;color:var(--text-secondary);}
@@ -186,6 +189,7 @@
     .detail-status.done{background:rgba(34,197,94,.15);color:#22c55e;}
     .detail-status.pending{background:rgba(234,179,8,.15);color:#eab308;}
     .detail-status.overdue{background:rgba(239,68,68,.15);color:#ef4444;}
+    .detail-status.cancelled{background:rgba(239,68,68,.15);color:#ef4444;}
     .detail-notes{background:var(--bg-card);padding:14px;border-radius:8px;border:1px solid var(--border-default);font-size:14px;white-space:pre-wrap;line-height:1.5;min-height:60px;color:var(--text-secondary);}
     .line-items-section{margin-top:20px;}
     .line-items-title{font-size:13px;font-weight:600;margin-bottom:10px;}
@@ -512,8 +516,9 @@ function renderKPIs(){
   area.style.display='block';
   var total=allTasks.length;
   var done=allTasks.filter(function(t){return t.is_complete;}).length;
+  var cancelled=allTasks.filter(function(t){return t.is_cancelled;}).length;
   var now=new Date();
-  var overdue=allTasks.filter(function(t){return !t.is_complete&&t.deadline&&new Date(t.deadline)<now;}).length;
+  var overdue=allTasks.filter(function(t){return !t.is_complete&&!t.is_cancelled&&t.deadline&&new Date(t.deadline)<now;}).length;
   var cost=allTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
   var budget=allDepartments.reduce(function(s,d){return s+(parseFloat(d.budget)||0);},0);
   var pct=total>0?Math.round(done/total*100):0;
@@ -589,7 +594,7 @@ function renderDeptCard(dept,isMine){
   var tasks=allTasks.filter(function(t){return t.event_department_id===dept.event_department_id;});
   var done=tasks.filter(function(t){return t.is_complete;}).length;
   var now=new Date();
-  var overdue=tasks.filter(function(t){return !t.is_complete&&t.deadline&&new Date(t.deadline)<now;}).length;
+  var overdue=tasks.filter(function(t){return !t.is_complete&&!t.is_cancelled&&t.deadline&&new Date(t.deadline)<now;}).length;
   var cost=tasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
   var pct=tasks.length>0?Math.round(done/tasks.length*100):0;
   var leadName=empName(dept.lead_employee_id);
@@ -614,18 +619,23 @@ function renderDeptCard(dept,isMine){
   h+='<div class="dept-body collapsed" id="deptBody-'+dept.event_department_id+'">';
   tasks.forEach(function(task){
     var isComplete=task.is_complete;
-    var isOverdue=!isComplete&&task.deadline&&new Date(task.deadline)<now;
+    var isCancelled=task.is_cancelled;
+    var isOverdue=!isComplete&&!isCancelled&&task.deadline&&new Date(task.deadline)<now;
     var assignedName=empName(task.assigned_to);
     var taskLeadName=empName(task.lead_employee_id);
     var canToggle=canEdit()||(currentMember&&task.assigned_to===currentMember.member_id);
-    h+='<div class="task-row'+(isComplete?' completed':'')+'">';
-    if(canToggle) h+='<button class="task-checkbox'+(isComplete?' checked':'')+'" onclick="event.stopPropagation();toggleTask(\''+task.event_task_id+'\','+!isComplete+')">'+(isComplete?'&#10003;':'')+'</button>';
-    else h+='<div class="task-checkbox'+(isComplete?' checked':'')+'" style="cursor:default;opacity:.5;">'+(isComplete?'&#10003;':'')+'</div>';
+    var rowClass=isCancelled?' cancelled':(isComplete?' completed':'');
+    var cbClass=isCancelled?' cancelled':(isComplete?' checked':'');
+    var cbIcon=isCancelled?'&#10007;':(isComplete?'&#10003;':'');
+    h+='<div class="task-row'+rowClass+'">';
+    if(canToggle) h+='<button class="task-checkbox'+cbClass+'" onclick="event.stopPropagation();cycleTaskStatus(\''+task.event_task_id+'\')">'+cbIcon+'</button>';
+    else h+='<div class="task-checkbox'+cbClass+'" style="cursor:default;opacity:.5;">'+cbIcon+'</div>';
     h+='<div class="task-content" onclick="event.stopPropagation();openDetailPanel(\''+task.event_task_id+'\')"><div class="task-title">'+task.task_title+'</div><div class="task-meta">';
     if(taskLeadName) h+='<span class="task-meta-tag lead">Lead: '+taskLeadName+'</span>';
     if(assignedName) h+='<span class="task-meta-tag">'+assignedName+'</span>';
     if(task.deadline) h+='<span class="task-meta-tag'+(isOverdue?' overdue':'')+'">Due: '+task.deadline+'</span>';
     if(task.cost>0) h+='<span class="task-meta-tag cost">$'+parseFloat(task.cost).toLocaleString()+'</span>';
+    if(isCancelled) h+='<span class="task-meta-tag overdue">Cancelled</span>';
     h+='</div></div>';
     if(canEdit()) h+='<div class="task-actions"><button class="task-edit-btn" onclick="event.stopPropagation();openEditTask(\''+task.event_task_id+'\')">Edit</button></div>';
     h+='</div>';
@@ -703,8 +713,28 @@ async function saveTask(){
   else{data.tenant_id=tenantId;data.event_project_id=currentProjectId;data.event_department_id=editingTaskDeptId;data.is_complete=false;data.created_by=userId;await sb.from('event_tasks').insert(data);showToast('Task added');}
   closeTaskModal();await loadProjectData();renderAll();
 }
-async function deleteTask(){if(!editingTaskId||!confirm('Delete this task?'))return;await sb.from('event_tasks').delete().eq('event_task_id',editingTaskId);closeTaskModal();showToast('Deleted');await loadProjectData();renderAll();}
-async function toggleTask(taskId,complete){var data={is_complete:complete,updated_at:new Date().toISOString()};if(complete){data.completed_at=new Date().toISOString();data.completed_by=userId;}else{data.completed_at=null;data.completed_by=null;}await sb.from('event_tasks').update(data).eq('event_task_id',taskId);await loadProjectData();renderAll();}
+async function deleteTask(){if(!editingTaskId||!canAdmin()||!confirm('Delete this task permanently?'))return;await sb.from('event_tasks').delete().eq('event_task_id',editingTaskId);closeTaskModal();showToast('Deleted');await loadProjectData();renderAll();}
+async function deleteTaskFromDetail(taskId){if(!canAdmin()||!confirm('Delete this task permanently?'))return;await sb.from('event_tasks').delete().eq('event_task_id',taskId);closeDetailPanel();showToast('Deleted');await loadProjectData();renderAll();}
+async function cycleTaskStatus(taskId){
+  var task=allTasks.find(function(t){return t.event_task_id===taskId;});
+  if(!task) return;
+  var data={updated_at:new Date().toISOString()};
+  if(!task.is_complete&&!task.is_cancelled){
+    // pending → done
+    data.is_complete=true;data.is_cancelled=false;data.completed_at=new Date().toISOString();data.completed_by=userId;data.cancel_notes=null;
+  } else if(task.is_complete&&!task.is_cancelled){
+    // done → cancelled (prompt for notes)
+    var notes=prompt('Cancel reason (optional):');
+    if(notes===null) return; // user hit cancel on prompt
+    data.is_complete=false;data.is_cancelled=true;data.completed_at=null;data.completed_by=null;data.cancel_notes=notes||null;
+  } else {
+    // cancelled → pending
+    data.is_complete=false;data.is_cancelled=false;data.completed_at=null;data.completed_by=null;data.cancel_notes=null;
+  }
+  await sb.from('event_tasks').update(data).eq('event_task_id',taskId);
+  await loadProjectData();renderAll();
+}
+async function toggleTask(taskId,complete){cycleTaskStatus(taskId);}
 
 // ===== DEPT LEAD =====
 function openDeptLeadModal(deptId){editingDeptId=deptId;var dept=allDepartments.find(function(d){return d.event_department_id===deptId;});document.getElementById('deptLeadTitle').textContent=(dept?dept.department_name:'Department')+' - Lead & Budget';populateEmpDropdowns();document.getElementById('dlLead').value=dept?.lead_employee_id||'';document.getElementById('dlBudget').value=dept?.budget||'';document.getElementById('deptLeadModal').classList.add('active');}
@@ -726,8 +756,10 @@ async function openDetailPanel(taskId){
 function closeDetailPanel(){document.getElementById('detailOverlay').classList.remove('active');document.getElementById('detailPanel').classList.remove('open');detailTaskId=null;}
 
 function renderDetailBody(task){
-  var isComplete=task.is_complete;var isOverdue=!isComplete&&task.deadline&&new Date(task.deadline)<new Date();
-  var statusClass=isComplete?'done':(isOverdue?'overdue':'pending');var statusText=isComplete?'Complete':(isOverdue?'Overdue':'Pending');
+  var isComplete=task.is_complete;var isCancelled=task.is_cancelled;
+  var isOverdue=!isComplete&&!isCancelled&&task.deadline&&new Date(task.deadline)<new Date();
+  var statusClass=isCancelled?'cancelled':(isComplete?'done':(isOverdue?'overdue':'pending'));
+  var statusText=isCancelled?'Cancelled':(isComplete?'Complete':(isOverdue?'Overdue':'Pending'));
   var leadName=empName(task.lead_employee_id);var assignedName=empName(task.assigned_to);
   var dept=allDepartments.find(function(d){return d.event_department_id===task.event_department_id;});
   var lineTotal=detailLineItems.reduce(function(s,li){return s+(parseFloat(li.amount)||0);},0);
@@ -739,6 +771,7 @@ function renderDetailBody(task){
   h+='<div class="detail-row"><div class="detail-field"><div class="detail-field-label">Start Date</div><div class="detail-field-value">'+(task.projected_start||'—')+'</div></div><div class="detail-field"><div class="detail-field-label">Deadline</div><div class="detail-field-value">'+(task.deadline||'—')+'</div></div></div>';
   h+='<div class="detail-field"><div class="detail-field-label">Task Cost</div><div class="detail-field-value" style="font-size:20px;font-weight:700;color:#22c55e;">$'+(taskCost>0?taskCost.toLocaleString():'0')+'</div></div>';
   h+='<div class="detail-field"><div class="detail-field-label">Notes</div><div class="detail-notes">'+(task.notes||'No notes')+'</div></div>';
+  if(isCancelled&&task.cancel_notes) h+='<div class="detail-field"><div class="detail-field-label" style="color:#ef4444;">Cancel Reason</div><div class="detail-notes" style="border-color:#ef4444;">'+task.cancel_notes+'</div></div>';
   h+='<div class="line-items-section"><div class="line-items-title">Cost Line Items</div>';
   if(detailLineItems.length){detailLineItems.forEach(function(li){h+='<div class="line-item-row"><span class="line-item-desc">'+li.description+'</span><span class="line-item-amt">$'+(parseFloat(li.amount)||0).toLocaleString(undefined,{minimumFractionDigits:2})+'</span><button class="line-item-del" onclick="deleteLineItem(\''+li.line_item_id+'\')">&times;</button></div>';});h+='<div class="line-items-total"><span>Total</span><span class="total-amt">$'+lineTotal.toLocaleString(undefined,{minimumFractionDigits:2})+'</span></div>';}
   else{h+='<div style="padding:12px;text-align:center;color:var(--text-secondary);font-size:13px;">No line items</div>';}
@@ -746,7 +779,12 @@ function renderDetailBody(task){
   h+='<div class="detail-actions">';
   if(canEdit()) h+='<button class="btn-primary" onclick="openEditTask(\''+task.event_task_id+'\');closeDetailPanel();">Edit Task</button>';
   var canToggleThis=canEdit()||(currentMember&&task.assigned_to===currentMember.member_id);
-  if(canToggleThis) h+='<button class="btn-secondary" onclick="toggleTask(\''+task.event_task_id+'\','+!isComplete+');closeDetailPanel();">'+(isComplete?'Mark Pending':'Mark Done')+'</button>';
+  if(canToggleThis){
+    if(!isComplete&&!isCancelled) h+='<button class="btn-secondary" onclick="cycleTaskStatus(\''+task.event_task_id+'\');closeDetailPanel();">Mark Done</button>';
+    else if(isComplete) h+='<button class="btn-secondary" style="border-color:#ef4444;color:#ef4444;" onclick="cycleTaskStatus(\''+task.event_task_id+'\');closeDetailPanel();">Cancel Task</button>';
+    else h+='<button class="btn-secondary" onclick="cycleTaskStatus(\''+task.event_task_id+'\');closeDetailPanel();">Reopen Task</button>';
+  }
+  if(canAdmin()) h+='<button class="btn-danger" style="padding:10px 16px;font-size:13px;" onclick="deleteTaskFromDetail(\''+task.event_task_id+'\')">Delete</button>';
   h+='</div>';
   document.getElementById('detailBody').innerHTML=h;
 }
