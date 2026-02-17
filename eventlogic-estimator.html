@@ -91,6 +91,8 @@
     .hdr-est-btn.unshare:hover{background:rgba(239,68,68,.2);}
     .hdr-est-btn.del{color:#ef4444;border-color:rgba(239,68,68,.25);}
     .hdr-est-btn.del:hover{background:rgba(239,68,68,.1);}
+    .hdr-est-btn.clone{background:rgba(139,92,246,.12);color:#a78bfa;border-color:rgba(139,92,246,.3);}
+    .hdr-est-btn.clone:hover{background:rgba(139,92,246,.22);}
     /* Mobile estimate bar */
     .mob-est-bar{display:flex;align-items:center;gap:6px;padding:0 12px 10px;}
     .mob-est-sel{flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-primary);font-size:13px;font-weight:600;font-family:inherit;-webkit-appearance:none;cursor:pointer;}
@@ -194,6 +196,7 @@
   <div class="mob-est-bar">
     <select class="mob-est-sel" id="mobEstSel" onchange="syncSel(this.value)"></select>
     <button class="mob-est-btn" onclick="createNew()">+ New</button>
+    <button class="mob-est-btn" onclick="cloneEst()" style="background:transparent;color:var(--accent-light);border:1px solid var(--border-default);">Clone</button>
   </div>
   <div class="mobile-header-content" id="mobMenu">
     <div class="mobile-header-actions">
@@ -215,8 +218,9 @@
   <!-- Sleek estimate selector in header -->
   <div class="hdr-est-bar">
     <select class="hdr-est-sel" id="deskEstSel" onchange="syncSel(this.value)"></select>
-    <button class="hdr-est-btn pri" onclick="createNew()">+ New Estimate</button>
-    <button class="hdr-est-btn grn" id="deskShareBtn" onclick="toggleShare()" style="display:none;">Share with Team</button>
+    <button class="hdr-est-btn pri" onclick="createNew()">+ New</button>
+    <button class="hdr-est-btn clone" onclick="cloneEst()">Clone</button>
+    <button class="hdr-est-btn grn" id="deskShareBtn" onclick="toggleShare()" style="display:none;">Share</button>
     <button class="hdr-est-btn del" id="deskDelBtn" onclick="deleteEst()" style="display:none;">Delete</button>
   </div>
 </div>
@@ -344,6 +348,10 @@ function buildOptions(){
   var mine=allEstimates.filter(function(e){return e.created_by===userId;});
   var shared=allEstimates.filter(function(e){return e.is_shared&&e.created_by!==userId;});
   var h='<option value="">-- Select Estimate --</option>';
+  // Show preloaded if active and not yet saved to DB
+  if(currentEstId==='preloaded'&&!allEstimates.find(function(e){return e.estimate_id==='preloaded';})){
+    h+='<option value="preloaded" selected>'+esc(document.getElementById('eName').value||'Redding Rock')+' (preloaded)</option>';
+  }
   if(mine.length){
     h+='<optgroup label="My Estimates">';
     mine.forEach(function(e){var tag=e.is_shared?' [SHARED]':'';h+='<option value="'+e.estimate_id+'"'+(e.estimate_id===currentEstId?' selected':'')+'>'+esc(e.event_name||'Untitled')+tag+'</option>';});
@@ -364,10 +372,11 @@ function renderSelects(){
 
 function syncSel(id){
   if(!id){currentEstId=null;clearForm();return;}
-  currentEstId=id;
-  localStorage.setItem('elp-last-est',id);
   document.getElementById('deskEstSel').value=id;
   document.getElementById('mobEstSel').value=id;
+  if(id==='preloaded'){loadPreloaded();return;}
+  currentEstId=id;
+  localStorage.setItem('elp-last-est',id);
   loadEstimateData(id);
 }
 
@@ -556,13 +565,28 @@ function confirmAddCat(){var name=document.getElementById('newCatName').value.tr
 function markDirty(){dirty=true;}
 
 async function saveToDb(){
+  if(!tenantId){toast('Not authenticated');return;}
   if(!currentEstId){toast('Select or create an estimate first');return;}
-  if(!tenantId)return;
   var exp=0,rev=0;
   expCats.forEach(function(c){c.items.forEach(function(i){exp+=(parseFloat(i.est)||0);});});
   revCats.forEach(function(c){c.items.forEach(function(i){rev+=(parseFloat(i.est)||0);});});
   var eName=document.getElementById('eName').value||'Untitled';
-  await sb.from('event_estimates').update({event_name:eName,event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:rev,net_profit:rev-exp}).eq('estimate_id',currentEstId);
+
+  // If preloaded, create it in DB first
+  if(currentEstId==='preloaded'){
+    var ins=await sb.from('event_estimates').insert({
+      tenant_id:tenantId,created_by:userId,event_name:eName,
+      event_date:document.getElementById('eDate').value||null,
+      expected_attendance:parseInt(document.getElementById('eAtt').value)||0,
+      total_expenses:exp,total_revenue:rev,net_profit:rev-exp,
+      is_shared:false,status:'draft'
+    }).select().single();
+    if(ins.error){toast('Error: '+ins.error.message);return;}
+    currentEstId=ins.data.estimate_id;
+    localStorage.setItem('elp-last-est',currentEstId);
+  } else {
+    await sb.from('event_estimates').update({event_name:eName,event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:rev,net_profit:rev-exp}).eq('estimate_id',currentEstId);
+  }
 
   await sb.from('estimate_categories').delete().eq('estimate_id',currentEstId);
   var catRows=[];
@@ -576,9 +600,7 @@ async function saveToDb(){
   revCats.forEach(function(c){c.items.forEach(function(it){lineRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:ord++});});});
   if(lineRows.length)await sb.from('estimate_line_items').insert(lineRows);
 
-  var est=allEstimates.find(function(e){return e.estimate_id===currentEstId;});
-  if(est){est.event_name=eName;est.total_expenses=exp;est.total_revenue=rev;est.net_profit=rev-exp;}
-  renderSelects();dirty=false;toast('Saved to database');
+  await loadEstimates();dirty=false;toast('Saved to database');
 }
 
 function resetValues(){if(!confirm('Reset all dollar values to zero?'))return;expCats.forEach(function(c){c.items.forEach(function(i){i.est=0;i.act=0;});});revCats.forEach(function(c){c.items.forEach(function(i){i.est=0;i.act=0;});});render();markDirty();toast('Values reset');}
@@ -597,6 +619,7 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').repla
 
 // ===== PRELOADED: REDDING ROCK 2026 =====
 function loadPreloaded(){
+  currentEstId='preloaded';
   document.getElementById('eName').value='Redding Rock';
   document.getElementById('eDate').value='2026-06-20';
   document.getElementById('eAtt').value='500';
@@ -669,6 +692,50 @@ function loadPreloaded(){
       {name:'Camping fees',est:0,act:0}]}
   ];
   render();
+  renderSelects();
+}
+
+// ===== CLONE ESTIMATE =====
+async function cloneEst(){
+  var srcName=document.getElementById('eName').value||'Untitled';
+  var name=prompt('Name for cloned estimate:',srcName+' (Copy)');
+  if(!name||!name.trim())return;
+  name=name.trim();
+
+  // Deep copy current categories
+  var cloneExp=JSON.parse(JSON.stringify(expCats));
+  var cloneRev=JSON.parse(JSON.stringify(revCats));
+  // Give new IDs so they don't collide
+  cloneExp.forEach(function(c){c.id=c.id+'_'+Date.now();});
+  cloneRev.forEach(function(c){c.id=c.id+'_'+Date.now();});
+
+  if(tenantId){
+    // Save clone to DB
+    var ins=await sb.from('event_estimates').insert({
+      tenant_id:tenantId,created_by:userId,event_name:name,
+      event_date:document.getElementById('eDate').value||null,
+      expected_attendance:parseInt(document.getElementById('eAtt').value)||0,
+      is_shared:false,status:'draft'
+    }).select().single();
+    if(ins.error){toast('Error: '+ins.error.message);return;}
+    var estId=ins.data.estimate_id;
+
+    var catRows=[],lineRows=[],lo=0;
+    cloneExp.forEach(function(c,i){catRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'expense',title:c.title,color:c.color,sort_order:i});c.items.forEach(function(it){lineRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'expense',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:lo++});});});
+    cloneRev.forEach(function(c,i){catRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',title:c.title,color:c.color,sort_order:i+100});c.items.forEach(function(it){lineRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:lo++});});});
+    await sb.from('estimate_categories').insert(catRows);
+    if(lineRows.length)await sb.from('estimate_line_items').insert(lineRows);
+
+    currentEstId=estId;localStorage.setItem('elp-last-est',estId);
+    await loadEstimates();syncSel(estId);
+  } else {
+    // Local only clone
+    document.getElementById('eName').value=name;
+    expCats=cloneExp;revCats=cloneRev;
+    currentEstId='preloaded';
+    render();renderSelects();
+  }
+  toast('"'+name+'" cloned');
 }
 
 // ===== INIT =====
