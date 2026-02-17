@@ -195,6 +195,16 @@
     .event-badge{display:inline-block;background:#f97316;color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-left:4px;vertical-align:middle;}
     .appt-badge{display:inline-block;background:var(--accent-primary);color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-left:4px;vertical-align:middle;}
 
+    /* Autocomplete */
+    .autocomplete-list{position:absolute;top:100%;left:0;right:0;background:var(--bg-card);border:1px solid var(--border-default);border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;display:none;box-shadow:0 8px 24px rgba(0,0,0,.3);}
+    .autocomplete-list.show{display:block;}
+    .autocomplete-item{padding:10px 14px;cursor:pointer;font-size:14px;color:var(--text-primary);border-bottom:1px solid var(--border-default);}
+    .autocomplete-item:last-child{border-bottom:none;}
+    .autocomplete-item:hover,.autocomplete-item.highlighted{background:var(--bg-hover);}
+    .autocomplete-item .ac-sub{font-size:11px;color:var(--text-secondary);margin-top:2px;}
+    .autocomplete-item .ac-match{color:var(--accent-light);font-weight:600;}
+    .ac-new-badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;background:color-mix(in srgb,var(--accent-primary) 25%,transparent);color:var(--accent-light);margin-left:6px;font-weight:600;text-transform:uppercase;}
+
     /* Mobile nav */
     .mobile-top-header{display:none;}
     .mobile-header-bar{display:flex;align-items:center;padding:10px 12px;gap:8px;background:var(--bg-secondary);border-bottom:1px solid var(--border-default);}
@@ -365,7 +375,17 @@
   <div class="modal-content">
     <div class="modal-header"><div class="modal-title" id="amTitle">New Appointment</div><button class="modal-close" onclick="closeApptModal()">×</button></div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Customer *</label><select class="form-select" id="amCustomer"><option value="">-- Select Customer --</option></select></div>
+      <div class="form-group" style="position:relative;">
+        <label class="form-label">Customer *</label>
+        <input type="text" class="form-input" id="amCustName" placeholder="Type a name..." autocomplete="off">
+        <input type="hidden" id="amCustId">
+        <div class="autocomplete-list" id="amCustDropdown"></div>
+        <div id="amCustHint" style="font-size:11px;margin-top:4px;color:var(--text-secondary);display:none;"></div>
+      </div>
+      <div class="form-row" id="amNewCustFields" style="display:none;">
+        <div class="form-group"><label class="form-label">Email <span style="font-size:10px;color:var(--accent-light);">(auto-saves as contact)</span></label><input type="email" class="form-input" id="amCustEmail" placeholder="email@example.com"></div>
+        <div class="form-group"><label class="form-label">Phone</label><input type="tel" class="form-input" id="amCustPhone" placeholder="(555) 123-4567"></div>
+      </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="amDate"></div>
         <div class="form-group"><label class="form-label">Time *</label><input type="time" class="form-input" id="amTime" value="09:00"></div>
@@ -682,10 +702,10 @@ function renderDay(){
 
 function clickDate(ds,hr){if(currentView==='month'){viewDate=new Date(ds+'T12:00:00');setView('day');}else{openApptModal(ds,hr);}}
 
-// === APPOINTMENT MODAL ===
+// === APPOINTMENT MODAL (Autocomplete Customer) ===
+var acHighlightIdx=-1;
+
 function populateApptSelects(){
-  var cp=document.getElementById('amCustomer');cp.innerHTML='<option value="">-- Select Customer --</option>';
-  allCustomers.forEach(function(c){cp.innerHTML+='<option value="'+c.customer_id+'">'+(c.full_name||'Unknown')+'</option>';});
   var ca=document.getElementById('amAssign');ca.innerHTML='<option value="">-- Unassigned --</option>';
   allEmployees.forEach(function(e){
     var name=((e.first_name||'')+' '+(e.last_name||'')).trim()||'Unknown';
@@ -693,10 +713,112 @@ function populateApptSelects(){
   });
 }
 
+function setupCustAutocomplete(){
+  var inp=document.getElementById('amCustName');
+  var dd=document.getElementById('amCustDropdown');
+  var hid=document.getElementById('amCustId');
+  var hint=document.getElementById('amCustHint');
+  var newFields=document.getElementById('amNewCustFields');
+
+  inp.addEventListener('input',function(){
+    var q=inp.value.trim().toLowerCase();
+    hid.value='';
+    acHighlightIdx=-1;
+    if(q.length<1){dd.classList.remove('show');dd.innerHTML='';updateCustHint();return;}
+    var matches=allCustomers.filter(function(c){return(c.full_name||'').toLowerCase().indexOf(q)>-1;});
+    var h='';
+    matches.slice(0,8).forEach(function(c,i){
+      var name=c.full_name||'Unknown';
+      var hl=name.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig'),'<span class="ac-match">$1</span>');
+      h+='<div class="autocomplete-item" data-idx="'+i+'" data-id="'+c.customer_id+'" data-name="'+name.replace(/"/g,'&quot;')+'" data-email="'+(c.email||'')+'" data-phone="'+(c.phone||'')+'">';
+      h+=hl;
+      if(c.email||c.phone)h+='<div class="ac-sub">'+(c.email||'')+(c.email&&c.phone?' · ':'')+(c.phone||'')+'</div>';
+      h+='</div>';
+    });
+    if(matches.length===0&&q.length>0){
+      h+='<div class="autocomplete-item" data-id="" data-name="'+inp.value.trim().replace(/"/g,'&quot;')+'"><span style="color:var(--text-secondary);">Use: </span><strong>'+inp.value.trim()+'</strong><span class="ac-new-badge">new</span></div>';
+    }
+    dd.innerHTML=h;dd.classList.add('show');
+    // Click handlers
+    dd.querySelectorAll('.autocomplete-item').forEach(function(el){
+      el.addEventListener('mousedown',function(e){
+        e.preventDefault();
+        selectCustItem(el);
+      });
+    });
+    updateCustHint();
+  });
+
+  inp.addEventListener('keydown',function(e){
+    var items=dd.querySelectorAll('.autocomplete-item');
+    if(!items.length)return;
+    if(e.key==='ArrowDown'){e.preventDefault();acHighlightIdx=Math.min(acHighlightIdx+1,items.length-1);highlightAcItem(items);}
+    else if(e.key==='ArrowUp'){e.preventDefault();acHighlightIdx=Math.max(acHighlightIdx-1,0);highlightAcItem(items);}
+    else if(e.key==='Enter'&&acHighlightIdx>=0){e.preventDefault();selectCustItem(items[acHighlightIdx]);}
+    else if(e.key==='Escape'){dd.classList.remove('show');}
+  });
+
+  inp.addEventListener('blur',function(){
+    setTimeout(function(){dd.classList.remove('show');updateCustHint();},150);
+  });
+
+  inp.addEventListener('focus',function(){
+    if(inp.value.trim().length>0)inp.dispatchEvent(new Event('input'));
+  });
+}
+
+function highlightAcItem(items){
+  items.forEach(function(el,i){el.classList.toggle('highlighted',i===acHighlightIdx);});
+}
+
+function selectCustItem(el){
+  var id=el.getAttribute('data-id');
+  var name=el.getAttribute('data-name');
+  var email=el.getAttribute('data-email')||'';
+  var phone=el.getAttribute('data-phone')||'';
+  document.getElementById('amCustName').value=name;
+  document.getElementById('amCustId').value=id;
+  document.getElementById('amCustDropdown').classList.remove('show');
+  // If existing customer, fill email/phone and hide new fields
+  if(id){
+    document.getElementById('amCustEmail').value=email;
+    document.getElementById('amCustPhone').value=phone;
+    document.getElementById('amNewCustFields').style.display='none';
+  }else{
+    document.getElementById('amCustEmail').value='';
+    document.getElementById('amCustPhone').value='';
+  }
+  updateCustHint();
+}
+
+function updateCustHint(){
+  var hint=document.getElementById('amCustHint');
+  var newFields=document.getElementById('amNewCustFields');
+  var name=document.getElementById('amCustName').value.trim();
+  var id=document.getElementById('amCustId').value;
+  if(!name){hint.style.display='none';newFields.style.display='none';return;}
+  if(id){
+    var c=allCustomers.find(function(x){return x.customer_id===id;});
+    hint.innerHTML='✓ <span style="color:var(--accent-light);">'+(c?c.full_name:name)+'</span> — existing contact';
+    hint.style.display='block';
+    newFields.style.display='none';
+  }else{
+    hint.innerHTML='New customer: <strong>'+name+'</strong> — add email below to save as contact';
+    hint.style.display='block';
+    newFields.style.display='grid';
+  }
+}
+
 function openApptModal(ds,hr){
   editingApptId=null;populateApptSelects();
   document.getElementById('amTitle').textContent='New Appointment';
-  document.getElementById('amCustomer').value='';
+  document.getElementById('amCustName').value='';
+  document.getElementById('amCustId').value='';
+  document.getElementById('amCustEmail').value='';
+  document.getElementById('amCustPhone').value='';
+  document.getElementById('amCustDropdown').classList.remove('show');
+  document.getElementById('amCustHint').style.display='none';
+  document.getElementById('amNewCustFields').style.display='none';
   document.getElementById('amDate').value=ds||dateStr(viewDate);
   document.getElementById('amTime').value=hr!==undefined?String(hr).padStart(2,'0')+':00':'09:00';
   document.getElementById('amAssign').value='';
@@ -710,7 +832,20 @@ function openEditAppt(id){
   var a=allAppointments.find(function(x){return x.appointment_id===id;});if(!a)return;
   editingApptId=id;populateApptSelects();
   document.getElementById('amTitle').textContent='Edit Appointment';
-  document.getElementById('amCustomer').value=a.customer_id||'';
+  // Set customer name and ID
+  var custName=a.customer_name||'';
+  var custId=a.customer_id||'';
+  if(custId){
+    var c=allCustomers.find(function(x){return x.customer_id===custId;});
+    if(c)custName=c.full_name||custName;
+  }
+  document.getElementById('amCustName').value=custName;
+  document.getElementById('amCustId').value=custId;
+  document.getElementById('amCustEmail').value='';
+  document.getElementById('amCustPhone').value='';
+  document.getElementById('amCustDropdown').classList.remove('show');
+  document.getElementById('amNewCustFields').style.display='none';
+  updateCustHint();
   document.getElementById('amDate').value=a.appointment_date||'';
   document.getElementById('amTime').value=a.appointment_time?(a.appointment_time.substring(0,5)):'09:00';
   document.getElementById('amAssign').value=a.assigned_to||'';
@@ -723,15 +858,41 @@ function openEditAppt(id){
 function closeApptModal(){document.getElementById('apptModal').classList.remove('active');}
 
 async function saveAppt(){
-  var custId=document.getElementById('amCustomer').value;
+  var custName=document.getElementById('amCustName').value.trim();
+  var custId=document.getElementById('amCustId').value;
+  var custEmail=document.getElementById('amCustEmail').value.trim();
+  var custPhone=document.getElementById('amCustPhone').value.trim();
   var dt=document.getElementById('amDate').value;
-  if(!custId||!dt){showToast('Customer and date required');return;}
-  var selectedCust=allCustomers.find(function(c){return c.customer_id===custId;});
+  if(!custName||!dt){showToast('Customer name and date required');return;}
+
+  // If new customer with email, auto-save to contacts
+  if(!custId&&custEmail){
+    var parts=custName.split(/\s+/);
+    var firstName=parts[0]||custName;
+    var lastName=parts.slice(1).join(' ')||'';
+    var r=await sb.from('customers').insert({
+      tenant_id:tenantId,
+      first_name:firstName,
+      last_name:lastName,
+      full_name:custName,
+      email:custEmail,
+      phone:custPhone||null,
+      created_at:new Date().toISOString(),
+      created_by:userId
+    }).select('customer_id').single();
+    if(r.data){
+      custId=r.data.customer_id;
+      showToast('Contact saved: '+custName);
+      await loadCustomers(); // Refresh customer list
+    }
+  }
+
+  var selectedCust=custId?allCustomers.find(function(c){return c.customer_id===custId;}):null;
   var data={
-    customer_id:custId,
-    customer_name:selectedCust?selectedCust.full_name:'Unknown',
-    customer_phone:selectedCust?selectedCust.phone:null,
-    customer_email:selectedCust?selectedCust.email:null,
+    customer_id:custId||null,
+    customer_name:custName,
+    customer_phone:selectedCust?selectedCust.phone:(custPhone||null),
+    customer_email:selectedCust?selectedCust.email:(custEmail||null),
     appointment_date:dt,
     appointment_time:document.getElementById('amTime').value||null,
     assigned_to:document.getElementById('amAssign').value||null,
@@ -747,6 +908,9 @@ async function saveAppt(){
   }
   closeApptModal();await loadAppointments();renderCalLayers();render();
 }
+
+// Init autocomplete on load
+document.addEventListener('DOMContentLoaded',function(){setupCustAutocomplete();});
 
 async function deleteAppt(){
   if(!editingApptId||!confirm('Delete this appointment?'))return;
