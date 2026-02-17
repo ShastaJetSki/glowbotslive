@@ -116,12 +116,18 @@
   <div class="top-bar">
     <h1>Site Map Creator<span>EventLogicPro</span></h1>
     <div class="top-actions">
-      <button class="btn" onclick="clearAll()">Clear All</button>
-      <button class="btn" onclick="document.getElementById('bgInput').click()">Background Image</button>
+      <select id="mapSelect" class="prop-input" style="max-width:200px;font-size:12px;padding:6px 8px;" onchange="switchMap(this.value)">
+        <option value="">-- No saved maps --</option>
+      </select>
+      <button class="btn pri" onclick="saveMap()">Save</button>
+      <button class="btn" onclick="newMap()">+ New</button>
+      <button class="btn danger" id="deleteMapBtn" onclick="deleteMap()" style="display:none;">Delete</button>
+      <div style="width:1px;height:24px;background:var(--border-default);"></div>
+      <button class="btn" onclick="document.getElementById('bgInput').click()">BG Image</button>
       <button class="btn" id="bgRemoveBtn" onclick="removeBg()" style="display:none;">Remove BG</button>
       <input type="file" id="bgInput" accept="image/*" style="display:none;" onchange="loadBgImage(this)">
       <button class="btn" onclick="exportPNG()">Export PNG</button>
-      <button class="btn pri" onclick="saveLocal()">Save</button>
+      <button class="btn" onclick="clearAll()">Clear</button>
       <a href="eventlogicpro.html" class="btn" style="text-decoration:none;">Back</a>
       <button class="btn" onclick="doLogout()">Logout</button>
     </div>
@@ -237,8 +243,10 @@ var dragStart={x:0,y:0},objStart={x:0,y:0,w:0,h:0};
 var drawStart=null;
 var resizeHandle='';
 var nextId=1;
-var bgImage=null; // {img:Image, opacity:0.3}
+var bgImage=null;
 var bgOpacity=0.3;
+var tenantId=null,userId=null;
+var allMaps=[],currentMapId=null;
 
 // Canvas refs
 var wrap,mainCanvas,ctx,gridCanvas,gctx;
@@ -465,7 +473,8 @@ function selectObj(id){selectedId=id;renderAll();renderLayers();renderProps();}
 function renderProps(){
   var el=document.getElementById('propsPanel');
   if(selectedId===null){
-    var bgHtml='<div class="empty-props">Select an object to<br>edit its properties</div>';
+    var map=currentMapId?allMaps.find(function(m){return m.id===currentMapId;}):null;
+    var bgHtml='<div class="empty-props">'+(map?'<strong>'+esc(map.name)+'</strong><br><button class="btn" onclick="renameMap()" style="margin-top:6px;font-size:11px;">Rename</button>':'Select an object to<br>edit its properties')+'</div>';
     if(bgImage){
       bgHtml+='<div class="prop-group"><div class="prop-label">Background Image</div>';
       bgHtml+='<div class="slider-row"><span class="prop-unit" style="font-size:11px;">Opacity</span><input type="range" min="5" max="100" value="'+Math.round(bgOpacity*100)+'" oninput="setBgOpacity(this.value/100);this.parentElement.querySelector(\'.slider-val\').textContent=this.value+\'%\'"><span class="slider-val">'+Math.round(bgOpacity*100)+'%</span></div>';
@@ -552,8 +561,6 @@ function setupEvents(){
       img.onload=function(){
         bgImage=img;bgOpacity=0.3;
         document.getElementById('bgRemoveBtn').style.display='';
-        localStorage.setItem('elp-sitemap-bg',ev.target.result);
-        localStorage.setItem('elp-sitemap-bg-opacity','0.3');
         renderAll();renderProps();
         toast('Background set from dropped image');
       };
@@ -672,16 +679,122 @@ document.addEventListener('keydown',function(e){
 });
 
 // ===== SAVE/LOAD/EXPORT =====
-function saveLocal(){
-  localStorage.setItem('elp-sitemap',JSON.stringify({objects:objects,nextId:nextId,panX:panX,panY:panY,zoom:zoom}));
+// ===== DB SAVE/LOAD =====
+async function loadMaps(){
+  if(!tenantId){console.log('[SiteMap] loadMaps skipped — no tenantId');return;}
+  var r=await sb.from('site_maps').select('*').eq('tenant_id',tenantId).order('updated_at',{ascending:false});
+  console.log('[SiteMap] loadMaps result:',r.data?.length,'maps',r.error);
+  allMaps=r.data||[];
+  renderMapSelect();
+}
+
+function renderMapSelect(){
+  var sel=document.getElementById('mapSelect');
+  var h='<option value="">-- Select Site Map --</option>';
+  allMaps.forEach(function(m){
+    h+='<option value="'+m.id+'"'+(m.id===currentMapId?' selected':'')+'>'+esc(m.name)+(m.is_shared?' [SHARED]':'')+'</option>';
+  });
+  sel.innerHTML=h;
+  document.getElementById('deleteMapBtn').style.display=currentMapId?'':'none';
+}
+
+async function switchMap(id){
+  if(!id){currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;panX=0;panY=0;zoom=1;renderAll();renderLayers();renderProps();renderMapSelect();return;}
+  var map=allMaps.find(function(m){return m.id===id;});
+  if(!map)return;
+  currentMapId=id;
+  objects=map.objects||[];
+  nextId=objects.length?Math.max.apply(null,objects.map(function(o){return o.id;}))+1:1;
+  panX=map.pan_x||0;panY=map.pan_y||0;zoom=map.zoom_level||1;
+  bgOpacity=map.bg_opacity||0.3;
+  selectedId=null;
+  document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';
+  // Load bg image if stored
+  if(map.bg_image_url){
+    var img=new Image();
+    img.onload=function(){bgImage=img;document.getElementById('bgRemoveBtn').style.display='';renderAll();};
+    img.onerror=function(){bgImage=null;renderAll();};
+    img.src=map.bg_image_url;
+  } else {
+    bgImage=null;document.getElementById('bgRemoveBtn').style.display='none';
+  }
+  localStorage.setItem('elp-last-map',id);
+  renderAll();renderLayers();renderProps();renderMapSelect();
+}
+
+async function saveMap(){
+  if(!tenantId){toast('Not authenticated — tenant not found');console.log('[SiteMap] saveMap failed: no tenantId');return;}
+  console.log('[SiteMap] saveMap, currentMapId:',currentMapId,'objects:',objects.length,'tenantId:',tenantId);
+  var name;
+  if(!currentMapId){
+    name=prompt('Name for this site map:','Site Map');
+    if(!name||!name.trim())return;
+    name=name.trim();
+    // Insert new
+    var bgUrl=null;
+    if(bgImage&&bgImage.src&&bgImage.src.startsWith('data:'))bgUrl=bgImage.src;
+    var ins=await sb.from('site_maps').insert({
+      tenant_id:tenantId,created_by:userId,name:name,
+      objects:objects,bg_image_url:bgUrl,bg_opacity:bgOpacity,
+      pan_x:panX,pan_y:panY,zoom_level:zoom,is_shared:false
+    }).select().single();
+    if(ins.error){toast('Error: '+ins.error.message);return;}
+    currentMapId=ins.data.id;
+    localStorage.setItem('elp-last-map',currentMapId);
+  } else {
+    // Update existing
+    var bgUrl=null;
+    if(bgImage&&bgImage.src&&bgImage.src.startsWith('data:'))bgUrl=bgImage.src;
+    var upd=await sb.from('site_maps').update({
+      objects:objects,bg_image_url:bgUrl,bg_opacity:bgOpacity,
+      pan_x:panX,pan_y:panY,zoom_level:zoom,updated_at:new Date().toISOString()
+    }).eq('id',currentMapId);
+    if(upd.error){toast('Error: '+upd.error.message);return;}
+  }
+  await loadMaps();
   toast('Site map saved');
 }
-function loadLocal(){
-  try{var d=JSON.parse(localStorage.getItem('elp-sitemap'));if(!d)return;
-    objects=d.objects||[];nextId=d.nextId||1;panX=d.panX||0;panY=d.panY||0;zoom=d.zoom||1;
-    document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';
-    renderAll();renderLayers();
-  }catch(e){}
+
+async function newMap(){
+  var name=prompt('Name for new site map:','Site Map');
+  if(!name||!name.trim())return;
+  if(!tenantId){toast('Not authenticated');return;}
+  var ins=await sb.from('site_maps').insert({
+    tenant_id:tenantId,created_by:userId,name:name.trim(),
+    objects:[],is_shared:false
+  }).select().single();
+  if(ins.error){toast('Error: '+ins.error.message);return;}
+  currentMapId=ins.data.id;
+  objects=[];nextId=1;selectedId=null;bgImage=null;bgOpacity=0.3;panX=0;panY=0;zoom=1;
+  document.getElementById('bgRemoveBtn').style.display='none';
+  document.getElementById('zoomLabel').textContent='100%';
+  localStorage.setItem('elp-last-map',currentMapId);
+  await loadMaps();
+  renderAll();renderLayers();renderProps();
+  toast('"'+name.trim()+'" created');
+}
+
+async function deleteMap(){
+  if(!currentMapId)return;
+  var map=allMaps.find(function(m){return m.id===currentMapId;});
+  if(!confirm('Delete "'+( map?map.name:'this map')+'"?'))return;
+  await sb.from('site_maps').delete().eq('id',currentMapId);
+  currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;
+  document.getElementById('bgRemoveBtn').style.display='none';
+  localStorage.removeItem('elp-last-map');
+  await loadMaps();
+  renderAll();renderLayers();renderProps();
+  toast('Site map deleted');
+}
+
+async function renameMap(){
+  if(!currentMapId)return;
+  var map=allMaps.find(function(m){return m.id===currentMapId;});
+  var name=prompt('Rename site map:',map?map.name:'');
+  if(!name||!name.trim())return;
+  await sb.from('site_maps').update({name:name.trim()}).eq('id',currentMapId);
+  await loadMaps();
+  toast('Renamed');
 }
 
 function exportPNG(){
@@ -722,9 +835,6 @@ function loadBgImage(input){
       bgImage=img;
       bgOpacity=0.3;
       document.getElementById('bgRemoveBtn').style.display='';
-      // Save to localStorage
-      localStorage.setItem('elp-sitemap-bg',e.target.result);
-      localStorage.setItem('elp-sitemap-bg-opacity','0.3');
       renderAll();renderProps();
       toast('Background set — use opacity slider in properties');
     };
@@ -737,26 +847,13 @@ function loadBgImage(input){
 function removeBg(){
   bgImage=null;bgOpacity=0.3;
   document.getElementById('bgRemoveBtn').style.display='none';
-  localStorage.removeItem('elp-sitemap-bg');
-  localStorage.removeItem('elp-sitemap-bg-opacity');
   renderAll();renderProps();
   toast('Background removed');
 }
 
 function setBgOpacity(val){
   bgOpacity=parseFloat(val);
-  localStorage.setItem('elp-sitemap-bg-opacity',String(bgOpacity));
   renderAll();
-}
-
-function loadSavedBg(){
-  var src=localStorage.getItem('elp-sitemap-bg');
-  if(!src)return;
-  var op=localStorage.getItem('elp-sitemap-bg-opacity');
-  if(op)bgOpacity=parseFloat(op);
-  var img=new Image();
-  img.onload=function(){bgImage=img;document.getElementById('bgRemoveBtn').style.display='';renderAll();};
-  img.src=src;
 }
 
 function toast(m){
@@ -768,12 +865,34 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').repla
 // ===== BOOT =====
 async function init(){
   var s=await checkAuth();if(!s)return;
+  userId=s.user.id;var email=s.user.email||'';
+  console.log('[SiteMap] Auth OK, email:',email,'authUid:',userId);
+  // Resolve tenant
+  try{
+    var ur=await sb.from('users').select('tenant_id,user_id').eq('email',email).single();
+    console.log('[SiteMap] Users lookup:',ur.data,ur.error);
+    if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;}
+  }catch(e){console.log('[SiteMap] Users lookup error:',e);}
+  if(!tenantId){
+    try{var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}catch(e){}
+  }
+  console.log('[SiteMap] tenantId:',tenantId,'userId:',userId);
+  if(!tenantId){toast('Warning: Could not resolve tenant — saves will fail');}
+
   initUI();
   initCanvas();
   setupEvents();
-  loadLocal();
-  loadSavedBg();
   document.getElementById('tbGrid').classList.add('active');
+
+  // Load maps from DB
+  await loadMaps();
+  console.log('[SiteMap] Maps loaded:',allMaps.length);
+  var lastId=localStorage.getItem('elp-last-map');
+  if(lastId&&allMaps.find(function(m){return m.id===lastId;})){
+    switchMap(lastId);
+  } else if(allMaps.length){
+    switchMap(allMaps[0].id);
+  }
 }
 init();
 </script>
