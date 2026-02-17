@@ -722,6 +722,39 @@ async function switchMap(id){
   renderAll();renderLayers();renderProps();renderMapSelect();
 }
 
+// ===== BG IMAGE STORAGE =====
+async function uploadBgImage(mapId){
+  if(!bgImage||!bgImage.src||!bgImage.src.startsWith('data:'))return null;
+  try{
+    // Convert base64 to blob
+    var parts=bgImage.src.split(',');
+    var mime=parts[0].match(/:(.*?);/)[1];
+    var b=atob(parts[1]);
+    var arr=new Uint8Array(b.length);
+    for(var i=0;i<b.length;i++)arr[i]=b.charCodeAt(i);
+    var blob=new Blob([arr],{type:mime});
+    var ext=mime.split('/')[1]||'png';
+    var path=tenantId+'/'+mapId+'/bg.'+ext;
+    // Upload (upsert to overwrite)
+    var r=await sb.storage.from('sitemap-images').upload(path,blob,{upsert:true,contentType:mime});
+    if(r.error){console.log('[SiteMap] BG upload error:',r.error);return null;}
+    // Get public URL
+    var pub=sb.storage.from('sitemap-images').getPublicUrl(path);
+    console.log('[SiteMap] BG uploaded:',pub.data.publicUrl);
+    return pub.data.publicUrl;
+  }catch(e){console.log('[SiteMap] BG upload exception:',e);return null;}
+}
+
+async function deleteBgImage(mapId){
+  try{
+    // Try common extensions
+    var exts=['png','jpg','jpeg','gif','webp'];
+    for(var i=0;i<exts.length;i++){
+      await sb.storage.from('sitemap-images').remove([tenantId+'/'+mapId+'/bg.'+exts[i]]);
+    }
+  }catch(e){}
+}
+
 async function saveMap(){
   if(!tenantId){toast('Not authenticated — tenant not found');console.log('[SiteMap] saveMap failed: no tenantId');return;}
   console.log('[SiteMap] saveMap, currentMapId:',currentMapId,'objects:',objects.length,'tenantId:',tenantId);
@@ -730,26 +763,29 @@ async function saveMap(){
     name=prompt('Name for this site map:','Site Map');
     if(!name||!name.trim())return;
     name=name.trim();
-    // Insert new
-    var bgUrl=null;
-    if(bgImage&&bgImage.src&&bgImage.src.startsWith('data:'))bgUrl=bgImage.src;
+    // Insert new (without bg first to get the ID)
     var ins=await sb.from('site_maps').insert({
       tenant_id:tenantId,created_by:authUid,name:name,
-      objects:objects,bg_image_url:bgUrl,bg_opacity:bgOpacity,
+      objects:objects,bg_opacity:bgOpacity,
       pan_x:panX,pan_y:panY,zoom_level:zoom,is_shared:false
     }).select().single();
-    if(ins.error){toast('Error: '+ins.error.message);return;}
+    if(ins.error){toast('Error: '+ins.error.message);console.log('[SiteMap] Insert error:',ins.error);return;}
     currentMapId=ins.data.id;
+    // Now upload bg if present
+    var bgUrl=await uploadBgImage(currentMapId);
+    if(bgUrl){await sb.from('site_maps').update({bg_image_url:bgUrl}).eq('id',currentMapId);}
     localStorage.setItem('elp-last-map',currentMapId);
   } else {
-    // Update existing
-    var bgUrl=null;
-    if(bgImage&&bgImage.src&&bgImage.src.startsWith('data:'))bgUrl=bgImage.src;
-    var upd=await sb.from('site_maps').update({
-      objects:objects,bg_image_url:bgUrl,bg_opacity:bgOpacity,
+    // Upload bg if present
+    var bgUrl=await uploadBgImage(currentMapId);
+    var updateData={
+      objects:objects,bg_opacity:bgOpacity,
       pan_x:panX,pan_y:panY,zoom_level:zoom,updated_at:new Date().toISOString()
-    }).eq('id',currentMapId);
-    if(upd.error){toast('Error: '+upd.error.message);return;}
+    };
+    if(bgUrl)updateData.bg_image_url=bgUrl;
+    else if(!bgImage)updateData.bg_image_url=null; // bg was removed
+    var upd=await sb.from('site_maps').update(updateData).eq('id',currentMapId);
+    if(upd.error){toast('Error: '+upd.error.message);console.log('[SiteMap] Update error:',upd.error);return;}
   }
   await loadMaps();
   toast('Site map saved');
@@ -779,6 +815,7 @@ async function deleteMap(){
   var map=allMaps.find(function(m){return m.id===currentMapId;});
   if(!confirm('Delete "'+(map?map.name:'this map')+'"?'))return;
   console.log('[SiteMap] Deleting map:',currentMapId,'authUid:',authUid);
+  await deleteBgImage(currentMapId);
   var r=await sb.from('site_maps').delete().eq('id',currentMapId);
   if(r.error){console.log('[SiteMap] Delete error:',r.error);toast('Delete error: '+r.error.message);return;}
   currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;
