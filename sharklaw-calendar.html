@@ -115,7 +115,20 @@
     .cal-drawer-btn{display:none;width:32px;height:32px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:16px;align-items:center;justify-content:center;}
 
     /* === CALENDAR VIEWS === */
-    .view-area{flex:1;overflow:hidden;padding:0 12px 12px;}
+    .view-area{flex:1;overflow:hidden;padding:0 12px 12px;position:relative;}
+    .view-area-inner{position:relative;height:100%;overflow:hidden;}
+    .slide-container{position:absolute;top:0;left:0;right:0;bottom:0;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s ease;}
+    .slide-container.no-transition{transition:none;}
+    .slide-out-left{transform:translateX(-100%);opacity:0;}
+    .slide-out-right{transform:translateX(100%);opacity:0;}
+    .slide-out-up{transform:translateY(-100%);opacity:0;}
+    .slide-out-down{transform:translateY(100%);opacity:0;}
+    .slide-in{transform:translate(0,0);opacity:1;}
+    .nav-hint{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10;opacity:0;transition:opacity .2s;}
+    .nav-hint.top{top:0;height:40px;background:linear-gradient(to bottom,color-mix(in srgb,var(--accent-primary) 15%,transparent),transparent);}
+    .nav-hint.bottom{bottom:0;height:40px;background:linear-gradient(to top,color-mix(in srgb,var(--accent-primary) 15%,transparent),transparent);}
+    .nav-hint.show{opacity:1;}
+    .nav-hint span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-light);}
 
     /* Month */
     .month-wrap{display:flex;flex-direction:column;height:100%;}
@@ -308,10 +321,16 @@
       <button class="sched-add-btn" style="background:#f97316;" onclick="openEventModal()">+ Event</button>
     </div>
   </div>
-  <div class="view-area">
-    <div id="monthView" class="month-wrap"></div>
-    <div id="weekView" class="week-wrap" style="display:none;"></div>
-    <div id="dayView" class="day-wrap" style="display:none;"></div>
+  <div class="view-area" id="viewArea">
+    <div class="nav-hint top" id="navHintTop"><span>▲ Previous</span></div>
+    <div class="nav-hint bottom" id="navHintBottom"><span>▼ Next</span></div>
+    <div class="view-area-inner" id="viewAreaInner">
+      <div class="slide-container slide-in" id="slideContainer">
+        <div id="monthView" class="month-wrap"></div>
+        <div id="weekView" class="week-wrap" style="display:none;"></div>
+        <div id="dayView" class="day-wrap" style="display:none;"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -568,8 +587,8 @@ function setView(v){
   var ml=document.getElementById('mV'+map[v]);if(ml)ml.classList.add('active');
   render();
 }
-function navPrev(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()-1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()-7);else viewDate.setDate(viewDate.getDate()-1);miniDate=new Date(viewDate);render();renderMiniCal();}
-function navNext(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()+1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()+7);else viewDate.setDate(viewDate.getDate()+1);miniDate=new Date(viewDate);render();renderMiniCal();}
+function _doNavPrev(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()-1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()-7);else viewDate.setDate(viewDate.getDate()-1);miniDate=new Date(viewDate);render();renderMiniCal();}
+function _doNavNext(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()+1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()+7);else viewDate.setDate(viewDate.getDate()+1);miniDate=new Date(viewDate);render();renderMiniCal();}
 function goToday(){viewDate=new Date();miniDate=new Date();render();renderMiniCal();}
 
 // === RENDER ===
@@ -796,10 +815,137 @@ async function deleteEvent(){
   closeEventModal();showToast('Deleted');await loadEvents();renderCalLayers();render();
 }
 
-// Touch swipe
-var tx=0;
-document.addEventListener('touchstart',function(e){tx=e.touches[0].clientX;},{passive:true});
-document.addEventListener('touchend',function(e){var dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>80){if(dx>0)navPrev();else navNext();}},{passive:true});
+// === SCROLL & SWIPE NAVIGATION ===
+var isAnimating=false,scrollCooldown=false;
+
+function animateNav(direction,callback){
+  if(isAnimating)return;
+  isAnimating=true;
+  var container=document.getElementById('slideContainer');
+  var exitClass='slide-out-'+direction; // left, right, up, down
+  var enterFrom=direction==='left'?'right':direction==='right'?'left':direction==='up'?'down':'up';
+
+  // Slide current view out
+  container.classList.remove('slide-in','no-transition');
+  container.classList.add(exitClass);
+
+  setTimeout(function(){
+    // Do the actual data change
+    callback();
+    // Jump to opposite side instantly (no transition)
+    container.classList.add('no-transition');
+    container.classList.remove(exitClass);
+    container.classList.add('slide-out-'+enterFrom);
+
+    // Force reflow
+    container.offsetHeight;
+
+    // Slide in from opposite side
+    requestAnimationFrame(function(){
+      container.classList.remove('no-transition','slide-out-'+enterFrom);
+      container.classList.add('slide-in');
+      setTimeout(function(){isAnimating=false;},350);
+    });
+  },200);
+}
+
+function navPrevAnimated(dir){
+  dir=dir||'right';
+  animateNav(dir,function(){_doNavPrev();});
+}
+function navNextAnimated(dir){
+  dir=dir||'left';
+  animateNav(dir,function(){_doNavNext();});
+}
+
+// Override arrow button navigation to use animation
+function navPrev(){navPrevAnimated('right');}
+function navNext(){navNextAnimated('left');}
+
+// Mouse wheel on view area — scroll up = prev, scroll down = next
+document.getElementById('viewArea').addEventListener('wheel',function(e){
+  // Ignore if inside a scrollable cal-events cell that hasn't reached its scroll boundary
+  var eventsEl=e.target.closest('.cal-events');
+  if(eventsEl){
+    var atTop=eventsEl.scrollTop<=0;
+    var atBottom=eventsEl.scrollTop+eventsEl.clientHeight>=eventsEl.scrollHeight-2;
+    if(e.deltaY<0&&!atTop)return;
+    if(e.deltaY>0&&!atBottom)return;
+  }
+  // Also allow week/day scroll areas to scroll normally
+  var weekScroll=e.target.closest('.week-scroll');
+  var dayScroll=e.target.closest('.day-scroll');
+  if(weekScroll){
+    var atTop=weekScroll.scrollTop<=0;
+    var atBottom=weekScroll.scrollTop+weekScroll.clientHeight>=weekScroll.scrollHeight-2;
+    if(e.deltaY<0&&!atTop)return;
+    if(e.deltaY>0&&!atBottom)return;
+  }
+  if(dayScroll){
+    var atTop=dayScroll.scrollTop<=0;
+    var atBottom=dayScroll.scrollTop+dayScroll.clientHeight>=dayScroll.scrollHeight-2;
+    if(e.deltaY<0&&!atTop)return;
+    if(e.deltaY>0&&!atBottom)return;
+  }
+
+  e.preventDefault();
+  if(scrollCooldown||isAnimating)return;
+  scrollCooldown=true;
+  setTimeout(function(){scrollCooldown=false;},500);
+
+  if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){
+    // Vertical scroll
+    if(e.deltaY<0)navPrevAnimated('down');
+    else navNextAnimated('up');
+  }else{
+    // Horizontal scroll (trackpad)
+    if(e.deltaX<0)navPrevAnimated('right');
+    else navNextAnimated('left');
+  }
+},{passive:false});
+
+// Touch swipe — handles both X and Y gestures
+var tx=0,ty=0,touchActive=false,touchInScroll=false;
+document.addEventListener('touchstart',function(e){
+  var t=e.touches[0];
+  tx=t.clientX;ty=t.clientY;
+  touchActive=true;touchInScroll=false;
+  // Check if touching inside a scrollable element
+  var eventsEl=e.target.closest('.cal-events');
+  var weekScroll=e.target.closest('.week-scroll');
+  var dayScroll=e.target.closest('.day-scroll');
+  if(eventsEl&&eventsEl.scrollHeight>eventsEl.clientHeight)touchInScroll=true;
+  if(weekScroll&&weekScroll.scrollHeight>weekScroll.clientHeight)touchInScroll=true;
+  if(dayScroll&&dayScroll.scrollHeight>dayScroll.clientHeight)touchInScroll=true;
+},{passive:true});
+
+document.addEventListener('touchend',function(e){
+  if(!touchActive)return;
+  touchActive=false;
+  if(isAnimating)return;
+  var t=e.changedTouches[0];
+  var dx=t.clientX-tx,dy=t.clientY-ty;
+  var absDx=Math.abs(dx),absDy=Math.abs(dy);
+  var threshold=60;
+
+  // If inside a scrollable child, require a stronger horizontal swipe
+  if(touchInScroll){
+    if(absDx>120&&absDx>absDy*2){
+      if(dx>0)navPrevAnimated('right');else navNextAnimated('left');
+    }
+    return;
+  }
+
+  if(absDx<threshold&&absDy<threshold)return;
+
+  if(absDx>=absDy){
+    // Horizontal swipe
+    if(dx>0)navPrevAnimated('right');else navNextAnimated('left');
+  }else{
+    // Vertical swipe
+    if(dy>0)navPrevAnimated('down');else navNextAnimated('up');
+  }
+},{passive:true});
 
 // === INIT ===
 async function init(){
