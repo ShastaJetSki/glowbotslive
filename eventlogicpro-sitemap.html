@@ -245,7 +245,7 @@ var resizeHandle='';
 var nextId=1;
 var bgImage=null;
 var bgOpacity=0.3;
-var tenantId=null,userId=null;
+var tenantId=null,userId=null,authUid=null;
 var allMaps=[],currentMapId=null;
 
 // Canvas refs
@@ -734,7 +734,7 @@ async function saveMap(){
     var bgUrl=null;
     if(bgImage&&bgImage.src&&bgImage.src.startsWith('data:'))bgUrl=bgImage.src;
     var ins=await sb.from('site_maps').insert({
-      tenant_id:tenantId,created_by:userId,name:name,
+      tenant_id:tenantId,created_by:authUid,name:name,
       objects:objects,bg_image_url:bgUrl,bg_opacity:bgOpacity,
       pan_x:panX,pan_y:panY,zoom_level:zoom,is_shared:false
     }).select().single();
@@ -760,7 +760,7 @@ async function newMap(){
   if(!name||!name.trim())return;
   if(!tenantId){toast('Not authenticated');return;}
   var ins=await sb.from('site_maps').insert({
-    tenant_id:tenantId,created_by:userId,name:name.trim(),
+    tenant_id:tenantId,created_by:authUid,name:name.trim(),
     objects:[],is_shared:false
   }).select().single();
   if(ins.error){toast('Error: '+ins.error.message);return;}
@@ -777,8 +777,10 @@ async function newMap(){
 async function deleteMap(){
   if(!currentMapId)return;
   var map=allMaps.find(function(m){return m.id===currentMapId;});
-  if(!confirm('Delete "'+( map?map.name:'this map')+'"?'))return;
-  await sb.from('site_maps').delete().eq('id',currentMapId);
+  if(!confirm('Delete "'+(map?map.name:'this map')+'"?'))return;
+  console.log('[SiteMap] Deleting map:',currentMapId,'authUid:',authUid);
+  var r=await sb.from('site_maps').delete().eq('id',currentMapId);
+  if(r.error){console.log('[SiteMap] Delete error:',r.error);toast('Delete error: '+r.error.message);return;}
   currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;
   document.getElementById('bgRemoveBtn').style.display='none';
   localStorage.removeItem('elp-last-map');
@@ -865,8 +867,8 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').repla
 // ===== BOOT =====
 async function init(){
   var s=await checkAuth();if(!s)return;
-  userId=s.user.id;var email=s.user.email||'';
-  console.log('[SiteMap] Auth OK, email:',email,'authUid:',userId);
+  userId=s.user.id;authUid=s.user.id;var email=s.user.email||'';
+  console.log('[SiteMap] Auth OK, email:',email,'authUid:',authUid);
   // Resolve tenant
   try{
     var ur=await sb.from('users').select('tenant_id,user_id').eq('email',email).single();
