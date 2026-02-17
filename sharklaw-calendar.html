@@ -116,8 +116,8 @@
 
     /* === CALENDAR VIEWS === */
     .view-area{flex:1;overflow:hidden;padding:0 12px 12px;position:relative;}
-    .view-area.fading .month-wrap,.view-area.fading .week-wrap,.view-area.fading .day-wrap{opacity:0;transform:scale(.98);}
-    .month-wrap,.week-wrap,.day-wrap{transition:opacity .2s ease,transform .2s ease;opacity:1;transform:scale(1);}
+    .view-slider{height:100%;will-change:transform;transition:transform .32s cubic-bezier(.4,0,.2,1);}
+    .view-slider.no-transition{transition:none !important;}
 
     /* Month */
     .month-wrap{display:flex;flex-direction:column;height:100%;}
@@ -311,9 +311,11 @@
     </div>
   </div>
   <div class="view-area" id="viewArea">
-    <div id="monthView" class="month-wrap"></div>
-    <div id="weekView" class="week-wrap" style="display:none;"></div>
-    <div id="dayView" class="day-wrap" style="display:none;"></div>
+    <div class="view-slider" id="viewSlider">
+      <div id="monthView" class="month-wrap"></div>
+      <div id="weekView" class="week-wrap" style="display:none;"></div>
+      <div id="dayView" class="day-wrap" style="display:none;"></div>
+    </div>
   </div>
 </div>
 
@@ -801,32 +803,46 @@ async function deleteEvent(){
 // === SCROLL & SWIPE NAVIGATION ===
 var scrollLocked=false;
 
-function fadeNav(cb){
+function slideNav(dir,cb){
   if(scrollLocked)return;
   scrollLocked=true;
-  var va=document.getElementById('viewArea');
-  va.classList.add('fading');
+  var slider=document.getElementById('viewSlider');
+  // Determine exit translation
+  var exitT='',enterT='';
+  switch(dir){
+    case'left':  exitT='translateX(-100%)';enterT='translateX(100%)';break;
+    case'right': exitT='translateX(100%)'; enterT='translateX(-100%)';break;
+    case'up':    exitT='translateY(-100%)';enterT='translateY(100%)';break;
+    case'down':  exitT='translateY(100%)'; enterT='translateY(-100%)';break;
+    default:     exitT='translateX(-100%)';enterT='translateX(100%)';
+  }
+  // 1) Slide out
+  slider.style.transform=exitT;
+  // 2) After slide-out completes, swap data, jump to enter position, slide in
   setTimeout(function(){
     cb();
-    requestAnimationFrame(function(){
-      va.classList.remove('fading');
-      setTimeout(function(){scrollLocked=false;},800);
-    });
-  },180);
+    slider.classList.add('no-transition');
+    slider.style.transform=enterT;
+    // Force reflow so browser registers the jump
+    slider.offsetHeight;
+    // 3) Slide into final position
+    slider.classList.remove('no-transition');
+    slider.style.transform='translateX(0) translateY(0)';
+    setTimeout(function(){scrollLocked=false;},350);
+  },320);
 }
 
-function navPrev(){fadeNav(function(){_doNavPrev();});}
-function navNext(){fadeNav(function(){_doNavNext();});}
+function navPrev(dir){slideNav(dir||'right',function(){_doNavPrev();});}
+function navNext(dir){slideNav(dir||'left',function(){_doNavNext();});}
 
-// Mouse wheel — accumulate delta before triggering (requires deliberate scroll)
+// Mouse wheel — accumulate delta, slide matches scroll direction
 (function(){
   var va=document.getElementById('viewArea');
   if(!va)return;
   var accX=0,accY=0,accTimer=null;
-  var THRESHOLD=150; // pixels of accumulated scroll needed
+  var THRESHOLD=150;
 
   va.addEventListener('wheel',function(e){
-    // Let scrollable children scroll first
     var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
     if(scrollEl&&scrollEl.scrollHeight>scrollEl.clientHeight+2){
       var atTop=scrollEl.scrollTop<=1;
@@ -836,53 +852,42 @@ function navNext(){fadeNav(function(){_doNavNext();});}
     }
     e.preventDefault();
     if(scrollLocked)return;
-
-    accX+=e.deltaX;
-    accY+=e.deltaY;
-
-    // Reset accumulator after 400ms of no scrolling
+    accX+=e.deltaX;accY+=e.deltaY;
     clearTimeout(accTimer);
     accTimer=setTimeout(function(){accX=0;accY=0;},400);
-
     var absX=Math.abs(accX),absY=Math.abs(accY);
     if(absY>=THRESHOLD&&absY>=absX){
-      if(accY>0)navNext();else navPrev();
+      if(accY>0)navNext('up');else navPrev('down');
       accX=0;accY=0;
     }else if(absX>=THRESHOLD&&absX>absY){
-      if(accX>0)navNext();else navPrev();
+      if(accX>0)navNext('left');else navPrev('right');
       accX=0;accY=0;
     }
   },{passive:false});
 })();
 
-// Touch swipe — requires long deliberate swipe
+// Touch swipe — slide matches swipe direction
 (function(){
   var sx=0,sy=0,active=false,inScroll=false;
-  var SWIPE_MIN=120;       // minimum px to trigger
-  var SWIPE_SCROLL=180;    // even more if inside scrollable area
-
+  var SWIPE_MIN=120,SWIPE_SCROLL=180;
   document.addEventListener('touchstart',function(e){
-    var t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true;
-    inScroll=false;
+    var t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true;inScroll=false;
     var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
     if(scrollEl&&scrollEl.scrollHeight>scrollEl.clientHeight+2)inScroll=true;
   },{passive:true});
-
   document.addEventListener('touchend',function(e){
     if(!active||scrollLocked)return;active=false;
     var t=e.changedTouches[0];
     var dx=t.clientX-sx,dy=t.clientY-sy;
     var ax=Math.abs(dx),ay=Math.abs(dy);
     var threshold=inScroll?SWIPE_SCROLL:SWIPE_MIN;
-
     if(inScroll){
-      // Only horizontal swipe escapes scrollable areas
-      if(ax>threshold&&ax>ay*2){dx>0?navPrev():navNext();}
+      if(ax>threshold&&ax>ay*2){dx>0?navPrev('right'):navNext('left');}
       return;
     }
     if(ax<threshold&&ay<threshold)return;
-    if(ax>=ay){dx>0?navPrev():navNext();}
-    else{dy>0?navPrev():navNext();}
+    if(ax>=ay){dx>0?navPrev('right'):navNext('left');}
+    else{dy>0?navPrev('down'):navNext('up');}
   },{passive:true});
 })();
 
