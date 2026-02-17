@@ -116,19 +116,8 @@
 
     /* === CALENDAR VIEWS === */
     .view-area{flex:1;overflow:hidden;padding:0 12px 12px;position:relative;}
-    .view-area-inner{position:relative;height:100%;overflow:hidden;}
-    .slide-container{position:absolute;top:0;left:0;right:0;bottom:0;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s ease;}
-    .slide-container.no-transition{transition:none;}
-    .slide-out-left{transform:translateX(-100%);opacity:0;}
-    .slide-out-right{transform:translateX(100%);opacity:0;}
-    .slide-out-up{transform:translateY(-100%);opacity:0;}
-    .slide-out-down{transform:translateY(100%);opacity:0;}
-    .slide-in{transform:translate(0,0);opacity:1;}
-    .nav-hint{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10;opacity:0;transition:opacity .2s;}
-    .nav-hint.top{top:0;height:40px;background:linear-gradient(to bottom,color-mix(in srgb,var(--accent-primary) 15%,transparent),transparent);}
-    .nav-hint.bottom{bottom:0;height:40px;background:linear-gradient(to top,color-mix(in srgb,var(--accent-primary) 15%,transparent),transparent);}
-    .nav-hint.show{opacity:1;}
-    .nav-hint span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-light);}
+    .view-area.fading .month-wrap,.view-area.fading .week-wrap,.view-area.fading .day-wrap{opacity:0;transform:scale(.98);}
+    .month-wrap,.week-wrap,.day-wrap{transition:opacity .2s ease,transform .2s ease;opacity:1;transform:scale(1);}
 
     /* Month */
     .month-wrap{display:flex;flex-direction:column;height:100%;}
@@ -322,15 +311,9 @@
     </div>
   </div>
   <div class="view-area" id="viewArea">
-    <div class="nav-hint top" id="navHintTop"><span>▲ Previous</span></div>
-    <div class="nav-hint bottom" id="navHintBottom"><span>▼ Next</span></div>
-    <div class="view-area-inner" id="viewAreaInner">
-      <div class="slide-container slide-in" id="slideContainer">
-        <div id="monthView" class="month-wrap"></div>
-        <div id="weekView" class="week-wrap" style="display:none;"></div>
-        <div id="dayView" class="day-wrap" style="display:none;"></div>
-      </div>
-    </div>
+    <div id="monthView" class="month-wrap"></div>
+    <div id="weekView" class="week-wrap" style="display:none;"></div>
+    <div id="dayView" class="day-wrap" style="display:none;"></div>
   </div>
 </div>
 
@@ -816,136 +799,73 @@ async function deleteEvent(){
 }
 
 // === SCROLL & SWIPE NAVIGATION ===
-var isAnimating=false,scrollCooldown=false;
+var scrollLocked=false;
 
-function animateNav(direction,callback){
-  if(isAnimating)return;
-  isAnimating=true;
-  var container=document.getElementById('slideContainer');
-  var exitClass='slide-out-'+direction; // left, right, up, down
-  var enterFrom=direction==='left'?'right':direction==='right'?'left':direction==='up'?'down':'up';
-
-  // Slide current view out
-  container.classList.remove('slide-in','no-transition');
-  container.classList.add(exitClass);
-
+function fadeNav(cb){
+  if(scrollLocked)return;
+  scrollLocked=true;
+  var va=document.getElementById('viewArea');
+  va.classList.add('fading');
   setTimeout(function(){
-    // Do the actual data change
-    callback();
-    // Jump to opposite side instantly (no transition)
-    container.classList.add('no-transition');
-    container.classList.remove(exitClass);
-    container.classList.add('slide-out-'+enterFrom);
-
-    // Force reflow
-    container.offsetHeight;
-
-    // Slide in from opposite side
+    cb();
     requestAnimationFrame(function(){
-      container.classList.remove('no-transition','slide-out-'+enterFrom);
-      container.classList.add('slide-in');
-      setTimeout(function(){isAnimating=false;},350);
+      va.classList.remove('fading');
+      setTimeout(function(){scrollLocked=false;},250);
     });
-  },200);
+  },180);
 }
 
-function navPrevAnimated(dir){
-  dir=dir||'right';
-  animateNav(dir,function(){_doNavPrev();});
-}
-function navNextAnimated(dir){
-  dir=dir||'left';
-  animateNav(dir,function(){_doNavNext();});
-}
+function navPrev(){fadeNav(function(){_doNavPrev();});}
+function navNext(){fadeNav(function(){_doNavNext();});}
 
-// Override arrow button navigation to use animation
-function navPrev(){navPrevAnimated('right');}
-function navNext(){navNextAnimated('left');}
-
-// Mouse wheel on view area — scroll up = prev, scroll down = next
-document.getElementById('viewArea').addEventListener('wheel',function(e){
-  // Ignore if inside a scrollable cal-events cell that hasn't reached its scroll boundary
-  var eventsEl=e.target.closest('.cal-events');
-  if(eventsEl){
-    var atTop=eventsEl.scrollTop<=0;
-    var atBottom=eventsEl.scrollTop+eventsEl.clientHeight>=eventsEl.scrollHeight-2;
-    if(e.deltaY<0&&!atTop)return;
-    if(e.deltaY>0&&!atBottom)return;
-  }
-  // Also allow week/day scroll areas to scroll normally
-  var weekScroll=e.target.closest('.week-scroll');
-  var dayScroll=e.target.closest('.day-scroll');
-  if(weekScroll){
-    var atTop=weekScroll.scrollTop<=0;
-    var atBottom=weekScroll.scrollTop+weekScroll.clientHeight>=weekScroll.scrollHeight-2;
-    if(e.deltaY<0&&!atTop)return;
-    if(e.deltaY>0&&!atBottom)return;
-  }
-  if(dayScroll){
-    var atTop=dayScroll.scrollTop<=0;
-    var atBottom=dayScroll.scrollTop+dayScroll.clientHeight>=dayScroll.scrollHeight-2;
-    if(e.deltaY<0&&!atTop)return;
-    if(e.deltaY>0&&!atBottom)return;
-  }
-
-  e.preventDefault();
-  if(scrollCooldown||isAnimating)return;
-  scrollCooldown=true;
-  setTimeout(function(){scrollCooldown=false;},500);
-
-  if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){
-    // Vertical scroll
-    if(e.deltaY<0)navPrevAnimated('down');
-    else navNextAnimated('up');
-  }else{
-    // Horizontal scroll (trackpad)
-    if(e.deltaX<0)navPrevAnimated('right');
-    else navNextAnimated('left');
-  }
-},{passive:false});
-
-// Touch swipe — handles both X and Y gestures
-var tx=0,ty=0,touchActive=false,touchInScroll=false;
-document.addEventListener('touchstart',function(e){
-  var t=e.touches[0];
-  tx=t.clientX;ty=t.clientY;
-  touchActive=true;touchInScroll=false;
-  // Check if touching inside a scrollable element
-  var eventsEl=e.target.closest('.cal-events');
-  var weekScroll=e.target.closest('.week-scroll');
-  var dayScroll=e.target.closest('.day-scroll');
-  if(eventsEl&&eventsEl.scrollHeight>eventsEl.clientHeight)touchInScroll=true;
-  if(weekScroll&&weekScroll.scrollHeight>weekScroll.clientHeight)touchInScroll=true;
-  if(dayScroll&&dayScroll.scrollHeight>dayScroll.clientHeight)touchInScroll=true;
-},{passive:true});
-
-document.addEventListener('touchend',function(e){
-  if(!touchActive)return;
-  touchActive=false;
-  if(isAnimating)return;
-  var t=e.changedTouches[0];
-  var dx=t.clientX-tx,dy=t.clientY-ty;
-  var absDx=Math.abs(dx),absDy=Math.abs(dy);
-  var threshold=60;
-
-  // If inside a scrollable child, require a stronger horizontal swipe
-  if(touchInScroll){
-    if(absDx>120&&absDx>absDy*2){
-      if(dx>0)navPrevAnimated('right');else navNextAnimated('left');
+// Mouse wheel — scroll up/down or sideways to navigate
+(function(){
+  var va=document.getElementById('viewArea');
+  if(!va)return;
+  va.addEventListener('wheel',function(e){
+    // Let scrollable children scroll first
+    var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
+    if(scrollEl&&scrollEl.scrollHeight>scrollEl.clientHeight+2){
+      var atTop=scrollEl.scrollTop<=1;
+      var atBot=scrollEl.scrollTop+scrollEl.clientHeight>=scrollEl.scrollHeight-2;
+      if(e.deltaY<0&&!atTop)return;
+      if(e.deltaY>0&&!atBot)return;
     }
-    return;
-  }
+    e.preventDefault();
+    if(scrollLocked)return;
+    var dx=Math.abs(e.deltaX),dy=Math.abs(e.deltaY);
+    if(dx<5&&dy<5)return;
+    if(dy>=dx){
+      if(e.deltaY>0)navNext();else navPrev();
+    }else{
+      if(e.deltaX>0)navNext();else navPrev();
+    }
+  },{passive:false});
+})();
 
-  if(absDx<threshold&&absDy<threshold)return;
-
-  if(absDx>=absDy){
-    // Horizontal swipe
-    if(dx>0)navPrevAnimated('right');else navNextAnimated('left');
-  }else{
-    // Vertical swipe
-    if(dy>0)navPrevAnimated('down');else navNextAnimated('up');
-  }
-},{passive:true});
+// Touch swipe — both directions
+(function(){
+  var sx=0,sy=0,active=false,inScroll=false;
+  document.addEventListener('touchstart',function(e){
+    var t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true;
+    inScroll=false;
+    var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
+    if(scrollEl&&scrollEl.scrollHeight>scrollEl.clientHeight+2)inScroll=true;
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(!active||scrollLocked)return;active=false;
+    var t=e.changedTouches[0];
+    var dx=t.clientX-sx,dy=t.clientY-sy;
+    var ax=Math.abs(dx),ay=Math.abs(dy);
+    if(inScroll){
+      if(ax>100&&ax>ay*1.5){dx>0?navPrev():navNext();}
+      return;
+    }
+    if(ax<50&&ay<50)return;
+    if(ax>=ay){dx>0?navPrev():navNext();}
+    else{dy>0?navPrev():navNext();}
+  },{passive:true});
+})();
 
 // === INIT ===
 async function init(){
