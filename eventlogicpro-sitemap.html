@@ -117,6 +117,9 @@
     <h1>Site Map Creator<span>EventLogicPro</span></h1>
     <div class="top-actions">
       <button class="btn" onclick="clearAll()">Clear All</button>
+      <button class="btn" onclick="document.getElementById('bgInput').click()">Background Image</button>
+      <button class="btn" id="bgRemoveBtn" onclick="removeBg()" style="display:none;">Remove BG</button>
+      <input type="file" id="bgInput" accept="image/*" style="display:none;" onchange="loadBgImage(this)">
       <button class="btn" onclick="exportPNG()">Export PNG</button>
       <button class="btn pri" onclick="saveLocal()">Save</button>
       <a href="eventlogicpro.html" class="btn" style="text-decoration:none;">Back</a>
@@ -234,6 +237,8 @@ var dragStart={x:0,y:0},objStart={x:0,y:0,w:0,h:0};
 var drawStart=null;
 var resizeHandle='';
 var nextId=1;
+var bgImage=null; // {img:Image, opacity:0.3}
+var bgOpacity=0.3;
 
 // Canvas refs
 var wrap,mainCanvas,ctx,gridCanvas,gctx;
@@ -374,6 +379,12 @@ function renderAll(){
   ctx.save();
   ctx.translate(panX,panY);
   ctx.scale(zoom,zoom);
+  // Draw background image
+  if(bgImage){
+    ctx.globalAlpha=bgOpacity;
+    ctx.drawImage(bgImage,0,0);
+    ctx.globalAlpha=1;
+  }
   objects.forEach(function(obj){
     ctx.save();
     ctx.globalAlpha=obj.opacity;
@@ -453,7 +464,15 @@ function selectObj(id){selectedId=id;renderAll();renderLayers();renderProps();}
 // ===== PROPERTIES PANEL =====
 function renderProps(){
   var el=document.getElementById('propsPanel');
-  if(selectedId===null){el.innerHTML='<div class="empty-props">Select an object to<br>edit its properties</div>';return;}
+  if(selectedId===null){
+    var bgHtml='<div class="empty-props">Select an object to<br>edit its properties</div>';
+    if(bgImage){
+      bgHtml+='<div class="prop-group"><div class="prop-label">Background Image</div>';
+      bgHtml+='<div class="slider-row"><span class="prop-unit" style="font-size:11px;">Opacity</span><input type="range" min="5" max="100" value="'+Math.round(bgOpacity*100)+'" oninput="setBgOpacity(this.value/100);this.parentElement.querySelector(\'.slider-val\').textContent=this.value+\'%\'"><span class="slider-val">'+Math.round(bgOpacity*100)+'%</span></div>';
+      bgHtml+='<button class="btn danger" onclick="removeBg()" style="width:100%;margin-top:8px;">Remove Background</button></div>';
+    }
+    el.innerHTML=bgHtml;return;
+  }
   var obj=getObj(selectedId);if(!obj){el.innerHTML='';return;}
   var h='<div class="prop-group"><div class="prop-label">Label</div>';
   h+='<input class="prop-input" value="'+esc(obj.label)+'" oninput="propSet(\'label\',this.value)" placeholder="Enter label"></div>';
@@ -520,6 +539,28 @@ function setupEvents(){
   mainCanvas.addEventListener('touchstart',function(e){e.preventDefault();var t=e.touches[0];onDown({clientX:t.clientX,clientY:t.clientY,button:0});},{passive:false});
   mainCanvas.addEventListener('touchmove',function(e){e.preventDefault();var t=e.touches[0];onMove({clientX:t.clientX,clientY:t.clientY,buttons:1});},{passive:false});
   mainCanvas.addEventListener('touchend',function(e){onUp({});});
+
+  // Drag & drop image as background
+  mainCanvas.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';});
+  mainCanvas.addEventListener('drop',function(e){
+    e.preventDefault();
+    var file=e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(!file||!file.type.startsWith('image/'))return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var img=new Image();
+      img.onload=function(){
+        bgImage=img;bgOpacity=0.3;
+        document.getElementById('bgRemoveBtn').style.display='';
+        localStorage.setItem('elp-sitemap-bg',ev.target.result);
+        localStorage.setItem('elp-sitemap-bg-opacity','0.3');
+        renderAll();renderProps();
+        toast('Background set from dropped image');
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function onDown(e){
@@ -654,6 +695,8 @@ function exportPNG(){
   var ox=oc.getContext('2d');ox.scale(2,2);
   ox.fillStyle='#1a2535';ox.fillRect(0,0,cw,ch);
   ox.translate(-minX,-minY);
+  // Background image
+  if(bgImage){ox.globalAlpha=bgOpacity;ox.drawImage(bgImage,0,0);ox.globalAlpha=1;}
   objects.forEach(function(obj){
     ox.save();ox.globalAlpha=obj.opacity||1;
     var cx=obj.x+obj.w/2,cy=obj.y+obj.h/2;
@@ -668,6 +711,54 @@ function exportPNG(){
 
 function clearAll(){if(!confirm('Clear all objects?'))return;objects=[];selectedId=null;nextId=1;renderAll();renderLayers();renderProps();}
 
+// ===== BACKGROUND IMAGE =====
+function loadBgImage(input){
+  if(!input.files||!input.files[0])return;
+  var file=input.files[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      bgImage=img;
+      bgOpacity=0.3;
+      document.getElementById('bgRemoveBtn').style.display='';
+      // Save to localStorage
+      localStorage.setItem('elp-sitemap-bg',e.target.result);
+      localStorage.setItem('elp-sitemap-bg-opacity','0.3');
+      renderAll();renderProps();
+      toast('Background set — use opacity slider in properties');
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value='';
+}
+
+function removeBg(){
+  bgImage=null;bgOpacity=0.3;
+  document.getElementById('bgRemoveBtn').style.display='none';
+  localStorage.removeItem('elp-sitemap-bg');
+  localStorage.removeItem('elp-sitemap-bg-opacity');
+  renderAll();renderProps();
+  toast('Background removed');
+}
+
+function setBgOpacity(val){
+  bgOpacity=parseFloat(val);
+  localStorage.setItem('elp-sitemap-bg-opacity',String(bgOpacity));
+  renderAll();
+}
+
+function loadSavedBg(){
+  var src=localStorage.getItem('elp-sitemap-bg');
+  if(!src)return;
+  var op=localStorage.getItem('elp-sitemap-bg-opacity');
+  if(op)bgOpacity=parseFloat(op);
+  var img=new Image();
+  img.onload=function(){bgImage=img;document.getElementById('bgRemoveBtn').style.display='';renderAll();};
+  img.src=src;
+}
+
 function toast(m){
   var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border-default);color:var(--text-primary);padding:10px 18px;border-radius:10px;font-size:13px;z-index:100;display:none;';document.body.appendChild(t);}
   t.textContent=m;t.style.display='block';setTimeout(function(){t.style.display='none';},2000);
@@ -681,6 +772,7 @@ async function init(){
   initCanvas();
   setupEvents();
   loadLocal();
+  loadSavedBg();
   document.getElementById('tbGrid').classList.add('active');
 }
 init();
