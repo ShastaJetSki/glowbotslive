@@ -810,7 +810,7 @@ function fadeNav(cb){
     cb();
     requestAnimationFrame(function(){
       va.classList.remove('fading');
-      setTimeout(function(){scrollLocked=false;},250);
+      setTimeout(function(){scrollLocked=false;},800);
     });
   },180);
 }
@@ -818,10 +818,13 @@ function fadeNav(cb){
 function navPrev(){fadeNav(function(){_doNavPrev();});}
 function navNext(){fadeNav(function(){_doNavNext();});}
 
-// Mouse wheel — scroll up/down or sideways to navigate
+// Mouse wheel — accumulate delta before triggering (requires deliberate scroll)
 (function(){
   var va=document.getElementById('viewArea');
   if(!va)return;
+  var accX=0,accY=0,accTimer=null;
+  var THRESHOLD=150; // pixels of accumulated scroll needed
+
   va.addEventListener('wheel',function(e){
     // Let scrollable children scroll first
     var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
@@ -833,35 +836,51 @@ function navNext(){fadeNav(function(){_doNavNext();});}
     }
     e.preventDefault();
     if(scrollLocked)return;
-    var dx=Math.abs(e.deltaX),dy=Math.abs(e.deltaY);
-    if(dx<5&&dy<5)return;
-    if(dy>=dx){
-      if(e.deltaY>0)navNext();else navPrev();
-    }else{
-      if(e.deltaX>0)navNext();else navPrev();
+
+    accX+=e.deltaX;
+    accY+=e.deltaY;
+
+    // Reset accumulator after 400ms of no scrolling
+    clearTimeout(accTimer);
+    accTimer=setTimeout(function(){accX=0;accY=0;},400);
+
+    var absX=Math.abs(accX),absY=Math.abs(accY);
+    if(absY>=THRESHOLD&&absY>=absX){
+      if(accY>0)navNext();else navPrev();
+      accX=0;accY=0;
+    }else if(absX>=THRESHOLD&&absX>absY){
+      if(accX>0)navNext();else navPrev();
+      accX=0;accY=0;
     }
   },{passive:false});
 })();
 
-// Touch swipe — both directions
+// Touch swipe — requires long deliberate swipe
 (function(){
   var sx=0,sy=0,active=false,inScroll=false;
+  var SWIPE_MIN=120;       // minimum px to trigger
+  var SWIPE_SCROLL=180;    // even more if inside scrollable area
+
   document.addEventListener('touchstart',function(e){
     var t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true;
     inScroll=false;
     var scrollEl=e.target.closest('.cal-events,.week-scroll,.day-scroll');
     if(scrollEl&&scrollEl.scrollHeight>scrollEl.clientHeight+2)inScroll=true;
   },{passive:true});
+
   document.addEventListener('touchend',function(e){
     if(!active||scrollLocked)return;active=false;
     var t=e.changedTouches[0];
     var dx=t.clientX-sx,dy=t.clientY-sy;
     var ax=Math.abs(dx),ay=Math.abs(dy);
+    var threshold=inScroll?SWIPE_SCROLL:SWIPE_MIN;
+
     if(inScroll){
-      if(ax>100&&ax>ay*1.5){dx>0?navPrev():navNext();}
+      // Only horizontal swipe escapes scrollable areas
+      if(ax>threshold&&ax>ay*2){dx>0?navPrev():navNext();}
       return;
     }
-    if(ax<50&&ay<50)return;
+    if(ax<threshold&&ay<threshold)return;
     if(ax>=ay){dx>0?navPrev():navNext();}
     else{dy>0?navPrev():navNext();}
   },{passive:true});
