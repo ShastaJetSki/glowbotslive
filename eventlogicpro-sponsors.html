@@ -70,6 +70,10 @@
     .meta-input{padding:10px 14px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:14px;width:100%;}
     .level-card{background:var(--bg-card);border:1px solid var(--border-default);border-radius:12px;margin-bottom:12px;overflow:hidden;transition:border-color .2s;}
     .level-card:hover{border-color:var(--accent-primary);}
+    .level-drag{cursor:grab;color:var(--text-secondary);font-size:18px;padding:0 4px;user-select:none;touch-action:none;}
+    .level-drag:active{cursor:grabbing;}
+    .level-card.dragging{opacity:.4;border-color:var(--accent-primary);}
+    .level-card.drag-over{border-top:3px solid var(--accent-primary);}
     .level-hdr{display:flex;align-items:center;padding:16px;gap:12px;cursor:pointer;user-select:none;}
     .level-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
     .level-info{flex:1;min-width:0;}
@@ -239,7 +243,7 @@ async function saveToDb(){if(!tenantId){toast('Not authenticated');return;}if(!c
 async function deleteSheet(){if(!currentSheetId||currentSheetId==='preloaded')return;var s=allSheets.find(function(e){return e.sheet_id===currentSheetId;});if(!s||s.created_by!==userId){toast('Cannot delete');return;}if(!confirm('Delete "'+s.sheet_name+'"?'))return;await sb.from('sponsor_perks').delete().eq('sheet_id',currentSheetId);await sb.from('sponsor_levels').delete().eq('sheet_id',currentSheetId);await sb.from('sponsor_sheets').delete().eq('sheet_id',currentSheetId);currentSheetId=null;localStorage.removeItem('elp-last-sponsor');await loadSheets();renderSelects();clearForm();toast('Deleted');}
 
 // Rendering
-function render(){var area=document.getElementById('levelsArea');var h='';levels.forEach(function(lv,i){var totalPerks=lv.perks.filter(function(p){return p.qty>0;}).length;var lvCost=0,lvValue=0;lv.perks.forEach(function(p){var q=parseInt(p.qty)||0;lvCost+=q*(parseFloat(p.cost)||0);lvValue+=q*(parseFloat(p.value)||0);});h+='<div class="level-card" id="lvl-'+i+'">';h+='<div class="level-hdr" onclick="toggleLevel('+i+')">';h+='<div class="level-dot" style="background:'+lv.color+';"></div>';h+='<div class="level-info"><div class="level-name" style="color:'+lv.color+';">'+esc(lv.name)+'</div>';h+='<div class="level-sub">'+totalPerks+' perks · Value $'+fmt(lvValue)+' · Cost $'+fmt(lvCost)+'</div></div>';h+='<div class="level-price" style="color:'+lv.color+';">$'+fmt(lv.price)+'</div>';h+='<button class="level-del" onclick="event.stopPropagation();removeLevel('+i+')" title="Delete level">&times;</button>';h+='<span class="level-chv">&#9660;</span></div>';
+function render(){var area=document.getElementById('levelsArea');var h='';levels.forEach(function(lv,i){var totalPerks=lv.perks.filter(function(p){return p.qty>0;}).length;var lvCost=0,lvValue=0;lv.perks.forEach(function(p){var q=parseInt(p.qty)||0;lvCost+=q*(parseFloat(p.cost)||0);lvValue+=q*(parseFloat(p.value)||0);});h+='<div class="level-card" id="lvl-'+i+'" ondragstart="onDragStart(event,'+i+')" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event,'+i+')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'+i+')">';h+='<div class="level-hdr" onclick="toggleLevel('+i+')">';h+='<div class="level-drag" onmousedown="this.closest(\'.level-card\').draggable=true" title="Drag to reorder">&#9783;</div>';h+='<div class="level-dot" style="background:'+lv.color+';"></div>';h+='<div class="level-info"><div class="level-name" style="color:'+lv.color+';">'+esc(lv.name)+'</div>';h+='<div class="level-sub">'+totalPerks+' perks · Value $'+fmt(lvValue)+' · Cost $'+fmt(lvCost)+'</div></div>';h+='<div class="level-price" style="color:'+lv.color+';">$'+fmt(lv.price)+'</div>';h+='<button class="level-del" onclick="event.stopPropagation();removeLevel('+i+')" title="Delete level">&times;</button>';h+='<span class="level-chv">&#9660;</span></div>';
 h+='<div class="level-body"><div class="level-inner">';
 h+='<div class="level-meta">';
 h+='<div><div class="lm-label">Level Name</div><input class="lm-input" value="'+esc(lv.name)+'" onchange="updLevel('+i+',\'name\',this.value)"></div>';
@@ -257,7 +261,7 @@ h+='<button class="perk-del" onclick="removePerk('+i+','+pi+')" title="Remove">&
 h+='</div>';});
 h+='<button class="add-perk-btn" onclick="addPerk('+i+')">+ Add Perk</button>';
 h+='</div></div></div>';});
-area.innerHTML=h;calcSummary();}
+area.innerHTML=h;calcSummary();initTouchDrag();}
 
 function toggleLevel(i){var card=document.getElementById('lvl-'+i);if(card)card.classList.toggle('expanded');}
 function updLevel(i,key,val){if(key==='price')levels[i].price=parseFloat(val)||0;else if(key==='color'){levels[i].color=val;}else levels[i][key]=val;dirty=true;if(key==='price'){var prEl=document.querySelector('#lvl-'+i+' .level-price');if(prEl){prEl.textContent='$'+fmt(levels[i].price);}calcSummary();}else{render();var card=document.getElementById('lvl-'+i);if(card)card.classList.add('expanded');}}
@@ -266,6 +270,20 @@ function addPerk(li){levels[li].perks.push({name:'',qty:0,value:0,cost:0});dirty
 function removePerk(li,pi){levels[li].perks.splice(pi,1);dirty=true;render();var card=document.getElementById('lvl-'+li);if(card)card.classList.add('expanded');}
 function addLevel(){var colors=['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#f59e0b','#14b8a6','#6366f1'];var c=colors[levels.length%colors.length];var name=prompt('Level name (e.g., Media, Standard):');if(!name||!name.trim())return;levels.push({name:name.trim(),color:c,price:0,perks:DEFAULT_PERKS.map(function(p){return{name:p.name,qty:0,value:0,cost:0};})});dirty=true;render();}
 function removeLevel(i){if(!confirm('Delete "'+levels[i].name+'" level?'))return;levels.splice(i,1);dirty=true;render();}
+
+var dragIdx=null;
+function onDragStart(e,i){dragIdx=i;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',i);setTimeout(function(){var el=document.getElementById('lvl-'+i);if(el)el.classList.add('dragging');},0);}
+function onDragEnd(e){document.querySelectorAll('.level-card').forEach(function(c){c.classList.remove('dragging','drag-over');c.draggable=false;});dragIdx=null;}
+function onDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
+function onDragEnter(e,i){e.preventDefault();if(dragIdx===null||dragIdx===i)return;document.querySelectorAll('.level-card').forEach(function(c){c.classList.remove('drag-over');});var el=document.getElementById('lvl-'+i);if(el)el.classList.add('drag-over');}
+function onDragLeave(e){if(!e.currentTarget.contains(e.relatedTarget))e.currentTarget.classList.remove('drag-over');}
+function onDrop(e,targetIdx){e.preventDefault();if(dragIdx===null||dragIdx===targetIdx){onDragEnd(e);return;}var item=levels.splice(dragIdx,1)[0];levels.splice(targetIdx,0,item);dirty=true;dragIdx=null;render();}
+
+// Touch drag support
+var touchDragIdx=null,touchClone=null,touchStartY=0;
+function initTouchDrag(){document.querySelectorAll('.level-drag').forEach(function(handle,i){handle.addEventListener('touchstart',function(e){e.preventDefault();touchDragIdx=i;touchStartY=e.touches[0].clientY;var card=document.getElementById('lvl-'+i);touchClone=card.cloneNode(true);touchClone.style.cssText='position:fixed;left:16px;right:16px;opacity:.8;z-index:9999;pointer-events:none;transform:scale(.97);';document.body.appendChild(touchClone);card.classList.add('dragging');},{passive:false});});}
+document.addEventListener('touchmove',function(e){if(touchDragIdx===null)return;e.preventDefault();var y=e.touches[0].clientY;if(touchClone)touchClone.style.top=(y-30)+'px';document.querySelectorAll('.level-card').forEach(function(c){c.classList.remove('drag-over');});var el=document.elementFromPoint(e.touches[0].clientX,y);if(el){var card=el.closest('.level-card');if(card)card.classList.add('drag-over');}},{passive:false});
+document.addEventListener('touchend',function(e){if(touchDragIdx===null)return;if(touchClone){document.body.removeChild(touchClone);touchClone=null;}var y=e.changedTouches[0].clientY;var el=document.elementFromPoint(e.changedTouches[0].clientX,y);var targetCard=el?el.closest('.level-card'):null;var targetIdx=-1;if(targetCard){var id=targetCard.id.replace('lvl-','');targetIdx=parseInt(id);}document.querySelectorAll('.level-card').forEach(function(c){c.classList.remove('dragging','drag-over');});if(targetIdx>=0&&targetIdx!==touchDragIdx){var item=levels.splice(touchDragIdx,1)[0];levels.splice(targetIdx,0,item);dirty=true;render();}touchDragIdx=null;});
 
 function calcSummary(){var totalPerks=0,totalCost=0,totalValue=0,totalPrice=0;levels.forEach(function(lv,i){var lvPerks=0,lvCost=0,lvValue=0;totalPrice+=lv.price;lv.perks.forEach(function(p){var q=parseInt(p.qty)||0;if(q>0)lvPerks++;lvCost+=q*(parseFloat(p.cost)||0);lvValue+=q*(parseFloat(p.value)||0);totalPerks++;});totalCost+=lvCost;totalValue+=lvValue;var sub=document.querySelector('#lvl-'+i+' .level-sub');if(sub)sub.textContent=lvPerks+' perks · Value $'+fmt(lvValue)+' · Cost $'+fmt(lvCost);});var offset=totalPrice-totalCost;document.getElementById('sbLevels').textContent=levels.length;document.getElementById('sbPerks').textContent=totalPerks;document.getElementById('sbValue').textContent='$'+fmt(totalValue);document.getElementById('sbCost').textContent='$'+fmt(totalCost);var oEl=document.getElementById('sbOffset');oEl.textContent=(offset>=0?'+$':'-$')+fmt(Math.abs(offset));oEl.style.color=offset>=0?'#22c55e':'#ef4444';}
 
