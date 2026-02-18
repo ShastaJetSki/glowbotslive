@@ -276,7 +276,7 @@
 <div class="toolbar">
   <div class="toolbar-row">
     <input type="text" class="search-box" id="searchBox" placeholder="Search by name, phone, or organization..." oninput="filterContacts()">
-    <button class="add-btn" onclick="addNewFunnel()">+ Add Funnel</button>
+    <button class="add-btn" id="addFunnelBtn" onclick="addNewFunnel()" style="display:none;">+ Add Funnel</button>
   </div>
 </div>
 
@@ -379,20 +379,28 @@ function getStageIds(){return Object.keys(STAGES).map(Number).sort(function(a,b)
 function getStageName(id){return STAGES[id]?STAGES[id].name:'Stage '+id;}
 function getStageColor(id){return STAGES[id]?STAGES[id].color:FUNNEL_COLORS[id%FUNNEL_COLORS.length];}
 
+function isAdminOrOwner(){return['owner','admin'].includes((currentUserRole||'').toLowerCase());}
+
 // ===== DYNAMIC FUNNEL RENDERING =====
 function renderFunnelColumns(){
   var fc=document.getElementById('funnelContainer');
   fc.innerHTML='';
   var ids=getStageIds();
+  var canEdit=isAdminOrOwner();
   ids.forEach(function(id){
     var s=STAGES[id];
     var col=document.createElement('div');
     col.className='funnel-column';
     col.dataset.stage=id;
-    col.innerHTML='<div class="funnel-header" onclick="toggleColumn('+id+')"><div class="funnel-title"><span class="funnel-dot" style="background:'+s.color+'"></span><span class="funnel-title-text" ondblclick="startRenameFunnel(event,'+id+')">'+s.name+'</span></div><div class="funnel-header-controls"><button class="funnel-edit-btn" onclick="event.stopPropagation();startRenameFunnel(event,'+id+')" title="Rename">✎</button><button class="funnel-delete-btn" onclick="event.stopPropagation();deleteFunnel('+id+')" title="Delete">✕</button><span class="funnel-count" id="count'+id+'">0</span><span class="funnel-arrow">▼</span></div></div><div class="funnel-cards" id="stage'+id+'" ondragover="allowDrop(event)" ondrop="drop(event,'+id+')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)"></div>';
+    var dblClick=canEdit?' ondblclick="startRenameFunnel(event,'+id+')"':'';
+    var editBtns=canEdit?'<button class="funnel-edit-btn" onclick="event.stopPropagation();startRenameFunnel(event,'+id+')" title="Rename">✎</button><button class="funnel-delete-btn" onclick="event.stopPropagation();deleteFunnel('+id+')" title="Delete">✕</button>':'';
+    col.innerHTML='<div class="funnel-header" onclick="toggleColumn('+id+')"><div class="funnel-title"><span class="funnel-dot" style="background:'+s.color+'"></span><span class="funnel-title-text"'+dblClick+'>'+s.name+'</span></div><div class="funnel-header-controls">'+editBtns+'<span class="funnel-count" id="count'+id+'">0</span><span class="funnel-arrow">▼</span></div></div><div class="funnel-cards" id="stage'+id+'" ondragover="allowDrop(event)" ondrop="drop(event,'+id+')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)"></div>';
     fc.appendChild(col);
   });
   collapseFunnelsOnMobile();
+  // Show/hide add funnel button
+  var addBtn=document.getElementById('addFunnelBtn');
+  if(addBtn)addBtn.style.display=canEdit?'flex':'none';
 }
 
 function renderStats(){
@@ -409,6 +417,7 @@ function renderStats(){
 
 // ===== ADD / DELETE / RENAME FUNNELS =====
 async function addNewFunnel(){
+  if(!isAdminOrOwner()){showToast('Only admins can add funnels');return;}
   var ids=getStageIds();
   var nextId=ids.length?Math.max.apply(null,ids)+1:1;
   var colorIdx=nextId%FUNNEL_COLORS.length;
@@ -425,6 +434,7 @@ async function addNewFunnel(){
 }
 
 async function deleteFunnel(stageId){
+  if(!isAdminOrOwner()){showToast('Only admins can delete funnels');return;}
   var ids=getStageIds();
   if(ids.length<=1){alert('You need at least one funnel stage.');return;}
   var name=getStageName(stageId);
@@ -454,6 +464,7 @@ async function deleteFunnel(stageId){
 
 async function startRenameFunnel(e,stageId){
   e.stopPropagation();
+  if(!isAdminOrOwner())return;
   var header=document.querySelector('.funnel-column[data-stage="'+stageId+'"] .funnel-title');
   var titleSpan=header.querySelector('.funnel-title-text');
   if(header.querySelector('.funnel-rename-input'))return;
