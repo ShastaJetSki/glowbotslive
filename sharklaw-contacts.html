@@ -317,7 +317,7 @@ function openDet(id){
   var isAdm=isAdmin();
   var del='';
   if(showVault&&isAdm){
-    del='<button class="btn-p" style="width:100%;padding:12px;background:#22c55e;" onclick="restoreFromVault(\''+c.customer_id+'\')">Restore from Vault</button><button class="btn-d" onclick="delContact(\''+c.customer_id+'\')">Permanently Delete</button>';
+    del='<div class="sec"><div class="sec-title">Reassign & Restore</div><select class="fsel" id="vaultReassign">'+buildAssignOpts(c.assigned_to)+'</select></div><button class="btn-p" style="width:100%;padding:12px;background:#22c55e;margin-top:8px;" onclick="reassignAndRestore(\''+c.customer_id+'\')">Reassign & Restore</button><button class="btn-p" style="width:100%;padding:12px;margin-top:8px;" onclick="restoreFromVault(\''+c.customer_id+'\')">Restore (Keep Current Assignment)</button><button class="btn-d" style="margin-top:8px;" onclick="delContact(\''+c.customer_id+'\')">Permanently Delete</button>';
   } else if(isAdm){
     del='<button class="btn-d" onclick="delContact(\''+c.customer_id+'\')">Delete Contact</button>';
   } else {
@@ -374,6 +374,23 @@ async function delContact(id){
       updateVaultBadge();closeDet();renderAll();showToast('Deleted');
     }catch(e){alert('Error: '+e.message);}
   }
+}
+
+async function reassignAndRestore(id){
+  if(!isAdmin())return;
+  var newAssign=document.getElementById('vaultReassign').value||null;
+  try{
+    await sb.from('customers').update({assigned_to:newAssign,updated_at:new Date().toISOString()}).eq('customer_id',id);
+    await sb.from('contact_removals').delete().eq('customer_id',id).eq('tenant_id',currentTenantId);
+    // Update local data
+    var c=allContacts.find(function(x){return x.customer_id===id;});
+    if(c)c.assigned_to=newAssign;
+    vaultContacts=vaultContacts.filter(function(v){return v.customer_id!==id;});
+    allRemovalIds=allRemovalIds.filter(function(rid){return rid!==id;});
+    myRemovals=myRemovals.filter(function(r){return r.customer_id!==id;});
+    var assignName=newAssign?empName(newAssign):'Unassigned';
+    updateVaultBadge();closeDet();renderAll();showToast('Reassigned to '+assignName+' & restored');
+  }catch(e){alert('Error: '+e.message);}
 }
 
 async function restoreFromVault(id){
