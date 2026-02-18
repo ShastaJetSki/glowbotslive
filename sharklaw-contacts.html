@@ -81,7 +81,7 @@
     /* ===== SORT ===== */
     .list-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;}
     .result-count{font-size:12px;color:var(--text-secondary);}
-    .sort-select{padding:6px 10px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);font-size:12px;}
+    .team-select{padding:6px 10px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);font-size:12px;max-width:180px;}
     .alpha-strip{display:flex;gap:2px;padding:4px 12px 8px;overflow-x:auto;scrollbar-width:none;}.alpha-strip::-webkit-scrollbar{display:none;}
     .alpha-btn{width:28px;height:28px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-secondary);font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}.alpha-btn:hover{background:var(--bg-hover);}.alpha-btn.on{background:var(--accent-primary);color:#fff;border-color:var(--accent-primary);}
 
@@ -156,7 +156,7 @@
 
 <div class="filter-bar" id="filterBar"></div>
 <div class="alpha-strip" id="alphaStrip"></div>
-<div class="list-toolbar"><div class="result-count" id="rCount"></div><select class="sort-select" id="sortSel" onchange="renderList()"><option value="name">A → Z</option><option value="name-desc">Z → A</option><option value="recent">Newest</option><option value="org">Organization</option></select></div>
+<div class="list-toolbar"><div class="result-count" id="rCount"></div><select class="team-select" id="teamSel" onchange="renderList()"><option value="">All Team Members</option></select></div>
 <div class="contacts-grid" id="grid"></div>
 
 <!-- Detail -->
@@ -233,7 +233,6 @@ function renderFilters(){
 }
 function setFilter(k){activeFilter=k;activeLetter='';renderFilters();renderKpis();renderAlpha();renderList();}
 
-/* ===== ALPHA STRIP ===== */
 function renderAlpha(){
   var html='<div class="alpha-btn'+(activeLetter===''?' on':'')+'" onclick="setLetter(\'\')">ALL</div>';
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function(l){
@@ -243,24 +242,28 @@ function renderAlpha(){
 }
 function setLetter(l){activeLetter=l;renderAlpha();renderList();}
 
+function populateTeamSelect(){
+  var sel=document.getElementById('teamSel');
+  var html='<option value="">All Team Members</option>';
+  allEmployees.forEach(function(e){var n=((e.first_name||'')+' '+(e.last_name||'')).trim()||e.email;html+='<option value="'+e.employee_id+'">'+n+'</option>';});
+  html+='<option value="__none">Unassigned</option>';
+  sel.innerHTML=html;
+}
+
 /* ===== LIST ===== */
 function getFiltered(){
   var q=(document.getElementById('searchBox').value||'').trim().toLowerCase();
-  var sort=document.getElementById('sortSel').value;
+  var teamId=document.getElementById('teamSel').value;
   var list=allContacts.filter(function(c){
     if(activeFilter!=='all'&&(c.customer_type||'')!==activeFilter)return false;
     if(activeLetter){var fn=(c.first_name||'').charAt(0).toUpperCase();if(fn!==activeLetter)return false;}
+    if(teamId==='__none'){if(c.assigned_to)return false;}
+    else if(teamId&&c.assigned_to!==teamId)return false;
     if(!q)return true;
     var n=((c.first_name||'')+' '+(c.last_name||'')+' '+(c.full_name||'')).toLowerCase();
     return n.includes(q)||(c.phone||'').includes(q)||(c.organization_name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q);
   });
-  list.sort(function(a,b){
-    if(sort==='name')return((a.first_name||'')+(a.last_name||'')).toLowerCase().localeCompare(((b.first_name||'')+(b.last_name||'')).toLowerCase());
-    if(sort==='name-desc')return((b.first_name||'')+(b.last_name||'')).toLowerCase().localeCompare(((a.first_name||'')+(a.last_name||'')).toLowerCase());
-    if(sort==='recent')return(b.created_at||'').localeCompare(a.created_at||'');
-    if(sort==='org')return(a.organization_name||'').toLowerCase().localeCompare((b.organization_name||'').toLowerCase());
-    return 0;
-  });
+  list.sort(function(a,b){return((a.first_name||'')+(a.last_name||'')).toLowerCase().localeCompare(((b.first_name||'')+(b.last_name||'')).toLowerCase());});
   return list;
 }
 function renderList(){
@@ -352,7 +355,7 @@ async function init(){
   await loadUserThemeBank();
   var er=await sb.from('employees').select('employee_id,first_name,last_name,email,color,role').eq('tenant_id',currentTenantId).or('is_active.is.null,is_active.eq.true').order('last_name');allEmployees=er.data||[];
   var cr=await sb.from('customers').select('*').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('first_name');allContacts=cr.data||[];
-  renderKpis();renderFilters();renderAlpha();renderList();
+  renderKpis();renderFilters();renderAlpha();populateTeamSelect();renderList();
 }
 init();
 </script>
