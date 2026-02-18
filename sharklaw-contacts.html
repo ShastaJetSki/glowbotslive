@@ -81,6 +81,8 @@
     .list-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;}
     .result-count{font-size:12px;color:var(--text-secondary);}
     .team-select{padding:6px 10px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);font-size:12px;max-width:180px;}
+    .vault-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;display:none;transition:all .15s;}.vault-btn:hover{border-color:var(--accent-primary);}.vault-btn.on{background:color-mix(in srgb,#ef4444 15%,var(--bg-card));border-color:#ef4444;color:#ef4444;}
+    .vault-badge{display:inline-block;background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700;}
     .alpha-strip{display:flex;gap:2px;padding:4px 12px 8px;overflow-x:auto;scrollbar-width:none;}.alpha-strip::-webkit-scrollbar{display:none;}
     .alpha-btn{width:28px;height:28px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-secondary);font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}.alpha-btn:hover{background:var(--bg-hover);}.alpha-btn.on{background:var(--accent-primary);color:#fff;border-color:var(--accent-primary);}
 
@@ -154,7 +156,7 @@
 </div>
 
 <div class="alpha-strip" id="alphaStrip"></div>
-<div class="list-toolbar"><div class="result-count" id="rCount"></div><select class="team-select" id="teamSel" onchange="renderList()"><option value="">All Team Members</option></select></div>
+<div class="list-toolbar"><div class="result-count" id="rCount"></div><div style="display:flex;gap:6px;align-items:center;"><button class="vault-btn" id="vaultBtn" onclick="toggleVault()">🔒 Vault</button><select class="team-select" id="teamSel" onchange="renderList()"><option value="">All Team Members</option></select></div></div>
 <div class="contacts-grid" id="grid"></div>
 
 <!-- Detail -->
@@ -181,9 +183,9 @@
 var SB_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
-var currentUserId=null,currentTenantId=null,userEmail=null,currentUserRole=null;
-var allContacts=[],allEmployees=[];
-var activeFilter='all',activeLetter='';
+var currentUserId=null,currentTenantId=null,userEmail=null,currentUserRole=null,currentEmployeeId=null;
+var allContacts=[],allEmployees=[],myRemovals=[],vaultContacts=[];
+var activeFilter='all',activeLetter='',showVault=false;
 
 var TYPES=[
   {key:'all',label:'All Contacts'},
@@ -209,11 +211,20 @@ async function logout(){await sb.auth.signOut();localStorage.clear();location.re
 function empName(id){if(!id)return'Unassigned';var e=allEmployees.find(function(x){return x.employee_id===id;});return e?((e.first_name||'')+' '+(e.last_name||'')).trim()||e.email:'Unknown';}
 function empColor(id){if(!id)return'#eab308';var e=allEmployees.find(function(x){return x.employee_id===id;});return(e&&e.color)||'#eab308';}
 
+function isAdmin(){return['owner','admin'].includes((currentUserRole||'').toLowerCase());}
+function isManager(){return(currentUserRole||'').toLowerCase()==='manager';}
+function isStaff(){return!isAdmin()&&!isManager();}
+
 /* ===== KPIs ===== */
 function renderKpis(){
   var counts={};TYPES.forEach(function(t){if(t.key!=='all')counts[t.key]=0;});
+  var source=showVault?vaultContacts:allContacts;
+  var removedIds=myRemovals.map(function(r){return r.customer_id;});
   var total=0;
-  allContacts.forEach(function(c){total++;var t=c.customer_type||'';if(counts[t]!==undefined)counts[t]++;});
+  source.forEach(function(c){
+    if(!showVault&&isStaff()&&removedIds.includes(c.customer_id))return;
+    total++;var t=c.customer_type||'';if(counts[t]!==undefined)counts[t]++;
+  });
   var html='';
   TYPES.forEach(function(t){
     var n=t.key==='all'?total:(counts[t.key]||0);
@@ -246,7 +257,11 @@ function populateTeamSelect(){
 function getFiltered(){
   var q=(document.getElementById('searchBox').value||'').trim().toLowerCase();
   var teamId=document.getElementById('teamSel').value;
-  var list=allContacts.filter(function(c){
+  var source=showVault?vaultContacts:allContacts;
+  var removedIds=myRemovals.map(function(r){return r.customer_id;});
+  var list=source.filter(function(c){
+    // If not vault view, hide contacts this user removed (staff only)
+    if(!showVault&&isStaff()&&removedIds.includes(c.customer_id))return false;
     if(activeFilter!=='all'&&(c.customer_type||'')!==activeFilter)return false;
     if(activeLetter){var fn=(c.first_name||'').charAt(0).toUpperCase();if(fn!==activeLetter)return false;}
     if(teamId==='__none'){if(c.assigned_to)return false;}
@@ -260,13 +275,15 @@ function getFiltered(){
 }
 function renderList(){
   var list=getFiltered();
-  document.getElementById('rCount').textContent=list.length+' contact'+(list.length!==1?'s':'');
-  if(!list.length){document.getElementById('grid').innerHTML='<div class="cc-empty">No contacts found</div>';return;}
+  var label=showVault?'vault contact':'contact';
+  document.getElementById('rCount').textContent=list.length+' '+label+(list.length!==1?'s':'');
+  if(!list.length){document.getElementById('grid').innerHTML='<div class="cc-empty">'+(showVault?'Vault is empty':'No contacts found')+'</div>';return;}
   document.getElementById('grid').innerHTML=list.map(function(c){
     var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||c.full_name||'Unknown';
     var ini=name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
     var ec=empColor(c.assigned_to);
-    return '<div class="cc" onclick="openDet(\''+c.customer_id+'\')"><div class="cc-av" style="border-color:'+ec+'">'+ini+'</div><div class="cc-body"><div class="cc-name">'+name+'</div>'+(c.organization_name?'<div class="cc-org">'+c.organization_name+'</div>':'')+'<div class="cc-meta">'+(c.phone?'<a href="tel:'+c.phone+'" onclick="event.stopPropagation()">'+c.phone+'</a>':'')+(c.email?'<a href="mailto:'+c.email+'" onclick="event.stopPropagation()">'+c.email+'</a>':'')+'</div></div><div class="cc-badge">'+(c.customer_type||'—')+'</div></div>';
+    var vaultStyle=showVault?' style="border-left:3px solid #ef4444;"':'';
+    return '<div class="cc"'+vaultStyle+' onclick="openDet(\''+c.customer_id+'\')"><div class="cc-av" style="border-color:'+ec+'">'+ini+'</div><div class="cc-body"><div class="cc-name">'+name+'</div>'+(c.organization_name?'<div class="cc-org">'+c.organization_name+'</div>':'')+'<div class="cc-meta">'+(c.phone?'<a href="tel:'+c.phone+'" onclick="event.stopPropagation()">'+c.phone+'</a>':'')+(c.email?'<a href="mailto:'+c.email+'" onclick="event.stopPropagation()">'+c.email+'</a>':'')+'</div></div><div class="cc-badge">'+(c.customer_type||'—')+'</div></div>';
   }).join('');
 }
 
@@ -297,8 +314,15 @@ function openDet(id){
   var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||c.full_name||'Unknown';
   var ini=name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
   var ec=empColor(c.assigned_to);
-  var isAdmin=['owner','admin'].includes(currentUserRole);
-  var del=isAdmin?'<button class="btn-d" onclick="delContact(\''+c.customer_id+'\')">Delete Contact</button>':'';
+  var isAdm=isAdmin();
+  var del='';
+  if(showVault&&isAdm){
+    del='<button class="btn-p" style="width:100%;padding:12px;background:#22c55e;" onclick="restoreFromVault(\''+c.customer_id+'\')">Restore from Vault</button><button class="btn-d" onclick="delContact(\''+c.customer_id+'\')">Permanently Delete</button>';
+  } else if(isAdm){
+    del='<button class="btn-d" onclick="delContact(\''+c.customer_id+'\')">Delete Contact</button>';
+  } else {
+    del='<button class="btn-d" style="background:#f59e0b;" onclick="delContact(\''+c.customer_id+'\')">Remove from My Contacts</button>';
+  }
   var ctO='<option value="">-- Select --</option>';['RC','HOG','MC','SC','Shop','Independent','Other','prospect'].forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
   document.getElementById('detBody').innerHTML=
     '<div class="det-head"><div class="det-av" style="border-color:'+ec+'">'+ini+'</div><div class="det-name">'+name+'</div>'+(c.organization_name?'<div class="det-company">'+c.organization_name+'</div>':'')+'<div class="det-actions">'+(c.phone?'<a href="tel:'+c.phone+'" class="det-btn">Call</a><a href="sms:'+c.phone+'" class="det-btn">Text</a>':'')+(c.email?'<a href="mailto:'+c.email+'" class="det-btn">Email</a>':'')+'</div></div>'+
@@ -319,9 +343,51 @@ async function saveDet(){
   if(!fn||!org||!ph){alert('First name, organization, and phone are required.');return;}
   var u={first_name:fn,last_name:document.getElementById('eL').value.trim()||null,organization_name:org,phone:ph,email:document.getElementById('eE').value.trim()||null,customer_type:document.getElementById('eT').value||null,assigned_to:document.getElementById('eA').value||null,birthday:document.getElementById('eBd').value||null,anniversary:document.getElementById('eAn').value||null,notes:document.getElementById('eN').value.trim()||null,updated_at:new Date().toISOString()};
   u.full_name=(u.first_name+(u.last_name?' '+u.last_name:'')).trim();
-  try{var r=await sb.from('customers').update(u).eq('customer_id',curEdit.customer_id).select().single();if(r.error)throw r.error;var i=allContacts.findIndex(function(c){return c.customer_id===curEdit.customer_id;});if(i>=0)Object.assign(allContacts[i],u);closeDet();renderList();renderKpis();showToast('Saved!');}catch(e){alert('Error: '+e.message);}
+  try{var r=await sb.from('customers').update(u).eq('customer_id',curEdit.customer_id).select().single();if(r.error)throw r.error;var i=allContacts.findIndex(function(c){return c.customer_id===curEdit.customer_id;});if(i>=0)Object.assign(allContacts[i],u);closeDet();renderAll();showToast('Saved!');}catch(e){alert('Error: '+e.message);}
 }
-async function delContact(id){if(!confirm('Delete this contact?'))return;try{await sb.from('customers').update({is_deleted:true}).eq('customer_id',id);allContacts=allContacts.filter(function(c){return c.customer_id!==id;});closeDet();renderList();renderKpis();showToast('Deleted');}catch(e){alert('Error: '+e.message);}}
+async function delContact(id){
+  if(isAdmin()){
+    // Admin/owner: true delete
+    if(!confirm('Permanently delete this contact?'))return;
+    try{await sb.from('customers').update({is_deleted:true}).eq('customer_id',id);allContacts=allContacts.filter(function(c){return c.customer_id!==id;});vaultContacts=vaultContacts.filter(function(c){return c.customer_id!==id;});closeDet();renderAll();showToast('Deleted permanently');}catch(e){alert('Error: '+e.message);}
+  } else {
+    // Staff/manager: remove to vault (soft hide)
+    if(!confirm('Remove this contact from your view? It will be moved to the vault.'))return;
+    try{
+      await sb.from('contact_removals').upsert({tenant_id:currentTenantId,customer_id:id,removed_by:currentEmployeeId},{onConflict:'customer_id,removed_by'});
+      myRemovals.push({customer_id:id,removed_by:currentEmployeeId});
+      closeDet();renderAll();showToast('Moved to vault');
+    }catch(e){alert('Error: '+e.message);}
+  }
+}
+
+async function restoreFromVault(id){
+  if(!isAdmin())return;
+  try{
+    // Remove ALL removal records for this contact
+    await sb.from('contact_removals').delete().eq('customer_id',id).eq('tenant_id',currentTenantId);
+    vaultContacts=vaultContacts.filter(function(c){return c.customer_id!==id;});
+    // Make sure it's in allContacts
+    var exists=allContacts.find(function(c){return c.customer_id===id;});
+    if(!exists){var r=await sb.from('customers').select('*').eq('customer_id',id).single();if(r.data)allContacts.push(r.data);}
+    updateVaultBadge();
+    closeDet();renderAll();showToast('Restored from vault');
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function toggleVault(){
+  showVault=!showVault;
+  document.getElementById('vaultBtn').classList.toggle('on',showVault);
+  renderAll();
+}
+function updateVaultBadge(){
+  var btn=document.getElementById('vaultBtn');
+  if(!isAdmin()){btn.style.display='none';return;}
+  btn.style.display='inline-flex';
+  var n=vaultContacts.length;
+  btn.innerHTML='🔒 Vault'+(n>0?'<span class="vault-badge">'+n+'</span>':'');
+}
+function renderAll(){renderKpis();renderList();}
 
 /* ===== ADD MODAL ===== */
 function openAdd(){['nF','nL','nO','nP','nE','nN'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('nT').value='';document.getElementById('nA').innerHTML=buildAssignOpts(null);document.getElementById('addModal').classList.add('active');}
@@ -331,7 +397,7 @@ async function saveAdd(){
   if(!fn||!org||!ph){alert('First name, organization, and phone are required.');return;}
   var d={tenant_id:currentTenantId,first_name:fn,last_name:document.getElementById('nL').value.trim()||null,full_name:fn,phone:ph,email:document.getElementById('nE').value.trim()||null,organization_name:org,customer_type:document.getElementById('nT').value||'prospect',funnel_stage:1,notes:document.getElementById('nN').value.trim()||null,assigned_to:document.getElementById('nA').value||null,created_at:new Date().toISOString()};
   if(d.last_name)d.full_name=fn+' '+d.last_name;
-  try{var r=await sb.from('customers').insert(d).select().single();if(r.error)throw r.error;allContacts.unshift(r.data);closeAdd();renderList();renderKpis();showToast('Contact added!');}catch(e){alert('Error: '+e.message);}
+  try{var r=await sb.from('customers').insert(d).select().single();if(r.error)throw r.error;allContacts.unshift(r.data);closeAdd();renderAll();showToast('Contact added!');}catch(e){alert('Error: '+e.message);}
 }
 
 /* ===== AUTH & INIT ===== */
@@ -346,7 +412,35 @@ async function init(){
   if(userEmail){document.getElementById('dBiz').textContent=userEmail;document.getElementById('mBiz').textContent=userEmail;}
   await loadUserThemeBank();
   var er=await sb.from('employees').select('employee_id,first_name,last_name,email,color,role').eq('tenant_id',currentTenantId).or('is_active.is.null,is_active.eq.true').order('last_name');allEmployees=er.data||[];
-  var cr=await sb.from('customers').select('*').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('first_name');allContacts=cr.data||[];
+  // Resolve currentEmployeeId
+  if(email){var me=allEmployees.find(function(e){return e.email===email;});if(me)currentEmployeeId=me.employee_id;}
+
+  // Load ALL non-deleted contacts for tenant
+  var cr=await sb.from('customers').select('*').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('first_name');
+  var allTenantContacts=cr.data||[];
+
+  // Load removals
+  var rr=await sb.from('contact_removals').select('customer_id,removed_by').eq('tenant_id',currentTenantId);
+  var allRemovals=rr.data||[];
+  myRemovals=allRemovals.filter(function(r){return r.removed_by===currentEmployeeId;});
+  var removedIds=allRemovals.map(function(r){return r.customer_id;});
+  var removedIdSet=new Set(removedIds);
+
+  // Role-based filtering
+  if(isAdmin()){
+    // Owner/Admin: see all contacts, vault = removed ones
+    allContacts=allTenantContacts;
+    vaultContacts=allTenantContacts.filter(function(c){return removedIdSet.has(c.customer_id);});
+  } else if(isManager()){
+    // Manager: see own + staff/associate contacts (not removed by self)
+    var staffIds=allEmployees.filter(function(e){return['staff','associate'].includes((e.role||'').toLowerCase());}).map(function(e){return e.employee_id;});
+    allContacts=allTenantContacts.filter(function(c){return!c.assigned_to||c.assigned_to===currentEmployeeId||staffIds.includes(c.assigned_to);});
+  } else {
+    // Staff/Associate: see only own assigned contacts
+    allContacts=allTenantContacts.filter(function(c){return c.assigned_to===currentEmployeeId;});
+  }
+
+  updateVaultBadge();
   renderKpis();renderAlpha();populateTeamSelect();renderList();
 }
 init();
