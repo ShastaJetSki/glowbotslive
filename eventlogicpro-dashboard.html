@@ -104,7 +104,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .event-card-name{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
 .event-card-date{font-size:13px;color:var(--text-secondary);margin-bottom:14px;}
 .event-card-date svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;}
-.event-card-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.event-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
 .event-stat{display:flex;flex-direction:column;}
 .event-stat-value{font-size:16px;font-weight:700;color:var(--text-primary);}
 .event-stat-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
@@ -500,12 +500,12 @@ async function loadTemplates() {
 
 async function loadEstimates() {
   try {
-    var r = await sb.from('event_estimates').select('estimate_id, tenant_id, event_project_id, status').eq('tenant_id', tenantId);
+    var r = await sb.from('event_estimates').select('estimate_id, tenant_id, event_project_id, status, total_expenses, total_revenue').eq('tenant_id', tenantId);
     if (r.error) throw r.error;
     allEstimates = r.data || [];
   } catch(e) {
     try {
-      var r2 = await sb.from('event_estimates').select('estimate_id, tenant_id, status').eq('tenant_id', tenantId);
+      var r2 = await sb.from('event_estimates').select('estimate_id, tenant_id, status, total_expenses, total_revenue').eq('tenant_id', tenantId);
       allEstimates = (r2.data || []);
     } catch(e2) { allEstimates = []; }
   }
@@ -555,6 +555,28 @@ function getEventPlanStatus(eventProjectId) {
     return m.tenant_id === tenantId;
   });
   return { budget: hasBudget, packages: hasPackages, siteMap: hasSiteMap };
+}
+
+/* ===== ESTIMATE TOTALS HELPER ===== */
+function getEventEstimateTotals(eventProjectId) {
+  // Find the published estimate for this event; fall back to any estimate
+  var published = allEstimates.filter(function(e) {
+    if (e.event_project_id) return e.event_project_id === eventProjectId && e.status === 'published';
+    return e.tenant_id === tenantId && e.status === 'published';
+  });
+  var est = published.length ? published[0] : null;
+  if (!est) {
+    // Fall back: any estimate linked to this event
+    var any = allEstimates.filter(function(e) {
+      return e.event_project_id && e.event_project_id === eventProjectId;
+    });
+    est = any.length ? any[0] : null;
+  }
+  return {
+    cost: est ? (parseFloat(est.total_expenses) || 0) : 0,
+    revenue: est ? (parseFloat(est.total_revenue) || 0) : 0,
+    hasEstimate: !!est
+  };
 }
 
 /* ===== KPIs ===== */
@@ -661,6 +683,9 @@ function renderEventGrid(projects) {
 
     var budget = parseFloat(p.total_budget) || 0;
 
+    // Get cost/revenue from estimates
+    var estTotals = getEventEstimateTotals(p.event_project_id);
+
     // Plan status checkboxes
     var plans = getEventPlanStatus(p.event_project_id);
 
@@ -670,7 +695,8 @@ function renderEventGrid(projects) {
     html += '<div class="event-card-name">' + esc(p.event_name) + '</div>';
     html += '<div class="event-card-date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + dateStr + '</div>';
     html += '<div class="event-card-stats">';
-    html += '<div class="event-stat"><div class="event-stat-value">$' + budget.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div><div class="event-stat-label">Budget</div></div>';
+    html += '<div class="event-stat"><div class="event-stat-value" style="color:#ef4444;">$' + estTotals.cost.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div><div class="event-stat-label">Cost Est</div></div>';
+    html += '<div class="event-stat"><div class="event-stat-value" style="color:#22c55e;">$' + estTotals.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div><div class="event-stat-label">Rev Est</div></div>';
     html += '<div class="event-stat"><div class="event-stat-value">' + pct + '%</div><div class="event-stat-label">Tasks (' + eDone + '/' + eTotal + ')</div></div>';
     html += '</div></div>';
     html += '<div class="event-card-footer">';
