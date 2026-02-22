@@ -109,6 +109,9 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .event-stat-value{font-size:16px;font-weight:700;color:var(--text-primary);}
 .event-stat-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
 .event-card-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.event-delete-btn{width:28px;height:28px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;opacity:0;transition:all .2s;flex-shrink:0;}
+.event-card:hover .event-delete-btn{opacity:1;}
+.event-delete-btn:hover{background:#ef444422;color:#ef4444;}
 .event-status{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 10px;border-radius:20px;}
 .event-status.active{background:rgba(16,185,129,.1);color:#10B981;}
 .event-status.completed{background:rgba(107,114,128,.1);color:#6B7280;}
@@ -704,10 +707,51 @@ function renderEventGrid(projects) {
     }
 
     if (p.venue) html += '<span class="event-members-count"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + esc(p.venue) + '</span>';
+    html += '<button class="event-delete-btn" onclick="event.stopPropagation();deleteEvent(\'' + p.event_project_id + '\',\'' + esc(p.event_name).replace(/'/g,'\\&#39;') + '\')" title="Delete event"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>';
     html += '</div></div>';
   });
   html += '</div>';
   return html;
+}
+
+/* ===== DELETE EVENT ===== */
+async function deleteEvent(projectId, projectName) {
+  if (!confirm('Delete "' + projectName + '"?\n\nThis will also remove all tasks, departments, and calendar items for this event.')) return;
+
+  try {
+    // Delete calendar items linked to this event
+    await sb.from('event_schedule_items').delete().eq('event_project_id', projectId);
+
+    // Delete task line items for tasks in this event
+    var taskR = await sb.from('event_tasks').select('event_task_id').eq('event_project_id', projectId);
+    var taskIds = (taskR.data || []).map(function(t) { return t.event_task_id; });
+    if (taskIds.length) {
+      for (var i = 0; i < taskIds.length; i++) {
+        await sb.from('event_task_line_items').delete().eq('event_task_id', taskIds[i]);
+      }
+    }
+
+    // Delete tasks
+    await sb.from('event_tasks').delete().eq('event_project_id', projectId);
+
+    // Delete departments
+    await sb.from('event_departments').delete().eq('event_project_id', projectId);
+
+    // Delete vendors
+    await sb.from('event_vendors').delete().eq('event_project_id', projectId);
+
+    // Delete the event project itself
+    var r = await sb.from('event_projects').delete().eq('event_project_id', projectId);
+    if (r.error) { toast('Error: ' + r.error.message); return; }
+
+    toast('"' + projectName + '" deleted');
+    await loadProjects();
+    await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+    renderKPIs();
+    renderEvents();
+  } catch(e) {
+    toast('Delete failed: ' + e.message);
+  }
 }
 
 /* ===== CREATE EVENT ===== */
