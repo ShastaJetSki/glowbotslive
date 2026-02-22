@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fix Tenant Product Tags</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:system-ui,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:30px;max-width:900px;margin:0 auto;}
+    h1{font-size:20px;margin-bottom:6px;color:#a371f7;}
+    .sub{color:#666;font-size:13px;margin-bottom:24px;}
+    .card{background:#141414;border:1px solid #222;border-radius:8px;padding:16px;margin-bottom:14px;}
+    .card h3{font-size:14px;margin-bottom:8px;}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;}
+    th{text-align:left;padding:8px;font-size:10px;text-transform:uppercase;color:#666;border-bottom:1px solid #222;}
+    td{padding:8px;border-bottom:1px solid #1a1a1a;}
+    .old{color:#ef4444;text-decoration:line-through;opacity:.6;}
+    .new{color:#22c55e;font-weight:700;}
+    .same{color:#666;}
+    .btn{padding:10px 20px;border-radius:6px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-right:8px;}
+    .btn-go{background:#22c55e;color:#000;}.btn-go:hover{opacity:.9;}
+    .btn-dry{background:#3b82f6;color:#fff;}.btn-dry:hover{opacity:.9;}
+    .btn-load{background:#a371f7;color:#fff;}.btn-load:hover{opacity:.9;}
+    .log{background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:12px;font-family:monospace;font-size:11px;max-height:300px;overflow-y:auto;white-space:pre-wrap;margin-top:12px;}
+    .ok{color:#22c55e;}.err{color:#ef4444;}.info{color:#3b82f6;}.warn{color:#eab308;}
+    #status{margin-top:8px;font-size:12px;color:#888;}
+  </style>
+</head>
+<body>
+
+<h1>🔧 Fix Tenant Product Tags</h1>
+<div class="sub">Updates the <code>product</code> column on your tenants table in Supabase</div>
+
+<div class="card">
+  <h3>Step 1: Load Current Tenants</h3>
+  <p style="font-size:12px;color:#888;margin-bottom:10px;">Connects to Supabase and shows what's currently in the database.</p>
+  <button class="btn btn-load" onclick="loadCurrent()">Load Tenants from Supabase</button>
+  <div id="currentTable"></div>
+</div>
+
+<div class="card">
+  <h3>Step 2: Review Changes</h3>
+  <p style="font-size:12px;color:#888;margin-bottom:10px;">Based on your rules: <strong>HAMCRedding → eventlogicpro</strong> | <strong>SharkLaw → crmlogic</strong> | <strong>81 Questions → 81questions</strong> | <strong>Everything else → worklogic</strong></p>
+  <table>
+    <thead><tr><th>Tenant</th><th>Current Product</th><th>→</th><th>New Product</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>HAMCRedding</td><td class="same">eventlogicpro</td><td>→</td><td class="same">eventlogicpro</td><td style="color:#666;">Already correct ✓</td></tr>
+      <tr><td>SharkLaw (ef949f04-...)</td><td class="old">sharklaw</td><td>→</td><td class="new">crmlogic</td><td style="color:#eab308;">SharkLaw is a CRM Logic tenant</td></tr>
+      <tr><td>Shark Law (55555555-...)</td><td class="old">TBD / null</td><td>→</td><td class="new">crmlogic</td><td style="color:#eab308;">Duplicate — also CRM Logic</td></tr>
+      <tr><td>Wave Riders Jet Ski</td><td class="old">TBD</td><td>→</td><td class="new">worklogic</td><td style="color:#3b82f6;">WorkLogicPro tenant</td></tr>
+      <tr><td>Dirt Devils MX</td><td class="old">TBD</td><td>→</td><td class="new">worklogic</td><td style="color:#3b82f6;">WorkLogicPro tenant</td></tr>
+      <tr><td>Boxster Brothers Porsche</td><td class="old">TBD</td><td>→</td><td class="new">worklogic</td><td style="color:#3b82f6;">WorkLogicPro tenant</td></tr>
+      <tr><td>mountainviewauto</td><td class="old">TBD</td><td>→</td><td class="new">worklogic</td><td style="color:#3b82f6;">WorkLogicPro tenant</td></tr>
+      <tr><td>WorkLogic (d40029f0-...)</td><td class="same">worklogic</td><td>→</td><td class="same">worklogic</td><td style="color:#666;">Already correct ✓</td></tr>
+      <tr><td>81 Questions (3923de87-...)</td><td class="same">81questions</td><td>→</td><td class="same">81questions</td><td style="color:#666;">Already correct ✓</td></tr>
+      <tr><td>System Admin (00000000-...)</td><td class="same">—</td><td>→</td><td class="same">— skip</td><td style="color:#666;">System tenant, no change</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Step 3: Run the Update</h3>
+  <p style="font-size:12px;color:#888;margin-bottom:10px;">Dry Run shows what would change without saving. Apply writes the changes to Supabase.</p>
+  <button class="btn btn-dry" onclick="runUpdate(true)">🔍 Dry Run</button>
+  <button class="btn btn-go" onclick="runUpdate(false)">✅ Apply Changes</button>
+  <div id="status"></div>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="card">
+  <h3>Step 4: Verify</h3>
+  <button class="btn btn-load" onclick="loadCurrent()">Reload Tenants to Verify</button>
+</div>
+
+<script>
+var SB_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+var logEl = document.getElementById('log');
+function log(msg, cls) { logEl.innerHTML += '<span class="' + (cls || '') + '">' + msg + '</span>\n'; logEl.scrollTop = logEl.scrollHeight; }
+function clearLog() { logEl.innerHTML = ''; }
+
+// Auth - restore session from localStorage if available
+async function ensureAuth() {
+  var r = await sb.auth.getSession();
+  if (r.data.session) return true;
+  var t = localStorage.getItem('sb_access_token');
+  var rf = localStorage.getItem('sb_refresh_token');
+  if (t && rf) {
+    var sr = await sb.auth.setSession({ access_token: t, refresh_token: rf });
+    if (sr.data?.session) return true;
+  }
+  log('⚠ Not logged in. Open your admin dashboard first to establish a session, then come back here.', 'warn');
+  return false;
+}
+
+async function loadCurrent() {
+  var ok = await ensureAuth();
+  if (!ok) return;
+
+  var r = await sb.from('tenants').select('tenant_id, tenant_name, product, domain, is_active').order('tenant_name');
+  if (r.error) { log('Error loading: ' + r.error.message, 'err'); return; }
+
+  var html = '<table><thead><tr><th>Tenant</th><th>ID</th><th>Product</th><th>Domain</th><th>Active</th></tr></thead><tbody>';
+  (r.data || []).forEach(function(t) {
+    var pc = t.product === 'eventlogicpro' ? 'color:#DC2626' : t.product === 'crmlogic' ? 'color:#8b5cf6' : t.product === 'worklogic' ? 'color:#22c55e' : 'color:#666';
+    html += '<tr><td><strong>' + (t.tenant_name || '—') + '</strong></td>';
+    html += '<td style="font-size:10px;color:#555;">' + (t.tenant_id || '').substring(0, 8) + '...</td>';
+    html += '<td style="' + pc + ';font-weight:700;">' + (t.product || '—') + '</td>';
+    html += '<td style="color:#555;">' + (t.domain || '—') + '</td>';
+    html += '<td>' + (t.is_active !== false ? '✅' : '❌') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('currentTable').innerHTML = html;
+  log('Loaded ' + (r.data || []).length + ' tenants from Supabase', 'info');
+}
+
+// THE RULES
+function getNewProduct(tenant) {
+  var name = (tenant.tenant_name || '').toLowerCase();
+  var id = tenant.tenant_id || '';
+
+  // System admin — skip
+  if (id === '00000000-0000-0000-0000-000000000000') return null;
+
+  // HAMCRedding → eventlogicpro
+  if (name.includes('hamc') || name.includes('redding')) return 'eventlogicpro';
+
+  // SharkLaw (both the primary and the duplicate) → crmlogic
+  if (name.includes('shark')) return 'crmlogic';
+
+  // 81 Questions stays as 81questions
+  if (name.includes('81') || name.includes('question')) return '81questions';
+
+  // Everything else → worklogic
+  return 'worklogic';
+}
+
+async function runUpdate(dryRun) {
+  clearLog();
+  log(dryRun ? '🔍 DRY RUN — no changes will be saved' : '🚀 APPLYING CHANGES...', dryRun ? 'info' : 'ok');
+  log('─'.repeat(50));
+
+  var ok = await ensureAuth();
+  if (!ok) return;
+
+  var r = await sb.from('tenants').select('*').order('tenant_name');
+  if (r.error) { log('Error: ' + r.error.message, 'err'); return; }
+
+  var changed = 0, skipped = 0, same = 0;
+
+  for (var i = 0; i < r.data.length; i++) {
+    var t = r.data[i];
+    var newProduct = getNewProduct(t);
+
+    if (newProduct === null) {
+      log('SKIP  ' + (t.tenant_name || t.tenant_id) + ' (system tenant)', 'warn');
+      skipped++;
+      continue;
+    }
+
+    if (t.product === newProduct) {
+      log('  OK  ' + t.tenant_name + ' → ' + newProduct + ' (already correct)', 'same');
+      same++;
+      continue;
+    }
+
+    log('CHANGE  ' + t.tenant_name + ': ' + (t.product || 'null') + ' → ' + newProduct, 'ok');
+    changed++;
+
+    if (!dryRun) {
+      var dashUrl = newProduct === 'eventlogicpro' ? 'eventlogicpro-dashboard.html'
+                  : newProduct === 'crmlogic' ? 'crmlogic-dashboard.html'
+                  : newProduct === '81questions' ? '81questions-dashboard.html'
+                  : 'worklogic-dashboard.html';
+
+      var ur = await sb.from('tenants').update({
+        product: newProduct,
+        dashboard_url: dashUrl
+      }).eq('tenant_id', t.tenant_id);
+
+      if (ur.error) {
+        log('  ❌ Error updating ' + t.tenant_name + ': ' + ur.error.message, 'err');
+      } else {
+        log('  ✅ Saved', 'ok');
+      }
+    }
+  }
+
+  log('─'.repeat(50));
+  log('Summary: ' + changed + ' changed, ' + same + ' already correct, ' + skipped + ' skipped', 'info');
+
+  if (dryRun) {
+    log('\n👆 This was a dry run. Click "Apply Changes" to save.', 'warn');
+  } else {
+    log('\n✅ All updates applied! Click "Reload Tenants to Verify" to confirm.', 'ok');
+  }
+
+  document.getElementById('status').textContent = dryRun ? 'Dry run complete' : 'Changes applied!';
+}
+</script>
+</body>
+</html>
