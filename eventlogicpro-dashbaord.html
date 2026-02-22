@@ -449,8 +449,9 @@ async function init() {
   document.getElementById('welcomeText').textContent = 'Welcome back, ' + firstName;
   document.getElementById('headerEmail').textContent = email;
 
-  await Promise.all([loadProjects(), loadTasks(), loadMembers()]);
-  renderKPIs();
+  await loadProjects();
+  await Promise.all([loadTasks(), loadMembers()]);
+  await renderKPIs();
   renderEvents();
 }
 
@@ -473,19 +474,33 @@ async function loadMembers() {
 }
 
 /* ===== KPIs ===== */
-function renderKPIs() {
+async function renderKPIs() {
   // Active events (not completed or cancelled)
   var active = allProjects.filter(function(p) {
     return !p.status || p.status === 'planning' || p.status === 'active';
   });
   document.getElementById('kpiEvents').textContent = active.length;
 
-  // Total budget
+  // Total budget - sum from event_projects total_budget + check estimate_line_items
   var totalBudget = 0;
   allProjects.forEach(function(p) { totalBudget += parseFloat(p.total_budget) || 0; });
+
+  // If total_budget is 0, try summing from estimate_line_items
+  if (totalBudget === 0) {
+    var projectIds = allProjects.map(function(p) { return p.event_project_id; });
+    if (projectIds.length) {
+      var estR = await sb.from('estimate_line_items').select('estimated_cost, actual_cost, category_type').eq('tenant_id', tenantId);
+      var estData = estR.data || [];
+      estData.forEach(function(li) {
+        if (li.category_type === 'expense') {
+          totalBudget += parseFloat(li.estimated_cost) || 0;
+        }
+      });
+    }
+  }
   document.getElementById('kpiBudget').textContent = '$' + totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-  // Tasks completed
+  // Tasks completed - across ALL events
   var completed = allTasks.filter(function(t) { return t.is_complete; }).length;
   var total = allTasks.filter(function(t) { return !t.is_cancelled; }).length;
   document.getElementById('kpiTasks').textContent = completed + '/' + total;
@@ -598,8 +613,9 @@ async function createEvent() {
 
   closeNewEventModal();
   toast('Event created!');
-  await Promise.all([loadProjects(), loadTasks()]);
-  renderKPIs();
+  await loadProjects();
+  await loadTasks();
+  await renderKPIs();
   renderEvents();
 }
 
