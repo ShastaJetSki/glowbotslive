@@ -246,8 +246,18 @@ async function checkAuth() {
 
 /* ===== SUPER ADMIN CHECK ===== */
 async function verifySuperAdmin(email) {
-  var r = await sb.from('users').select('is_super_admin').eq('email', email).single();
-  return r.data && r.data.is_super_admin === true;
+  try {
+    // Try by auth uid first (works with RLS)
+    var s = await sb.auth.getSession();
+    var uid = s.data?.session?.user?.id;
+    if (uid) {
+      var r = await sb.from('users').select('is_super_admin').eq('auth_user_id', uid).single();
+      if (r.data && r.data.is_super_admin === true) return true;
+    }
+    // Fallback by email
+    var r2 = await sb.from('users').select('is_super_admin').eq('email', email).single();
+    return r2.data && r2.data.is_super_admin === true;
+  } catch(e) { return false; }
 }
 
 /* ===== LOAD ALL DATA ===== */
