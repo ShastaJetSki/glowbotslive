@@ -246,7 +246,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
   <div class="kpi-grid">
     <div class="kpi-card" onclick="document.getElementById('eventsContainer').scrollIntoView({behavior:'smooth'})">
       <div class="kpi-value" id="kpiEvents">-</div>
-      <div class="kpi-label">Active Events</div>
+      <div class="kpi-label">Upcoming Events</div>
     </div>
     <div class="kpi-card" onclick="window.location.href='eventlogicpro-budget-overview.html'">
       <div class="kpi-value" id="kpiBudget">-</div>
@@ -264,7 +264,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 
   <!-- EVENTS SECTION -->
   <div class="section-header">
-    <div class="section-title">Your Events</div>
+    <div class="section-title">Upcoming Events</div>
     <button class="btn-primary" onclick="openNewEventModal()">+ New Event</button>
   </div>
 
@@ -451,7 +451,7 @@ async function init() {
 
   await loadProjects();
   await Promise.all([loadTasks(), loadMembers()]);
-  await renderKPIs();
+  renderKPIs();
   renderEvents();
 }
 
@@ -459,6 +459,13 @@ async function init() {
 async function loadProjects() {
   var r = await sb.from('event_projects').select('*').eq('tenant_id', tenantId).order('event_date', { ascending: true, nullsFirst: false });
   allProjects = r.data || [];
+  // Sort: dated events first (ascending), then undated at end
+  allProjects.sort(function(a, b) {
+    if (!a.event_date && !b.event_date) return a.event_name.localeCompare(b.event_name);
+    if (!a.event_date) return 1;
+    if (!b.event_date) return -1;
+    return a.event_date.localeCompare(b.event_date);
+  });
 }
 
 async function loadTasks() {
@@ -474,51 +481,55 @@ async function loadMembers() {
 }
 
 /* ===== KPIs ===== */
-async function renderKPIs() {
-  // Active events (not completed or cancelled)
-  var active = allProjects.filter(function(p) {
-    return !p.status || p.status === 'planning' || p.status === 'active';
+function renderKPIs() {
+  var today = new Date().toISOString().split('T')[0];
+
+  // Upcoming events = no date set OR end date (or event_date) is today or future
+  var upcoming = allProjects.filter(function(p) {
+    if (p.status === 'completed' || p.status === 'cancelled') return false;
+    if (!p.event_date) return true; // no date = still upcoming
+    var endDate = p.event_end_date || p.event_date;
+    return endDate >= today;
   });
-  document.getElementById('kpiEvents').textContent = active.length;
 
-  // Total budget - sum from event_projects total_budget + check estimate_line_items
+  // Past events for reference
+  var past = allProjects.filter(function(p) {
+    if (!p.event_date) return false;
+    var endDate = p.event_end_date || p.event_date;
+    return endDate < today || p.status === 'completed';
+  });
+
+  document.getElementById('kpiEvents').textContent = upcoming.length;
+
+  // Budget - upcoming events only
   var totalBudget = 0;
-  allProjects.forEach(function(p) { totalBudget += parseFloat(p.total_budget) || 0; });
-
-  // If total_budget is 0, try summing from estimate_line_items
-  if (totalBudget === 0) {
-    var projectIds = allProjects.map(function(p) { return p.event_project_id; });
-    if (projectIds.length) {
-      var estR = await sb.from('estimate_line_items').select('estimated_cost, actual_cost, category_type').eq('tenant_id', tenantId);
-      var estData = estR.data || [];
-      estData.forEach(function(li) {
-        if (li.category_type === 'expense') {
-          totalBudget += parseFloat(li.estimated_cost) || 0;
-        }
-      });
-    }
-  }
+  upcoming.forEach(function(p) { totalBudget += parseFloat(p.total_budget) || 0; });
   document.getElementById('kpiBudget').textContent = '$' + totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-  // Tasks completed - across ALL events
-  var completed = allTasks.filter(function(t) { return t.is_complete; }).length;
-  var total = allTasks.filter(function(t) { return !t.is_cancelled; }).length;
+  // Tasks - upcoming events only
+  var upcomingIds = {};
+  upcoming.forEach(function(p) { upcomingIds[p.event_project_id] = true; });
+  var upcomingTasks = allTasks.filter(function(t) { return upcomingIds[t.event_project_id]; });
+
+  var completed = upcomingTasks.filter(function(t) { return t.is_complete; }).length;
+  var total = upcomingTasks.filter(function(t) { return !t.is_cancelled; }).length;
   document.getElementById('kpiTasks').textContent = completed + '/' + total;
 
-  // Upcoming deadlines (next 14 days)
+  // Upcoming deadlines (next 14 days) - upcoming events only
   var now = new Date();
   var twoWeeks = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-  var upcoming = allTasks.filter(function(t) {
+  var deadlines = upcomingTasks.filter(function(t) {
     if (t.is_complete || t.is_cancelled || !t.deadline) return false;
     var d = new Date(t.deadline);
     return d >= now && d <= twoWeeks;
   }).length;
-  document.getElementById('kpiDeadlines').textContent = upcoming;
+  document.getElementById('kpiDeadlines').textContent = deadlines;
 }
 
 /* ===== RENDER EVENTS ===== */
 function renderEvents() {
   var container = document.getElementById('eventsContainer');
+  var today = new Date().toISOString().split('T')[0];
 
   if (!allProjects.length) {
     container.innerHTML = '<div class="empty-state">' +
@@ -530,14 +541,41 @@ function renderEvents() {
     return;
   }
 
+  var upcoming = allProjects.filter(function(p) {
+    if (p.status === 'completed' || p.status === 'cancelled') return false;
+    if (!p.event_date) return true;
+    var endDate = p.event_end_date || p.event_date;
+    return endDate >= today;
+  });
+
+  var past = allProjects.filter(function(p) {
+    if (!p.event_date) return false;
+    var endDate = p.event_end_date || p.event_date;
+    return endDate < today || p.status === 'completed';
+  });
+
+  var html = '';
+
+  if (upcoming.length) {
+    html += renderEventGrid(upcoming);
+  }
+
+  if (past.length) {
+    html += '<div class="section-header" style="margin-top:32px;"><div class="section-title" style="color:var(--text-secondary);">Past Events</div></div>';
+    html += renderEventGrid(past);
+  }
+
+  container.innerHTML = html;
+}
+
+function renderEventGrid(projects) {
   var html = '<div class="events-grid">';
-  allProjects.forEach(function(p) {
+  projects.forEach(function(p) {
     var color = p.color_tag || '#DC2626';
     var status = p.status || 'planning';
-    var dateStr = p.event_date ? formatDate(p.event_date) : 'No date set';
+    var dateStr = p.event_date ? formatDate(p.event_date) : 'Date TBD';
     if (p.event_end_date) dateStr += ' – ' + formatDate(p.event_end_date);
 
-    // Task stats for this event
     var eTasks = allTasks.filter(function(t) { return t.event_project_id === p.event_project_id; });
     var eTotal = eTasks.filter(function(t) { return !t.is_cancelled; }).length;
     var eDone = eTasks.filter(function(t) { return t.is_complete; }).length;
@@ -560,7 +598,7 @@ function renderEvents() {
     html += '</div></div>';
   });
   html += '</div>';
-  container.innerHTML = html;
+  return html;
 }
 
 /* ===== CREATE EVENT ===== */
@@ -615,7 +653,7 @@ async function createEvent() {
   toast('Event created!');
   await loadProjects();
   await loadTasks();
-  await renderKPIs();
+  renderKPIs();
   renderEvents();
 }
 
