@@ -110,12 +110,21 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .event-stat-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
 .event-card-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .event-status{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 10px;border-radius:20px;}
-.event-status.planning{background:rgba(59,130,246,.1);color:#3B82F6;}
 .event-status.active{background:rgba(16,185,129,.1);color:#10B981;}
 .event-status.completed{background:rgba(107,114,128,.1);color:#6B7280;}
 .event-status.cancelled{background:rgba(239,68,68,.1);color:#EF4444;}
 .event-members-count{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;}
 .event-members-count svg{width:14px;height:14px;}
+
+/* ===== PLAN CHECKBOXES ===== */
+.plan-checks{display:flex;gap:10px;flex-wrap:wrap;}
+.plan-check{display:flex;align-items:center;gap:4px;}
+.plan-check-box{width:16px;height:16px;border-radius:4px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;}
+.plan-check-box.checked{background:#10B981;border-color:#10B981;}
+.plan-check-box.checked svg{display:block;}
+.plan-check-box svg{display:none;width:10px;height:10px;}
+.plan-check-label{font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:.3px;}
+.plan-check.checked .plan-check-label{color:#10B981;}
 
 /* ===== EMPTY STATE ===== */
 .empty-state{text-align:center;padding:60px 20px;background:var(--bg-card);border:2px dashed var(--border);border-radius:12px;}
@@ -389,6 +398,7 @@ var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var tenantId = null, userId = null, teamId = null;
 var allProjects = [], allTasks = [], allMembers = [], allTemplates = [];
+var allEstimates = [], allSheets = [], allSiteMaps = [];
 
 function toast(m) {
   var t = document.getElementById('toast');
@@ -453,7 +463,7 @@ async function init() {
   document.getElementById('headerEmail').textContent = email;
 
   await loadProjects();
-  await Promise.all([loadTasks(), loadMembers(), loadTemplates()]);
+  await Promise.all([loadTasks(), loadMembers(), loadTemplates(), loadEstimates(), loadSheets(), loadSiteMaps()]);
   renderKPIs();
   renderEvents();
 }
@@ -486,6 +496,65 @@ async function loadMembers() {
 async function loadTemplates() {
   var r = await sb.from('event_template_groups').select('template_group_id, template_name, description').eq('tenant_id', tenantId).order('template_name');
   allTemplates = r.data || [];
+}
+
+async function loadEstimates() {
+  try {
+    var r = await sb.from('event_estimates').select('estimate_id, tenant_id, event_project_id, status').eq('tenant_id', tenantId);
+    if (r.error) throw r.error;
+    allEstimates = r.data || [];
+  } catch(e) {
+    try {
+      var r2 = await sb.from('event_estimates').select('estimate_id, tenant_id, status').eq('tenant_id', tenantId);
+      allEstimates = (r2.data || []);
+    } catch(e2) { allEstimates = []; }
+  }
+}
+
+async function loadSheets() {
+  try {
+    var r = await sb.from('sponsor_sheets').select('sheet_id, tenant_id, event_project_id, status').eq('tenant_id', tenantId);
+    if (r.error) throw r.error;
+    allSheets = r.data || [];
+  } catch(e) {
+    try {
+      var r2 = await sb.from('sponsor_sheets').select('sheet_id, tenant_id, status').eq('tenant_id', tenantId);
+      allSheets = (r2.data || []);
+    } catch(e2) { allSheets = []; }
+  }
+}
+
+async function loadSiteMaps() {
+  try {
+    var r = await sb.from('site_maps').select('id, tenant_id, event_project_id, name').eq('tenant_id', tenantId);
+    if (r.error) throw r.error;
+    allSiteMaps = r.data || [];
+  } catch(e) {
+    try {
+      var r2 = await sb.from('site_maps').select('id, tenant_id, name').eq('tenant_id', tenantId);
+      allSiteMaps = (r2.data || []);
+    } catch(e2) { allSiteMaps = []; }
+  }
+}
+
+/* ===== PLAN STATUS HELPER ===== */
+function getEventPlanStatus(eventProjectId) {
+  // Budget: green only when event_estimates.status === 'published'
+  var hasBudget = allEstimates.some(function(e) {
+    if (e.event_project_id) return e.event_project_id === eventProjectId && e.status === 'published';
+    return e.tenant_id === tenantId && e.status === 'published';
+  });
+  // Packages: green only when sponsor_sheets.status === 'published'
+  var hasPackages = allSheets.some(function(s) {
+    if (s.event_project_id) return s.event_project_id === eventProjectId && s.status === 'published';
+    return s.tenant_id === tenantId && s.status === 'published';
+  });
+  // Site Map: green when any site_maps record exists for this event
+  var hasSiteMap = allSiteMaps.some(function(m) {
+    if (m.event_project_id) return m.event_project_id === eventProjectId;
+    return m.tenant_id === tenantId;
+  });
+  return { budget: hasBudget, packages: hasPackages, siteMap: hasSiteMap };
 }
 
 /* ===== KPIs ===== */
@@ -577,6 +646,7 @@ function renderEvents() {
 }
 
 function renderEventGrid(projects) {
+  var checkSvg = '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 6 5 8.5 9.5 3.5"/></svg>';
   var html = '<div class="events-grid">';
   projects.forEach(function(p) {
     var color = p.color_tag || '#DC2626';
@@ -591,6 +661,9 @@ function renderEventGrid(projects) {
 
     var budget = parseFloat(p.total_budget) || 0;
 
+    // Plan status checkboxes
+    var plans = getEventPlanStatus(p.event_project_id);
+
     html += '<div class="event-card" onclick="goToEvent(\'' + p.event_project_id + '\')">';
     html += '<div class="event-card-stripe" style="background:' + esc(color) + ';"></div>';
     html += '<div class="event-card-body">';
@@ -601,7 +674,18 @@ function renderEventGrid(projects) {
     html += '<div class="event-stat"><div class="event-stat-value">' + pct + '%</div><div class="event-stat-label">Tasks (' + eDone + '/' + eTotal + ')</div></div>';
     html += '</div></div>';
     html += '<div class="event-card-footer">';
-    html += '<span class="event-status ' + status + '">' + status + '</span>';
+
+    // Plan check indicators instead of status badge for "planning" status
+    if (status === 'planning') {
+      html += '<div class="plan-checks">';
+      html += '<div class="plan-check' + (plans.budget ? ' checked' : '') + '"><div class="plan-check-box' + (plans.budget ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Budget</span></div>';
+      html += '<div class="plan-check' + (plans.packages ? ' checked' : '') + '"><div class="plan-check-box' + (plans.packages ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Packages</span></div>';
+      html += '<div class="plan-check' + (plans.siteMap ? ' checked' : '') + '"><div class="plan-check-box' + (plans.siteMap ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Site Map</span></div>';
+      html += '</div>';
+    } else {
+      html += '<span class="event-status ' + status + '">' + status + '</span>';
+    }
+
     if (p.venue) html += '<span class="event-members-count"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + esc(p.venue) + '</span>';
     html += '</div></div>';
   });
@@ -671,7 +755,7 @@ async function createEvent() {
   closeNewEventModal();
   toast('Event created!');
   await loadProjects();
-  await loadTasks();
+  await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
   renderKPIs();
   renderEvents();
 }
