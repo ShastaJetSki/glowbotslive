@@ -778,12 +778,75 @@ async function createEvent() {
     await loadTemplateIntoEvent(newProject.event_project_id, templateId);
   }
 
+  // Auto-add to calendar
+  await addEventToCalendar(newProject);
+
   closeNewEventModal();
   toast('Event created!');
   await loadProjects();
   await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
   renderKPIs();
   renderEvents();
+}
+
+async function addEventToCalendar(project) {
+  try {
+    // Find the default calendar, or the first calendar for this tenant
+    var calR = await sb.from('event_calendars').select('calendar_id, is_default').eq('tenant_id', tenantId).order('is_default', { ascending: false }).order('sort_order');
+    var calendars = calR.data || [];
+    if (!calendars.length) {
+      // No calendars exist — create a default one
+      var newCal = await sb.from('event_calendars').insert({
+        tenant_id: tenantId,
+        calendar_name: 'Events',
+        color: '#DC2626',
+        is_default: true,
+        sort_order: 0,
+        created_by: userId
+      }).select().single();
+      if (newCal.error || !newCal.data) return;
+      calendars = [newCal.data];
+    }
+    var calId = calendars[0].calendar_id;
+
+    // Insert start-date schedule item
+    var startDate = project.event_date;
+    if (startDate) {
+      await sb.from('event_schedule_items').insert({
+        tenant_id: tenantId,
+        calendar_id: calId,
+        event_project_id: project.event_project_id,
+        title: project.event_name,
+        item_date: startDate,
+        start_time: '08:00',
+        end_time: '23:00',
+        category: 'milestone',
+        location: project.venue || null,
+        notes: project.description || null,
+        created_by: userId
+      });
+    }
+
+    // If multi-day, also add end-date item
+    var endDate = project.event_end_date;
+    if (endDate && endDate !== startDate) {
+      await sb.from('event_schedule_items').insert({
+        tenant_id: tenantId,
+        calendar_id: calId,
+        event_project_id: project.event_project_id,
+        title: project.event_name + ' (End)',
+        item_date: endDate,
+        start_time: '08:00',
+        end_time: '23:00',
+        category: 'milestone',
+        location: project.venue || null,
+        notes: project.description || null,
+        created_by: userId
+      });
+    }
+  } catch(e) {
+    console.warn('Calendar auto-add failed:', e);
+  }
 }
 
 async function loadTemplateIntoEvent(projectId, templateGroupId) {
