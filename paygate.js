@@ -33,7 +33,7 @@
   ];
 
   // Show trial banner when this many days remain
-  const TRIAL_WARN_DAYS = 5;
+  const TRIAL_WARN_DAYS = 7;
 
   /* ── HELPERS ───────────────────────────────────────────────── */
   function currentPage() {
@@ -145,11 +145,14 @@
 
       // Get tenant subscription status
       const { data: tenant } = await sb.from('tenants')
-        .select('tenant_id, tenant_name, status, stripe_status, trial_ends_at, grace_period_ends_at, monthly_recurring_revenue')
+        .select('tenant_id, tenant_name, status, stripe_status, trial_ends_at, grace_period_ends_at, monthly_recurring_revenue, is_complimentary')
         .eq('tenant_id', userRow.tenant_id)
         .single();
 
       if (!tenant) return;
+
+      // Complimentary access — always bypass
+      if (tenant.is_complimentary) return;
 
       const status      = tenant.status;
       const stripeStatus = tenant.stripe_status;
