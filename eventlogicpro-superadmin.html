@@ -26,6 +26,10 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .desktop-header{background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
 .header-top{padding:10px 24px;display:flex;justify-content:space-between;align-items:center;gap:16px;}
 .header-logo{height:72px;object-fit:contain;flex-shrink:0;}
+/* title far left */
+.header-titles{flex-shrink:0;}
+.header-titles h1{font-size:24px;font-weight:700;letter-spacing:-.3px;color:var(--text);}
+.header-titles .sub{font-size:10px;color:var(--accent);font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
 
 /* ===== STATUS LIGHTS — left side, horizontal pill ===== */
 .status-bank{display:flex;align-items:center;gap:2px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;flex-shrink:0;}
@@ -46,10 +50,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 @keyframes livepulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(.75);opacity:.5;}}
 .live-pill span{font-size:8px;font-weight:700;color:var(--green);letter-spacing:1px;}
 
-/* ===== HEADER CENTRE (title) ===== */
-.header-centre{flex:1;text-align:center;}
-.header-centre h1{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.2px;}
-.header-centre .sub{font-size:10px;color:var(--accent);font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
+
 
 /* ===== HEADER NAV BAR ===== */
 .header-nav-bar{display:flex;justify-content:space-between;align-items:center;padding:0 24px 8px;border-top:1px solid var(--border);}
@@ -153,7 +154,13 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 <div class="desktop-header">
   <div class="header-top">
 
-    <!-- LEFT: Status lights with ms counts -->
+    <!-- LEFT: Title -->
+    <div class="header-titles">
+      <h1>Super Admin</h1>
+      <div class="sub">Event Logic Pro Console</div>
+    </div>
+
+    <!-- CENTRE: Status lights with ms counts -->
     <div class="status-bank">
       <div class="s-item" title="Database">
         <div class="s-dot" id="dbDot"></div>
@@ -188,11 +195,6 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
       </div>
     </div>
 
-    <!-- CENTRE: Title -->
-    <div class="header-centre">
-      <h1>Event Logic Pro</h1>
-      <div class="sub">Super Admin Console</div>
-    </div>
 
     <!-- RIGHT: Logo -->
     <img src="eventlogicpro-logo.png" alt="Event Logic Pro" class="header-logo">
@@ -522,7 +524,7 @@ async function verifySuperAdmin(email) {
 
 /* ===== LOAD DATA ===== */
 async function loadTenants() {
-  var r = await sb.from('tenants').select('*').order('created_at', { ascending: false });
+  var r = await sb.from('tenants').select('*').eq('product', 'eventlogicpro').order('created_at', { ascending: false });
   allTenants = r.data || [];
 }
 async function loadUsers() {
@@ -549,9 +551,9 @@ function renderKPIs() {
   var thirtyFwd  = new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
 
   // Tenants & users
-  var activeTenants = allTenants.filter(function(t){ return t.is_active !== false && t.status !== 'inactive'; }).length;
+  var activeTenants = allTenants.filter(function(t){ return t.is_active === true || t.is_active === null; }).length;
   var paidTenants   = allTenants.filter(function(t){ return (t.monthly_recurring_revenue||0) > 0 && t.is_active !== false; }).length;
-  var trialTenants  = allTenants.length - paidTenants;
+  var trialTenants  = allTenants.filter(function(t){ return !((t.monthly_recurring_revenue||0) > 0) || t.is_active === false; }).length;
   var newTenants    = allTenants.filter(function(t){ return t.created_at && t.created_at > thirtyAgo; }).length;
   var activeUsers   = allUsers.filter(function(u){ return u.is_active !== false; }).length;
   var avgUsers      = activeTenants > 0 ? Math.round(allUsers.length / activeTenants) : 0;
@@ -603,7 +605,7 @@ function renderTenants() {
   document.getElementById('tenantBody').innerHTML = allTenants.map(function(t) {
     var uc = allUsers.filter(function(u){ return u.tenant_id === t.tenant_id; }).length;
     var ec = allEvents.filter(function(e){ return e.tenant_id === t.tenant_id; }).length;
-    var active = t.is_active !== false && t.status !== 'inactive';
+    var active = t.is_active === true || t.is_active === null;
     var mrr = parseFloat(t.monthly_recurring_revenue) || 0;
     return '<tr>' +
       '<td><span class="' + (active ? 's-active' : 's-inactive') + '">● ' + (active ? 'Active' : 'Inactive') + '</span></td>' +
