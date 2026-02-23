@@ -3,382 +3,825 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Login — Event Logic Pro</title>
+  <title>Admin — Event Logic Pro</title>
   <link rel="icon" href="favicon-eventlogic.ico">
   <link rel="icon" type="image/png" href="favicon-eventlogic-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="favicon-eventlogic-192.png">
-  <meta name="apple-mobile-web-app-title" content="Event Logic Pro">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-:root{--bg:#f4f5f7;--bg-card:#ffffff;--border:#e2e4e8;--text:#1a1a1a;--text-sec:#6b7280;--accent:#DC2626;--accent-hover:#B91C1C;--input-bg:#fafafa;--shadow:0 4px 24px rgba(0,0,0,.08);}
-body.dark{--bg:#111;--bg-card:#1a1a1a;--border:#333;--text:#f0f0f0;--text-sec:#999;--input-bg:#222;--shadow:0 4px 24px rgba(0,0,0,.4);}
-html,body{height:100%;}
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;padding:20px;}
+:root{
+  --bg:#0d0d0d;--bg2:#141414;--bg3:#1c1c1c;--card:#181818;
+  --border:#252525;--border2:#333;
+  --text:#f0f0f0;--text2:#888;
+  --accent:#DC2626;--accent2:#EF4444;--accent-glow:rgba(220,38,38,.12);
+  --green:#22c55e;--blue:#3b82f6;--purple:#8b5cf6;--yellow:#eab308;--orange:#f97316;--cyan:#06b6d4;
+  --shadow:0 2px 16px rgba(0,0,0,.5);--radius:10px;
+}
+html,body{height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;}
 
-.login-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:40px 36px;width:100%;max-width:420px;box-shadow:var(--shadow);text-align:center;}
-.login-logo{height:80px;margin-bottom:8px;object-fit:contain;}
-.login-title{font-size:24px;font-weight:700;margin-bottom:4px;}
-.login-sub{font-size:13px;color:var(--text-sec);margin-bottom:28px;}
+/* ===== TOP BAR ===== */
+.sa-top{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;}
+.sa-top-left{display:flex;align-items:center;gap:14px;}
+.sa-logo{height:36px;object-fit:contain;}
+.sa-product-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;background:var(--accent);color:#fff;}
+.sa-admin-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);}
+.sa-top-right{display:flex;align-items:center;gap:12px;}
+.sa-user{font-size:13px;color:var(--text2);}
+.sa-user strong{color:var(--text);}
+.sa-btn{padding:8px 16px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;}
+.sa-btn:hover{border-color:var(--accent);color:var(--accent);}
+.sa-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.sa-btn.primary:hover{background:var(--accent2);}
+.sa-btn.danger{border-color:#ef4444;color:#ef4444;}
+.sa-btn.danger:hover{background:rgba(239,68,68,.15);}
 
-.form-group{text-align:left;margin-bottom:18px;}
-.form-label{display:block;font-size:13px;font-weight:600;color:var(--text-sec);margin-bottom:6px;}
-.form-input{width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:15px;font-family:inherit;transition:border .2s,box-shadow .2s;}
-.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(220,38,38,.12);}
-.form-input::placeholder{color:var(--text-sec);opacity:.6;}
+/* ===== IMPERSONATION BAR ===== */
+.impersonate-bar{position:fixed;top:0;left:0;right:0;background:#7c3aed;color:#fff;padding:8px 24px;font-size:13px;font-weight:600;display:none;z-index:9999;text-align:center;}
+.impersonate-bar.active{display:flex;justify-content:space-between;align-items:center;}
+.impersonate-bar .exit-btn{padding:4px 12px;border-radius:4px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;font-size:11px;cursor:pointer;font-family:inherit;}
 
-.login-btn{width:100%;padding:14px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s;margin-top:6px;}
-.login-btn:hover{background:var(--accent-hover);}
-.login-btn:disabled{opacity:.6;cursor:not-allowed;}
+/* ===== CONTENT ===== */
+.sa-content{max-width:1300px;margin:0 auto;padding:24px 24px 80px;}
 
-.login-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none;}
-.login-error.show{display:block;}
+/* ===== STATS HEADER ===== */
+.stats-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:16px 20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
+.stats-header-left h2{font-size:20px;font-weight:700;color:var(--text);}
+.stats-header-left p{font-size:13px;color:var(--text2);margin-top:2px;}
+.stats-header-right{display:flex;gap:8px;}
 
-.login-links{margin-top:20px;font-size:12px;color:var(--text-sec);}
-.login-links a{color:var(--accent);text-decoration:none;font-weight:600;}
-.login-links a:hover{text-decoration:underline;}
+/* ===== KPI GRID ===== */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:28px;}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center;transition:border-color .2s;}
+.kpi:hover{border-color:var(--border2);}
+.kpi-val{font-size:30px;font-weight:700;line-height:1.1;}
+.kpi-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;}
 
-.divider{display:flex;align-items:center;gap:12px;margin:18px 0 14px;}.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}.divider span{font-size:12px;color:var(--text-sec);text-transform:uppercase;letter-spacing:1px;}
+/* ===== SECTIONS ===== */
+.sa-section{margin-bottom:28px;}
+.sa-section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.sa-section-title{font-size:16px;font-weight:700;}
+.sa-section-title span{color:var(--text2);font-weight:400;font-size:13px;margin-left:8px;}
+.sa-section-actions{display:flex;gap:8px;}
 
-.google-btn{width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px;}
-.google-btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px rgba(220,38,38,.08);}
-.google-btn:disabled{opacity:.6;cursor:not-allowed;}
+/* ===== SEARCH BAR ===== */
+.search-bar{display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+.search-input{padding:8px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit;width:220px;}
+.search-input:focus{outline:none;border-color:var(--accent);}
+.filter-select{padding:8px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;font-family:inherit;}
+.filter-select:focus{outline:none;border-color:var(--accent);}
 
-.footer-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:12px 16px;background:var(--bg);}
-.footer-powered{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px;}
-.footer-powered span{color:var(--text-sec);font-size:11px;}
-.footer-powered img{height:24px;}
-.footer-powered a{color:var(--accent);text-decoration:none;font-weight:600;font-size:11px;}
-.footer-copy{color:var(--text-sec);font-size:10px;opacity:.6;}
+/* ===== TABLES ===== */
+.sa-table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.sa-table{width:100%;border-collapse:collapse;}
+.sa-table th{text-align:left;padding:11px 16px;font-size:11px;text-transform:uppercase;color:var(--text2);letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg3);}
+.sa-table td{padding:12px 16px;font-size:13px;border-bottom:1px solid var(--border);}
+.sa-table tr:last-child td{border-bottom:none;}
+.sa-table tr:hover td{background:var(--bg3);}
+.role-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;}
+.role-admin{background:rgba(220,38,38,.15);color:var(--accent2);}
+.role-manager{background:rgba(59,130,246,.15);color:var(--blue);}
+.role-team{background:rgba(107,114,128,.15);color:var(--text2);}
+.role-super{background:rgba(168,85,247,.15);color:var(--purple);}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0;}
+.status-active{background:var(--green);}
+.status-inactive{background:var(--text2);}
+.status-trial{background:var(--yellow);}
+.tier-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);}
 
-.dark-toggle{position:fixed;top:16px;right:16px;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-sec);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:10;}
-.dark-toggle:hover{border-color:var(--accent);color:var(--accent);}
-.dark-toggle svg{width:16px;height:16px;fill:currentColor;}
+/* ===== ACTION BUTTONS ===== */
+.action-btn{padding:4px 10px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;margin-right:4px;transition:all .15s;font-family:inherit;}
+.action-btn:hover{border-color:var(--accent);color:var(--accent);}
+.action-btn.view{border-color:var(--blue);color:var(--blue);}
+.action-btn.view:hover{background:rgba(59,130,246,.1);}
+.action-btn.impersonate{border-color:var(--purple);color:var(--purple);}
+.action-btn.impersonate:hover{background:rgba(139,92,246,.1);}
+.action-btn.danger{border-color:#ef4444;color:#ef4444;}
+.action-btn.danger:hover{background:rgba(239,68,68,.1);}
 
-.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-sec);cursor:pointer;padding:4px;font-size:18px;line-height:1;}
-.pw-toggle:hover{color:var(--accent);}
-.pw-wrap{position:relative;}
+/* ===== STATUS PILLS ===== */
+.event-status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:capitalize;}
+.event-status.active{background:rgba(34,197,94,.15);color:var(--green);}
+.event-status.planning{background:rgba(234,179,8,.15);color:var(--yellow);}
+.event-status.completed,.event-status.complete{background:rgba(59,130,246,.15);color:var(--blue);}
+.event-status.cancelled{background:rgba(107,114,128,.15);color:var(--text2);}
 
-@keyframes shake{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-6px);}40%,80%{transform:translateX(6px);}}
-.shake{animation:shake .4s ease;}
+/* ===== MODAL ===== */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.75);z-index:2000;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.active{display:flex;}
+.modal-content{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-close{background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;padding:0 4px;}
+.modal-body{padding:20px;}
+.modal-footer{display:flex;gap:12px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--border);}
+.form-group{margin-bottom:16px;}
+.form-label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;}
+.form-input,.form-select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:14px;font-family:inherit;transition:border-color .2s;}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-hint{font-size:11px;color:var(--text2);margin-top:4px;}
 
-@media(max-width:480px){.login-card{padding:32px 24px;border-radius:14px;}.login-logo{height:64px;}}
+/* ===== EMPTY STATE ===== */
+.empty-state{text-align:center;padding:48px 20px;color:var(--text2);}
+.empty-icon{font-size:36px;margin-bottom:12px;}
+.empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+
+/* ===== TOAST ===== */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--accent);color:var(--text);padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;z-index:3000;display:none;box-shadow:var(--shadow);}
+.toast.show{display:block;animation:toastIn .3s ease;}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(3,1fr);}.form-row{grid-template-columns:1fr;}.sa-table-wrap{overflow-x:auto;}}
+@media(max-width:600px){.kpi-row{grid-template-columns:repeat(2,1fr);}.kpi-val{font-size:24px;}.sa-top{flex-wrap:wrap;gap:8px;}.stats-header{flex-direction:column;gap:12px;align-items:flex-start;}}
   </style>
 </head>
 <body>
 
-<button class="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
-  <svg id="moonIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-  <svg id="sunIcon" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-</button>
+<!-- Impersonation Bar -->
+<div class="impersonate-bar" id="impersonateBar">
+  <span id="impersonateLabel">Viewing as: —</span>
+  <button class="exit-btn" onclick="exitImpersonate()">✕ Exit Impersonation</button>
+</div>
 
-<div class="login-card">
-  <img id="loginLogo" class="login-logo" src="eventlogicpro-logo.png" alt="Event Logic Pro">
-  <div class="login-title">Welcome Back</div>
-  <div class="login-sub">Sign in to your Event Logic Pro account</div>
-
-  <div class="login-error" id="loginError"></div>
-
-  <div class="form-group">
-    <label class="form-label">Email</label>
-    <input type="email" class="form-input" id="loginEmail" placeholder="you@example.com" autocomplete="email" autofocus>
+<!-- Top Bar -->
+<div class="sa-top">
+  <div class="sa-top-left">
+    <img class="sa-logo" src="eventlogicpro-logo.png" alt="Event Logic Pro" onerror="this.style.display='none'">
+    <span class="sa-product-badge">Event Logic Pro</span>
+    <span class="sa-admin-badge">Admin Portal</span>
   </div>
+  <div class="sa-top-right">
+    <div class="sa-user" id="saUser">Loading...</div>
+    <button class="sa-btn" onclick="refreshData()">↻ Refresh</button>
+    <button class="sa-btn danger" onclick="doLogout()">Logout</button>
+  </div>
+</div>
 
-  <div class="form-group">
-    <label class="form-label">Password</label>
-    <div class="pw-wrap">
-      <input type="password" class="form-input" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
-      <button class="pw-toggle" onclick="togglePw()" type="button" title="Show password" id="pwToggleBtn">&#128065;</button>
+<div class="sa-content">
+
+  <!-- Stats Header -->
+  <div class="stats-header">
+    <div class="stats-header-left">
+      <h2>Event Logic Pro — Admin Dashboard</h2>
+      <p>Manage all EventLogicPro tenants, users, and events from one place.</p>
+    </div>
+    <div class="stats-header-right">
+      <button class="sa-btn primary" onclick="openModal('tenantModal')">+ New Tenant</button>
+      <button class="sa-btn primary" onclick="openModal('userModal')">+ New User</button>
     </div>
   </div>
 
-  <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
+  <!-- KPI Cards -->
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val" style="color:var(--accent);" id="kTenants">—</div><div class="kpi-lbl">Tenants</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--blue);" id="kUsers">—</div><div class="kpi-lbl">Users</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--green);" id="kEvents">—</div><div class="kpi-lbl">Events</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--yellow);" id="kTasks">—</div><div class="kpi-lbl">Tasks</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--cyan);" id="kDone">—</div><div class="kpi-lbl">Completed</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--orange);" id="kBudget">—</div><div class="kpi-lbl">Total Budget</div></div>
+  </div>
 
-  <div class="divider"><span>or</span></div>
+  <!-- ===== TENANTS ===== -->
+  <div class="sa-section">
+    <div class="sa-section-head">
+      <div class="sa-section-title">Tenants <span id="tenantCount"></span></div>
+      <button class="sa-btn primary" onclick="openModal('tenantModal')">+ New Tenant</button>
+    </div>
+    <div class="search-bar">
+      <input class="search-input" type="text" id="tenantSearch" placeholder="Search tenants..." oninput="filterTenants()">
+      <select class="filter-select" id="tenantStatusFilter" onchange="filterTenants()">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+      </select>
+    </div>
+    <div class="sa-table-wrap">
+      <table class="sa-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Tenant Name</th>
+            <th>Domain</th>
+            <th>Owner Email</th>
+            <th>Users</th>
+            <th>Events</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tenantBody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text2);">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 
-  <button class="google-btn" id="googleBtn" onclick="doGoogleLogin()">
-    <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-    Continue with Google
-  </button>
+  <!-- ===== USERS ===== -->
+  <div class="sa-section">
+    <div class="sa-section-head">
+      <div class="sa-section-title">Users <span id="userCount"></span></div>
+      <button class="sa-btn primary" onclick="openModal('userModal')">+ New User</button>
+    </div>
+    <div class="search-bar">
+      <input class="search-input" type="text" id="userSearch" placeholder="Search users..." oninput="filterUsers()">
+      <select class="filter-select" id="userRoleFilter" onchange="filterUsers()">
+        <option value="">All Roles</option>
+        <option value="admin">Admin</option>
+        <option value="manager">Manager</option>
+        <option value="team">Team</option>
+      </select>
+      <select class="filter-select" id="userTenantFilter" onchange="filterUsers()">
+        <option value="">All Tenants</option>
+      </select>
+    </div>
+    <div class="sa-table-wrap">
+      <table class="sa-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Tenant</th>
+            <th>Role</th>
+            <th>Auth</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="userBody"><tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text2);">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 
-  <div class="login-links">
-    <a href="#" onclick="doForgotPassword();return false;">Forgot password?</a>
+  <!-- ===== EVENTS ===== -->
+  <div class="sa-section">
+    <div class="sa-section-head">
+      <div class="sa-section-title">Events <span id="eventCount"></span></div>
+    </div>
+    <div class="search-bar">
+      <input class="search-input" type="text" id="eventSearch" placeholder="Search events..." oninput="filterEvents()">
+      <select class="filter-select" id="eventStatusFilter" onchange="filterEvents()">
+        <option value="">All Status</option>
+        <option value="planning">Planning</option>
+        <option value="active">Active</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select class="filter-select" id="eventTenantFilter" onchange="filterEvents()">
+        <option value="">All Tenants</option>
+      </select>
+    </div>
+    <div class="sa-table-wrap">
+      <table class="sa-table">
+        <thead>
+          <tr>
+            <th>Event Name</th>
+            <th>Date</th>
+            <th>Tenant</th>
+            <th>Tasks</th>
+            <th>Budget</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="eventBody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text2);">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /sa-content -->
+
+<!-- ===== NEW TENANT MODAL ===== -->
+<div class="modal-overlay" id="tenantModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">New EventLogicPro Tenant</div>
+      <button class="modal-close" onclick="closeModal('tenantModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Company / Tenant Name *</label>
+        <input class="form-input" id="ntName" placeholder="e.g. Acme Events">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Domain</label>
+          <input class="form-input" id="ntDomain" placeholder="acmeevents.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subscription Tier</label>
+          <select class="form-select" id="ntTier">
+            <option value="free">Free</option>
+            <option value="basic">Basic</option>
+            <option value="pro" selected>Pro</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Owner Email</label>
+        <input class="form-input" id="ntOwnerEmail" placeholder="owner@acmeevents.com" type="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dashboard URL (optional)</label>
+        <input class="form-input" id="ntDashUrl" placeholder="eventlogicpro-dashboard.html">
+        <div class="form-hint">Leave blank to use default EventLogicPro dashboard.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="sa-btn" onclick="closeModal('tenantModal')">Cancel</button>
+      <button class="sa-btn primary" onclick="createTenant()">Create Tenant</button>
+    </div>
   </div>
 </div>
 
-<div class="footer-bar">
-  <div class="footer-powered">
-    <span>Powered by</span>
-    <img src="glowbot.png" alt="GlowBot">
-    <a href="https://glowbotslive.com" target="_blank">GlowBotsLive.com</a>
+<!-- ===== NEW USER MODAL ===== -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">New User</div>
+      <button class="modal-close" onclick="closeModal('userModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input class="form-input" id="nuFirst" placeholder="First">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input class="form-input" id="nuLast" placeholder="Last">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email *</label>
+        <input class="form-input" id="nuEmail" placeholder="user@example.com" type="email">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Assign to Tenant *</label>
+          <select class="form-select" id="nuTenant"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-select" id="nuRole">
+            <option value="admin">Admin</option>
+            <option value="manager" selected>Manager</option>
+            <option value="team">Team</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Temporary Password *</label>
+        <input class="form-input" id="nuPassword" placeholder="Min 6 characters" type="text" value="Welcome123!">
+        <div class="form-hint">User can change this after their first login.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="sa-btn" onclick="closeModal('userModal')">Cancel</button>
+      <button class="sa-btn primary" onclick="createUser()">Create User</button>
+    </div>
   </div>
-  <div class="footer-copy">&copy; 2026 Event Logic Pro. All rights reserved.</div>
 </div>
+
+<div id="toast" class="toast"></div>
 
 <script>
-/* ===== CONFIG ===== */
-var defaultDash = 'eventlogicpro-dashboard.html';
-var superAdminDash = 'eventlogicpro-superadmin.html';
+/* ===================================================
+   EVENTLOGICPRO ADMIN PORTAL
+   Product-scoped: only shows ELP tenants/users/events
+   =================================================== */
 
-/* ===== SUPER ADMIN CHECK ===== */
-async function checkSuperAdmin(email, authUid) {
+const SUPABASE_URL  = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Product scope ──────────────────────────────────
+const PRODUCT       = 'eventlogicpro';
+const ADMIN_EMAIL   = 'eventlogicpro@gmail.com';
+const DASHBOARD_URL = 'eventlogicpro-dashboard.html';
+
+let currentUserEmail = null;
+let allTenants = [], allUsers = [], allEvents = [], allTasks = [];
+
+/* ===== UTILITIES ===== */
+function toast(m) {
+  var t = document.getElementById('toast');
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2800);
+}
+function openModal(id)  { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+/* ===== AUTH ===== */
+async function doLogout() {
+  localStorage.removeItem('sa_impersonate');
+  await sb.auth.signOut();
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  location.replace('login.html');
+}
+
+async function checkAuth() {
+  var r = await sb.auth.getSession();
+  var s = r.data.session;
+  if (!s) {
+    var t  = localStorage.getItem('sb_access_token');
+    var rf = localStorage.getItem('sb_refresh_token');
+    if (t && rf) {
+      var sr = await sb.auth.setSession({ access_token: t, refresh_token: rf });
+      s = sr.data?.session;
+    }
+    if (!s) { location.replace('login.html'); return null; }
+  }
+  return s;
+}
+
+/* ===== ADMIN VERIFICATION ===== */
+async function verifyAdmin(email) {
+  // Always grant access to the ELP admin email
+  if (email === ADMIN_EMAIL) return true;
   try {
-    // Try by auth_user_id first (works with RLS)
-    if (authUid) {
-      var r = await sb.from('users').select('is_super_admin').eq('auth_user_id', authUid).single();
+    var s   = await sb.auth.getSession();
+    var uid = s.data?.session?.user?.id;
+    if (uid) {
+      var r = await sb.from('users').select('is_super_admin').eq('auth_user_id', uid).single();
       if (r.data && r.data.is_super_admin === true) return true;
     }
-    // Fallback: try by email
     var r2 = await sb.from('users').select('is_super_admin').eq('email', email).single();
     return r2.data && r2.data.is_super_admin === true;
-  } catch(e) { console.log('Super admin check error:', e); return false; }
+  } catch(e) { return false; }
 }
 
-async function redirectAfterAuth(session) {
-  if (!session || !session.user) return;
-  var email = session.user.email;
-  var authUid = session.user.id;
-  localStorage.setItem('sb_access_token', session.access_token);
-  localStorage.setItem('sb_refresh_token', session.refresh_token);
-
-  // Check if super admin → go to super admin dashboard
-  var isSuper = await checkSuperAdmin(email, authUid);
-  if (isSuper) {
-    location.replace(superAdminDash);
-  } else {
-    location.replace(defaultDash);
-  }
+/* ===== LOAD DATA  (product-scoped) ===== */
+async function loadTenants() {
+  // Only load tenants that belong to EventLogicPro product
+  var r = await sb.from('tenants').select('*')
+    .eq('product', PRODUCT)
+    .order('created_at', { ascending: false });
+  allTenants = r.data || [];
 }
 
-/* ===== GOOGLE OAUTH: auto-fill profile for new users ===== */
-async function syncGoogleProfile(session) {
-  if (!session || !session.user) return;
-  var user = session.user;
-  var meta = user.user_metadata || {};
-  var email = user.email;
-  if (!email) return;
-
-  // Check if user exists in users table
-  var r = await sb.from('users').select('user_id, display_name, avatar_url').eq('email', email).single();
-  if (r.data) {
-    // Existing user: update avatar/name only if blank
-    var updates = {};
-    if (!r.data.display_name && meta.full_name) updates.display_name = meta.full_name;
-    if (!r.data.avatar_url && meta.avatar_url) updates.avatar_url = meta.avatar_url;
-    if (Object.keys(updates).length) {
-      updates.auth_provider = 'google';
-      updates.auth_user_id = user.id;
-      await sb.from('users').update(updates).eq('user_id', r.data.user_id);
-    }
-  } else {
-    // New Google user: auto-create user record
-    // Find a default tenant or create without one
-    var tenantId = null;
-    var bs = await sb.from('business_settings').select('tenant_id').limit(1).single();
-    if (bs.data) tenantId = bs.data.tenant_id;
-
-    await sb.from('users').insert({
-      tenant_id: tenantId,
-      email: email,
-      first_name: meta.given_name || meta.full_name || '',
-      last_name: meta.family_name || '',
-      display_name: meta.full_name || '',
-      avatar_url: meta.avatar_url || meta.picture || '',
-      auth_user_id: user.id,
-      auth_provider: 'google',
-      role: 'team'
-    });
-  }
+async function loadUsers() {
+  // Only load users who belong to ELP tenants
+  if (!allTenants.length) { allUsers = []; return; }
+  var ids = allTenants.map(function(t) { return t.tenant_id; });
+  var r = await sb.from('users').select('*')
+    .in('tenant_id', ids)
+    .order('email');
+  allUsers = r.data || [];
 }
 
-/* ===== DARK MODE ===== */
-var isDark = localStorage.getItem('elp_dark_mode') === 'true';
-if (isDark) document.body.classList.add('dark');
-function applyDarkIcons() {
-  var d = document.body.classList.contains('dark');
-  var moon = document.getElementById('moonIcon');
-  var sun = document.getElementById('sunIcon');
-  if (moon) moon.style.display = d ? 'none' : 'block';
-  if (sun) sun.style.display = d ? 'block' : 'none';
-  var logo = document.getElementById('loginLogo');
-  if (logo) logo.src = d ? 'eventlogicpro-logo-dark.png' : 'eventlogicpro-logo.png';
-}
-applyDarkIcons();
-function toggleDark() {
-  document.body.classList.toggle('dark');
-  isDark = document.body.classList.contains('dark');
-  localStorage.setItem('elp_dark_mode', isDark);
-  applyDarkIcons();
+async function loadEvents() {
+  // Only load events from ELP tenants
+  if (!allTenants.length) { allEvents = []; return; }
+  var ids = allTenants.map(function(t) { return t.tenant_id; });
+  var r = await sb.from('event_projects').select('*')
+    .in('tenant_id', ids)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  allEvents = r.data || [];
 }
 
-/* ===== PASSWORD VISIBILITY ===== */
-function togglePw() {
-  var inp = document.getElementById('loginPassword');
-  var btn = document.getElementById('pwToggleBtn');
-  if (inp.type === 'password') {
-    inp.type = 'text';
-    btn.innerHTML = '&#128064;';
-  } else {
-    inp.type = 'password';
-    btn.innerHTML = '&#128065;';
-  }
+async function loadTasks() {
+  if (!allEvents.length) { allTasks = []; return; }
+  var eids = allEvents.map(function(e) { return e.event_project_id; });
+  // Supabase .in() supports up to ~500 values
+  var r = await sb.from('event_tasks')
+    .select('event_task_id, is_complete, is_cancelled, cost, event_project_id')
+    .in('event_project_id', eids);
+  allTasks = r.data || [];
 }
 
-/* ===== SUPABASE ===== */
-var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
-var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-/* ===== ERROR DISPLAY ===== */
-function showError(msg) {
-  var el = document.getElementById('loginError');
-  el.textContent = msg;
-  el.classList.add('show');
-  var card = document.querySelector('.login-card');
-  card.classList.remove('shake');
-  void card.offsetWidth;
-  card.classList.add('shake');
-}
-function hideError() {
-  document.getElementById('loginError').classList.remove('show');
+/* ===== KPIs ===== */
+function renderKPIs() {
+  document.getElementById('kTenants').textContent = allTenants.length;
+  document.getElementById('kUsers').textContent   = allUsers.length;
+  document.getElementById('kEvents').textContent  = allEvents.length;
+  document.getElementById('kTasks').textContent   = allTasks.length;
+  var done   = allTasks.filter(function(t) { return t.is_complete; }).length;
+  var budget = allEvents.reduce(function(s, e) { return s + (parseFloat(e.total_budget) || 0); }, 0);
+  document.getElementById('kDone').textContent   = done;
+  document.getElementById('kBudget').textContent = '$' + budget.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
-/* ===== CHECK IF ALREADY LOGGED IN ===== */
-async function checkExistingSession() {
-  try {
-    var r = await sb.auth.getSession();
-    var s = r.data.session;
-    if (!s) {
-      var t = localStorage.getItem('sb_access_token');
-      var rf = localStorage.getItem('sb_refresh_token');
-      if (t && rf) {
-        var sr = await sb.auth.setSession({ access_token: t, refresh_token: rf });
-        s = sr.data?.session;
-      }
-    }
-    if (s) {
-      await redirectAfterAuth(s);
-    }
-  } catch (e) {}
-
-  // Also handle OAuth redirect callback (Google sign-in returns here)
-  if (window.location.hash && window.location.hash.indexOf('access_token') >= 0) {
-    var hashSession = await sb.auth.getSession();
-    if (hashSession.data.session) {
-      await syncGoogleProfile(hashSession.data.session);
-      await redirectAfterAuth(hashSession.data.session);
-    }
-  }
-}
-
-/* ===== LOGIN ===== */
-async function doLogin() {
-  hideError();
-  var email = document.getElementById('loginEmail').value.trim();
-  var password = document.getElementById('loginPassword').value;
-  if (!email) { showError('Please enter your email address.'); return; }
-  if (!password) { showError('Please enter your password.'); return; }
-
-  var btn = document.getElementById('loginBtn');
-  btn.disabled = true;
-  btn.textContent = 'Signing in...';
-
-  try {
-    var r = await sb.auth.signInWithPassword({ email: email, password: password });
-    if (r.error) {
-      btn.disabled = false;
-      btn.textContent = 'Sign In';
-      var msg = r.error.message || 'Login failed';
-      if (msg.toLowerCase().indexOf('invalid') >= 0 || msg.toLowerCase().indexOf('credentials') >= 0) {
-        msg = 'Invalid email or password. Please try again.';
-      }
-      showError(msg);
-      return;
-    }
-
-    var session = r.data.session;
-    if (session) {
-      localStorage.setItem('sb_access_token', session.access_token);
-      localStorage.setItem('sb_refresh_token', session.refresh_token);
-      await redirectAfterAuth(session);
-    } else {
-      btn.disabled = false;
-      btn.textContent = 'Sign In';
-      showError('Login failed. Please try again.');
-    }
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = 'Sign In';
-    showError('Connection error. Please check your internet and try again.');
-  }
-}
-
-/* ===== FORGOT PASSWORD ===== */
-async function doForgotPassword() {
-  var email = document.getElementById('loginEmail').value.trim();
-  if (!email) {
-    showError('Enter your email address first, then click "Forgot password?"');
-    document.getElementById('loginEmail').focus();
+/* ===== TENANTS TABLE ===== */
+function renderTenants(list) {
+  var rows = list !== undefined ? list : allTenants;
+  document.getElementById('tenantCount').textContent = '(' + rows.length + ')';
+  if (!rows.length) {
+    document.getElementById('tenantBody').innerHTML =
+      '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">No tenants found</div></div></td></tr>';
     return;
   }
-  hideError();
-  try {
-    var r = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/eventlogicpro-settings.html'
-    });
-    if (r.error) {
-      showError(r.error.message || 'Could not send reset email.');
-    } else {
-      var el = document.getElementById('loginError');
-      el.textContent = 'Password reset email sent! Check your inbox.';
-      el.style.background = 'rgba(34,197,94,.1)';
-      el.style.borderColor = 'rgba(34,197,94,.3)';
-      el.style.color = '#22c55e';
-      el.classList.add('show');
+  var html = '';
+  rows.forEach(function(t) {
+    var userCount  = allUsers.filter(function(u) { return u.tenant_id === t.tenant_id; }).length;
+    var eventCount = allEvents.filter(function(e) { return e.tenant_id === t.tenant_id; }).length;
+    var active     = t.is_active !== false;
+    html += '<tr>';
+    html += '<td style="white-space:nowrap;"><span class="status-dot ' + (active ? 'status-active' : 'status-inactive') + '"></span>' + (active ? 'Active' : 'Inactive') + '</td>';
+    html += '<td><strong>' + esc(t.tenant_name || 'Unnamed') + '</strong></td>';
+    html += '<td style="color:var(--text2);font-size:12px;">' + esc(t.domain || '—') + '</td>';
+    html += '<td style="color:var(--text2);font-size:12px;">' + esc(t.owner_email || '—') + '</td>';
+    html += '<td>' + userCount + '</td>';
+    html += '<td>' + eventCount + '</td>';
+    html += '<td style="white-space:nowrap;">';
+    html += '<button class="action-btn view" onclick="viewAsTenant(\'' + t.tenant_id + '\')">View As</button>';
+    html += '<button class="action-btn" onclick="toggleTenantStatus(\'' + t.tenant_id + '\',' + active + ')">' + (active ? 'Deactivate' : 'Activate') + '</button>';
+    html += '</td></tr>';
+  });
+  document.getElementById('tenantBody').innerHTML = html;
+}
+
+function filterTenants() {
+  var q      = document.getElementById('tenantSearch').value.toLowerCase();
+  var status = document.getElementById('tenantStatusFilter').value;
+  var list   = allTenants.filter(function(t) {
+    var matchQ = !q || (t.tenant_name||'').toLowerCase().includes(q) || (t.domain||'').toLowerCase().includes(q) || (t.owner_email||'').toLowerCase().includes(q);
+    var active = t.is_active !== false;
+    var matchS = !status || (status === 'active' && active) || (status === 'inactive' && !active);
+    return matchQ && matchS;
+  });
+  renderTenants(list);
+}
+
+/* ===== USERS TABLE ===== */
+function renderUsers(list) {
+  var rows = list !== undefined ? list : allUsers;
+  document.getElementById('userCount').textContent = '(' + rows.length + ')';
+  if (!rows.length) {
+    document.getElementById('userBody').innerHTML =
+      '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">👤</div><div class="empty-title">No users found</div></div></td></tr>';
+    return;
+  }
+  var html = '';
+  rows.forEach(function(u) {
+    var tenant      = allTenants.find(function(t) { return t.tenant_id === u.tenant_id; });
+    var tenantName  = tenant ? tenant.tenant_name : (u.tenant_id ? u.tenant_id.substring(0,8)+'…' : '—');
+    var displayName = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email || '—';
+    var isSuper     = u.is_super_admin;
+    var roleCls     = isSuper ? 'role-super' : (u.role === 'admin' ? 'role-admin' : u.role === 'manager' ? 'role-manager' : 'role-team');
+    var roleLabel   = isSuper ? 'Super Admin' : (u.role || 'user');
+    var provider    = u.auth_provider || 'email';
+    html += '<tr>';
+    html += '<td><strong>' + esc(displayName) + '</strong></td>';
+    html += '<td style="font-size:12px;color:var(--text2);">' + esc(u.email || '—') + '</td>';
+    html += '<td style="font-size:12px;">' + esc(tenantName) + '</td>';
+    html += '<td><span class="role-badge ' + roleCls + '">' + roleLabel + '</span></td>';
+    html += '<td style="font-size:12px;color:var(--text2);">' + provider + '</td>';
+    html += '<td style="white-space:nowrap;">';
+    if (!isSuper && u.email) {
+      html += '<button class="action-btn impersonate" onclick="impersonateUser(\'' + u.email + '\',\'' + (u.tenant_id || '') + '\')">Login As</button>';
     }
-  } catch (e) {
-    showError('Could not send reset email. Please try again.');
+    html += '</td></tr>';
+  });
+  document.getElementById('userBody').innerHTML = html;
+}
+
+function filterUsers() {
+  var q      = document.getElementById('userSearch').value.toLowerCase();
+  var role   = document.getElementById('userRoleFilter').value;
+  var tenant = document.getElementById('userTenantFilter').value;
+  var list   = allUsers.filter(function(u) {
+    var matchQ = !q || (u.email||'').toLowerCase().includes(q) || ((u.first_name||'')+' '+(u.last_name||'')).toLowerCase().includes(q);
+    var matchR = !role   || u.role === role;
+    var matchT = !tenant || u.tenant_id === tenant;
+    return matchQ && matchR && matchT;
+  });
+  renderUsers(list);
+}
+
+/* ===== EVENTS TABLE ===== */
+function renderEvents(list) {
+  var rows = list !== undefined ? list : allEvents;
+  document.getElementById('eventCount').textContent = '(' + rows.length + ')';
+  if (!rows.length) {
+    document.getElementById('eventBody').innerHTML =
+      '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-title">No events found</div></div></td></tr>';
+    return;
+  }
+  var html = '';
+  rows.forEach(function(e) {
+    var tenant     = allTenants.find(function(t) { return t.tenant_id === e.tenant_id; });
+    var tenantName = tenant ? tenant.tenant_name : '—';
+    var tasks      = allTasks.filter(function(t) { return t.event_project_id === e.event_project_id; });
+    var taskTotal  = tasks.filter(function(t) { return !t.is_cancelled; }).length;
+    var taskDone   = tasks.filter(function(t) { return t.is_complete; }).length;
+    var budget     = parseFloat(e.total_budget) || 0;
+    var status     = e.status || 'planning';
+    html += '<tr>';
+    html += '<td><strong>' + esc(e.event_name || 'Untitled') + '</strong></td>';
+    html += '<td style="font-size:12px;color:var(--text2);">' + (e.event_date || '—') + '</td>';
+    html += '<td style="font-size:12px;">' + esc(tenantName) + '</td>';
+    html += '<td style="font-size:12px;">' + taskDone + '/' + taskTotal + '</td>';
+    html += '<td style="font-size:12px;">' + (budget > 0 ? '$' + budget.toLocaleString() : '—') + '</td>';
+    html += '<td><span class="event-status ' + status + '">' + status + '</span></td>';
+    html += '<td style="white-space:nowrap;">';
+    html += '<button class="action-btn view" onclick="openEventDashboard(\'' + e.event_project_id + '\',\'' + (e.tenant_id || '') + '\')">Open</button>';
+    html += '</td></tr>';
+  });
+  document.getElementById('eventBody').innerHTML = html;
+}
+
+function filterEvents() {
+  var q      = document.getElementById('eventSearch').value.toLowerCase();
+  var status = document.getElementById('eventStatusFilter').value;
+  var tenant = document.getElementById('eventTenantFilter').value;
+  var list   = allEvents.filter(function(e) {
+    var matchQ = !q || (e.event_name||'').toLowerCase().includes(q);
+    var matchS = !status || e.status === status;
+    var matchT = !tenant || e.tenant_id === tenant;
+    return matchQ && matchS && matchT;
+  });
+  renderEvents(list);
+}
+
+/* ===== POPULATE FILTER DROPDOWNS ===== */
+function populateFilters() {
+  var utSel  = document.getElementById('userTenantFilter');
+  var etSel  = document.getElementById('eventTenantFilter');
+  var nuSel  = document.getElementById('nuTenant');
+  utSel.innerHTML = '<option value="">All Tenants</option>';
+  etSel.innerHTML = '<option value="">All Tenants</option>';
+  nuSel.innerHTML = '<option value="">-- Select Tenant --</option>';
+  allTenants.forEach(function(t) {
+    var opt = '<option value="' + t.tenant_id + '">' + esc(t.tenant_name) + '</option>';
+    utSel.innerHTML += opt;
+    etSel.innerHTML += opt;
+    nuSel.innerHTML += opt;
+  });
+}
+
+/* ===== CREATE TENANT ===== */
+async function createTenant() {
+  var name = document.getElementById('ntName').value.trim();
+  if (!name) { toast('Enter a tenant name'); return; }
+  var data = {
+    tenant_name   : name,
+    product       : PRODUCT,
+    domain        : document.getElementById('ntDomain').value.trim() || null,
+    owner_email   : document.getElementById('ntOwnerEmail').value.trim() || null,
+    dashboard_url : document.getElementById('ntDashUrl').value.trim() || DASHBOARD_URL,
+    tier          : document.getElementById('ntTier').value,
+    is_active     : true
+  };
+  var r = await sb.from('tenants').insert(data).select().single();
+  if (r.error) { toast('Error: ' + r.error.message); return; }
+  closeModal('tenantModal');
+  document.getElementById('ntName').value = '';
+  document.getElementById('ntDomain').value = '';
+  document.getElementById('ntOwnerEmail').value = '';
+  document.getElementById('ntDashUrl').value = '';
+  toast('Tenant created!');
+  await loadTenants();
+  await loadUsers();
+  renderKPIs();
+  renderTenants();
+  populateFilters();
+}
+
+/* ===== TOGGLE TENANT STATUS ===== */
+async function toggleTenantStatus(tenantId, currentActive) {
+  var newState = !currentActive;
+  var r = await sb.from('tenants').update({ is_active: newState }).eq('tenant_id', tenantId);
+  if (r.error) { toast('Error: ' + r.error.message); return; }
+  var t = allTenants.find(function(x) { return x.tenant_id === tenantId; });
+  if (t) t.is_active = newState;
+  renderTenants();
+  toast(newState ? 'Tenant activated' : 'Tenant deactivated');
+}
+
+/* ===== CREATE USER ===== */
+async function createUser() {
+  var email    = document.getElementById('nuEmail').value.trim();
+  var password = document.getElementById('nuPassword').value;
+  var tenantId = document.getElementById('nuTenant').value;
+  if (!email)                          { toast('Enter an email'); return; }
+  if (!password || password.length < 6){ toast('Password must be 6+ characters'); return; }
+  if (!tenantId)                       { toast('Select a tenant'); return; }
+
+  // Save admin tokens before signUp replaces the session
+  var savedToken   = localStorage.getItem('sb_access_token');
+  var savedRefresh = localStorage.getItem('sb_refresh_token');
+
+  var r = await sb.auth.signUp({ email: email, password: password });
+  if (r.error) { toast('Auth error: ' + r.error.message); return; }
+  var authUserId = r.data.user ? r.data.user.id : null;
+
+  // Restore admin session
+  if (savedToken && savedRefresh) {
+    await sb.auth.setSession({ access_token: savedToken, refresh_token: savedRefresh });
+  }
+
+  var userData = {
+    tenant_id    : tenantId,
+    email        : email,
+    first_name   : document.getElementById('nuFirst').value.trim() || null,
+    last_name    : document.getElementById('nuLast').value.trim() || null,
+    role         : document.getElementById('nuRole').value,
+    auth_user_id : authUserId,
+    auth_provider: 'email',
+    is_super_admin: false
+  };
+  var ur = await sb.from('users').insert(userData);
+  if (ur.error) { toast('User table error: ' + ur.error.message); return; }
+
+  closeModal('userModal');
+  document.getElementById('nuFirst').value = '';
+  document.getElementById('nuLast').value  = '';
+  document.getElementById('nuEmail').value = '';
+  toast('User created! Login: ' + email);
+  await loadUsers();
+  renderKPIs();
+  renderUsers();
+  populateFilters();
+}
+
+/* ===== IMPERSONATION ===== */
+function impersonateUser(email, tenantId) {
+  if (!confirm('Open dashboard as ' + email + '?\n\nYour admin session stays active in this tab.')) return;
+  localStorage.setItem('sa_impersonate', JSON.stringify({ email: email, tenant_id: tenantId }));
+  var tenant = allTenants.find(function(t) { return t.tenant_id === tenantId; });
+  var dash   = (tenant && tenant.dashboard_url) ? tenant.dashboard_url : DASHBOARD_URL;
+  window.open(dash + '?sa_view=' + encodeURIComponent(email), '_blank');
+}
+
+function viewAsTenant(tenantId) {
+  var tenant = allTenants.find(function(t) { return t.tenant_id === tenantId; });
+  if (!tenant) return;
+  var dash = tenant.dashboard_url || DASHBOARD_URL;
+  window.open(dash + '?sa_tenant=' + tenantId, '_blank');
+}
+
+function openEventDashboard(eventId, tenantId) {
+  window.open('eventlogicpro.html?event=' + eventId + (tenantId ? '&sa_tenant=' + tenantId : ''), '_blank');
+}
+
+function exitImpersonate() {
+  localStorage.removeItem('sa_impersonate');
+  document.getElementById('impersonateBar').classList.remove('active');
+  location.reload();
+}
+
+function checkImpersonateState() {
+  var imp = localStorage.getItem('sa_impersonate');
+  if (imp) {
+    try {
+      var data = JSON.parse(imp);
+      document.getElementById('impersonateLabel').textContent = 'Last viewed as: ' + data.email;
+      document.getElementById('impersonateBar').classList.add('active');
+    } catch(e) {}
   }
 }
 
-/* ===== GOOGLE OAUTH LOGIN ===== */
-async function doGoogleLogin() {
-  hideError();
-  var btn = document.getElementById('googleBtn');
-  btn.disabled = true;
-  btn.textContent = 'Connecting to Google...';
-
-  try {
-    var r = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname,
-        queryParams: { prompt: 'select_account' }
-      }
-    });
-    if (r.error) {
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google';
-      showError(r.error.message || 'Google sign-in failed');
-    }
-    // OAuth redirects away — if we're still here, something went wrong
-  } catch(e) {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google';
-    showError('Could not connect to Google. Please try again.');
-  }
+/* ===== REFRESH ===== */
+async function refreshData() {
+  toast('Refreshing...');
+  await loadTenants();
+  await Promise.all([loadUsers(), loadEvents()]);
+  await loadTasks();
+  renderKPIs();
+  renderTenants();
+  renderUsers();
+  renderEvents();
+  populateFilters();
+  toast('Data refreshed!');
 }
-
-/* ===== ENTER KEY ===== */
-document.getElementById('loginEmail').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { document.getElementById('loginPassword').focus(); }
-});
-document.getElementById('loginPassword').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { doLogin(); }
-});
 
 /* ===== INIT ===== */
-checkExistingSession();
+async function init() {
+  var s = await checkAuth();
+  if (!s) return;
+  currentUserEmail = s.user.email;
+
+  var isAdmin = await verifyAdmin(currentUserEmail);
+  if (!isAdmin) {
+    document.querySelector('.sa-content').innerHTML =
+      '<div style="text-align:center;padding:100px 20px;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">🚫</div>' +
+      '<h2 style="color:var(--accent);margin-bottom:12px;">Access Denied</h2>' +
+      '<p style="color:var(--text2);margin-bottom:24px;">You don\'t have admin privileges for EventLogicPro.</p>' +
+      '<button class="sa-btn" onclick="doLogout()">Back to Login</button>' +
+      '</div>';
+    return;
+  }
+
+  document.getElementById('saUser').innerHTML = '<strong>' + currentUserEmail + '</strong>';
+
+  // Load tenants FIRST — users/events depend on the tenant list
+  await loadTenants();
+  await Promise.all([loadUsers(), loadEvents()]);
+  await loadTasks();
+
+  renderKPIs();
+  renderTenants();
+  renderUsers();
+  renderEvents();
+  populateFilters();
+  checkImpersonateState();
+}
+
+init();
 </script>
 </body>
 </html>
