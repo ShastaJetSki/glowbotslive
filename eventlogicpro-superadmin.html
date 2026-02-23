@@ -33,10 +33,11 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 
 .lights{display:flex;gap:4px;margin-left:8px;}
 .light{display:flex;align-items:center;gap:3px;padding:2px 6px;border-radius:3px;background:var(--bg3);font-size:9px;color:var(--text3);font-weight:700;}
-.light-dot{width:5px;height:5px;border-radius:50%;}
+.light-dot{width:5px;height:5px;border-radius:50%;background:var(--text3);transition:all .3s;}
 .light-dot.on{background:var(--green);box-shadow:0 0 4px var(--green);}
-.light-dot.warn{background:var(--yellow);}
-.light-dot.off{background:#ef4444;}
+.light-dot.warn{background:var(--yellow);box-shadow:0 0 4px var(--yellow);}
+.light-dot.off{background:#ef4444;box-shadow:0 0 4px #ef4444;}
+@keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
 
 .btn{padding:6px 12px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap;}
 .btn:hover{border-color:var(--accent);color:var(--accent);}
@@ -149,7 +150,13 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
   <div class="top-left">
     <div class="top-logo"><img src="eventlogicpro-logo-dark.png" alt="ELP" onerror="this.style.display='none'"><div class="top-logo-text">EventLogicPro</div></div>
     <div class="top-badge">Admin</div>
-    <div class="lights"><div class="light"><div class="light-dot on"></div>DB</div><div class="light"><div class="light-dot on"></div>Auth</div><div class="light"><div class="light-dot" id="alertDot"></div><span id="alertLbl">OK</span></div></div>
+    <div class="lights">
+      <div class="light"><div class="light-dot" id="ltDB"></div><span id="ltDBl">DB</span></div>
+      <div class="light"><div class="light-dot" id="ltAuth"></div><span id="ltAuthl">Auth</span></div>
+      <div class="light"><div class="light-dot" id="ltAPI"></div><span id="ltAPIl">API</span></div>
+      <div class="light"><div class="light-dot" id="ltRLS"></div><span id="ltRLSl">RLS</span></div>
+      <div class="light"><div class="light-dot" id="alertDot"></div><span id="alertLbl">OK</span></div>
+    </div>
   </div>
   <div class="top-right">
     <div class="top-user" id="userLabel">—</div>
@@ -370,6 +377,51 @@ function filterTix(status){renderTixRows(tickets.filter(function(t){if(status===
 function viewTix(id){var t=tickets.find(function(x){return x.ticket_id===id;});if(!t)return;document.getElementById('txTitle').textContent='Ticket #'+(t.ticket_number||'');document.getElementById('txStatus').value=t.status||'open';document.getElementById('txBody').innerHTML='<div style="margin-bottom:8px;font-weight:700;">'+esc(t.subject)+'</div><div style="font-size:11px;color:var(--text2);margin-bottom:8px;">From: '+esc(t.submitter_name||'')+' &lt;'+esc(t.submitter_email||'')+'&gt; · '+esc(t.priority||'normal')+' · '+fDateTime(t.created_at)+'</div><div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:12px;color:var(--text2);white-space:pre-wrap;">'+esc(t.description||'No description')+'</div>';openMo('moTicket');window._txId=id;}
 async function updateTixStatus(){if(!window._txId)return;try{await sb.from('support_tickets').update({status:document.getElementById('txStatus').value}).eq('ticket_id',window._txId);toast('Ticket updated');closeMo('moTicket');await loadTickets();}catch(e){toast('Error: '+e.message);}}
 
+/* ===== SYSTEM HEALTH CHECKS ===== */
+function setLight(id,state,label){var dot=document.getElementById(id);var lbl=document.getElementById(id+'l');if(dot){dot.className='light-dot '+state;dot.style.animation=state?'':'pulse 1s infinite';}if(lbl&&label)lbl.textContent=label;}
+
+async function checkDB(){
+  setLight('ltDB','','DB...');
+  try{var start=performance.now();var r=await sb.from('tenants').select('tenant_id').limit(1);var ms=Math.round(performance.now()-start);
+    if(r.error){setLight('ltDB','off','DB ✗');return;}
+    if(ms>2000){setLight('ltDB','warn','DB '+ms+'ms');return;}
+    setLight('ltDB','on','DB '+ms+'ms');
+  }catch(e){setLight('ltDB','off','DB ✗');}
+}
+
+async function checkAuthHealth(){
+  setLight('ltAuth','','Auth...');
+  try{var r=await sb.auth.getSession();var s=r.data.session;
+    if(!s){setLight('ltAuth','off','No session');return;}
+    var exp=s.expires_at?s.expires_at*1000:0;var remaining=exp-Date.now();
+    if(remaining<5*60*1000){setLight('ltAuth','warn','Expiring');return;}
+    setLight('ltAuth','on','Auth ✓');
+  }catch(e){setLight('ltAuth','off','Auth ✗');}
+}
+
+async function checkAPI(){
+  setLight('ltAPI','','API...');
+  try{var start=performance.now();var r=await fetch(SB_URL+'/rest/v1/',{method:'HEAD',headers:{apikey:SB_KEY}});var ms=Math.round(performance.now()-start);
+    if(!r.ok){setLight('ltAPI','off','API '+r.status);return;}
+    if(ms>3000){setLight('ltAPI','warn','API '+ms+'ms');return;}
+    setLight('ltAPI','on','API '+ms+'ms');
+  }catch(e){setLight('ltAPI','off','API ✗');}
+}
+
+async function checkRLS(){
+  setLight('ltRLS','','RLS...');
+  try{var r=await sb.from('users').select('user_id').limit(1);
+    if(r.error){
+      if(r.error.message&&r.error.message.indexOf('permission')!==-1){setLight('ltRLS','off','Blocked');}
+      else{setLight('ltRLS','warn','RLS ?');}
+      return;
+    }
+    setLight('ltRLS','on','RLS ✓');
+  }catch(e){setLight('ltRLS','off','RLS ✗');}
+}
+
+async function runHealthChecks(){await Promise.all([checkDB(),checkAuthHealth(),checkAPI(),checkRLS()]);}
+
 function updateAlerts(){var o=tickets.filter(function(t){return t.status==='open';}).length;var u=tickets.filter(function(t){return t.priority==='urgent'&&t.status!=='closed';}).length;var d=document.getElementById('alertDot'),l=document.getElementById('alertLbl');if(u>0){d.className='light-dot off';l.textContent=u+' Urgent';}else if(o>3){d.className='light-dot warn';l.textContent=o+' Open';}else{d.className='light-dot on';l.textContent='OK';}}
 
 function impUser(email,tid){if(!confirm('Login as '+email+'?\nOpens their EventLogicPro dashboard in a new tab.\nYour admin session stays here.'))return;window.open('eventlogicpro-dashboard.html?sa_view='+encodeURIComponent(email),'_blank');}
@@ -420,7 +472,7 @@ function fillTenantDD(){var sel=document.getElementById('nuTenant');sel.innerHTM
 
 function exportCSV(){var rows=[['Tenant','Domain','Owner','Users','Events','Active']];tenants.forEach(function(t){var uc=users.filter(function(u){return u.tenant_id===t.tenant_id;}).length;var ec=events.filter(function(e){return e.tenant_id===t.tenant_id;}).length;rows.push([t.tenant_name||'',t.domain||'',t.owner_email||'',uc,ec,t.is_active!==false?'Yes':'No']);});var csv=rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='eventlogicpro-tenants-'+new Date().toISOString().split('T')[0]+'.csv';a.click();toast('CSV exported');}
 
-async function refreshAll(){toast('Refreshing EventLogicPro...');await loadTenants();await loadUsers();await Promise.all([loadEvents(),loadTasks(),loadTickets()]);renderAll();toast('✓ Data refreshed');}
+async function refreshAll(){toast('Refreshing EventLogicPro...');await loadTenants();await loadUsers();await Promise.all([loadEvents(),loadTasks(),loadTickets()]);renderAll();runHealthChecks();toast('✓ Data refreshed');}
 
 async function init(){
   var session=await checkAuth();if(!session)return;
@@ -430,6 +482,9 @@ async function init(){
   document.getElementById('userLabel').textContent=currentEmail;
   if(admin.is_global_admin===true)document.getElementById('globalBtn').style.display='';
   await loadTenants();await loadUsers();await Promise.all([loadEvents(),loadTasks()]);renderAll();
+  runHealthChecks();
+  // Re-check health every 60 seconds
+  setInterval(runHealthChecks,60000);
 }
 init();
 </script>
