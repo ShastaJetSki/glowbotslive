@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subscription Required — EventLogicPro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:        #080a0d;
+    --bg-card:   #0e1117;
+    --border:    #1c2333;
+    --border-2:  #253044;
+    --accent:    #dc2626;
+    --accent-dim:rgba(220,38,38,0.1);
+    --green:     #10b981;
+    --green-dim: rgba(16,185,129,0.1);
+    --yellow:    #f59e0b;
+    --blue:      #3b82f6;
+    --text:      #e2e8f0;
+    --text-2:    #7c8fa6;
+    --text-3:    #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px;
+  }
+
+  /* background grid */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(220,38,38,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(220,38,38,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .logo-wrap {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 32px;
+  }
+  .logo-dot  { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .logo-text { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--text-2); }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 36px;
+    width: 100%; max-width: 520px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Top accent line — changes color by reason */
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+  }
+  .card.trial-warn::before { background: var(--yellow); }
+  .card.payment-fail::before { background: var(--accent); }
+  .card.active::before { background: var(--green); }
+
+  .status-icon { font-size: 52px; margin-bottom: 20px; }
+
+  .card-title {
+    font-family: var(--mono); font-size: 22px; font-weight: 700;
+    letter-spacing: -0.5px; margin-bottom: 8px;
+  }
+  .card-sub {
+    font-size: 14px; color: var(--text-2); line-height: 1.7;
+    margin-bottom: 28px;
+  }
+
+  /* Tenant info pill */
+  .tenant-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-dim); border: 1px solid rgba(220,38,38,.2);
+    border-radius: 20px; padding: 6px 14px;
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    font-weight: 600; margin-bottom: 28px;
+  }
+
+  /* Plan info */
+  .plan-box {
+    background: var(--bg);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+    text-align: left;
+  }
+  .plan-box-title { font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); margin-bottom: 12px; }
+  .plan-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .plan-row:last-child { border-bottom: none; }
+  .plan-row-label { font-size: 13px; color: var(--text-2); }
+  .plan-row-val   { font-size: 13px; font-family: var(--mono); font-weight: 600; }
+  .val-green  { color: var(--green); }
+  .val-yellow { color: var(--yellow); }
+  .val-red    { color: var(--accent); }
+
+  /* CTA buttons */
+  .btn-primary {
+    display: block; width: 100%;
+    background: var(--accent); color: #fff; border: none;
+    padding: 13px; border-radius: 9px;
+    font-family: var(--mono); font-size: 14px; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+    transition: opacity .15s; margin-bottom: 10px;
+  }
+  .btn-primary:hover { opacity: .85; }
+  .btn-secondary {
+    display: block; width: 100%;
+    background: transparent; color: var(--text-2);
+    border: 1px solid var(--border-2); padding: 11px;
+    border-radius: 9px; font-family: var(--mono); font-size: 13px;
+    cursor: pointer; text-decoration: none; transition: all .15s;
+    margin-bottom: 10px;
+  }
+  .btn-secondary:hover { border-color: var(--text-2); color: var(--text); }
+  .btn-logout {
+    background: none; border: none; color: var(--text-3);
+    font-size: 12px; font-family: var(--mono); cursor: pointer;
+    margin-top: 8px; text-decoration: underline;
+  }
+  .btn-logout:hover { color: var(--text-2); }
+
+  /* Tier selector */
+  .tier-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-bottom: 24px;
+  }
+  .tier-card {
+    background: var(--bg);
+    border: 2px solid var(--border);
+    border-radius: 10px; padding: 16px;
+    cursor: pointer; transition: border-color .15s;
+    text-align: left; position: relative;
+  }
+  .tier-card:hover { border-color: var(--border-2); }
+  .tier-card.selected { border-color: var(--accent); }
+  .tier-card.featured { border-color: var(--green); }
+  .tier-card.featured.selected { border-color: var(--green); }
+  .tier-badge {
+    position: absolute; top: -8px; right: 10px;
+    background: var(--green); color: #000;
+    font-size: 9px; font-weight: 700; font-family: var(--mono);
+    padding: 2px 8px; border-radius: 4px; text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .tier-name  { font-family: var(--mono); font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .tier-price { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--accent); }
+  .tier-price span { font-size: 12px; color: var(--text-2); font-weight: 400; }
+  .tier-desc  { font-size: 11px; color: var(--text-2); margin-top: 6px; line-height: 1.5; }
+
+  /* Loading */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin-right: 8px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Alert */
+  .alert { display:none; padding:10px 14px; border-radius:7px; font-size:12px; margin-bottom:14px; font-family:var(--mono); }
+  .alert.err  { display:block; background:rgba(220,38,38,.1); color:var(--accent); border:1px solid rgba(220,38,38,.25); }
+  .alert.ok   { display:block; background:rgba(16,185,129,.1); color:var(--green);  border:1px solid rgba(16,185,129,.25); }
+
+  /* countdown */
+  .countdown {
+    font-family: var(--mono); font-size: 42px; font-weight: 700;
+    color: var(--yellow); letter-spacing: -2px; margin: 12px 0;
+  }
+  .countdown.zero { color: var(--accent); }
+
+  @media(max-width:480px) {
+    .tier-grid { grid-template-columns: 1fr; }
+    .card { padding: 28px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="logo-wrap">
+  <span class="logo-dot"></span>
+  <span class="logo-text">EventLogicPro</span>
+</div>
+
+<div class="card" id="mainCard">
+  <!-- Dynamic content injected by JS -->
+  <div style="padding:40px;color:var(--text-2);font-family:var(--mono);font-size:13px;">
+    Loading account status...
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const BASE_PRICE  = 19.95;
+const COLLAB_FEE  = 5.00;
+const TRIAL_DAYS  = 14;
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+}
+
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((new Date() - new Date(dateStr)) / 86400000);
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  window.location.href = 'login.html';
+}
+
+/* ─── RENDER FUNCTIONS ─── */
+
+function renderTrialExpired(tenant) {
+  const card = document.getElementById('mainCard');
+  card.className = 'card payment-fail';
+  card.innerHTML = `
+    <div class="status-icon">⏰</div>
+    <div class="card-title">Your Free Trial Has Ended</div>
+    <div class="card-sub">
+      Your 14-day free trial for <strong>${tenant.tenant_name || 'your organization'}</strong> has expired.<br>
+      Choose a plan to continue using EventLogicPro.
+    </div>
+    <div class="tenant-pill">🏢 ${tenant.tenant_name || 'Organization'}</div>
+
+    <div class="plan-box">
+      <div class="plan-box-title">EventLogicPro Plans</div>
+      <div class="plan-row">
+        <span class="plan-row-label">Base plan</span>
+        <span class="plan-row-val val-red">$19.95/mo</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Includes</span>
+        <span class="plan-row-val">Unlimited events</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Additional collaborators</span>
+        <span class="plan-row-val">$5.00/mo each</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Cancel anytime</span>
+        <span class="plan-row-val val-green">✓ No contracts</span>
+      </div>
+    </div>
+
+    <div id="alertBox" class="alert"></div>
+    <a href="eventlogicpro-billing.html" class="btn-primary">Start Subscription — $19.95/mo →</a>
+    <a href="eventlogicpro-dashboard.html" class="btn-secondary">View Dashboard (Read Only)</a>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  `;
+}
+
+function renderPaymentFailed(tenant) {
+  const graceDays = daysUntil(tenant.grace_period_ends_at);
+  const card = document.getElementById('mainCard');
+  card.className = 'card payment-fail';
+  card.innerHTML = `
+    <div class="status-icon">💳</div>
+    <div class="card-title">Payment Failed</div>
+    <div class="card-sub">
+      We couldn't process your payment for <strong>${tenant.tenant_name}</strong>.<br>
+      Update your payment method to restore full access.
+    </div>
+    <div class="tenant-pill">🏢 ${tenant.tenant_name}</div>
+
+    <div class="plan-box">
+      <div class="plan-box-title">Account Status</div>
+      <div class="plan-row">
+        <span class="plan-row-label">Subscription</span>
+        <span class="plan-row-val val-red">Payment Failed</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Monthly charge</span>
+        <span class="plan-row-val">$${parseFloat(tenant.monthly_recurring_revenue || 19.95).toFixed(2)}/mo</span>
+      </div>
+      ${graceDays !== null && graceDays > 0 ? `
+      <div class="plan-row">
+        <span class="plan-row-label" style="color:var(--yellow)">Grace period ends</span>
+        <span class="plan-row-val val-yellow">${graceDays} day${graceDays === 1 ? '' : 's'} remaining</span>
+      </div>` : `
+      <div class="plan-row">
+        <span class="plan-row-label" style="color:var(--accent)">Access</span>
+        <span class="plan-row-val val-red">Suspended</span>
+      </div>`}
+    </div>
+
+    <div id="alertBox" class="alert"></div>
+    <a href="eventlogicpro-billing.html" class="btn-primary">Update Payment Method →</a>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  `;
+}
+
+function renderSuspended(tenant) {
+  const card = document.getElementById('mainCard');
+  card.className = 'card payment-fail';
+  card.innerHTML = `
+    <div class="status-icon">🔒</div>
+    <div class="card-title">Account Suspended</div>
+    <div class="card-sub">
+      Access to <strong>${tenant.tenant_name}</strong> has been suspended.<br>
+      Reactivate your subscription to regain access. Your data is safe and will be restored immediately.
+    </div>
+    <div class="tenant-pill">🏢 ${tenant.tenant_name}</div>
+
+    <div class="plan-box">
+      <div class="plan-box-title">To Restore Access</div>
+      <div class="plan-row">
+        <span class="plan-row-label">Base plan</span>
+        <span class="plan-row-val val-red">$19.95/mo</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Your data</span>
+        <span class="plan-row-val val-green">✓ Preserved</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">Access restored</span>
+        <span class="plan-row-val val-green">✓ Immediately</span>
+      </div>
+    </div>
+
+    <div id="alertBox" class="alert"></div>
+    <a href="eventlogicpro-billing.html" class="btn-primary">Reactivate Account →</a>
+    <a href="mailto:support@glowbotslive.com?subject=Account Reactivation - ${encodeURIComponent(tenant.tenant_name)}" 
+       class="btn-secondary">Contact Support</a>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  `;
+}
+
+function renderTrialActive(tenant, daysLeft) {
+  // They navigated here on their own — show trial status
+  const card = document.getElementById('mainCard');
+  card.className = 'card trial-warn';
+  card.innerHTML = `
+    <div class="status-icon">✅</div>
+    <div class="card-title">Your Trial Is Active</div>
+    <div class="card-sub">
+      You have <strong style="color:var(--yellow)">${daysLeft} day${daysLeft === 1 ? '' : 's'}</strong> 
+      remaining on your free trial of EventLogicPro.
+    </div>
+    <div class="tenant-pill">🏢 ${tenant.tenant_name}</div>
+
+    <div class="plan-box">
+      <div class="plan-box-title">Trial Status</div>
+      <div class="plan-row">
+        <span class="plan-row-label">Days remaining</span>
+        <span class="plan-row-val" style="color:${daysLeft <= 3 ? 'var(--accent)' : 'var(--yellow)'}">
+          ${daysLeft} days
+        </span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">After trial</span>
+        <span class="plan-row-val val-red">$19.95/mo</span>
+      </div>
+      <div class="plan-row">
+        <span class="plan-row-label">All your data</span>
+        <span class="plan-row-val val-green">✓ Kept forever</span>
+      </div>
+    </div>
+
+    <a href="eventlogicpro-billing.html" class="btn-primary">Set Up Billing Now →</a>
+    <a href="eventlogicpro-dashboard.html" class="btn-secondary">← Back to Dashboard</a>
+  `;
+}
+
+/* ─── INIT ─── */
+async function init() {
+  // Get reason from paygate redirect
+  const reason = sessionStorage.getItem('paywall_reason');
+  const cachedTenant = sessionStorage.getItem('paywall_tenant');
+
+  // Get auth session
+  let session = null;
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  if (!session) {
+    const t  = localStorage.getItem('sb_access_token');
+    const rf = localStorage.getItem('sb_refresh_token');
+    if (t && rf) {
+      const { data: d2 } = await sb.auth.setSession({ access_token: t, refresh_token: rf });
+      session = d2?.session;
+    }
+  }
+
+  if (!session) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  // Get tenant data (use cache if available for speed, then verify)
+  let tenant = cachedTenant ? JSON.parse(cachedTenant) : null;
+
+  if (!tenant) {
+    const { data: userRow } = await sb.from('users')
+      .select('tenant_id').eq('email', session.user.email).single();
+    if (userRow) {
+      const { data: t } = await sb.from('tenants')
+        .select('tenant_id, tenant_name, status, stripe_status, trial_ends_at, grace_period_ends_at, monthly_recurring_revenue')
+        .eq('tenant_id', userRow.tenant_id).single();
+      tenant = t;
+    }
+  }
+
+  if (!tenant) {
+    document.getElementById('mainCard').innerHTML =
+      '<div style="padding:40px;color:var(--text-2);font-family:var(--mono);">Could not load account data. <a href="login.html" style="color:var(--accent)">Sign in again</a></div>';
+    return;
+  }
+
+  const trialDays = daysUntil(tenant.trial_ends_at);
+
+  // Render based on reason or current status
+  if (reason === 'trial_expired' || (tenant.status === 'trial' && trialDays !== null && trialDays <= 0)) {
+    renderTrialExpired(tenant);
+  } else if (reason === 'payment_failed' || tenant.stripe_status === 'past_due') {
+    renderPaymentFailed(tenant);
+  } else if (reason === 'suspended' || tenant.status === 'suspended' || tenant.status === 'cancelled') {
+    renderSuspended(tenant);
+  } else if (tenant.status === 'trial' && trialDays > 0) {
+    renderTrialActive(tenant, trialDays);
+  } else {
+    // Active — they shouldn't be here, send back
+    window.location.href = 'eventlogicpro-dashboard.html';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
