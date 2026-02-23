@@ -215,7 +215,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const BASE_PRICE  = 19.95;
 const COLLAB_FEE  = 5.00;
-const TRIAL_DAYS  = 14;
+const TRIAL_DAYS  = 30;
 
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -234,6 +234,33 @@ async function logout() {
   window.location.href = 'login.html';
 }
 
+async function startCheckout(tenantId) {
+  const btn = document.getElementById('checkoutBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Redirecting to Stripe...';
+  }
+  try {
+    const res = await fetch(
+      'https://kxqkwpkmtgvmthpafoqx.supabase.co/functions/v1/stripe-checkout',
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ tenant_id: tenantId })
+      }
+    );
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || 'No checkout URL returned');
+    }
+  } catch (err) {
+    alert('Error starting checkout: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Start Subscription — $19.95/mo →'; }
+  }
+}
+
 /* ─── RENDER FUNCTIONS ─── */
 
 function renderTrialExpired(tenant) {
@@ -243,7 +270,7 @@ function renderTrialExpired(tenant) {
     <div class="status-icon">⏰</div>
     <div class="card-title">Your Free Trial Has Ended</div>
     <div class="card-sub">
-      Your 14-day free trial for <strong>${tenant.tenant_name || 'your organization'}</strong> has expired.<br>
+      Your 30-day free trial for <strong>${tenant.tenant_name || 'your organization'}</strong> has expired.<br>
       Choose a plan to continue using EventLogicPro.
     </div>
     <div class="tenant-pill">🏢 ${tenant.tenant_name || 'Organization'}</div>
@@ -269,7 +296,7 @@ function renderTrialExpired(tenant) {
     </div>
 
     <div id="alertBox" class="alert"></div>
-    <a href="eventlogicpro-billing.html" class="btn-primary">Start Subscription — $19.95/mo →</a>
+    <button id="checkoutBtn" class="btn-primary" onclick="startCheckout('${tenant.tenant_id}')">Start Subscription — $19.95/mo →</button>
     <a href="eventlogicpro-dashboard.html" class="btn-secondary">View Dashboard (Read Only)</a>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   `;
@@ -310,7 +337,7 @@ function renderPaymentFailed(tenant) {
     </div>
 
     <div id="alertBox" class="alert"></div>
-    <a href="eventlogicpro-billing.html" class="btn-primary">Update Payment Method →</a>
+    <button id="checkoutBtn" class="btn-primary" onclick="startCheckout('${tenant.tenant_id}')">Update Payment Method →</button>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   `;
 }
@@ -344,7 +371,7 @@ function renderSuspended(tenant) {
     </div>
 
     <div id="alertBox" class="alert"></div>
-    <a href="eventlogicpro-billing.html" class="btn-primary">Reactivate Account →</a>
+    <button id="checkoutBtn" class="btn-primary" onclick="startCheckout('${tenant.tenant_id}')">Reactivate Account →</button>
     <a href="mailto:support@glowbotslive.com?subject=Account Reactivation - ${encodeURIComponent(tenant.tenant_name)}" 
        class="btn-secondary">Contact Support</a>
     <button class="btn-logout" onclick="logout()">Sign out</button>
@@ -360,7 +387,7 @@ function renderTrialActive(tenant, daysLeft) {
     <div class="card-title">Your Trial Is Active</div>
     <div class="card-sub">
       You have <strong style="color:var(--yellow)">${daysLeft} day${daysLeft === 1 ? '' : 's'}</strong> 
-      remaining on your free trial of EventLogicPro.
+      remaining on your 30-day free trial of EventLogicPro.
     </div>
     <div class="tenant-pill">🏢 ${tenant.tenant_name}</div>
 
