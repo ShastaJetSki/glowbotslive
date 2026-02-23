@@ -173,12 +173,12 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
       <div class="create-card" onclick="openMo('moUser')"><div class="cc-icon">👤</div><div><div class="cc-text">+ New User</div><div class="cc-sub">Creates Supabase Auth account + user record</div></div></div>
     </div>
     <div class="kpis">
-      <div class="k"><div class="k-val" style="color:var(--accent)" id="kTenants">—</div><div class="k-lbl">Tenants</div></div>
-      <div class="k"><div class="k-val" style="color:var(--blue)" id="kUsers">—</div><div class="k-lbl">Users</div></div>
-      <div class="k"><div class="k-val" style="color:var(--yellow)" id="kEvents">—</div><div class="k-lbl">Events</div></div>
-      <div class="k"><div class="k-val" style="color:var(--cyan)" id="kTasks">—</div><div class="k-lbl">Tasks</div></div>
-      <div class="k"><div class="k-val" style="color:var(--green)" id="kDone">—</div><div class="k-lbl">Done</div></div>
-      <div class="k"><div class="k-val" style="color:var(--orange)" id="kBudget">—</div><div class="k-lbl">Budget</div></div>
+      <div class="k"><div class="k-val" style="color:var(--accent)" id="kTenants">—</div><div class="k-lbl">Active Tenants</div></div>
+      <div class="k"><div class="k-val" style="color:var(--green)" id="kMRR">—</div><div class="k-lbl">MRR</div></div>
+      <div class="k"><div class="k-val" style="color:var(--cyan)" id="kOnline">—</div><div class="k-lbl">Online Now</div></div>
+      <div class="k"><div class="k-val" style="color:var(--blue)" id="kUsers">—</div><div class="k-lbl">Total Users</div></div>
+      <div class="k"><div class="k-val" style="color:var(--yellow)" id="kEvents">—</div><div class="k-lbl">Active Events</div></div>
+      <div class="k"><div class="k-val" style="color:var(--orange)" id="kChurn">—</div><div class="k-lbl">Churn Rate</div></div>
     </div>
     <div class="panel"><div class="panel-top"><div class="panel-t">Your Tenants <span id="tenantCountLabel"></span></div><button class="btn btn-sm" onclick="go('vTenants',document.querySelectorAll('.nav-btn')[1])">Manage →</button></div>
       <div style="overflow-x:auto"><table class="t"><thead><tr><th></th><th>Company</th><th>Users</th><th>Events</th><th></th></tr></thead><tbody id="dashTenants"><tr><td colspan="5" class="panel-empty"><span class="spinner"></span>Loading tenants...</td></tr></tbody></table></div>
@@ -257,12 +257,38 @@ async function loadTickets(){try{var r=await sb.from('support_tickets').select('
 function renderAll(){renderKPIs();renderDashTenants();renderDashEvents();renderTenantTable();renderUserTable();renderEventTable();fillTenantDD();updateAlerts();}
 
 function renderKPIs(){
-  document.getElementById('kTenants').textContent=tenants.length;
-  document.getElementById('kUsers').textContent=users.length;
-  document.getElementById('kEvents').textContent=events.length;
-  document.getElementById('kTasks').textContent=tasks.length;
-  document.getElementById('kDone').textContent=tasks.filter(function(t){return t.is_complete;}).length;
-  document.getElementById('kBudget').textContent=fMoney(events.reduce(function(s,e){return s+(parseFloat(e.total_budget)||0);},0));
+  // Active tenants (is_active !== false)
+  var activeTenants = tenants.filter(function(t){ return t.is_active !== false; });
+  document.getElementById('kTenants').textContent = activeTenants.length;
+
+  // MRR — sum monthly_recurring_revenue from tenants, fallback to $0
+  var mrr = tenants.reduce(function(s,t){ return s + (parseFloat(t.monthly_recurring_revenue) || 0); }, 0);
+  document.getElementById('kMRR').textContent = '$' + mrr.toLocaleString(undefined,{maximumFractionDigits:0});
+
+  // Online Now — users with last_seen within last 15 min (or fallback: just show total active)
+  var now = Date.now();
+  var onlineWindow = 15 * 60 * 1000; // 15 minutes
+  var online = users.filter(function(u){
+    if (!u.last_seen_at && !u.last_sign_in_at) return false;
+    var lastSeen = new Date(u.last_seen_at || u.last_sign_in_at || 0).getTime();
+    return (now - lastSeen) < onlineWindow;
+  }).length;
+  document.getElementById('kOnline').textContent = online;
+
+  // Total Users
+  document.getElementById('kUsers').textContent = users.length;
+
+  // Active Events (status = active or planning, not complete/cancelled)
+  var activeEvents = events.filter(function(e){
+    var s = (e.status || 'planning').toLowerCase();
+    return s !== 'complete' && s !== 'completed' && s !== 'cancelled' && s !== 'canceled';
+  });
+  document.getElementById('kEvents').textContent = activeEvents.length;
+
+  // Churn Rate — inactive tenants / total tenants
+  var inactive = tenants.filter(function(t){ return t.is_active === false; }).length;
+  var churnPct = tenants.length > 0 ? ((inactive / tenants.length) * 100).toFixed(1) : '0.0';
+  document.getElementById('kChurn').textContent = churnPct + '%';
 }
 
 function renderDashTenants(){
