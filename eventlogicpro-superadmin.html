@@ -781,19 +781,24 @@ async function loadAll(){
 
 async function loadUsers(tenantIds){
   U=[];
-  if(!tenantIds||!tenantIds.length){console.warn('[Admin] No tenant IDs — skipping user load');return;}
-  console.log('[Admin] Loading users for tenant IDs:',tenantIds);
+  if(!tenantIds||!tenantIds.length)return;
 
-  // Try users table filtered to ELP tenants
-  var r=await sb.from('users').select('*').in('tenant_id',tenantIds).order('email');
-  console.log('[Admin] users table result:',r.data?.length,'rows, error:',r.error?.message||null);
-  if(r.data&&r.data.length){U=r.data;console.log('[Admin] Using users table ✓');return;}
+  // First try RPC (SECURITY DEFINER — bypasses RLS, sees all users in tenants)
+  // Create once in Supabase SQL Editor:
+  // CREATE OR REPLACE FUNCTION get_users_for_tenants(tenant_ids uuid[])
+  // RETURNS SETOF users LANGUAGE sql SECURITY DEFINER AS
+  // 26 SELECT * FROM users WHERE tenant_id = ANY(tenant_ids) ORDER BY email; 26;
+  var r=await sb.rpc('get_users_for_tenants',{tenant_ids:tenantIds});
+  if(r.data&&r.data.length){U=r.data;return;}
 
-  // Fallback: try employees table (used by some ELP pages for team members)
-  var r2=await sb.from('employees').select('*').in('tenant_id',tenantIds).order('last_name');
-  console.log('[Admin] employees table result:',r2.data?.length,'rows, error:',r2.error?.message||null);
-  if(r2.data&&r2.data.length){
-    U=r2.data.map(e=>({
+  // Fallback: direct query (RLS returns only own row if policy is uid-based)
+  var r2=await sb.from('users').select('*').in('tenant_id',tenantIds).order('email');
+  if(r2.data&&r2.data.length){U=r2.data;return;}
+
+  // Last resort: employees table
+  var r3=await sb.from('employees').select('*').in('tenant_id',tenantIds).order('last_name');
+  if(r3.data&&r3.data.length){
+    U=r3.data.map(e=>({
       user_id:e.employee_id||e.user_id,
       tenant_id:e.tenant_id,
       email:e.email,
@@ -803,15 +808,7 @@ async function loadUsers(tenantIds){
       is_super_admin:false,
       created_at:e.created_at
     }));
-    console.log('[Admin] Using employees table ✓ ('+U.length+' users)');
-    return;
   }
-
-  // Last resort: unfiltered users table
-  console.warn('[Admin] Filtered queries returned 0 — trying unfiltered users table (RLS may block)');
-  var r3=await sb.from('users').select('*').order('email');
-  console.log('[Admin] Unfiltered users result:',r3.data?.length,'rows, error:',r3.error?.message||null);
-  U=r3.data||[];
 }
 function renderAll(){
   renderKPIs(); renderOverview(); renderTenants(); renderUsers(); renderEvents();
