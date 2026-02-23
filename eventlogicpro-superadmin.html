@@ -765,13 +765,53 @@ function drawBars(id,hist){
 
 /* ===== LOAD DATA ===== */
 async function loadAll(){
+  // Step 1: load tenants first so we have IDs to scope user queries
+  var tr=await sb.from('tenants').select('*').eq('product',PRODUCT).order('created_at',{ascending:false});
+  T=tr.data||[];
+
+  // Step 2: load everything else in parallel, users scoped to ELP tenant IDs
+  var tenantIds=T.map(t=>t.tenant_id);
   await Promise.all([
-    sb.from('tenants').select('*').eq('product',PRODUCT).order('created_at',{ascending:false}).then(r=>T=r.data||[]),
-    sb.from('users').select('*').order('email').then(r=>U=r.data||[]),
+    loadUsers(tenantIds),
     sb.from('event_projects').select('*').order('created_at',{ascending:false}).limit(300).then(r=>E=r.data||[]),
     sb.from('event_tasks').select('event_task_id,is_complete,event_project_id').then(r=>TK=r.data||[])
   ]);
   renderAll();
+}
+
+async function loadUsers(tenantIds){
+  U=[];
+  if(!tenantIds||!tenantIds.length){console.warn('[Admin] No tenant IDs — skipping user load');return;}
+  console.log('[Admin] Loading users for tenant IDs:',tenantIds);
+
+  // Try users table filtered to ELP tenants
+  var r=await sb.from('users').select('*').in('tenant_id',tenantIds).order('email');
+  console.log('[Admin] users table result:',r.data?.length,'rows, error:',r.error?.message||null);
+  if(r.data&&r.data.length){U=r.data;console.log('[Admin] Using users table ✓');return;}
+
+  // Fallback: try employees table (used by some ELP pages for team members)
+  var r2=await sb.from('employees').select('*').in('tenant_id',tenantIds).order('last_name');
+  console.log('[Admin] employees table result:',r2.data?.length,'rows, error:',r2.error?.message||null);
+  if(r2.data&&r2.data.length){
+    U=r2.data.map(e=>({
+      user_id:e.employee_id||e.user_id,
+      tenant_id:e.tenant_id,
+      email:e.email,
+      first_name:e.first_name,
+      last_name:e.last_name,
+      role:e.role,
+      is_super_admin:false,
+      created_at:e.created_at
+    }));
+    console.log('[Admin] Using employees table ✓ ('+U.length+' users)');
+    return;
+  }
+
+  // Last resort: unfiltered users table
+  console.warn('[Admin] Filtered queries returned 0 — trying unfiltered users table (RLS may block)');
+  var r3=await sb.from('users').select('*').order('email');
+  console.log('[Admin] Unfiltered users result:',r3.data?.length,'rows, error:',r3.error?.message||null);
+  U=r3.data||[];
 }
 function renderAll(){
   renderKPIs(); renderOverview(); renderTenants(); renderUsers(); renderEvents();
