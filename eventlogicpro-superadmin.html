@@ -532,12 +532,13 @@ async function loadTenants() {
 async function loadUsers() {
   var elpIds = allTenants.map(function(t){ return t.tenant_id; });
   if (!elpIds.length) { allUsers = []; return; }
-  // Supabase .in() supports up to 100 values; fine for ELP tenant count
-  var r = await sb.from('users').select('*').in('tenant_id', elpIds).order('email');
+  // Fetch all users — RLS may restrict cross-tenant reads.
+  // If super admin RLS policy is set correctly this returns all.
+  // Client-side filter to ELP tenants only.
+  var r = await sb.from('users').select('*').order('email');
   if (r.error) { console.error('Users load error:', r.error); allUsers = []; return; }
-  allUsers = r.data || [];
-  console.log('ELP tenant IDs:', elpIds);
-  console.log('Users loaded:', allUsers.length, allUsers.map(function(u){ return u.email + ' → ' + u.tenant_id; }));
+  allUsers = (r.data || []).filter(function(u){ return elpIds.includes(u.tenant_id); });
+  console.log('ELP users:', allUsers.length);
 }
 async function loadEvents() {
   var r = await sb.from('event_projects').select('*').order('created_at', { ascending: false }).limit(200);
