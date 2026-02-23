@@ -1,210 +1,833 @@
-/* ================================================================
-   paygate.js — EventLogicPro Subscription Guard
-   
-   HOW TO USE:
-   Add this ONE line to the <head> of every ELP page (after supabase):
-   <script src="paygate.js"></script>
-   
-   It will:
-   - Check the tenant's subscription status on every page load
-   - Redirect to paywall if trial expired or payment lapsed
-   - Show a trial countdown banner if within 5 days of expiry
-   - Always let super_admins and glowbotsapp@gmail.com through
-   - Never block: login.html, register.html, paywall.html, billing.html
-================================================================ */
-
-(function() {
-
-  /* ── CONFIG ────────────────────────────────────────────────── */
-  const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
-
-  // Pages that never get gated — always accessible
-  const BYPASS_PAGES = [
-    'login.html',
-    'eventlogicpro-register.html',
-    'eventlogicpro-paywall.html',
-    'eventlogicpro-billing.html'
-  ];
-
-  // Emails that always bypass (super admins)
-  const SUPER_ADMIN_EMAILS = [
-    'glowbotsapp@gmail.com'
-  ];
-
-  // Show trial banner when this many days remain
-  const TRIAL_WARN_DAYS = 5;
-
-  /* ── HELPERS ───────────────────────────────────────────────── */
-  function currentPage() {
-    return window.location.pathname.split('/').pop() || 'index.html';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Billing — EventLogicPro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:           #080a0d;
+    --bg-card:      #0e1117;
+    --bg-hover:     #161c26;
+    --border:       #1c2333;
+    --border-2:     #253044;
+    --accent:       #dc2626;
+    --accent-dim:   rgba(220,38,38,0.1);
+    --accent-glow:  rgba(220,38,38,0.05);
+    --green:        #10b981;
+    --green-dim:    rgba(16,185,129,0.1);
+    --yellow:       #f59e0b;
+    --yellow-dim:   rgba(245,158,11,0.1);
+    --blue:         #3b82f6;
+    --blue-dim:     rgba(59,130,246,0.1);
+    --text:         #e2e8f0;
+    --text-2:       #7c8fa6;
+    --text-3:       #374151;
+    --mono:         'IBM Plex Mono', monospace;
+    --sans:         'IBM Plex Sans', sans-serif;
+    --radius:       10px;
   }
 
-  function isBypassPage() {
-    const page = currentPage();
-    return BYPASS_PAGES.some(p => page === p || page === '');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  /* ─── TOP NAV ─── */
+  .topnav {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topnav-left  { display: flex; align-items: center; gap: 24px; }
+  .topnav-brand { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+  .brand-dot    { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .topnav-links a { font-size: 13px; color: var(--text-2); text-decoration: none; padding: 4px 0; transition: color .15s; }
+  .topnav-links a:hover, .topnav-links a.active { color: var(--text); }
+  .topnav-links a.active { border-bottom: 2px solid var(--accent); padding-bottom: 2px; }
+  .topnav-right { display: flex; align-items: center; gap: 12px; }
+  .owner-pill {
+    background: var(--accent-dim);
+    border: 1px solid rgba(220,38,38,0.25);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-back {
+    font-size: 12px; color: var(--text-2); text-decoration: none;
+    padding: 6px 12px; border: 1px solid var(--border-2);
+    border-radius: 6px; font-family: var(--mono);
+    transition: all .15s; background: transparent;
+    cursor: pointer;
+  }
+  .btn-back:hover { color: var(--text); border-color: var(--text-2); }
+
+  /* ─── LAYOUT ─── */
+  .main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  /* ─── PAGE HEADER ─── */
+  .page-header { margin-bottom: 32px; }
+  .page-title  { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-sub    { font-size: 13px; color: var(--text-2); margin-top: 4px; font-family: var(--mono); }
+
+  /* ─── KPI GRID ─── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+  }
+  .kpi-card.c-red::after    { background: var(--accent); }
+  .kpi-card.c-green::after  { background: var(--green); }
+  .kpi-card.c-blue::after   { background: var(--blue); }
+  .kpi-card.c-yellow::after { background: var(--yellow); }
+  .kpi-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-2); margin-bottom: 10px; }
+  .kpi-value { font-family: var(--mono); font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+  .kpi-value.red    { color: var(--accent); }
+  .kpi-value.green  { color: var(--green);  }
+  .kpi-value.blue   { color: var(--blue);   }
+  .kpi-value.yellow { color: var(--yellow); }
+  .kpi-note  { font-size: 11px; color: var(--text-3); margin-top: 8px; font-family: var(--mono); }
+
+  /* ─── TOTAL BAR ─── */
+  .total-bar {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-left: 3px solid var(--green);
+    border-radius: var(--radius);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .total-label { font-size: 12px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); }
+  .total-formula { font-size: 12px; color: var(--text-3); font-family: var(--mono); margin-top: 4px; }
+  .total-amount { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--green); letter-spacing: -1px; }
+
+  /* ─── SECTION HEADER ─── */
+  .section-hd {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .section-hd-title { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-2); }
+  .btn-invite {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: opacity .15s;
+    letter-spacing: .3px;
+  }
+  .btn-invite:hover { opacity: .85; }
+
+  /* ─── COLLAB TABLE ─── */
+  .collab-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .collab-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+  }
+  .collab-row:last-child { border-bottom: none; }
+  .collab-row:hover { background: var(--accent-glow); }
+  .collab-left { display: flex; align-items: center; gap: 12px; }
+  .collab-av {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .collab-email { font-size: 13px; font-weight: 500; }
+  .collab-meta  { font-size: 11px; color: var(--text-2); margin-top: 1px; font-family: var(--mono); }
+  .collab-right { display: flex; align-items: center; gap: 10px; }
+  .fee-tag {
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    min-width: 70px; text-align: right;
+  }
+  .fee-tag.green  { color: var(--green); }
+  .fee-tag.red    { color: var(--accent); }
+  .status-tag {
+    font-size: 10px; font-family: var(--mono); font-weight: 700;
+    padding: 3px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .st-accepted { background: var(--green-dim); color: var(--green); }
+  .st-pending  { background: var(--yellow-dim); color: var(--yellow); }
+  .st-declined { background: var(--accent-dim); color: var(--accent); }
+  .btn-remove {
+    background: none; border: none; color: var(--text-3);
+    cursor: pointer; font-size: 16px; padding: 2px 6px;
+    transition: color .15s; line-height: 1;
+  }
+  .btn-remove:hover { color: var(--accent); }
+
+  /* ─── PLAN CARD ─── */
+  .plan-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .plan-name  { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .plan-price { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--accent); }
+  .plan-price span { font-size: 14px; color: var(--text-2); font-weight: 400; }
+  .plan-features { font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .btn-manage {
+    background: var(--bg-hover); border: 1px solid var(--border-2);
+    color: var(--text-2); padding: 9px 18px; border-radius: 7px;
+    font-size: 12px; font-family: var(--mono); cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-manage:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ─── STRIPE SECTION ─── */
+  .stripe-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+  .stripe-title { font-family: var(--mono); font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .stripe-desc  { font-size: 12px; color: var(--text-2); line-height: 1.7; margin-bottom: 18px; }
+  .btn-stripe {
+    background: #635bff; color: #fff; border: none;
+    padding: 10px 20px; border-radius: 7px;
+    font-size: 12px; font-weight: 700; font-family: var(--mono);
+    cursor: pointer; transition: opacity .15s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-stripe:hover { opacity: .85; }
+  .btn-stripe-outline {
+    background: transparent; border: 1px solid var(--border-2);
+    color: var(--text-2); padding: 10px 20px; border-radius: 7px;
+    font-size: 12px; font-family: var(--mono); cursor: pointer;
+    transition: all .15s; margin-left: 10px;
+  }
+  .btn-stripe-outline:hover { border-color: var(--text-2); color: var(--text); }
+
+  /* ─── STRIPE GUIDE ─── */
+  .stripe-guide {
+    display: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+  .stripe-guide.open { display: block; }
+  .guide-title { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .guide-step  { margin-bottom: 20px; }
+  .guide-step-label { font-size: 12px; font-family: var(--mono); color: var(--accent); margin-bottom: 8px; font-weight: 700; }
+  .guide-step p { font-size: 13px; color: var(--text-2); line-height: 1.7; margin-bottom: 8px; }
+  pre.code-block {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 14px 16px;
+    font-size: 11px; color: var(--green); overflow-x: auto;
+    font-family: var(--mono); line-height: 1.6;
   }
 
-  function daysUntil(dateStr) {
-    if (!dateStr) return null;
-    const diff = new Date(dateStr) - new Date();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  /* ─── INVITE MODAL ─── */
+  .modal-overlay {
+    display: none; position: fixed;
+    inset: 0; background: rgba(0,0,0,.75);
+    z-index: 200; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: 14px;
+    width: 100%; max-width: 460px;
+    overflow: hidden;
+  }
+  .modal-head {
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-head-title { font-family: var(--mono); font-size: 15px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; }
+  .modal-body { padding: 22px; }
+  .f-group { margin-bottom: 15px; }
+  .f-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); display: block; margin-bottom: 6px; }
+  .f-input, .f-select {
+    width: 100%; background: var(--bg);
+    border: 1px solid var(--border-2); border-radius: 7px;
+    color: var(--text); font-size: 13px; padding: 10px 13px;
+    font-family: var(--sans); transition: border-color .15s;
+  }
+  .f-input:focus, .f-select:focus { outline: none; border-color: var(--accent); }
+  .billing-preview {
+    display: none; padding: 10px 13px;
+    border-radius: 7px; font-size: 12px;
+    margin-top: 8px; font-family: var(--mono);
+  }
+  .bp-free    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,.25); }
+  .bp-charged { background: var(--yellow-dim);color: var(--yellow);border: 1px solid rgba(245,158,11,.25); }
+  .modal-foot {
+    padding: 15px 22px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 10px;
+  }
+  .btn-cancel { background: var(--bg-hover); border: 1px solid var(--border-2); color: var(--text-2); padding: 9px 18px; border-radius: 7px; font-size: 12px; cursor: pointer; font-family: var(--mono); }
+  .btn-send   { background: var(--accent); border: none; color: #fff; padding: 9px 18px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--mono); }
+
+  /* ─── TOAST ─── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--bg-card); border: 1px solid var(--border-2);
+    color: var(--text); padding: 12px 18px; border-radius: 9px;
+    font-size: 13px; font-family: var(--mono);
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s; z-index: 999; max-width: 340px;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ─── LOADING ─── */
+  .loading-msg { padding: 40px; text-align: center; color: var(--text-2); font-family: var(--mono); font-size: 13px; }
+  .dot-pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: dp 1s infinite; margin-right: 8px; }
+  @keyframes dp { 0%,100%{opacity:1}50%{opacity:.2} }
+
+  /* ─── EMPTY STATE ─── */
+  .empty-state { padding: 48px; text-align: center; color: var(--text-3); font-family: var(--mono); font-size: 13px; }
+
+  /* ─── RESPONSIVE ─── */
+  @media(max-width:768px) {
+    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    .topnav-links { display: none; }
+    .total-bar { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .plan-card { flex-direction: column; gap: 16px; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <div class="topnav-left">
+    <a class="topnav-brand" href="eventlogicpro-dashboard.html">
+      <span class="brand-dot"></span>EventLogicPro
+    </a>
+    <div class="topnav-links">
+      <a href="eventlogicpro-dashboard.html">Dashboard</a>&nbsp;&nbsp;
+      <a href="eventlogicpro.html">Events</a>&nbsp;&nbsp;
+      <a href="eventlogicpro-settings.html">Settings</a>&nbsp;&nbsp;
+      <a href="eventlogicpro-billing.html" class="active">Billing</a>
+    </div>
+  </div>
+  <div class="topnav-right">
+    <div class="owner-pill" id="ownerPill">Loading...</div>
+    <a class="btn-back" href="eventlogicpro-settings.html">← Settings</a>
+  </div>
+</nav>
+
+<div class="main">
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-title">Billing &amp; Subscription</div>
+    <div class="page-sub" id="pageSubtitle">Loading account...</div>
+  </div>
+
+  <!-- Current Plan -->
+  <div class="section-hd" style="margin-bottom:14px;">
+    <div class="section-hd-title">Current Plan</div>
+  </div>
+  <div class="plan-card" id="planCard">
+    <div>
+      <div class="plan-name" id="planName">Loading...</div>
+      <div class="plan-features" id="planFeatures"></div>
+    </div>
+    <div style="text-align:right;">
+      <div class="plan-price" id="planPrice">—</div>
+      <button class="btn-manage" onclick="toggleGuide()">Manage with Stripe</button>
+    </div>
+  </div>
+
+  <!-- KPI Grid -->
+  <div class="kpi-grid">
+    <div class="kpi-card c-red">
+      <div class="kpi-label">Base Plan</div>
+      <div class="kpi-value red" id="kpiBase">—</div>
+      <div class="kpi-note">per month</div>
+    </div>
+    <div class="kpi-card c-green">
+      <div class="kpi-label">Total MRR</div>
+      <div class="kpi-value green" id="kpiMRR">—</div>
+      <div class="kpi-note">billed to owner</div>
+    </div>
+    <div class="kpi-card c-blue">
+      <div class="kpi-label">Collaborators</div>
+      <div class="kpi-value blue" id="kpiCollabs">—</div>
+      <div class="kpi-note">active members</div>
+    </div>
+    <div class="kpi-card c-yellow">
+      <div class="kpi-label">Paid Seats</div>
+      <div class="kpi-value yellow" id="kpiPaid">—</div>
+      <div class="kpi-note">at $5.00/mo each</div>
+    </div>
+  </div>
+
+  <!-- Total Bar -->
+  <div class="total-bar">
+    <div>
+      <div class="total-label">Monthly Total Due</div>
+      <div class="total-formula" id="totalFormula">Loading...</div>
+    </div>
+    <div class="total-amount" id="totalDue">—</div>
+  </div>
+
+  <!-- Collaborators -->
+  <div class="section-hd">
+    <div class="section-hd-title">Collaborators <span id="collabCount" style="color:var(--text-3);"></span></div>
+    <button class="btn-invite" onclick="openInviteModal()">+ Invite Collaborator</button>
+  </div>
+  <div class="collab-card">
+    <div id="collabList">
+      <div class="loading-msg"><span class="dot-pulse"></span>Loading collaborators...</div>
+    </div>
+  </div>
+
+  <!-- Stripe Section -->
+  <div class="section-hd">
+    <div class="section-hd-title">Stripe / Payment</div>
+  </div>
+  <div class="stripe-card">
+    <div class="stripe-title">💳 Connect Stripe for Automatic Billing</div>
+    <div class="stripe-desc">
+      Connect Stripe to automatically charge the account owner each month. Collaborators on the <strong style="color:var(--green)">free</strong> billing model (those with their own plan) are never charged. New paid collaborators are added to the subscription immediately on invite acceptance.
+    </div>
+    <div>
+      <button class="btn-stripe" onclick="connectStripe()">
+        <svg width="14" height="14" viewBox="0 0 32 32" fill="none"><path d="M16 0C7.163 0 0 7.163 0 16s7.163 16 16 16 16-7.163 16-16S24.837 0 16 0zm6.4 18.133c-.133.533-.4 1.067-.8 1.467-.4.533-.933.8-1.467.933-.533.133-1.067.267-1.733.267-.667 0-1.2-.133-1.733-.4-.533-.267-.933-.667-1.2-1.2v1.467H13.6V10.4h2.867v3.333c.267-.4.667-.8 1.2-1.067.533-.267 1.067-.4 1.733-.4.667 0 1.2.133 1.733.4.533.267.933.667 1.2 1.2.267.533.4 1.067.533 1.733.133.667.133 1.333.133 2s-.133 1.2-.267 1.733h-.333z" fill="white"/></svg>
+        Connect Stripe
+      </button>
+      <button class="btn-stripe-outline" onclick="toggleGuide()">View Setup Guide</button>
+    </div>
+  </div>
+
+  <!-- Stripe Setup Guide (toggled) -->
+  <div class="stripe-guide" id="stripeGuide">
+    <div class="guide-title">Stripe Setup Guide</div>
+
+    <div class="guide-step">
+      <div class="guide-step-label">STEP 1 — Add Supabase Secrets</div>
+      <p>Go to <strong>Supabase Dashboard → Settings → Edge Functions → Secrets</strong> and add:</p>
+      <pre class="code-block">STRIPE_SECRET_KEY=sk_live_YOUR_KEY_HERE
+STRIPE_WEBHOOK_SECRET=whsec_YOUR_WEBHOOK_SECRET
+STRIPE_COLLAB_PRICE_ID=price_YOUR_COLLAB_PRICE_ID</pre>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-step-label">STEP 2 — Run This SQL in Supabase</div>
+      <pre class="code-block">ALTER TABLE tenants
+ADD COLUMN IF NOT EXISTS stripe_customer_id text,
+ADD COLUMN IF NOT EXISTS stripe_subscription_id text,
+ADD COLUMN IF NOT EXISTS stripe_price_id text,
+ADD COLUMN IF NOT EXISTS stripe_collab_price_id text,
+ADD COLUMN IF NOT EXISTS stripe_status text DEFAULT 'inactive',
+ADD COLUMN IF NOT EXISTS next_billing_date date;
+
+CREATE TABLE IF NOT EXISTS billing_invoices (
+  invoice_id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id uuid REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  stripe_invoice_id text UNIQUE,
+  amount_cents int,
+  status text,
+  billing_period_start date,
+  billing_period_end date,
+  paid_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);</pre>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-step-label">STEP 3 — Create Stripe Products</div>
+      <p>In your <a href="https://dashboard.stripe.com/products" target="_blank" style="color:var(--blue)">Stripe Dashboard → Products</a>, create:</p>
+      <p><strong style="color:var(--text)">Product 1:</strong> "EventLogicPro Base Plan" — $19.95/month recurring</p>
+      <p><strong style="color:var(--text)">Product 2:</strong> "EventLogicPro Collaborator Seat" — $5.00/month per seat</p>
+      <p style="margin-top:8px;">Copy both Price IDs (start with <code style="background:var(--bg);padding:2px 6px;border-radius:3px;font-size:11px;">price_</code>) and paste them into the GlowBots Admin → Tiers tab for the matching tier.</p>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-step-label">STEP 4 — Add Webhook in Stripe</div>
+      <p>In Stripe → Developers → Webhooks, add endpoint:</p>
+      <pre class="code-block">https://kxqkwpkmtgvmthpafoqx.supabase.co/functions/v1/stripe-webhook</pre>
+      <p>Enable these events: <code style="font-size:11px;">invoice.paid · invoice.payment_failed · customer.subscription.updated · customer.subscription.deleted</code></p>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- INVITE MODAL -->
+<div class="modal-overlay" id="inviteModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-head-title">Invite Collaborator</div>
+      <button class="modal-close" onclick="closeInviteModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="f-group">
+        <label class="f-label">Email Address *</label>
+        <input type="email" class="f-input" id="invEmail" placeholder="name@example.com" oninput="checkBilling()">
+        <div class="billing-preview" id="billingPreview"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="f-group">
+          <label class="f-label">First Name</label>
+          <input type="text" class="f-input" id="invFirst">
+        </div>
+        <div class="f-group">
+          <label class="f-label">Last Name</label>
+          <input type="text" class="f-input" id="invLast">
+        </div>
+      </div>
+      <div class="f-group">
+        <label class="f-label">Role</label>
+        <select class="f-select" id="invRole">
+          <option value="member">Member</option>
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeInviteModal()">Cancel</button>
+      <button class="btn-send" onclick="sendInvite()">Send Invite</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   SUPABASE + CONSTANTS
+═══════════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const BASE_PLAN_PRICE = 19.95;
+const COLLAB_FEE      = 5.00;
+const COLORS = ['#dc2626','#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+
+let currentTenantId = null;
+let currentUserId   = null;
+let currentEmail    = null;
+let tenantMRR       = BASE_PLAN_PRICE;
+
+/* ═══════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════ */
+function toast(msg, dur = 3500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+function initials(email) { return email.substring(0,2).toUpperCase(); }
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ═══════════════════════════════════════════════════════
+   AUTH + INIT
+═══════════════════════════════════════════════════════ */
+async function checkAuth() {
+  let { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    const token   = localStorage.getItem('sb_access_token');
+    const refresh = localStorage.getItem('sb_refresh_token');
+    if (token && refresh) {
+      const { data } = await sb.auth.setSession({ access_token: token, refresh_token: refresh });
+      session = data?.session;
+    }
+  }
+  if (!session) { window.location.href = 'login.html'; return null; }
+  return session;
+}
+
+async function init() {
+  const session = await checkAuth();
+  if (!session) return;
+
+  currentEmail = session.user.email;
+
+  // Look up this user's tenant
+  const { data: userRow } = await sb.from('users')
+    .select('user_id, tenant_id, role')
+    .eq('email', currentEmail)
+    .single();
+
+  if (!userRow) { toast('User record not found'); return; }
+  if (userRow.role !== 'owner' && userRow.role !== 'admin') {
+    document.querySelector('.main').innerHTML =
+      '<div style="text-align:center;padding:80px 20px;font-family:var(--mono);color:var(--text-2);">Billing is only accessible to account owners.</div>';
+    return;
   }
 
-  function injectBanner(message, type) {
-    // type: 'warning' | 'danger' | 'info'
-    if (document.getElementById('paygate-banner')) return;
+  currentUserId   = userRow.user_id;
+  currentTenantId = userRow.tenant_id;
 
-    const colors = {
-      warning: { bg: '#f59e0b', text: '#000', border: '#d97706' },
-      danger:  { bg: '#dc2626', text: '#fff', border: '#b91c1c' },
-      info:    { bg: '#3b82f6', text: '#fff', border: '#2563eb' }
-    };
-    const c = colors[type] || colors.info;
+  // Load tenant details
+  const { data: tenant } = await sb.from('tenants')
+    .select('*, subscription_tiers(tier_display_name, monthly_price, features)')
+    .eq('tenant_id', currentTenantId)
+    .single();
 
-    const banner = document.createElement('div');
-    banner.id = 'paygate-banner';
-    banner.style.cssText = `
-      position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
-      background: ${c.bg}; color: ${c.text}; border-bottom: 2px solid ${c.border};
-      padding: 10px 20px; font-size: 13px; font-family: 'Courier New', monospace;
-      font-weight: 600; text-align: center;
-      display: flex; align-items: center; justify-content: center; gap: 16px;
-    `;
-    banner.innerHTML = `
-      <span>${message}</span>
-      <a href="eventlogicpro-billing.html" style="
-        background: rgba(0,0,0,0.2); color: inherit; text-decoration: none;
-        padding: 4px 12px; border-radius: 4px; font-size: 12px; white-space: nowrap;
-      ">Manage Billing →</a>
-      <button onclick="document.getElementById('paygate-banner').remove()" style="
-        background: none; border: none; color: inherit; cursor: pointer;
-        font-size: 18px; line-height: 1; padding: 0 4px; opacity: 0.7;
-      ">×</button>
-    `;
+  if (tenant) {
+    tenantMRR = parseFloat(tenant.monthly_recurring_revenue || BASE_PLAN_PRICE);
+    const tierName  = tenant.subscription_tiers?.tier_display_name || 'Base Plan';
+    const tierPrice = tenant.subscription_tiers?.monthly_price || BASE_PLAN_PRICE;
+    const features  = tenant.subscription_tiers?.features || ['Unlimited events', '1 collaborator seat included'];
 
-    // Push page content down so banner doesn't overlap
-    document.addEventListener('DOMContentLoaded', () => {
-      document.body.prepend(banner);
-      document.body.style.paddingTop = (parseInt(document.body.style.paddingTop || 0) + 44) + 'px';
-    });
-    if (document.body) {
-      document.body.prepend(banner);
-      document.body.style.paddingTop = (parseInt(document.body.style.paddingTop || 0) + 44) + 'px';
+    document.getElementById('ownerPill').textContent     = '👑 ' + currentEmail;
+    document.getElementById('pageSubtitle').textContent  = tenant.company_name || tenant.tenant_name;
+    document.getElementById('planName').textContent      = tierName;
+    document.getElementById('planPrice').innerHTML       = '$' + parseFloat(tierPrice).toFixed(2) + '<span>/mo</span>';
+    document.getElementById('planFeatures').textContent  = Array.isArray(features) ? features.slice(0,3).join(' · ') : features;
+    document.getElementById('kpiBase').textContent       = '$' + parseFloat(tierPrice).toFixed(2);
+  }
+
+  await loadCollaborators();
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOAD COLLABORATORS
+═══════════════════════════════════════════════════════ */
+async function loadCollaborators() {
+  const { data: collabs, error } = await sb.from('tenant_collaborations')
+    .select('*')
+    .eq('host_tenant_id', currentTenantId)
+    .order('invited_at', { ascending: false });
+
+  if (error) {
+    document.getElementById('collabList').innerHTML =
+      '<div class="loading-msg">Error loading collaborators: ' + error.message + '</div>';
+    return;
+  }
+
+  const list    = collabs || [];
+  const charged = list.filter(c => c.billing_model === 'charged');
+  const free    = list.filter(c => c.billing_model === 'free');
+  const collabMRR = charged.length * COLLAB_FEE;
+  const total     = BASE_PLAN_PRICE + collabMRR;
+
+  // Update KPIs
+  document.getElementById('kpiMRR').textContent    = '$' + total.toFixed(2);
+  document.getElementById('kpiCollabs').textContent = list.length;
+  document.getElementById('kpiPaid').textContent    = charged.length;
+  document.getElementById('collabCount').textContent = '(' + list.length + ')';
+  document.getElementById('totalDue').textContent   = '$' + total.toFixed(2);
+  document.getElementById('totalFormula').textContent =
+    '$' + BASE_PLAN_PRICE.toFixed(2) + ' base + ' + charged.length + ' paid seats × $' + COLLAB_FEE.toFixed(2) + ' = $' + total.toFixed(2) + '/mo';
+
+  if (!list.length) {
+    document.getElementById('collabList').innerHTML =
+      '<div class="empty-state">No collaborators yet. Invite someone to collaborate.</div>';
+    return;
+  }
+
+  document.getElementById('collabList').innerHTML = list.map((c, i) => {
+    const isFree   = c.billing_model === 'free';
+    const color    = COLORS[i % COLORS.length];
+    const stClass  = c.status === 'accepted' ? 'st-accepted' : c.status === 'declined' ? 'st-declined' : 'st-pending';
+    const invited  = new Date(c.invited_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    return `
+      <div class="collab-row">
+        <div class="collab-left">
+          <div class="collab-av" style="background:${color}18;color:${color};border:1px solid ${color}30">${initials(c.invited_email)}</div>
+          <div>
+            <div class="collab-email">${esc(c.invited_email)}</div>
+            <div class="collab-meta">Invited ${invited}${isFree ? ' · Has own plan' : ''}</div>
+          </div>
+        </div>
+        <div class="collab-right">
+          <span class="fee-tag ${isFree ? 'green' : 'red'}">${isFree ? 'FREE' : '$5.00/mo'}</span>
+          <span class="status-tag ${stClass}">${c.status}</span>
+          <button class="btn-remove" onclick="removeCollab('${c.collab_id}','${esc(c.invited_email)}')" title="Remove">×</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   REMOVE COLLABORATOR
+═══════════════════════════════════════════════════════ */
+async function removeCollab(collabId, email) {
+  if (!confirm('Remove ' + email + ' as a collaborator?\n\nIf they are billed at $5/mo, that charge will be removed.')) return;
+  const { error } = await sb.from('tenant_collaborations').delete().eq('collab_id', collabId);
+  if (error) { toast('Error: ' + error.message); return; }
+
+  // Decrement MRR
+  const { data: tenant } = await sb.from('tenants')
+    .select('monthly_recurring_revenue').eq('tenant_id', currentTenantId).single();
+  if (tenant) {
+    const newMRR = Math.max(BASE_PLAN_PRICE, parseFloat(tenant.monthly_recurring_revenue || BASE_PLAN_PRICE) - COLLAB_FEE);
+    await sb.from('tenants').update({ monthly_recurring_revenue: newMRR, updated_at: new Date().toISOString() })
+      .eq('tenant_id', currentTenantId);
+  }
+
+  toast('✓ Removed ' + email);
+  loadCollaborators();
+}
+
+/* ═══════════════════════════════════════════════════════
+   INVITE MODAL
+═══════════════════════════════════════════════════════ */
+function openInviteModal() {
+  ['invEmail','invFirst','invLast'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('invRole').value = 'member';
+  const bp = document.getElementById('billingPreview');
+  bp.className = 'billing-preview'; bp.style.display = 'none';
+  document.getElementById('inviteModal').classList.add('show');
+}
+
+function closeInviteModal() {
+  document.getElementById('inviteModal').classList.remove('show');
+}
+
+let billingTimer = null;
+async function checkBilling() {
+  clearTimeout(billingTimer);
+  billingTimer = setTimeout(async () => {
+    const email = document.getElementById('invEmail').value.trim().toLowerCase();
+    const bp    = document.getElementById('billingPreview');
+    if (!email || !email.includes('@')) { bp.style.display='none'; return; }
+
+    const { data } = await sb.from('tenants')
+      .select('tenant_id')
+      .eq('billing_email', email)
+      .gte('monthly_recurring_revenue', BASE_PLAN_PRICE)
+      .maybeSingle();
+
+    if (data) {
+      bp.innerHTML   = '✅ <strong>' + email + '</strong> already has their own plan — <strong>no charge</strong> to your account.';
+      bp.className   = 'billing-preview bp-free';
+    } else {
+      bp.innerHTML   = '💳 Inviting this person adds <strong>$5.00/mo</strong> to your subscription.';
+      bp.className   = 'billing-preview bp-charged';
+    }
+    bp.style.display = 'block';
+  }, 600);
+}
+
+async function sendInvite() {
+  const email     = document.getElementById('invEmail').value.trim().toLowerCase();
+  const firstName = document.getElementById('invFirst').value.trim() || null;
+  const lastName  = document.getElementById('invLast').value.trim()  || null;
+  const role      = document.getElementById('invRole').value;
+
+  if (!email) { toast('Email is required'); return; }
+
+  // Already a collaborator?
+  const { data: existing } = await sb.from('tenant_collaborations')
+    .select('collab_id').eq('host_tenant_id', currentTenantId).eq('invited_email', email).maybeSingle();
+  if (existing) { toast('Already a collaborator on your account.'); return; }
+
+  // Check if they have their own plan
+  const { data: paying } = await sb.from('tenants')
+    .select('tenant_id').eq('billing_email', email).gte('monthly_recurring_revenue', BASE_PLAN_PRICE).maybeSingle();
+  const billingModel = paying ? 'free' : 'charged';
+  const monthlyFee   = paying ? 0.00  : COLLAB_FEE;
+
+  // Check if user exists
+  const { data: existingUser } = await sb.from('users')
+    .select('user_id, tenant_id').eq('email', email).maybeSingle();
+
+  // Insert collaboration record
+  const { error } = await sb.from('tenant_collaborations').insert({
+    host_tenant_id:    currentTenantId,
+    host_user_id:      currentUserId,
+    invited_email:     email,
+    invited_user_id:   existingUser?.user_id   || null,
+    invited_tenant_id: existingUser?.tenant_id || null,
+    status:            'pending',
+    billing_model:     billingModel,
+    monthly_fee:       monthlyFee,
+    invited_at:        new Date().toISOString()
+  });
+  if (error) { toast('Error: ' + error.message); return; }
+
+  // Also add to event_members
+  await sb.from('event_members').insert({
+    tenant_id: currentTenantId, email,
+    first_name: firstName, last_name: lastName,
+    role_level: role, is_active: true
+  });
+
+  // Update MRR if charged
+  if (billingModel === 'charged') {
+    const { data: t } = await sb.from('tenants').select('monthly_recurring_revenue').eq('tenant_id', currentTenantId).single();
+    if (t) {
+      const newMRR = parseFloat(t.monthly_recurring_revenue || BASE_PLAN_PRICE) + COLLAB_FEE;
+      await sb.from('tenants').update({ monthly_recurring_revenue: newMRR, updated_at: new Date().toISOString() }).eq('tenant_id', currentTenantId);
     }
   }
 
-  function redirectToPaywall(reason, tenantData) {
-    // Store context so paywall page can show relevant info
-    sessionStorage.setItem('paywall_reason', reason);
-    if (tenantData) sessionStorage.setItem('paywall_tenant', JSON.stringify(tenantData));
-    window.location.href = 'eventlogicpro-paywall.html';
-  }
+  closeInviteModal();
+  toast(billingModel === 'free'
+    ? '✅ Invited ' + email + ' — no charge (they have their own plan)'
+    : '✅ Invited ' + email + ' — $5.00/mo added to your account');
+  loadCollaborators();
+}
 
-  /* ── MAIN GATE CHECK ───────────────────────────────────────── */
-  async function runPaygate() {
-    // Never gate bypass pages
-    if (isBypassPage()) return;
+/* ═══════════════════════════════════════════════════════
+   STRIPE
+═══════════════════════════════════════════════════════ */
+function connectStripe() {
+  toast('See setup guide below ↓');
+  document.getElementById('stripeGuide').classList.add('open');
+  document.getElementById('stripeGuide').scrollIntoView({ behavior: 'smooth' });
+}
 
-    // Wait for supabase to be available
-    if (!window.supabase) return;
+function toggleGuide() {
+  document.getElementById('stripeGuide').classList.toggle('open');
+}
 
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    // Get session
-    let session = null;
-    try {
-      const { data } = await sb.auth.getSession();
-      session = data.session;
-      if (!session) {
-        const token   = localStorage.getItem('sb_access_token');
-        const refresh = localStorage.getItem('sb_refresh_token');
-        if (token && refresh) {
-          const { data: d2 } = await sb.auth.setSession({ access_token: token, refresh_token: refresh });
-          session = d2?.session;
-        }
-      }
-    } catch(e) { return; }
-
-    if (!session) return; // login.html will handle redirect
-
-    const email = session.user.email;
-
-    // Super admin bypass
-    if (SUPER_ADMIN_EMAILS.includes(email)) return;
-
-    // Check DB role — super_admin role also bypasses
-    try {
-      const { data: userRow } = await sb.from('users')
-        .select('role, tenant_id')
-        .eq('email', email)
-        .single();
-
-      if (!userRow) return;
-      if (userRow.role === 'super_admin') return;
-
-      // Get tenant subscription status
-      const { data: tenant } = await sb.from('tenants')
-        .select('tenant_id, tenant_name, status, stripe_status, trial_ends_at, grace_period_ends_at, monthly_recurring_revenue')
-        .eq('tenant_id', userRow.tenant_id)
-        .single();
-
-      if (!tenant) return;
-
-      const status      = tenant.status;
-      const stripeStatus = tenant.stripe_status;
-      const trialDays   = daysUntil(tenant.trial_ends_at);
-      const graceDays   = daysUntil(tenant.grace_period_ends_at);
-
-      /* ── DECISION TREE ── */
-
-      // 1. Suspended — hard block
-      if (status === 'suspended' || status === 'cancelled') {
-        redirectToPaywall('suspended', tenant);
-        return;
-      }
-
-      // 2. Trial expired — no payment on file
-      if (status === 'trial' && trialDays !== null && trialDays <= 0) {
-        redirectToPaywall('trial_expired', tenant);
-        return;
-      }
-
-      // 3. Past due + grace period expired
-      if (stripeStatus === 'past_due' && graceDays !== null && graceDays <= 0) {
-        redirectToPaywall('payment_failed', tenant);
-        return;
-      }
-
-      /* ── WARNING BANNERS (no redirect, just notify) ── */
-
-      // 4. Trial ending soon
-      if (status === 'trial' && trialDays !== null && trialDays <= TRIAL_WARN_DAYS && trialDays > 0) {
-        injectBanner(
-          `⏳ Your free trial ends in ${trialDays} day${trialDays === 1 ? '' : 's'}.`,
-          trialDays <= 2 ? 'danger' : 'warning'
-        );
-        return;
-      }
-
-      // 5. Payment past due — in grace period
-      if (stripeStatus === 'past_due' && graceDays !== null && graceDays > 0) {
-        injectBanner(
-          `⚠️ Payment failed. Please update your payment method. ${graceDays} day${graceDays === 1 ? '' : 's'} remaining before access is suspended.`,
-          'danger'
-        );
-        return;
-      }
-
-      // 6. Active — all good, no banner needed
-
-    } catch(e) {
-      // Fail open — don't block on errors
-      console.warn('[paygate] check failed silently:', e.message);
-    }
-  }
-
-  // Run immediately
-  runPaygate();
-
-})();
+/* ═══════════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════════ */
+init();
+</script>
+</body>
+</html>
