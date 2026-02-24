@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#DC2626">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Event Logic Pro">
+  <title>Dashboard – Event Logic Pro</title>
+  <link rel="icon" href="favicon-eventlogic.ico">
+  <link rel="icon" type="image/png" href="favicon-eventlogic-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="favicon-eventlogic-192.png">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+/* ===== RESET ===== */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+/* ===== CSS VARIABLES ===== */
+:root{
+  --bg-primary:#f4f5f7;--bg-secondary:#ebedf1;--bg-card:#ffffff;--bg-hover:#f0f0f3;
+  --border:#e2e4e8;--text-primary:#1a1a1a;--text-secondary:#6b7280;
+  --accent:#DC2626;--accent-hover:#B91C1C;--accent-light:#EF4444;
+  --accent-glow:rgba(220,38,38,.10);--accent-glow2:rgba(220,38,38,.06);
+  --shadow:0 2px 12px rgba(0,0,0,.06);--input-bg:#fafafa;--modal-overlay:rgba(0,0,0,.45);
+}
+body.dark{
+  --bg-primary:#111;--bg-secondary:#1a1a1a;--bg-card:#222;--bg-hover:#2a2a2a;
+  --border:#333;--text-primary:#f0f0f0;--text-secondary:#999;
+  --accent:#DC2626;--accent-hover:#EF4444;--accent-light:#EF4444;
+  --accent-glow:rgba(220,38,38,.15);--accent-glow2:rgba(220,38,38,.08);
+  --shadow:0 2px 12px rgba(0,0,0,.3);--input-bg:#1a1a1a;--modal-overlay:rgba(0,0,0,.75);
+}
+html{scrollbar-gutter:stable;background:var(--bg-primary);}
+html.dark{background:#111;}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg-primary);color:var(--text-primary);overflow-x:hidden;padding-bottom:120px;min-height:100vh;}
+
+/* ===== DESKTOP HEADER ===== */
+.desktop-header{position:sticky;top:0;z-index:100;background:var(--bg-primary);border-bottom:1px solid var(--border);}
+.header-top{padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
+.header-left{display:flex;align-items:center;gap:20px;}
+.header-logo{height:72px;object-fit:contain;}
+.header-titles h1{font-size:28px;font-weight:700;letter-spacing:-.3px;}
+.header-titles .sub{font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.3px;}
+
+/* ===== DESKTOP NAV ===== */
+.nav-bar{display:flex;justify-content:space-between;align-items:center;padding:0 24px;margin-top:-4px;}
+.nav-left{display:flex;gap:2px;}
+.nav-right-controls{display:flex;align-items:center;gap:12px;margin-right:58px;}
+.nav-right-controls .settings-link,.nav-right-controls .logout-link{font-size:13px;font-weight:600;}
+.nav-btn{padding:8px 18px;font-size:13px;font-weight:600;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;}
+.nav-btn:hover{color:var(--accent);}
+.nav-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.dark-toggle{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.dark-toggle:hover{border-color:var(--accent);color:var(--accent);}
+.dark-toggle svg{width:14px;height:14px;fill:currentColor;}
+.logout-link{color:var(--text-secondary);cursor:pointer;font-size:12px;text-decoration:none;transition:color .2s;font-weight:500;}
+.logout-link:hover{color:var(--accent);}
+.settings-link{color:var(--text-secondary);cursor:pointer;font-size:12px;text-decoration:none;transition:color .2s;font-weight:500;}
+.settings-link:hover{color:var(--accent);}
+
+/* ===== MOBILE TOP HEADER ===== */
+.mobile-top-header{display:none;position:sticky;top:0;z-index:100;background:var(--bg-primary);border-bottom:1px solid var(--border);}
+.m-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;}
+.m-menu-btn{background:transparent;border:none;color:var(--text-secondary);font-size:20px;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.m-center{flex:1;}
+.m-title{font-size:18px;font-weight:600;}
+.m-biz{font-size:12px;color:var(--accent);font-weight:600;}
+.m-right{display:flex;align-items:center;gap:10px;}
+.m-menu{max-height:0;overflow:hidden;transition:max-height .3s;background:var(--bg-primary);border-top:1px solid var(--border);}
+.m-menu.expanded{max-height:300px;}
+.m-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px 12px 12px;}
+.m-actions button{padding:10px;font-size:13px;background:var(--accent-glow);border:1px solid rgba(220,38,38,.25);color:var(--accent);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;}
+.m-actions button:hover{background:var(--accent);color:#fff;}
+
+/* ===== MOBILE BOTTOM NAV ===== */
+.mobile-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:200;}
+.m-nav-top{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+.m-nav-bot{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px;}
+.m-nav-btn{text-align:center;padding:8px 4px;font-size:11px;font-weight:600;color:var(--text-secondary);text-decoration:none;border-radius:8px;background:var(--bg-hover);transition:all .2s;display:flex;align-items:center;justify-content:center;min-height:40px;}
+.m-nav-btn:hover,.m-nav-btn.active{background:var(--accent);color:#fff;}
+
+/* ===== MAIN CONTENT ===== */
+.main-content{max-width:1200px;margin:0 auto;padding:32px 24px 24px;}
+
+/* ===== WELCOME SECTION ===== */
+.welcome-section{margin-bottom:28px;}
+.welcome-text{font-size:22px;font-weight:700;color:var(--text-primary);}
+.welcome-sub{font-size:14px;color:var(--text-secondary);margin-top:4px;}
+
+/* ===== KPI CARDS ===== */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow);transition:all .2s;cursor:pointer;}
+.kpi-card:hover{border-color:var(--accent);box-shadow:0 4px 20px var(--accent-glow);transform:translateY(-1px);}
+.kpi-value{font-size:28px;font-weight:800;color:var(--text-primary);line-height:1;}
+.kpi-label{font-size:13px;color:var(--text-secondary);margin-top:4px;font-weight:500;}
+
+/* ===== SECTION HEADER ===== */
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.section-title{font-size:18px;font-weight:700;}
+.btn-primary{background:var(--accent);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary:hover{background:var(--accent-hover);}
+.btn-secondary{background:var(--bg-hover);color:var(--text-primary);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+.btn-danger{background:#DC2626;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+.btn-danger:hover{background:#B91C1C;}
+
+/* ===== EVENT CARDS ===== */
+.events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
+.event-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);cursor:pointer;transition:all .25s;position:relative;}
+.event-card:hover{border-color:var(--accent);box-shadow:0 6px 24px var(--accent-glow);transform:translateY(-2px);}
+.event-card-stripe{height:5px;}
+.event-card-body{padding:20px;}
+.event-card-name{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
+.event-card-date{font-size:13px;color:var(--text-secondary);margin-bottom:14px;}
+.event-card-date svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;}
+.event-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.event-stat{display:flex;flex-direction:column;}
+.event-stat-value{font-size:16px;font-weight:700;color:var(--text-primary);}
+.event-stat-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
+.event-card-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.event-delete-btn{width:28px;height:28px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;opacity:0;transition:all .2s;flex-shrink:0;}
+.event-card:hover .event-delete-btn{opacity:1;}
+.event-delete-btn:hover{background:#ef444422;color:#ef4444;}
+.event-status{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 10px;border-radius:20px;}
+.event-status.active{background:rgba(16,185,129,.1);color:#10B981;}
+.event-status.completed{background:rgba(107,114,128,.1);color:#6B7280;}
+.event-status.cancelled{background:rgba(239,68,68,.1);color:#EF4444;}
+.event-members-count{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;}
+.event-members-count svg{width:14px;height:14px;}
+
+/* ===== PLAN CHECKBOXES ===== */
+.plan-checks{display:flex;gap:10px;flex-wrap:wrap;}
+.plan-check{display:flex;align-items:center;gap:4px;}
+.plan-check-box{width:16px;height:16px;border-radius:4px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;}
+.plan-check-box.checked{background:#10B981;border-color:#10B981;}
+.plan-check-box.checked svg{display:block;}
+.plan-check-box svg{display:none;width:10px;height:10px;}
+.plan-check-label{font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:.3px;}
+.plan-check.checked .plan-check-label{color:#10B981;}
+
+/* ===== EMPTY STATE ===== */
+.empty-state{text-align:center;padding:60px 20px;background:var(--bg-card);border:2px dashed var(--border);border-radius:12px;}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-title{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:6px;}
+.empty-text{font-size:14px;color:var(--text-secondary);margin-bottom:20px;}
+
+/* ===== MODAL ===== */
+.modal-overlay{display:none;position:fixed;inset:0;background:var(--modal-overlay);z-index:500;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-content{background:var(--bg-card);border-radius:14px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-header{padding:20px 24px 0;display:flex;justify-content:space-between;align-items:center;}
+.modal-title{font-size:18px;font-weight:700;}
+.modal-close{width:32px;height:32px;border:none;background:var(--bg-hover);border-radius:8px;cursor:pointer;color:var(--text-secondary);font-size:18px;display:flex;align-items:center;justify-content:center;}
+.modal-close:hover{background:var(--accent);color:#fff;}
+.modal-body{padding:20px 24px;}
+.modal-footer{padding:0 24px 20px;display:flex;gap:10px;justify-content:flex-end;}
+.form-group{margin-bottom:16px;}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px;}
+.form-input{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text-primary);font-size:14px;font-family:inherit;transition:border-color .2s;}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.form-select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text-primary);font-size:14px;font-family:inherit;}
+.form-select:focus{outline:none;border-color:var(--accent);}
+.form-textarea{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text-primary);font-size:14px;font-family:inherit;resize:vertical;min-height:80px;}
+.form-textarea:focus{outline:none;border-color:var(--accent);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+
+/* ===== FOOTER ===== */
+.footer-bar{text-align:center;padding:20px 16px 12px;border-top:1px solid var(--border);margin-top:8px;}
+.footer-powered{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;}
+.footer-powered span{color:var(--text-secondary);font-size:11px;}
+.footer-powered img{height:28px;}
+.footer-powered a{color:var(--accent);text-decoration:none;font-weight:600;font-size:11px;}
+.footer-copy{color:var(--text-secondary);font-size:10px;opacity:.6;}
+
+/* ===== TOAST ===== */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--text-primary);color:var(--bg-primary);padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap;}
+.toast.show{opacity:1;}
+
+/* ===== LOADING ===== */
+.loading-spinner{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text-secondary);}
+.loading-spinner::before{content:'';width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-right:10px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:768px){
+  .desktop-header{display:none;}
+  .mobile-top-header{display:block;}
+  .mobile-bottom-nav{display:block;}
+  .main-content{padding:16px;}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:10px;}
+  .kpi-card{padding:14px;}
+  .kpi-value{font-size:22px;}
+  .events-grid{grid-template-columns:1fr;}
+  .form-row{grid-template-columns:1fr;}
+  .welcome-text{font-size:18px;}
+  body{padding-bottom:140px;}
+}
+@media(max-width:400px){.kpi-grid{grid-template-columns:1fr 1fr;gap:8px;}.kpi-card{padding:12px;}.kpi-value{font-size:20px;}}
+@media(min-width:769px){.mobile-top-header{display:none!important;}.mobile-bottom-nav{display:none!important;}}
+  </style>
+</head>
+<body>
+
+<!-- MOBILE TOP HEADER -->
+<div class="mobile-top-header">
+  <div class="m-bar">
+    <button class="m-menu-btn" onclick="document.getElementById('mMenu').classList.toggle('expanded')">&#9776;</button>
+    <div class="m-center">
+      <div class="m-title">Dashboard</div>
+      <div class="m-biz" id="mHeaderBiz">Event Logic Pro</div>
+    </div>
+    <div class="m-right">
+      <button class="dark-toggle" onclick="toggleDark()">
+        <svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="m-menu" id="mMenu">
+    <div class="m-actions">
+      <button onclick="location.href='eventlogicpro-settings.html'">Settings</button>
+      <button onclick="location.href='support.html'">Support</button>
+      <button onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- DESKTOP HEADER -->
+<div class="desktop-header">
+  <div class="header-top">
+    <div class="header-left">
+      <div class="header-titles">
+        <h1>Dashboard</h1>
+        <div class="sub" id="headerBiz">Event Logic Pro</div>
+      </div>
+    </div>
+    <img src="eventlogicpro-logo.png" alt="Event Logic Pro" class="header-logo" id="headerLogo">
+  </div>
+  <div class="nav-bar">
+    <div class="nav-left">
+      <a href="eventlogicpro-dashboard.html" class="nav-btn active">Dashboard</a>
+      <a href="eventlogicpro-calendar.html" class="nav-btn">Calendar</a>
+      <a href="eventlogicpro.html" class="nav-btn">Tasks</a>
+      <a href="eventlogicpro-budget.html" class="nav-btn">Budget</a>
+      <a href="eventlogicpro-sponsors.html" class="nav-btn">Packages</a>
+      <a href="eventlogicpro-contacts.html" class="nav-btn">Contacts</a>
+      <a href="eventlogicpro-sitemap.html" class="nav-btn">Site Maps</a>
+    </div>
+    <div class="nav-right-controls">
+      <button class="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
+        <svg id="dMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+        <svg id="dSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <a href="eventlogicpro-settings.html" class="settings-link">Settings</a>
+      <a class="logout-link" onclick="doLogout()">Logout</a>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main-content">
+
+  <!-- WELCOME -->
+  <div class="welcome-section">
+    <div class="welcome-text" id="welcomeText">Welcome back</div>
+    <div class="welcome-sub" id="welcomeSub">Here's what's happening across your events</div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-grid">
+    <div class="kpi-card" onclick="document.getElementById('eventsContainer').scrollIntoView({behavior:'smooth'})">
+      <div class="kpi-value" id="kpiEvents">-</div>
+      <div class="kpi-label">Upcoming Events</div>
+    </div>
+    <div class="kpi-card" onclick="window.location.href='eventlogicpro-budget-overview.html'">
+      <div class="kpi-value" id="kpiBudget">-</div>
+      <div class="kpi-label">Total Budget</div>
+    </div>
+    <div class="kpi-card" onclick="window.location.href='eventlogicpro-tasks-overview.html'">
+      <div class="kpi-value" id="kpiTasks">-</div>
+      <div class="kpi-label">Tasks Completed</div>
+    </div>
+    <div class="kpi-card" onclick="window.location.href='eventlogicpro-tasks-overview.html?filter=upcoming'">
+      <div class="kpi-value" id="kpiDeadlines">-</div>
+      <div class="kpi-label">Upcoming Deadlines</div>
+    </div>
+  </div>
+
+  <!-- EVENTS SECTION -->
+  <div class="section-header">
+    <div class="section-title">Upcoming Events</div>
+    <button class="btn-primary" onclick="openNewEventModal()">+ New Event</button>
+  </div>
+
+  <div id="eventsContainer">
+    <div class="loading-spinner">Loading events...</div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer-bar">
+  <div class="footer-powered">
+    <span>Powered by</span>
+    <img src="glowbot.png" alt="GlowBot">
+    <a href="https://glowbotslive.com" target="_blank">GlowBotsLive.com</a>
+  </div>
+  <div class="footer-copy">&copy; 2026 Event Logic Pro. All rights reserved.</div>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<div class="mobile-bottom-nav">
+  <div class="m-nav-top">
+    <a href="eventlogicpro-dashboard.html" class="m-nav-btn active">Dashboard</a>
+    <a href="eventlogicpro-calendar.html" class="m-nav-btn">Calendar</a>
+    <a href="eventlogicpro.html" class="m-nav-btn">Tasks</a>
+    <a href="eventlogicpro-budget.html" class="m-nav-btn">Budget</a>
+  </div>
+  <div class="m-nav-bot">
+    <a href="eventlogicpro-sponsors.html" class="m-nav-btn">Packages</a>
+    <a href="eventlogicpro-contacts.html" class="m-nav-btn">Contacts</a>
+    <a href="eventlogicpro-sitemap.html" class="m-nav-btn">Site Maps</a>
+  </div>
+</div>
+
+<!-- NEW EVENT MODAL -->
+<div class="modal-overlay" id="newEventModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">New Event</div>
+      <button class="modal-close" onclick="closeNewEventModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Event Name *</label>
+        <input type="text" class="form-input" id="newEvName" placeholder="e.g. Redding Rock 2026">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" class="form-input" id="newEvDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="date" class="form-input" id="newEvEndDate">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Budget ($)</label>
+          <input type="number" class="form-input" id="newEvBudget" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color Tag</label>
+          <input type="color" class="form-input" id="newEvColor" value="#DC2626" style="height:42px;padding:4px;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Venue</label>
+        <input type="text" class="form-input" id="newEvVenue" placeholder="Venue name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea" id="newEvDesc" placeholder="Brief description of the event..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Load Template</label>
+        <select class="form-select" id="newEvTemplate">
+          <option value="">-- No template (blank event) --</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeNewEventModal()">Cancel</button>
+      <button class="btn-primary" onclick="createNewEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== DARK MODE ===== */
+var isDark = localStorage.getItem('elp_dark_mode') === 'true';
+if (isDark) { document.body.classList.add('dark'); document.documentElement.classList.add('dark'); }
+
+function applyDarkIcons() {
+  var d = document.body.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', d);
+  ['d', 'm'].forEach(function(p) {
+    var moon = document.getElementById(p + 'Moon');
+    var sun  = document.getElementById(p + 'Sun');
+    if (moon) moon.style.display = d ? 'none' : 'block';
+    if (sun)  sun.style.display  = d ? 'block' : 'none';
+  });
+  var logo  = document.getElementById('headerLogo');
+  if (logo)  logo.src  = d ? 'eventlogicpro-logo-dark.png' : 'eventlogicpro-logo.png';
+}
+applyDarkIcons();
+
+function toggleDark() {
+  document.body.classList.toggle('dark');
+  isDark = document.body.classList.contains('dark');
+  localStorage.setItem('elp_dark_mode', isDark);
+  applyDarkIcons();
+}
+
+/* ===== SUPABASE ===== */
+var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var tenantId = null, userId = null, teamId = null;
+var allProjects = [], allTasks = [], allMembers = [], allTemplates = [];
+var allEstimates = [], allSheets = [], allSiteMaps = [];
+
+/* ===== TOAST ===== */
+function toast(m) {
+  var t = document.getElementById('toast');
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2400);
+}
+
+/* ===== AUTH ===== */
+async function doLogout() {
+  await sb.auth.signOut();
+  localStorage.removeItem('sb_access_token');
+  localStorage.removeItem('sb_refresh_token');
+  location.replace('/');
+}
+
+async function checkAuth() {
+  var r = await sb.auth.getSession();
+  var s = r.data.session;
+  if (!s) {
+    var t  = localStorage.getItem('sb_access_token');
+    var rf = localStorage.getItem('sb_refresh_token');
+    if (t && rf) {
+      var sr = await sb.auth.setSession({ access_token: t, refresh_token: rf });
+      s = sr.data?.session;
+    }
+    if (!s) { location.replace('/'); return null; }
+  }
+  return s;
+}
+
+/* ===== INIT ===== */
+async function init() {
+  var session = await checkAuth();
+  if (!session) return;
+
+  userId = session.user.id;
+  var userEmail = session.user.email || '';
+
+  // Load tenant
+  if (userEmail) {
+    var ur = await sb.from('users').select('tenant_id, user_id, display_name, first_name').eq('email', userEmail).single();
+    if (ur.data) {
+      tenantId = ur.data.tenant_id;
+      userId   = ur.data.user_id;
+      var biz  = ur.data.display_name || ur.data.first_name || userEmail;
+      document.getElementById('headerBiz').textContent  = biz;
+      document.getElementById('mHeaderBiz').textContent = biz;
+      document.getElementById('welcomeText').textContent = 'Welcome back' + (ur.data.first_name ? ', ' + ur.data.first_name : '');
+    }
+  }
+  if (!tenantId) {
+    var bs = await sb.from('business_settings').select('tenant_id, business_name').limit(1).single();
+    if (bs.data) {
+      tenantId = bs.data.tenant_id;
+      if (bs.data.business_name) {
+        document.getElementById('headerBiz').textContent  = bs.data.business_name;
+        document.getElementById('mHeaderBiz').textContent = bs.data.business_name;
+      }
+    }
+  }
+  if (!tenantId) { toast('Could not determine tenant'); return; }
+
+  await loadProjects();
+  await Promise.all([loadTasks(), loadMembers(), loadTemplates(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+  renderKPIs();
+  renderEvents();
+}
+
+/* ===== DATA LOADING ===== */
+async function loadProjects() {
+  var r = await sb.from('event_projects').select('*').eq('tenant_id', tenantId);
+  allProjects = r.data || [];
+  allProjects.sort(function(a, b) {
+    if (!a.event_date && !b.event_date) return a.event_name.localeCompare(b.event_name);
+    if (!a.event_date) return 1;
+    if (!b.event_date) return -1;
+    return a.event_date.localeCompare(b.event_date);
+  });
+}
+
+async function loadTasks() {
+  var ids = allProjects.map(function(p) { return p.event_project_id; });
+  if (!ids.length) { allTasks = []; return; }
+  var r = await sb.from('event_tasks').select('event_task_id,event_project_id,is_complete,is_cancelled,deadline').in('event_project_id', ids);
+  allTasks = r.data || [];
+}
+
+async function loadMembers() {
+  var r = await sb.from('event_members').select('member_id,first_name,last_name,is_active').eq('tenant_id', tenantId).eq('is_active', true);
+  allMembers = r.data || [];
+}
+
+async function loadTemplates() {
+  var r = await sb.from('event_template_groups').select('template_group_id,template_name,description').eq('tenant_id', tenantId).order('template_name');
+  allTemplates = r.data || [];
+}
+
+async function loadEstimates() {
+  try {
+    var r = await sb.from('event_estimates').select('*').eq('tenant_id', tenantId);
+    allEstimates = r.error ? [] : (r.data || []);
+  } catch(e) { allEstimates = []; }
+}
+
+async function loadSheets() {
+  try {
+    var r = await sb.from('sponsor_sheets').select('*').eq('tenant_id', tenantId);
+    allSheets = r.error ? [] : (r.data || []);
+  } catch(e) { allSheets = []; }
+}
+
+async function loadSiteMaps() {
+  try {
+    var r = await sb.from('site_maps').select('*').eq('tenant_id', tenantId);
+    allSiteMaps = r.error ? [] : (r.data || []);
+  } catch(e) { allSiteMaps = []; }
+}
+
+/* ===== HELPERS ===== */
+function getEventPlanStatus(eventProjectId) {
+  var hasBudget   = allEstimates.some(function(e) { return e.event_project_id === eventProjectId && e.status === 'published'; });
+  var hasPackages = allSheets.some(function(s)    { return s.event_project_id === eventProjectId && s.status === 'published'; });
+  var hasSiteMap  = allSiteMaps.some(function(m)  { return m.event_project_id === eventProjectId; });
+  return { budget: hasBudget, packages: hasPackages, siteMap: hasSiteMap };
+}
+
+function getEventEstimateTotals(eventProjectId) {
+  var published = allEstimates.filter(function(e) { return e.event_project_id === eventProjectId && e.status === 'published'; });
+  var est = published.length ? published[0] : allEstimates.filter(function(e) { return e.event_project_id === eventProjectId; })[0] || null;
+  return {
+    cost:        est ? (parseFloat(est.total_expenses) || 0) : 0,
+    revenue:     est ? (parseFloat(est.total_revenue)  || 0) : 0,
+    hasEstimate: !!est
+  };
+}
+
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  var d = new Date(str + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/* ===== KPIs ===== */
+function renderKPIs() {
+  var today = new Date().toISOString().split('T')[0];
+
+  var upcoming = allProjects.filter(function(p) {
+    if (p.status === 'completed' || p.status === 'cancelled') return false;
+    if (!p.event_date) return true;
+    return (p.event_end_date || p.event_date) >= today;
+  });
+
+  document.getElementById('kpiEvents').textContent = upcoming.length;
+
+  var totalBudget = 0;
+  upcoming.forEach(function(p) { totalBudget += parseFloat(p.total_budget) || 0; });
+  document.getElementById('kpiBudget').textContent = '$' + totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  var upIds = {};
+  upcoming.forEach(function(p) { upIds[p.event_project_id] = true; });
+  var upTasks   = allTasks.filter(function(t) { return upIds[t.event_project_id]; });
+  var completed = upTasks.filter(function(t) { return t.is_complete; }).length;
+  var total     = upTasks.filter(function(t) { return !t.is_cancelled; }).length;
+  document.getElementById('kpiTasks').textContent = completed + '/' + total;
+
+  var now      = new Date();
+  var twoWeeks = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  var deadlines = upTasks.filter(function(t) {
+    if (t.is_complete || t.is_cancelled || !t.deadline) return false;
+    var d = new Date(t.deadline);
+    return d >= now && d <= twoWeeks;
+  }).length;
+  document.getElementById('kpiDeadlines').textContent = deadlines;
+}
+
+/* ===== RENDER EVENTS ===== */
+function renderEvents() {
+  var container = document.getElementById('eventsContainer');
+  var today     = new Date().toISOString().split('T')[0];
+
+  if (!allProjects.length) {
+    container.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="empty-icon">&#127881;</div>' +
+        '<div class="empty-title">No events yet</div>' +
+        '<div class="empty-text">Create your first event to get started</div>' +
+        '<button class="btn-primary" onclick="openNewEventModal()">+ Create Event</button>' +
+      '</div>';
+    return;
+  }
+
+  var upcoming = allProjects.filter(function(p) {
+    if (p.status === 'completed' || p.status === 'cancelled') return false;
+    if (!p.event_date) return true;
+    return (p.event_end_date || p.event_date) >= today;
+  });
+
+  var past = allProjects.filter(function(p) {
+    if (!p.event_date) return false;
+    return (p.event_end_date || p.event_date) < today || p.status === 'completed';
+  });
+
+  var html = '';
+  if (upcoming.length) html += renderEventGrid(upcoming);
+  if (past.length) {
+    html += '<div class="section-header" style="margin-top:32px;"><div class="section-title" style="color:var(--text-secondary);">Past Events</div></div>';
+    html += renderEventGrid(past);
+  }
+  container.innerHTML = html;
+}
+
+function renderEventGrid(projects) {
+  var checkSvg = '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 6 5 8.5 9.5 3.5"/></svg>';
+  var html = '<div class="events-grid">';
+  projects.forEach(function(p) {
+    var color   = p.color_tag || '#DC2626';
+    var status  = p.status || 'planning';
+    var dateStr = p.event_date ? formatDate(p.event_date) : 'Date TBD';
+    if (p.event_end_date) dateStr += ' \u2013 ' + formatDate(p.event_end_date);
+
+    var eTasks = allTasks.filter(function(t) { return t.event_project_id === p.event_project_id; });
+    var eTotal = eTasks.filter(function(t) { return !t.is_cancelled; }).length;
+    var eDone  = eTasks.filter(function(t) { return t.is_complete; }).length;
+    var pct    = eTotal > 0 ? Math.round(eDone / eTotal * 100) : 0;
+
+    var estTotals = getEventEstimateTotals(p.event_project_id);
+    var plans     = getEventPlanStatus(p.event_project_id);
+
+    html += '<div class="event-card" onclick="goToEvent(\'' + p.event_project_id + '\')">';
+    html += '<div class="event-card-stripe" style="background:' + esc(color) + ';"></div>';
+    html += '<div class="event-card-body">';
+    html += '<div class="event-card-name">' + esc(p.event_name) + '</div>';
+    html += '<div class="event-card-date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + dateStr + '</div>';
+    html += '<div class="event-card-stats">';
+    html += '<div class="event-stat"><div class="event-stat-value" style="color:#ef4444;">$' + estTotals.cost.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div><div class="event-stat-label">Cost Est</div></div>';
+    html += '<div class="event-stat"><div class="event-stat-value" style="color:#22c55e;">$' + estTotals.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div><div class="event-stat-label">Rev Est</div></div>';
+    html += '<div class="event-stat"><div class="event-stat-value">' + pct + '%</div><div class="event-stat-label">Tasks (' + eDone + '/' + eTotal + ')</div></div>';
+    html += '</div></div>';
+    html += '<div class="event-card-footer">';
+
+    if (status === 'planning') {
+      html += '<div class="plan-checks">';
+      html += '<div class="plan-check' + (plans.budget ? ' checked' : '') + '"><div class="plan-check-box' + (plans.budget ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Budget</span></div>';
+      html += '<div class="plan-check' + (plans.packages ? ' checked' : '') + '"><div class="plan-check-box' + (plans.packages ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Packages</span></div>';
+      html += '<div class="plan-check' + (plans.siteMap ? ' checked' : '') + '"><div class="plan-check-box' + (plans.siteMap ? ' checked' : '') + '">' + checkSvg + '</div><span class="plan-check-label">Site Map</span></div>';
+      html += '</div>';
+    } else {
+      html += '<span class="event-status ' + status + '">' + status + '</span>';
+    }
+
+    html += '<button class="event-delete-btn" onclick="event.stopPropagation();deleteEvent(\'' + p.event_project_id + '\',\'' + esc(p.event_name) + '\')" title="Delete event">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    html += '</button>';
+    html += '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ===== DELETE EVENT ===== */
+async function deleteEvent(projectId, projectName) {
+  if (!confirm('Delete "' + projectName + '"? This cannot be undone.')) return;
+  try {
+    await sb.from('event_schedule_items').delete().eq('event_project_id', projectId);
+    var taskR   = await sb.from('event_tasks').select('event_task_id').eq('event_project_id', projectId);
+    var taskIds = (taskR.data || []).map(function(t) { return t.event_task_id; });
+    for (var i = 0; i < taskIds.length; i++) {
+      await sb.from('event_task_line_items').delete().eq('event_task_id', taskIds[i]);
+    }
+    await sb.from('event_tasks').delete().eq('event_project_id', projectId);
+    await sb.from('event_departments').delete().eq('event_project_id', projectId);
+    await sb.from('event_vendors').delete().eq('event_project_id', projectId);
+    var r = await sb.from('event_projects').delete().eq('event_project_id', projectId);
+    if (r.error) { toast('Error: ' + r.error.message); return; }
+    toast('"' + projectName + '" deleted');
+    await loadProjects();
+    await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+    renderKPIs();
+    renderEvents();
+  } catch(e) {
+    toast('Delete failed: ' + e.message);
+  }
+}
+
+/* ===== CREATE EVENT ===== */
+function openNewEventModal() {
+  document.getElementById('newEvName').value     = '';
+  document.getElementById('newEvDate').value     = '';
+  document.getElementById('newEvEndDate').value  = '';
+  document.getElementById('newEvBudget').value   = '';
+  document.getElementById('newEvVenue').value    = '';
+  document.getElementById('newEvDesc').value     = '';
+  document.getElementById('newEvColor').value    = '#DC2626';
+  var sel = document.getElementById('newEvTemplate');
+  sel.innerHTML = '<option value="">-- No template (blank event) --</option>';
+  allTemplates.forEach(function(t) {
+    var opt = document.createElement('option');
+    opt.value = t.template_group_id;
+    opt.textContent = t.template_name + (t.description ? ' — ' + t.description : '');
+    sel.appendChild(opt);
+  });
+  document.getElementById('newEventModal').classList.add('show');
+}
+
+function closeNewEventModal() {
+  document.getElementById('newEventModal').classList.remove('show');
+}
+
+async function createNewEvent() {
+  var name = document.getElementById('newEvName').value.trim();
+  if (!name) { toast('Event name is required'); return; }
+  var data = {
+    tenant_id:     tenantId,
+    team_id:       teamId,
+    event_name:    name,
+    event_date:    document.getElementById('newEvDate').value    || null,
+    event_end_date:document.getElementById('newEvEndDate').value || null,
+    total_budget:  parseFloat(document.getElementById('newEvBudget').value) || 0,
+    venue:         document.getElementById('newEvVenue').value.trim()  || null,
+    description:   document.getElementById('newEvDesc').value.trim()   || null,
+    color_tag:     document.getElementById('newEvColor').value         || '#DC2626',
+    status:        'planning',
+    created_by:    userId
+  };
+  var r = await sb.from('event_projects').insert(data).select().single();
+  if (r.error) { toast('Error: ' + r.error.message); return; }
+  var newProject = r.data;
+  var templateId = document.getElementById('newEvTemplate').value;
+  if (templateId) await loadTemplateIntoEvent(newProject.event_project_id, templateId);
+  await addEventToCalendar(newProject);
+  closeNewEventModal();
+  toast('Event created!');
+  await loadProjects();
+  await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+  renderKPIs();
+  renderEvents();
+}
+
+async function addEventToCalendar(project) {
+  try {
+    var calR = await sb.from('event_calendars').select('calendar_id,is_default').eq('tenant_id', tenantId).order('is_default', { ascending: false }).order('sort_order');
+    var calendars = calR.data || [];
+    if (!calendars.length) {
+      var newCal = await sb.from('event_calendars').insert({ tenant_id: tenantId, calendar_name: 'Events', color: '#DC2626', is_default: true, sort_order: 0, created_by: userId }).select().single();
+      if (newCal.error || !newCal.data) return;
+      calendars = [newCal.data];
+    }
+    var calId = calendars[0].calendar_id;
+    if (project.event_date) {
+      await sb.from('event_schedule_items').insert({ tenant_id: tenantId, calendar_id: calId, event_project_id: project.event_project_id, title: project.event_name, item_date: project.event_date, start_time: '08:00', end_time: '23:00', category: 'milestone', location: project.venue || null, notes: project.description || null, created_by: userId });
+    }
+    if (project.event_end_date && project.event_end_date !== project.event_date) {
+      await sb.from('event_schedule_items').insert({ tenant_id: tenantId, calendar_id: calId, event_project_id: project.event_project_id, title: project.event_name + ' (End)', item_date: project.event_end_date, start_time: '08:00', end_time: '23:00', category: 'milestone', location: project.venue || null, notes: project.description || null, created_by: userId });
+    }
+  } catch(e) { console.warn('Calendar auto-add failed:', e); }
+}
+
+async function loadTemplateIntoEvent(projectId, templateGroupId) {
+  var deptR = await sb.from('event_template_departments').select('*').eq('template_group_id', templateGroupId).order('sort_order');
+  var tDepts = deptR.data || [];
+  if (!tDepts.length) return;
+  for (var i = 0; i < tDepts.length; i++) {
+    var td = tDepts[i];
+    var dr = await sb.from('event_departments').insert({ tenant_id: tenantId, event_project_id: projectId, department_name: td.department_name, sort_order: td.sort_order, budget: td.budget || 0 }).select().single();
+    if (!dr.data) continue;
+    var taskR  = await sb.from('event_template_tasks').select('*').eq('template_dept_id', td.template_dept_id).order('sort_order');
+    var tTasks = taskR.data || [];
+    if (tTasks.length) {
+      await sb.from('event_tasks').insert(tTasks.map(function(t) {
+        return { tenant_id: tenantId, event_project_id: projectId, event_department_id: dr.data.event_department_id, task_title: t.task_title, cost: t.cost || 0, timing: t.timing || null, notes: t.notes || null, sort_order: t.sort_order };
+      }));
+    }
+  }
+}
+
+/* ===== NAVIGATION ===== */
+function goToEvent(projectId) {
+  window.location.href = 'eventlogicpro.html?event=' + projectId;
+}
+
+/* ===== START ===== */
+init();
+</script>
+</body>
+</html>
