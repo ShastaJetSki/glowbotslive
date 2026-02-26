@@ -285,6 +285,14 @@
         <div id="employeeGrid" class="employee-grid">
           <div style="text-align:center;color:var(--text-secondary);padding:40px;">Loading...</div>
         </div>
+        <div id="deactivatedSection" style="display:none;margin-top:24px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;" onclick="toggleDeactivated()">
+            <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">&#128683; Deactivated Members</span>
+            <span id="deactivatedBadge" style="background:#991b1b;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;"></span>
+            <span id="deactivatedChevron" style="color:var(--text-secondary);font-size:12px;">&#9660;</span>
+          </div>
+          <div id="deactivatedGrid" class="employee-grid" style="display:none;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -392,6 +400,7 @@
       <div style="display:none;gap:10px;" id="modalFooterEdit">
         <button class="btn btn-primary" style="flex:1;" onclick="saveEmployee()">Save Changes</button>
         <button class="btn btn-danger" id="empDeleteBtn" onclick="deleteEmployee()">Deactivate</button>
+        <button class="btn" style="background:#10b981;border-color:#10b981;color:#fff;display:none;" id="empReactivateBtn" onclick="reactivateEmployee()">Reactivate</button>
         <button class="btn" onclick="closeEmployeeModal()">Cancel</button>
       </div>
     </div>
@@ -419,7 +428,7 @@ var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
 
 var currentTenantId=null,currentUserId=null,currentUserRole=null,userEmail=null;
-var allEmployees=[],editingEmployeeId=null;
+var allEmployees=[],allDeactivatedEmployees=[],editingEmployeeId=null;
 var userStats=null,userAchievements=[],userThemeBank=[];
 
 // ── THEMES ──────────────────────────────────────────────────────────────────
@@ -630,16 +639,75 @@ function openEditEmployee(id){
     Array.from(roleSelect.options).forEach(function(opt){opt.disabled=false;});
   }
 
-  // Only owner can delete
   var canDeactivate = ['owner','admin'].includes((currentUserRole||'').toLowerCase());
   document.getElementById('empDeleteBtn').style.display=canDeactivate?'':'none';
+  document.getElementById('empReactivateBtn').style.display='none';
   document.getElementById('employeeModalMsg').innerHTML='';
+  document.getElementById('employeeModal').classList.add('active');
+}
+
+function openEditDeactivated(id){
+  var emp=allDeactivatedEmployees.find(function(e){return e.employee_id===id;});
+  if(!emp)return;
+  editingEmployeeId=id;
+  document.getElementById('employeeModalTitle').textContent='Deactivated Member';
+  document.getElementById('empFirstName').value=emp.first_name||'';
+  document.getElementById('empLastName').value=emp.last_name||'';
+  document.getElementById('empEmail').value=emp.email||'';
+  document.getElementById('empPhone').value=emp.phone||'';
+  document.getElementById('empDepartment').value=emp.department||'';
+  document.getElementById('empRole').value=emp.role||'associate';
+  var color=emp.color||DEFAULT_EMPLOYEE_COLORS[0];
+  document.getElementById('empColor').value=color;
+  renderColorOptions(color);
+  // Disable all editing fields — just show info + reactivate
+  ['empFirstName','empLastName','empEmail','empPhone','empDepartment','empRole'].forEach(function(id){
+    document.getElementById(id).disabled=true;
+  });
+  document.getElementById('modalFooterAdd').style.display='none';
+  document.getElementById('modalFooterEdit').style.display='flex';
+  document.getElementById('empDeleteBtn').style.display='none';
+  var canReactivate=['owner','admin'].includes((currentUserRole||'').toLowerCase());
+  document.getElementById('empReactivateBtn').style.display=canReactivate?'':'none';
+  document.getElementById('employeeModalMsg').innerHTML='<span style="color:#f59e0b;font-size:12px;">&#9888; This member is deactivated and cannot log in.</span>';
   document.getElementById('employeeModal').classList.add('active');
 }
 
 function closeEmployeeModal(){
   document.getElementById('employeeModal').classList.remove('active');
   editingEmployeeId=null;
+  // Re-enable fields in case they were disabled (deactivated view)
+  ['empFirstName','empLastName','empEmail','empPhone','empDepartment','empRole'].forEach(function(fid){
+    document.getElementById(fid).disabled=false;
+  });
+}
+
+var deactivatedVisible=false;
+function toggleDeactivated(){
+  deactivatedVisible=!deactivatedVisible;
+  document.getElementById('deactivatedGrid').style.display=deactivatedVisible?'flex':'none';
+  document.getElementById('deactivatedChevron').textContent=deactivatedVisible?'&#9650;':'&#9660;';
+}
+
+function renderDeactivatedEmployees(){
+  var section=document.getElementById('deactivatedSection');
+  var grid=document.getElementById('deactivatedGrid');
+  var badge=document.getElementById('deactivatedBadge');
+  if(allDeactivatedEmployees.length===0){section.style.display='none';return;}
+  section.style.display='block';
+  badge.textContent=allDeactivatedEmployees.length;
+  grid.innerHTML=allDeactivatedEmployees.map(function(emp){
+    var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim()||'Unknown';
+    var initials=((emp.first_name||'?')[0]+((emp.last_name||'')[0]||'')).toUpperCase();
+    var color=emp.color||'#6b7280';
+    var role=(emp.role||'associate').replace(/_/g,' ');
+    role=role.charAt(0).toUpperCase()+role.slice(1);
+    return '<div class="emp-strip" style="opacity:0.55;" onclick="openEditDeactivated(\''+emp.employee_id+'\')">'
+      +'<div class="emp-avatar" style="background:'+color+';filter:grayscale(80%);">'+initials+'</div>'
+      +'<div class="emp-info"><div class="emp-name">'+name+'</div><div class="emp-role">'+role+' &nbsp;&#128683; Deactivated</div></div>'
+      +'<div class="emp-arrow">&#8250;</div>'
+      +'</div>';
+  }).join('');
 }
 
 async function saveEmployee(){
@@ -686,18 +754,57 @@ async function deleteEmployee(){
     document.getElementById('employeeModalMsg').innerHTML='<span class="error">Only an owner can deactivate another owner.</span>';
     return;
   }
-  if(!confirm('Deactivate '+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'? They will be blocked from logging in immediately.'))return;
+  var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
+  if(!confirm('Deactivate '+name+'?\n\nThey will be blocked from logging in immediately.\nAll their appointments, events, and contacts will be set to Unassigned — they stay on the schedule.'))return;
   try{
+    var empId=editingEmployeeId;
     // 1. Mark employee as inactive
-    var r=await sb.from('employees').update({is_active:false,deactivated_at:new Date().toISOString(),deactivated_by:currentUserId}).eq('employee_id',editingEmployeeId);
+    var r=await sb.from('employees').update({is_active:false,deactivated_at:new Date().toISOString(),deactivated_by:currentUserId}).eq('employee_id',empId);
     if(r.error)throw r.error;
-    // 2. Block login by marking user record as inactive (checked on every page load)
+    // 2. Block login by marking user record as inactive
     if(emp.email){
       await sb.from('users').update({is_active:false,deactivated_at:new Date().toISOString()}).eq('email',emp.email).eq('tenant_id',currentTenantId);
     }
+    // 3. Unassign all their appointments (set assigned_to = null, keep on schedule)
+    await sb.from('sales_appointments')
+      .update({assigned_to:null,updated_at:new Date().toISOString()})
+      .eq('tenant_id',currentTenantId)
+      .eq('assigned_to',empId)
+      .or('is_deleted.is.null,is_deleted.eq.false');
+    // 4. Unassign all their events (keep on schedule)
+    await sb.from('events')
+      .update({assigned_to:null,updated_at:new Date().toISOString()})
+      .eq('tenant_id',currentTenantId)
+      .eq('assigned_to',empId)
+      .or('is_deleted.is.null,is_deleted.eq.false');
+    // 5. Unassign all their contacts (keep in system)
+    await sb.from('customers')
+      .update({assigned_to:null,updated_at:new Date().toISOString()})
+      .eq('tenant_id',currentTenantId)
+      .eq('assigned_to',empId)
+      .or('is_deleted.is.null,is_deleted.eq.false');
     closeEmployeeModal();
-    loadEmployees();
-    showToast((emp.first_name||'Employee')+' has been deactivated.');
+    await loadEmployees();
+    showToast(name+' deactivated. Appointments, events & contacts set to Unassigned.');
+  } catch(e){
+    document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
+  }
+}
+
+async function reactivateEmployee(){
+  if(!editingEmployeeId)return;
+  var emp=allDeactivatedEmployees.find(function(e){return e.employee_id===editingEmployeeId;});
+  if(!emp)return;
+  var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
+  if(!confirm('Reactivate '+name+'? They will be able to log in again.'))return;
+  try{
+    await sb.from('employees').update({is_active:true,deactivated_at:null,deactivated_by:null}).eq('employee_id',editingEmployeeId);
+    if(emp.email){
+      await sb.from('users').update({is_active:true,deactivated_at:null}).eq('email',emp.email).eq('tenant_id',currentTenantId);
+    }
+    closeEmployeeModal();
+    await loadEmployees();
+    showToast(name+' has been reactivated.');
   } catch(e){
     document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
   }
