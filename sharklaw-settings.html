@@ -631,7 +631,8 @@ function openEditEmployee(id){
   }
 
   // Only owner can delete
-  document.getElementById('empDeleteBtn').style.display=isOwner?'':'none';
+  var canDeactivate = ['owner','admin'].includes((currentUserRole||'').toLowerCase());
+  document.getElementById('empDeleteBtn').style.display=canDeactivate?'':'none';
   document.getElementById('employeeModalMsg').innerHTML='';
   document.getElementById('employeeModal').classList.add('active');
 }
@@ -672,11 +673,31 @@ async function saveEmployee(){
 }
 
 async function deleteEmployee(){
-  if(!editingEmployeeId||!confirm('Deactivate this team member? They will be hidden but historical data preserved.'))return;
+  if(!editingEmployeeId)return;
+  var emp=allEmployees.find(function(e){return e.employee_id===editingEmployeeId;});
+  if(!emp)return;
+  // Prevent deactivating yourself
+  if(emp.email&&emp.email===userEmail){
+    document.getElementById('employeeModalMsg').innerHTML='<span class="error">You cannot deactivate your own account.</span>';
+    return;
+  }
+  // Prevent deactivating another owner unless you are also owner
+  if(emp.role==='owner'&&currentUserRole!=='owner'){
+    document.getElementById('employeeModalMsg').innerHTML='<span class="error">Only an owner can deactivate another owner.</span>';
+    return;
+  }
+  if(!confirm('Deactivate '+((emp.first_name||'')+' '+(emp.last_name||'')).trim()+'? They will be blocked from logging in immediately.'))return;
   try{
-    var r=await sb.from('employees').update({is_active:false}).eq('employee_id',editingEmployeeId);
+    // 1. Mark employee as inactive
+    var r=await sb.from('employees').update({is_active:false,deactivated_at:new Date().toISOString(),deactivated_by:currentUserId}).eq('employee_id',editingEmployeeId);
     if(r.error)throw r.error;
-    closeEmployeeModal();loadEmployees();
+    // 2. Block login by marking user record as inactive (checked on every page load)
+    if(emp.email){
+      await sb.from('users').update({is_active:false,deactivated_at:new Date().toISOString()}).eq('email',emp.email).eq('tenant_id',currentTenantId);
+    }
+    closeEmployeeModal();
+    loadEmployees();
+    showToast((emp.first_name||'Employee')+' has been deactivated.');
   } catch(e){
     document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';
   }
@@ -835,8 +856,11 @@ async function init(){
   var session=await checkAuth();if(!session)return;
   var email=session.user?.email;
   if(email){
-    var r=await sb.from('users').select('user_id,tenant_id,role').eq('email',email).single();
-    if(r.data){currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;currentUserRole=r.data.role||null;}
+    var r=await sb.from('users').select('user_id,tenant_id,role,is_active').eq('email',email).single();
+    if(r.data){
+      if(r.data.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('login.html?reason=deactivated');return;}
+      currentTenantId=r.data.tenant_id;currentUserId=r.data.user_id;currentUserRole=r.data.role||null;
+    }
   }
   if(!currentTenantId){
     var r=await sb.from('business_settings').select('tenant_id').limit(1).single();
