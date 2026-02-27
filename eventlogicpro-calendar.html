@@ -244,7 +244,7 @@ body.dark .toast{background:#f1f5f9;color:#1e293b;}
 <div class="mobile-top-header">
   <div class="m-bar">
     <button class="m-menu-btn" onclick="toggleMobileDrawer()">&#9776;</button>
-    <div class="m-center"><div class="m-title">Calendar</div><div class="m-biz" id="mBizName">Event Logic Pro</div></div>
+    <div class="m-center"><div class="m-title">Calendar</div><div class="m-biz" id="mBiz">Event Logic Pro</div></div>
     <div class="m-right">
       <div class="view-toggle">
         <button class="view-btn active" id="mVM" onclick="setView('month')">M</button>
@@ -263,7 +263,7 @@ body.dark .toast{background:#f1f5f9;color:#1e293b;}
 <div class="desktop-header">
   <div class="header-top">
     <div class="header-left">
-      <div class="header-titles"><h1>Calendar</h1><div class="sub" id="dBizName">Event Logic Pro</div></div>
+      <div class="header-titles"><h1>Calendar</h1><div class="sub" id="dBiz">Event Logic Pro</div></div>
     </div>
     <img id="headerLogo" class="header-logo" src="eventlogicpro-logo.png" alt="Event Logic Pro">
   </div>
@@ -954,28 +954,56 @@ function toggleMobileDrawer() {
   document.getElementById('mobileDrawer').classList.toggle('open', drawerOpen);
 }
 
+/* ===== TOUCH / KEYBOARD NAV ===== */
+var tx=0,ty=0;
+document.addEventListener('touchstart',function(e){tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+document.addEventListener('touchend',function(e){
+  var dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty,ax=Math.abs(dx),ay=Math.abs(dy);
+  if(ax<40&&ay<40)return;
+  if(ax>ay){if(ax>60){if(dx>0)navPrev();else navNext();}}
+  else{if(ay>60){if(dy>0)navPrev();else navNext();}}
+},{passive:true});
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
+  if(e.key==='ArrowLeft')navPrev();else if(e.key==='ArrowRight')navNext();
+});
+
 /* ===== INIT ===== */
-(async function init() {
+async function init() {
   var s = await checkAuth(); if (!s) return;
   userId = s.user.id;
-  var ur = await sb.from('event_members').select('tenant_id').eq('auth_user_id', userId).maybeSingle();
-  if (!ur.data) { var tr = await sb.from('tenants').select('tenant_id').eq('created_by', userId).maybeSingle(); if (tr.data) tenantId = tr.data.tenant_id; }
-  else tenantId = ur.data.tenant_id;
-  if (!tenantId) { showToast('No tenant found'); return; }
-
-  // Set biz name
-  var tn = await sb.from('tenants').select('business_name').eq('tenant_id', tenantId).maybeSingle();
-  if (tn.data && tn.data.business_name) {
-    var bn = tn.data.business_name;
-    var d = document.getElementById('dBizName'); if (d) d.textContent = bn;
-    var m = document.getElementById('mBizName'); if (m) m.textContent = bn;
+  var email = s.user.email || '';
+  if (email) {
+    var ur = await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email', email).single();
+    if (ur.data) {
+      tenantId = ur.data.tenant_id;
+      userId   = ur.data.user_id;
+      var biz  = ur.data.display_name || ur.data.first_name || email;
+      document.getElementById('dBiz').textContent = biz;
+      document.getElementById('mBiz').textContent = biz;
+    }
   }
-
-  await Promise.all([loadCalendars(), loadItems(), loadProjects(), loadMembers()]);
-  renderCalLayers();
+  if (!tenantId) {
+    var bs = await sb.from('business_settings').select('tenant_id,business_name').limit(1).single();
+    if (bs.data) {
+      tenantId = bs.data.tenant_id;
+      if (bs.data.business_name) {
+        document.getElementById('dBiz').textContent = bs.data.business_name;
+        document.getElementById('mBiz').textContent = bs.data.business_name;
+      }
+    }
+  }
+  if (!tenantId) { showToast('Could not determine tenant'); return; }
+  await loadCalendars();
+  await loadProjects();
+  await loadMembers();
+  await loadItems();
   renderMiniCal();
+  renderCalLayers();
+  populateSelects();
   render();
-})();
+}
+init();
 </script>
 </body>
 </html>
