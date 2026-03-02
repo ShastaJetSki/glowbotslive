@@ -110,8 +110,12 @@
     .funnel-column.collapsed .funnel-header { border-bottom: none; border-radius: 12px; }
     .funnel-cards { flex: 1; padding: 8px; overflow-y: auto; min-height: 50px; }
     .funnel-cards.drag-over { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border-radius: 8px; }
-    /* Notes row inside card */
+    .contact-card .card-expand { display: none; }
+    .contact-card.card-expanded .card-expand { display: block; }
+    .card-type-row { font-size: 11px; color: var(--text-secondary); padding: 4px 0 2px; }
+    /* Notes inside expanded card; also shown when column notes-open toggle is active */
     .card-notes { display: none; font-size: 11px; color: var(--text-secondary); margin-top: 6px; padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--border-default) 60%, transparent); line-height: 1.5; font-style: italic; }
+    .contact-card.card-expanded .card-notes { display: block; }
     .funnel-column.notes-open .card-notes { display: block; }
 
     /* ===== CONTACT CARDS ===== */
@@ -307,7 +311,7 @@
           <div class="form-group" style="margin-bottom:0;"><label class="form-label">First Name <span class="required">*</span></label><input type="text" class="form-input" id="contactFirstName" placeholder="First name"></div>
           <div class="form-group" style="margin-bottom:0;"><label class="form-label">Last Name</label><input type="text" class="form-input" id="contactLastName" placeholder="Last name"></div>
         </div>
-        <div class="form-group"><label class="form-label">Organization <span class="required">*</span></label><input type="text" class="form-input" id="contactOrganization" placeholder="Organization name"></div>
+        <div class="form-group"><label class="form-label">Organization</label><input type="text" class="form-input" id="contactOrganization" placeholder="Organization name"></div>
       </div>
       <div class="contact-section">
         <div class="contact-section-title">Contact Info</div>
@@ -502,19 +506,31 @@ function createContactCard(contact){
   // Line 2: phone LEFT + assigned RIGHT
   var infoRow='<div class="contact-info-row">'+(contact.phone?'<a class="contact-phone-link" href="tel:'+contact.phone+'" onclick="event.stopPropagation()">'+contact.phone+'</a>':'<span style="color:var(--text-secondary);font-size:12px;">No phone</span>')+'<span class="contact-assigned-inline"><span class="contact-assigned-dot" style="background:'+empColor+'"></span>'+empName+'</span></div>';
 
-  var notesHtml=contact.notes?'<div class="card-notes">'+contact.notes+'</div>':'';
+  var typeHtml=contact.customer_type?'<div class="card-type-row">'+contact.customer_type+'</div>':'';
 
   card.innerHTML=
     '<div class="contact-card-header" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><div class="contact-name">'+firstName+'</div>'+(contact.organization_name?'<span style="font-weight:400;color:var(--text-secondary);font-size:12px;text-align:right;flex-shrink:0;">'+contact.organization_name+'</span>':'')+'</div>'+
     miniRow+
     infoRow+
-    notesHtml+
+    '<div class="card-expand">'+typeHtml+notesHtml+'</div>'+
     '<div class="progress-dots">'+dotsHtml+'<span class="progress-label">'+getStageName(stage)+'</span></div>';
 
   if(!isMobile){
     card.addEventListener('dragstart',function(e){draggedCard=this;this.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',contact.customer_id);});
     card.addEventListener('dragend',function(){this.classList.remove('dragging');document.querySelectorAll('.funnel-cards').forEach(function(col){col.classList.remove('drag-over');});});
-    card.addEventListener('click',function(){openContactDetail(contact);});
+    card.addEventListener('click',function(e){
+      if(e.target.closest('a'))return;
+      if(!this.classList.contains('card-expanded')){
+        // First click: collapse others in same column, expand this one
+        var col=this.closest('.funnel-cards');
+        if(col)col.querySelectorAll('.contact-card.card-expanded').forEach(function(c){c.classList.remove('card-expanded');});
+        this.classList.add('card-expanded');
+      } else {
+        // Second click: open detail
+        openContactDetail(contact);
+        this.classList.remove('card-expanded');
+      }
+    });
   } else {
     card.addEventListener('click',function(e){
       if(e.target.closest('a'))return;
@@ -574,8 +590,8 @@ function closeNewContactModal(){document.getElementById('newContactModal').class
 
 async function saveNewContact(){
   var firstName=document.getElementById('contactFirstName').value.trim(),lastName=document.getElementById('contactLastName').value.trim(),phone=document.getElementById('contactPhone').value.trim(),email=document.getElementById('contactEmail').value.trim(),org=document.getElementById('contactOrganization').value.trim(),clientType=document.getElementById('contactClientType').value,stage=document.getElementById('contactStage').value,assignTo=document.getElementById('contactAssignTo').value,birthday=document.getElementById('contactBirthday').value,anniversary=document.getElementById('contactAnniversary').value;
-  if(!firstName){alert('Enter first name');return;}if(!org){alert('Enter organization');return;}if(!phone){alert('Enter phone number');return;}
-  try{var d={tenant_id:currentTenantId,first_name:firstName,last_name:lastName||null,full_name:(firstName+(lastName?' '+lastName:'')).trim(),phone:phone,email:email||null,organization_name:org,customer_type:clientType||'prospect',funnel_stage:parseInt(stage)||1,created_at:new Date().toISOString()};if(assignTo)d.assigned_to=assignTo;if(birthday)d.birthday=birthday;if(anniversary)d.anniversary=anniversary;var r=await sb.from('customers').insert(d).select().single();if(r.error)throw r.error;closeNewContactModal();await loadContacts();}catch(e){alert('Error: '+(e.message||'Failed to save'));}
+  if(!firstName){alert('Enter first name');return;}if(!phone){alert('Enter phone number');return;}
+  try{var d={tenant_id:currentTenantId,first_name:firstName,last_name:lastName||null,full_name:(firstName+(lastName?' '+lastName:'')).trim(),phone:phone,email:email||null,organization_name:org||null,customer_type:clientType||'prospect',funnel_stage:parseInt(stage)||1,created_at:new Date().toISOString()};if(assignTo)d.assigned_to=assignTo;if(birthday)d.birthday=birthday;if(anniversary)d.anniversary=anniversary;var r=await sb.from('customers').insert(d).select().single();if(r.error)throw r.error;closeNewContactModal();await loadContacts();}catch(e){alert('Error: '+(e.message||'Failed to save'));}
 }
 
 function formatDateForInput(d){return d?d.split('T')[0]:'';}
@@ -605,7 +621,7 @@ function openContactDetail(contact){
         '<div class="form-group" style="margin-bottom:0;"><label class="form-label">First Name <span class="required">*</span></label><input type="text" class="form-input" id="editFirstName" value="'+(contact.first_name||'')+'"></div>'+
         '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Last Name</label><input type="text" class="form-input" id="editLastName" value="'+(contact.last_name||'')+'"></div>'+
       '</div>'+
-      '<div class="form-group"><label class="form-label">Organization <span class="required">*</span></label><input type="text" class="form-input" id="editOrganization" value="'+(contact.organization_name||'')+'"></div>'+
+      '<div class="form-group"><label class="form-label">Organization</label><input type="text" class="form-input" id="editOrganization" value="'+(contact.organization_name||'')+'"></div>'+
     '</div>'+
     '<div class="contact-section"><div class="contact-section-title">Contact Info</div>'+
       '<div class="form-group"><label class="form-label">Phone <span class="required">*</span></label><input type="tel" class="form-input" id="editPhone" value="'+(contact.phone||'')+'"></div>'+
@@ -642,8 +658,8 @@ function selectStageInEdit(stage){document.getElementById('editFunnelStage').val
 async function saveContactChanges(){
   if(!currentEditingContact)return;
   var firstName=document.getElementById('editFirstName').value.trim(),org=document.getElementById('editOrganization').value.trim(),phone=document.getElementById('editPhone').value.trim();
-  if(!firstName){alert('Enter first name');return;}if(!org){alert('Enter organization');return;}if(!phone){alert('Enter phone number');return;}
-  var u={first_name:firstName,last_name:document.getElementById('editLastName').value.trim()||null,organization_name:org,phone:phone,email:document.getElementById('editEmail').value.trim()||null,customer_type:document.getElementById('editClientType').value||'prospect',assigned_to:document.getElementById('editAssignedTo').value||null,funnel_stage:parseInt(document.getElementById('editFunnelStage').value)||1,birthday:document.getElementById('editBirthday').value||null,anniversary:document.getElementById('editAnniversary').value||null,notes:document.getElementById('editNotes').value.trim()||null,updated_at:new Date().toISOString()};
+  if(!firstName){alert('Enter first name');return;}if(!phone){alert('Enter phone number');return;}
+  var u={first_name:firstName,last_name:document.getElementById('editLastName').value.trim()||null,organization_name:org||null,phone:phone,email:document.getElementById('editEmail').value.trim()||null,customer_type:document.getElementById('editClientType').value||'prospect',assigned_to:document.getElementById('editAssignedTo').value||null,funnel_stage:parseInt(document.getElementById('editFunnelStage').value)||1,birthday:document.getElementById('editBirthday').value||null,anniversary:document.getElementById('editAnniversary').value||null,notes:document.getElementById('editNotes').value.trim()||null,updated_at:new Date().toISOString()};
   u.full_name=(u.first_name+(u.last_name?' '+u.last_name:'')).trim();
   try{var r=await sb.from('customers').update(u).eq('customer_id',currentEditingContact.customer_id).select().single();if(r.error)throw r.error;var idx=allContacts.findIndex(function(c){return c.customer_id===currentEditingContact.customer_id;});if(idx>=0)allContacts[idx]=Object.assign(allContacts[idx],u);closeContactDetailModal();renderContacts();updateStats();showToast('Contact saved!');}catch(e){alert('Error: '+(e.message||'Unknown'));}
 }
