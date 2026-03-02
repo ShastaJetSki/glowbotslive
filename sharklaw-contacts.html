@@ -320,7 +320,7 @@ var SB_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
 var currentUserId=null,currentTenantId=null,userEmail=null,currentUserRole=null,currentEmployeeId=null;
-var allContacts=[],allEmployees=[],myRemovals=[],allRemovalIds=[],vaultContacts=[];
+var allContacts=[],allEmployees=[],myRemovals=[],allRemovalIds=[],vaultContacts=[],swagTotals={};
 var activeFilter='all',activeLetter='',showVault=false;
 
 // ===== STAGES =====
@@ -449,13 +449,18 @@ function renderList(){
       dotsHtml+='<div class="'+dc+'" style="color:'+getStageColor(id)+'" title="'+getStageName(id)+'"></div>';
     });
     var notesHtml=c.notes?'<div class="cc-notes">'+c.notes+'</div>':'';
+    var swagVal=swagTotals[c.customer_id]||0;
+    var swagStr=swagVal>0?'$'+swagVal.toFixed(0):'$0';
     return '<div class="cc" data-id="'+c.customer_id+'" style="border-left-color:'+borderColor+';" onclick="handleCcClick(event,this,\''+c.customer_id+'\')">'+
-      '<div class="cc-header"><div class="cc-name">'+name+'</div></div>'+
+      '<div class="cc-header"><div class="cc-name">'+name+'</div>'+(c.organization_name?'<span class="cc-org">'+c.organization_name+'</span>':'')+'</div>'+
       '<div class="cc-info-row">'+
         (c.phone?'<a class="cc-phone" href="tel:'+c.phone+'" onclick="event.stopPropagation()">'+c.phone+'</a>':'<span style="font-size:12px;color:var(--text-secondary);">No phone</span>')+
         '<span class="cc-assigned"><span class="cc-assigned-dot" style="background:'+ec+'"></span>'+en+'</span>'+
       '</div>'+
-      (c.organization_name?'<div style="font-size:11px;color:var(--text-secondary);padding:2px 0 4px;">'+c.organization_name+'</div>':'')+
+      '<div class="cc-info-row" style="margin-top:3px;">'+
+        '<span style="font-size:11px;color:var(--text-secondary);">'+(c.customer_type||'—')+'</span>'+
+        '<span style="font-size:11px;color:var(--accent-light);font-weight:600;">'+swagStr+' swag</span>'+
+      '</div>'+
       '<div class="cc-expand">'+
         '<div class="cc-dots">'+dotsHtml+'<span class="cc-stage-label">'+getStageName(stage)+'</span></div>'+
         notesHtml+
@@ -622,6 +627,8 @@ async function init(){
   if(isAdmin()){allContacts=allTenantContacts;vaultContacts=allTenantContacts.filter(function(c){return removedIdSet.has(c.customer_id);});}
   else if(isManager()){var staffIds=allEmployees.filter(function(e){return['staff','associate'].includes((e.role||'').toLowerCase());}).map(function(e){return e.employee_id;});allContacts=allTenantContacts.filter(function(c){return!c.assigned_to||c.assigned_to===currentEmployeeId||staffIds.includes(c.assigned_to);});}
   else{allContacts=allTenantContacts.filter(function(c){return c.assigned_to===currentEmployeeId;});}
+  // Load swag totals per contact
+  try{var sr=await sb.from('swag_given').select('customer_id,value,quantity').eq('tenant_id',currentTenantId);(sr.data||[]).forEach(function(row){swagTotals[row.customer_id]=(swagTotals[row.customer_id]||0)+(parseFloat(row.value)||0);});}catch(e){}
   updateVaultBadge();renderKpis();renderAlpha();populateTeamSelect();renderList();
 }
 init();
