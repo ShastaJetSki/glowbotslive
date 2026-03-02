@@ -102,12 +102,17 @@
     .funnel-header:hover .funnel-edit-btn, .funnel-header:hover .funnel-delete-btn { opacity: 1; }
     .funnel-edit-btn:hover { background: var(--bg-hover); color: var(--accent-light); }
     .funnel-delete-btn:hover { background: color-mix(in srgb, #ef4444 15%, var(--bg-card)); color: #ef4444; border-color: #ef4444; }
-    .funnel-arrow { font-size: 22px; color: var(--text-secondary); transition: transform 0.3s; padding: 4px; }
-    .funnel-column.collapsed .funnel-arrow { transform: rotate(-90deg); }
+    .funnel-arrow { display: none; }
+    .funnel-expand-notes { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; transition: background .15s, color .15s, border-color .15s; }
+    .funnel-expand-notes:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .funnel-column.notes-open .funnel-expand-notes { background: var(--accent-primary); color: #fff; border-color: var(--accent-primary); }
     .funnel-column.collapsed .funnel-cards { display: none; }
     .funnel-column.collapsed .funnel-header { border-bottom: none; border-radius: 12px; }
-    .funnel-cards { flex: 1; padding: 8px; overflow-y: auto; min-height: 50px; transition: all 0.3s; }
+    .funnel-cards { flex: 1; padding: 8px; overflow-y: auto; min-height: 50px; }
     .funnel-cards.drag-over { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); border-radius: 8px; }
+    /* Notes row inside card */
+    .card-notes { display: none; font-size: 11px; color: var(--text-secondary); margin-top: 6px; padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--border-default) 60%, transparent); line-height: 1.5; font-style: italic; }
+    .funnel-column.notes-open .card-notes { display: block; }
 
     /* ===== CONTACT CARDS ===== */
     .contact-card { background: var(--bg-card); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: grab; border: 1px solid var(--border-default); border-left: 4px solid #eab308; transition: all 0.2s; }
@@ -395,7 +400,7 @@ function renderFunnelColumns(){
     var s=STAGES[id];var col=document.createElement('div');col.className='funnel-column';col.dataset.stage=id;
     var dblClick=canEdit?' ondblclick="startRenameFunnel(event,'+id+')"':'';
     var editBtns=canEdit?'<button class="funnel-edit-btn" onclick="event.stopPropagation();startRenameFunnel(event,'+id+')" title="Rename">✎</button><button class="funnel-delete-btn" onclick="event.stopPropagation();deleteFunnel('+id+')" title="Delete">✕</button>':'';
-    col.innerHTML='<div class="funnel-header" onclick="toggleColumn('+id+')"><div class="funnel-title"><span class="funnel-dot" style="background:'+s.color+'"></span><span class="funnel-title-text"'+dblClick+'>'+s.name+'</span></div><div class="funnel-header-controls">'+editBtns+'<span class="funnel-count" id="count'+id+'">0</span><span class="funnel-arrow">▼</span></div></div><div class="funnel-cards" id="stage'+id+'" ondragover="allowDrop(event)" ondrop="drop(event,'+id+')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)"></div>';
+    col.innerHTML='<div class="funnel-header"><div class="funnel-title" style="cursor:pointer;flex:1;" onclick="toggleColumn('+id+')"><span class="funnel-dot" style="background:'+s.color+'"></span><span class="funnel-title-text"'+dblClick+'>'+s.name+'</span></div><div class="funnel-header-controls">'+editBtns+'<span class="funnel-count" id="count'+id+'">0</span><button class="funnel-expand-notes" onclick="event.stopPropagation();toggleNotes('+id+')" title="Expand notes">■</button></div></div><div class="funnel-cards" id="stage'+id+'" ondragover="allowDrop(event)" ondrop="drop(event,'+id+')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)"></div>';
     fc.appendChild(col);
   });
   collapseFunnelsOnMobile();
@@ -497,10 +502,13 @@ function createContactCard(contact){
   // Line 2: phone LEFT + assigned RIGHT
   var infoRow='<div class="contact-info-row">'+(contact.phone?'<a class="contact-phone-link" href="tel:'+contact.phone+'" onclick="event.stopPropagation()">'+contact.phone+'</a>':'<span style="color:var(--text-secondary);font-size:12px;">No phone</span>')+'<span class="contact-assigned-inline"><span class="contact-assigned-dot" style="background:'+empColor+'"></span>'+empName+'</span></div>';
 
+  var notesHtml=contact.notes?'<div class="card-notes">'+contact.notes+'</div>':'';
+
   card.innerHTML=
     '<div class="contact-card-header"><div class="contact-name">'+firstName+(contact.organization_name?' <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">· '+contact.organization_name+'</span>':'')+'</div></div>'+
     miniRow+
     infoRow+
+    notesHtml+
     '<div class="progress-dots">'+dotsHtml+'<span class="progress-label">'+getStageName(stage)+'</span></div>';
 
   if(!isMobile){
@@ -524,6 +532,7 @@ function createContactCard(contact){
 }
 
 function toggleColumn(stage){var col=document.querySelector('.funnel-column[data-stage="'+stage+'"]');if(col)col.classList.toggle('collapsed');}
+function toggleNotes(stage){var col=document.querySelector('.funnel-column[data-stage="'+stage+'"]');if(col)col.classList.toggle('notes-open');}
 function allowDrop(e){e.preventDefault();}
 function dragEnter(e){e.preventDefault();e.currentTarget.classList.add('drag-over');}
 function dragLeave(e){e.currentTarget.classList.remove('drag-over');}
@@ -619,6 +628,7 @@ function openContactDetail(contact){
       '</div>'+
     '</div>'+
 
+    '<div class="contact-section"><div class="contact-section-title">Notes</div><textarea class="form-textarea" id="editNotes" placeholder="Additional notes...">'+(contact.notes||'')+'</textarea></div>'+
     '<div class="contact-section" style="padding-top:16px;border-top:1px solid var(--border-default);display:flex;flex-direction:column;gap:12px;">'+
       '<button class="btn-primary" style="width:100%;padding:12px;opacity:0.81;" onclick="saveContactChanges()">Save Changes</button>'+
       '<a href="sharklaw-profiles.html?id='+contact.customer_id+'" style="width:100%;padding:12px;text-align:center;text-decoration:none;display:block;background:#d97706;color:#fff;border:1px solid #d97706;border-radius:6px;font-size:14px;font-weight:500;opacity:0.81;">View Full Profile</a>'+
@@ -633,7 +643,7 @@ async function saveContactChanges(){
   if(!currentEditingContact)return;
   var firstName=document.getElementById('editFirstName').value.trim(),org=document.getElementById('editOrganization').value.trim(),phone=document.getElementById('editPhone').value.trim();
   if(!firstName){alert('Enter first name');return;}if(!org){alert('Enter organization');return;}if(!phone){alert('Enter phone number');return;}
-  var u={first_name:firstName,last_name:document.getElementById('editLastName').value.trim()||null,organization_name:org,phone:phone,email:document.getElementById('editEmail').value.trim()||null,customer_type:document.getElementById('editClientType').value||'prospect',assigned_to:document.getElementById('editAssignedTo').value||null,funnel_stage:parseInt(document.getElementById('editFunnelStage').value)||1,birthday:document.getElementById('editBirthday').value||null,anniversary:document.getElementById('editAnniversary').value||null,notes:null,updated_at:new Date().toISOString()};
+  var u={first_name:firstName,last_name:document.getElementById('editLastName').value.trim()||null,organization_name:org,phone:phone,email:document.getElementById('editEmail').value.trim()||null,customer_type:document.getElementById('editClientType').value||'prospect',assigned_to:document.getElementById('editAssignedTo').value||null,funnel_stage:parseInt(document.getElementById('editFunnelStage').value)||1,birthday:document.getElementById('editBirthday').value||null,anniversary:document.getElementById('editAnniversary').value||null,notes:document.getElementById('editNotes').value.trim()||null,updated_at:new Date().toISOString()};
   u.full_name=(u.first_name+(u.last_name?' '+u.last_name:'')).trim();
   try{var r=await sb.from('customers').update(u).eq('customer_id',currentEditingContact.customer_id).select().single();if(r.error)throw r.error;var idx=allContacts.findIndex(function(c){return c.customer_id===currentEditingContact.customer_id;});if(idx>=0)allContacts[idx]=Object.assign(allContacts[idx],u);closeContactDetailModal();renderContacts();updateStats();showToast('Contact saved!');}catch(e){alert('Error: '+(e.message||'Unknown'));}
 }
