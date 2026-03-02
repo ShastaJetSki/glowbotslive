@@ -132,6 +132,12 @@
     .cc-notes { font-size: 11px; color: var(--text-secondary); margin-top: 6px; padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--border-default) 60%, transparent); line-height: 1.5; font-style: italic; }
     .cc-empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 14px; }
 
+    .stage-selector { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .stage-option { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; }
+    .stage-option::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .stage-option:hover { background: var(--bg-hover); }
+    .stage-option.active { border-color: currentColor; background: color-mix(in srgb, currentColor 20%, transparent); }
+
     /* ===== MODALS ===== */
     .modal-bg { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
     .modal-bg.active { display: flex; }
@@ -474,8 +480,9 @@ function openDet(id){
   var c=allContacts.find(function(x){return x.customer_id==id;});if(!c)return;
   currentEditId=id;
   var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||c.full_name||'Unknown';
-  var ini=name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
+  var ini=name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'U';
   var ec=empColor(c.assigned_to);
+  var stage=c.funnel_stage||getStageIds()[0]||1;if(!STAGES[stage])stage=getStageIds()[0]||1;
   var ctO='<option value="">-- Select --</option>';['MC','RC','HOG','CC','SC','Independent','Shop'].forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
 
   document.getElementById('detBody').innerHTML=
@@ -505,12 +512,17 @@ function openDet(id){
         '<div class="fg" style="margin-bottom:0"><label class="fl">Assigned To</label><select class="fsel" id="eA">'+buildAssignOpts(c.assigned_to)+'</select></div>'+
       '</div>'+
     '</div>'+
+    '<div class="sec"><div class="sec-title">Funnel Stage</div>'+
+      '<div class="stage-selector">'+getStageIds().map(function(s){return'<button type="button" class="stage-option'+(s===stage?' active':'')+'" style="color:'+getStageColor(s)+'" data-stage="'+s+'" onclick="selectDetStage('+s+')">'+getStageName(s)+'</button>';}).join('')+'</div>'+
+      '<input type="hidden" id="eStage" value="'+stage+'">'+
+    '</div>'+
     '<div class="sec"><div class="sec-title">Important Dates</div>'+
       '<div class="fr">'+
         '<div class="fg" style="margin-bottom:0"><label class="fl">Birthday</label><input type="date" class="fi" id="eBd" value="'+(c.birthday?c.birthday.split('T')[0]:'')+'"></div>'+
         '<div class="fg" style="margin-bottom:0"><label class="fl">Anniversary</label><input type="date" class="fi" id="eAn" value="'+(c.anniversary?c.anniversary.split('T')[0]:'')+'"></div>'+
       '</div>'+
     '</div>'+
+    '<div class="sec"><div class="sec-title">Notes</div><textarea class="fta" id="eN" placeholder="Additional notes...">'+(c.notes||'')+'</textarea></div>'+
     '<div class="sec" style="padding-top:16px;border-top:1px solid var(--border-default);display:flex;flex-direction:column;gap:12px;">'+
       '<button class="btn-p" style="width:100%;padding:12px;opacity:0.81;" onclick="saveDet()">Save Changes</button>'+
       '<a href="sharklaw-profiles.html?id='+c.customer_id+'" style="width:100%;padding:12px;text-align:center;text-decoration:none;display:block;background:#d97706;color:#fff;border:1px solid #d97706;border-radius:6px;font-size:14px;font-weight:500;opacity:0.81;">View Full Profile</a>'+
@@ -519,6 +531,7 @@ function openDet(id){
 
   document.getElementById('detailModal').classList.add('active');
 }
+function selectDetStage(s){document.getElementById('eStage').value=s;document.querySelectorAll('#detBody .stage-option').forEach(function(btn){btn.classList.toggle('active',parseInt(btn.dataset.stage)===s);});}
 function closeDet(){document.getElementById('detailModal').classList.remove('active');}
 function buildAssignOpts(sel){var h='<option value="">-- Unassigned --</option>';allEmployees.forEach(function(e){var n=((e.first_name||'')+' '+(e.last_name||'')).trim()||e.email;h+='<option value="'+e.employee_id+'"'+(e.employee_id===sel?' selected':'')+'>'+n+'</option>';});return h;}
 
@@ -526,7 +539,7 @@ async function saveDet(){
   var c=allContacts.find(function(x){return x.customer_id==currentEditId;});if(!c)return;
   var fn=document.getElementById('eF').value.trim(),org=document.getElementById('eO').value.trim(),ph=document.getElementById('eP').value.trim();
   if(!fn||!ph){alert('First name and phone are required.');return;}
-  var u={first_name:fn,last_name:document.getElementById('eL').value.trim()||null,organization_name:org||null,phone:ph,email:document.getElementById('eE').value.trim()||null,customer_type:document.getElementById('eT').value||'prospect',assigned_to:document.getElementById('eA').value||null,birthday:document.getElementById('eBd').value||null,anniversary:document.getElementById('eAn').value||null,notes:null,updated_at:new Date().toISOString()};
+  var u={first_name:fn,last_name:document.getElementById('eL').value.trim()||null,organization_name:org||null,phone:ph,email:document.getElementById('eE').value.trim()||null,customer_type:document.getElementById('eT').value||'prospect',assigned_to:document.getElementById('eA').value||null,funnel_stage:parseInt(document.getElementById('eStage').value)||1,birthday:document.getElementById('eBd').value||null,anniversary:document.getElementById('eAn').value||null,notes:document.getElementById('eN').value.trim()||null,updated_at:new Date().toISOString()};
   u.full_name=fn+(u.last_name?' '+u.last_name:'');
   try{var r=await sb.from('customers').update(u).eq('customer_id',currentEditId);if(r.error)throw r.error;Object.assign(c,u);closeDet();renderAll();showToast('Contact saved!');}catch(e){alert('Error: '+e.message);}
 }
