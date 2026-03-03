@@ -498,7 +498,11 @@ function renderContacts(){
     var org=(contact.organization_name||'').toLowerCase();
     var matchSearch=!searchTerm||name.includes(searchTerm)||(contact.phone||'').includes(searchTerm)||org.includes(searchTerm);
     var matchEmp=!empFilter||(empFilter==='__none'?!contact.assigned_to:contact.assigned_to===empFilter);
-    var matchRevisit=!activeRevisitDays||isRevisitDue(contact,activeRevisitDays);
+    // Revisit filter only hides non-due contacts IN the confirmed stage
+    // All other stage contacts always show (unless emp/search filters apply)
+    var confirmedId=getConfirmedStageId();
+    var isConfirmed=parseInt(contact.funnel_stage||0)===parseInt(confirmedId);
+    var matchRevisit=!activeRevisitDays||!isConfirmed||isRevisitDue(contact,activeRevisitDays);
     if(matchSearch&&matchEmp&&matchRevisit){
       var stage=contact.funnel_stage||ids[0]||1;if(!STAGES[stage])stage=ids[0]||1;
       if(stageCounts[stage]!==undefined)stageCounts[stage]++;
@@ -574,7 +578,17 @@ function createContactCard(contact){
 }
 
 function toggleColumn(stage){var col=document.querySelector('.funnel-column[data-stage="'+stage+'"]');if(col)col.classList.toggle('collapsed');}
-function toggleNotes(stage){var col=document.querySelector('.funnel-column[data-stage="'+stage+'"]');if(col)col.classList.toggle('notes-open');}
+function toggleNotes(stage){
+  var col=document.querySelector('.funnel-column[data-stage="'+stage+'"]');
+  if(!col)return;
+  var cards=col.querySelectorAll('.contact-card');
+  var anyCollapsed=Array.from(cards).some(function(cd){return!cd.classList.contains('card-expanded');});
+  cards.forEach(function(cd){
+    if(anyCollapsed){cd.classList.add('card-expanded');}
+    else{cd.classList.remove('card-expanded');}
+  });
+  col.classList.toggle('notes-open',anyCollapsed);
+}
 function allowDrop(e){e.preventDefault();}
 function dragEnter(e){e.preventDefault();e.currentTarget.classList.add('drag-over');}
 function dragLeave(e){e.currentTarget.classList.remove('drag-over');}
@@ -604,6 +618,12 @@ function toggleRevisit(days){
   activeRevisitDays=(activeRevisitDays===days)?null:days;
   [30,45,90,180].forEach(function(d){var b=document.getElementById('pill'+d);if(b)b.classList.toggle('on',activeRevisitDays===d);});
   renderContacts();updateStats();
+  // Scroll to confirmed column when filter is active
+  if(activeRevisitDays){
+    var confirmedId=getConfirmedStageId();
+    var col=document.querySelector('.funnel-column[data-stage="'+confirmedId+'"]');
+    if(col)setTimeout(function(){col.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});},100);
+  }
 }
 
 function applyFilters(){renderContacts();updateStats();}
