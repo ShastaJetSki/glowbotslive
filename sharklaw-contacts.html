@@ -540,7 +540,8 @@ function openDet(id){
     '<div class="sec"><div class="sec-title">Classification</div>'+
       '<div class="fr" style="margin-bottom:12px">'+
         '<div class="fg" style="margin-bottom:0"><label class="fl">Client Type</label><select class="fsel" id="eT">'+ctO+'</select></div>'+
-        '<div class="fg" style="margin-bottom:0"><label class="fl">Assigned To</label><select class="fsel" id="eA">'+buildAssignOpts(c.assigned_to)+'</select></div>'+
+        '<div class="fg" style="margin-bottom:0"><label class="fl">Assigned To</label>'+(isAdmin()||isManager()?'<select class="fsel" id="eA">'+buildAssignOpts(c.assigned_to)+'</select>':'<span style="font-size:13px;color:var(--text-secondary);">'+empName(c.assigned_to)+'</span><input type="hidden" id="eA" value="'+(c.assigned_to||'')+'">'
+)+'</div>'+
       '</div>'+
     '</div>'+
     '<div class="sec"><div class="sec-title">Funnel Stage</div>'+
@@ -591,14 +592,20 @@ function renderAll(){renderKpis();renderList();}
 function openAdd(){
   ['nF','nL','nO','nP','nE'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('nT').value='';
-  document.getElementById('nA').innerHTML=buildAssignOpts(null);
+  var canAssign=isAdmin()||isManager();
+  var assignWrap=document.getElementById('nA').closest('.fg');
+  if(assignWrap)assignWrap.style.display=canAssign?'':'none';
+  document.getElementById('nA').innerHTML=buildAssignOpts(canAssign?null:currentEmployeeId);
+  if(!canAssign)document.getElementById('nA').value=currentEmployeeId||'';
   document.getElementById('addModal').classList.add('active');
 }
 function closeAdd(){document.getElementById('addModal').classList.remove('active');}
 async function saveAdd(){
   var fn=document.getElementById('nF').value.trim(),org=document.getElementById('nO').value.trim(),ph=document.getElementById('nP').value.trim();
   if(!fn||!ph){alert('First name and phone are required.');return;}
-  var d={tenant_id:currentTenantId,first_name:fn,last_name:document.getElementById('nL').value.trim()||null,full_name:fn,phone:ph,email:document.getElementById('nE').value.trim()||null,organization_name:org||null,customer_type:document.getElementById('nT').value||'prospect',funnel_stage:1,notes:null,assigned_to:document.getElementById('nA').value||null,created_at:new Date().toISOString()};
+  var canAssign=isAdmin()||isManager();
+  var assignedTo=canAssign?(document.getElementById('nA').value||null):currentEmployeeId;
+  var d={tenant_id:currentTenantId,first_name:fn,last_name:document.getElementById('nL').value.trim()||null,full_name:fn,phone:ph,email:document.getElementById('nE').value.trim()||null,organization_name:org||null,customer_type:document.getElementById('nT').value||'prospect',funnel_stage:1,notes:null,assigned_to:assignedTo,created_at:new Date().toISOString()};
   if(d.last_name)d.full_name=fn+' '+d.last_name;
   try{var r=await sb.from('customers').insert(d).select().single();if(r.error)throw r.error;allContacts.unshift(r.data);closeAdd();renderAll();showToast('Contact added!');}catch(e){alert('Error: '+e.message);}
 }
