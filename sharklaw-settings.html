@@ -642,7 +642,8 @@ async function selectColor(el){
   document.getElementById('empColor').value=color;
   if(editingEmployeeId){
     el.style.transform='scale(1.2)';el.style.boxShadow='0 0 10px rgba(255,255,255,0.4)';
-    await sb.from('employees').update({color:color}).eq('employee_id',editingEmployeeId);
+    var cr=await sb.from('employees').update({color:color}).eq('employee_id',editingEmployeeId);
+    if(cr.error){console.error('Color update error:',cr.error.message);}
     renderEmployees();
     setTimeout(function(){el.style.transform='';el.style.boxShadow='';},300);
   }
@@ -652,10 +653,37 @@ async function checkAuth(){var r=await sb.auth.getSession();var session=r.data.s
 async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('/');}
 function updateEmailDisplay(){if(userEmail){document.getElementById('desktopBusinessName').textContent=userEmail;document.getElementById('mobileBusinessName').textContent=userEmail;}}
 
-async function loadBusinessSettings(){if(!currentTenantId)return;var r=await sb.from('business_settings').select('*').eq('tenant_id',currentTenantId).single();if(r.data){document.getElementById('businessName').value=r.data.business_name||'';document.getElementById('contactEmail').value=r.data.contact_email||'';document.getElementById('contactPhone').value=r.data.contact_phone||'';document.getElementById('businessAddress').value=r.data.address||'';document.getElementById('businessCityStateZip').value=r.data.city_state_zip||'';}}
-async function saveBusinessSettings(){var data={business_name:document.getElementById('businessName').value.trim()||null,contact_email:document.getElementById('contactEmail').value.trim()||null,contact_phone:document.getElementById('contactPhone').value.trim()||null,address:document.getElementById('businessAddress').value.trim()||null,city_state_zip:document.getElementById('businessCityStateZip').value.trim()||null,updated_at:new Date().toISOString()};var r=await sb.from('business_settings').update(data).eq('tenant_id',currentTenantId);var msg=document.getElementById('businessSaveMsg');if(r.error){msg.innerHTML='<span class="error">Error: '+r.error.message+'</span>';}else{msg.innerHTML='<span class="success">Saved!</span>';setTimeout(function(){msg.innerHTML='';},3000);}}
+async function loadBusinessSettings(){if(!currentTenantId)return;var r=await sb.from('business_settings').select('*').eq('tenant_id',currentTenantId).single();if(r.data){document.getElementById('businessName').value=r.data.business_name||'';document.getElementById('contactEmail').value=r.data.contact_email||'';document.getElementById('contactPhone').value=r.data.contact_phone||'';document.getElementById('businessAddress').value=r.data.address||'';document.getElementById('businessCityStateZip').value=r.data.business_city_state_zip||'';}}
+async function saveBusinessSettings(){var data={business_name:document.getElementById('businessName').value.trim()||null,contact_email:document.getElementById('contactEmail').value.trim()||null,contact_phone:document.getElementById('contactPhone').value.trim()||null,address:document.getElementById('businessAddress').value.trim()||null,business_city_state_zip:document.getElementById('businessCityStateZip').value.trim()||null,updated_at:new Date().toISOString()};var r=await sb.from('business_settings').update(data).eq('tenant_id',currentTenantId);var msg=document.getElementById('businessSaveMsg');if(r.error){msg.innerHTML='<span class="error">Error: '+r.error.message+'</span>';}else{msg.innerHTML='<span class="success">Saved!</span>';setTimeout(function(){msg.innerHTML='';},3000);}}
 
-async function loadEmployees(){if(!currentTenantId)return;var r=await sb.from('employees').select('employee_id,first_name,last_name,email,phone,department,role,color,is_active,created_at').eq('tenant_id',currentTenantId).or('is_active.is.null,is_active.eq.true').order('last_name');allEmployees=r.data||[];var dr=await sb.from('employees').select('employee_id,first_name,last_name,email,phone,department,role,color,is_active,deactivated_at').eq('tenant_id',currentTenantId).eq('is_active',false).order('last_name');allDeactivatedEmployees=dr.data||[];renderEmployees();renderDeactivatedEmployees();updateEmployeeStats();}
+async function loadEmployees(){
+  if(!currentTenantId)return;
+  try{
+    // Active employees — only select columns that definitely exist
+    var r=await sb.from('employees')
+      .select('employee_id,tenant_id,user_id,first_name,last_name,email,phone,department,role,job_title,hire_date,employment_type,color,is_active,created_at,avatar_url,bio,deactivated_at,deactivated_by')
+      .eq('tenant_id',currentTenantId)
+      .or('is_active.is.null,is_active.eq.true')
+      .order('last_name');
+    if(r.error){console.error('loadEmployees active error:',r.error.message);}
+    allEmployees=r.data||[];
+  }catch(e){console.error('loadEmployees active exception:',e);allEmployees=[];}
+
+  try{
+    // Deactivated employees — use * to avoid missing-column errors
+    var dr=await sb.from('employees')
+      .select('*')
+      .eq('tenant_id',currentTenantId)
+      .eq('is_active',false)
+      .order('last_name');
+    if(dr.error){console.error('loadEmployees deact error:',dr.error.message);}
+    allDeactivatedEmployees=dr.data||[];
+  }catch(e){console.error('loadEmployees deact exception:',e);allDeactivatedEmployees=[];}
+
+  renderEmployees();
+  renderDeactivatedEmployees();
+  updateEmployeeStats();
+}
 var activeRoleFilter='all';
 
 function setRoleFilter(role){
@@ -706,7 +734,10 @@ function buildEmpCard(emp,idx){
   var dept=emp.department?(emp.department.charAt(0).toUpperCase()+emp.department.slice(1)):'';
   var phone=emp.phone||'';
   var email=emp.email||'';
-  var joined=emp.created_at?new Date(emp.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}):'';
+  var jobTitle=emp.job_title||'';
+  var hireDate=emp.hire_date?new Date(emp.hire_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'}):
+              (emp.created_at?new Date(emp.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}):'');
+  var joined=hireDate;
 
   return '<div class="emp-card" data-empid="'+emp.employee_id+'" style="--emp-accent:'+accentColor+';" ondblclick="cardDblClick(this)">'
     +'<div class="emp-card-edit" onclick="cardEditClick(event,this)" title="Edit member">Edit</div>'
@@ -716,10 +747,10 @@ function buildEmpCard(emp,idx){
       +'<span class="emp-card-role '+badgeClass+'">'+roleDisplay+'</span>'
     +'</div>'
     +'<div class="emp-card-meta">'
-      +(dept?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Dept</span><span class="emp-card-meta-val">'+dept+'</span></div>':'')
+      +(jobTitle?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Title</span><span class="emp-card-meta-val">'+jobTitle+'</span></div>':'')+(dept?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Dept</span><span class="emp-card-meta-val">'+dept+'</span></div>':'')
       +(email?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Email</span><span class="emp-card-meta-val" title="'+email+'">'+email+'</span></div>':'')
       +(phone?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Tel</span><span class="emp-card-meta-val">'+phone+'</span></div>':'')
-      +(joined?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Since</span><span class="emp-card-meta-val">'+joined+'</span></div>':'')
+      +(joined?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Hired</span><span class="emp-card-meta-val">'+joined+'</span></div>':'')
     +'</div>'
   +'</div>';
 }
@@ -889,7 +920,7 @@ function renderDeactivatedEmployees(){
       +'<div class="emp-card-name">'+name+'</div>'
       +'<div style="text-align:center;"><span class="emp-card-role" style="background:rgba(107,114,128,0.2);color:#9ca3af;">'+roleDisplay+'</span></div>'
       +'<div class="emp-card-meta">'
-        +(dept?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Dept</span><span class="emp-card-meta-val">'+dept+'</span></div>':'')
+        +(jobTitle?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Title</span><span class="emp-card-meta-val">'+jobTitle+'</span></div>':'')+(dept?'<div class="emp-card-meta-row"><span class="emp-card-meta-label">Dept</span><span class="emp-card-meta-val">'+dept+'</span></div>':'')
         +'<div class="emp-card-meta-row"><span class="emp-card-meta-val" style="color:#9ca3af;">Deactivated</span></div>'
       +'</div>'
     +'</div>';
@@ -910,7 +941,7 @@ async function saveEmployee(){
   var selectedColor=document.getElementById('empColor').value||'#3b82f6';
   var selectedRole=document.getElementById('empRole').value||'associate';
   if(!firstName||!lastName){document.getElementById('employeeModalMsg').innerHTML='<span class="error">First and last name are required.</span>';return;}
-  var data={first_name:firstName,last_name:lastName,email:employeeEmail,phone:document.getElementById('empPhone').value.trim()||null,department:document.getElementById('empDepartment').value||null,role:selectedRole,color:selectedColor};
+  var data={first_name:firstName,last_name:lastName,email:employeeEmail,phone:document.getElementById('empPhone').value.trim()||null,department:document.getElementById('empDepartment').value||null,role:selectedRole,color:selectedColor,updated_at:new Date().toISOString()};
   try{
     if(editingEmployeeId){
       // EDIT EXISTING
@@ -968,7 +999,12 @@ async function deleteEmployee(){
   if(!confirm('Deactivate '+name+'?\n\nThey will be blocked from logging in immediately.\nAll their appointments, events, and contacts will be set to Unassigned.'))return;
   try{
     var empId=editingEmployeeId;
-    await sb.from('employees').update({is_active:false,deactivated_at:new Date().toISOString(),deactivated_by:currentUserId}).eq('employee_id',empId);
+    // Try with optional audit columns first, fall back if they don't exist
+    try{
+      await sb.from('employees').update({is_active:false,deactivated_at:new Date().toISOString(),deactivated_by:currentUserId}).eq('employee_id',empId);
+    }catch(fallbackErr){
+      await sb.from('employees').update({is_active:false}).eq('employee_id',empId);
+    }
     if(emp.email){await sb.from('users').update({is_active:false,deactivated_at:new Date().toISOString()}).eq('email',emp.email).eq('tenant_id',currentTenantId);}
     await sb.from('sales_appointments').update({assigned_to:null,updated_at:new Date().toISOString()}).eq('tenant_id',currentTenantId).eq('assigned_to',empId).or('is_deleted.is.null,is_deleted.eq.false');
     await sb.from('events').update({assigned_to:null,updated_at:new Date().toISOString()}).eq('tenant_id',currentTenantId).eq('assigned_to',empId).or('is_deleted.is.null,is_deleted.eq.false');
@@ -983,7 +1019,11 @@ async function reactivateEmployee(){
   var name=((emp.first_name||'')+' '+(emp.last_name||'')).trim();
   if(!confirm('Reactivate '+name+'? They will be able to log in again.'))return;
   try{
-    await sb.from('employees').update({is_active:true,deactivated_at:null,deactivated_by:null}).eq('employee_id',editingEmployeeId);
+    try{
+      await sb.from('employees').update({is_active:true,deactivated_at:null,deactivated_by:null}).eq('employee_id',editingEmployeeId);
+    }catch(fallbackErr){
+      await sb.from('employees').update({is_active:true}).eq('employee_id',editingEmployeeId);
+    }
     if(emp.email){await sb.from('users').update({is_active:true,deactivated_at:null}).eq('email',emp.email).eq('tenant_id',currentTenantId);}
     closeEmployeeModal();await loadEmployees();showToast(name+' reactivated.');
   } catch(e){document.getElementById('employeeModalMsg').innerHTML='<span class="error">Error: '+(e.message||'Failed')+'</span>';}
