@@ -624,49 +624,45 @@ function renderWeek(){
   var el=document.getElementById('weekView'),ws=getWeekStart(viewDate);
   var days=[];
   for(var d=0;d<7;d++){var dd=new Date(ws);dd.setDate(ws.getDate()+d);days.push(dd);}
-  var hourHasEvents={};
-  for(var hr=6;hr<22;hr++){
-    days.forEach(function(dd){
-      var ds=dateStr(dd);
-      if(getUnifiedItems(ds).some(function(it){return parseInt((it._time||'09:00').split(':')[0])===hr;}))
-        hourHasEvents[hr]=true;
-    });
-  }
-  var h='<div class="week-header"><div class="week-header-day"></div>';
+
+  // Build header
+  var h='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;flex-shrink:0;border-bottom:2px solid var(--border-default);">';
   days.forEach(function(dd){
-    h+='<div class="week-header-day'+(isToday(dd)?' today':'')+'"><span class="wh-num">'+dd.getDate()+'</span>'+DAYS[(dd.getDay()+6)%7]+'</div>';
+    var todayCls=isToday(dd)?'color:var(--accent-light);border-bottom:2px solid var(--accent-primary);':'color:var(--text-secondary);';
+    h+='<div style="text-align:center;padding:8px 2px;font-size:11px;font-weight:700;'+todayCls+'"><span style="font-size:20px;font-weight:700;display:block;line-height:1.2;">'+dd.getDate()+'</span>'+DAYS[(dd.getDay()+6)%7]+'</div>';
   });
-  h+='</div><div class="week-scroll"><div class="week-grid">';
-  for(var hr=6;hr<22;hr++){
-    var lb=hr<12?(hr===0?'12a':hr+'a'):(hr===12?'12p':(hr-12)+'p');
-    var hasEv=hourHasEvents[hr];
-    var rowH=hasEv?'90px':'32px';
-    h+='<div class="week-time" style="height:'+rowH+';min-height:'+rowH+';">'+lb+'</div>';
-    days.forEach(function(dd){
-      var ds=dateStr(dd);
-      var items=getUnifiedItems(ds).filter(function(it){return parseInt((it._time||'09:00').split(':')[0])===hr;});
-      h+='<div class="week-cell'+(isToday(dd)?' today-col':'')+'" style="min-height:'+rowH+';height:'+rowH+';" onclick="clickDate(this.dataset.ds,'+hr+')" data-ds="'+ds+'">';
-      items.forEach(function(it){
-        var col=getItemColor(it);
-        var handler=it._isEvent?'openEditEvent':'openEditAppt';
-        var mn=memberName(it._empId);
-        var timeStr=formatTime(it._time);
-        var badge=it._isEvent?'<span style="font-size:7px;background:'+col+';padding:1px 3px;border-radius:2px;margin-left:2px;color:#fff;vertical-align:middle;">EVT</span>':'';
-        var r2=100,g2=100,b2=200;
-        if(col&&col[0]==='#'){var hx=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2=parseInt(hx.slice(0,2),16)||100;g2=parseInt(hx.slice(2,4),16)||100;b2=parseInt(hx.slice(4,6),16)||200;}
-        var bg='rgba('+r2+','+g2+','+b2+',0.35)';
-        h+='<div class="week-ev" style="background:'+bg+';border-left:3px solid '+col+';color:var(--text-primary);" onclick="event.stopPropagation();'+handler+'(this.dataset.id)" data-id="'+it._id+'">'+
-          '<div style="font-weight:700;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it._title)+badge+'</div>'+
-          '<div style="font-size:9px;color:var(--text-secondary);">'+timeStr+'</div>'+
-          (mn?'<div style="font-size:9px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(mn)+'</div>':'')+
-          (it._location?'<div style="font-size:9px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it._location)+'</div>':'')+
-        '</div>';
-      });
-      h+='</div>';
+  h+='</div>';
+
+  // Build body - just stack all events per day sorted by time, no time grid
+  h+='<div style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 #111;"><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;padding:6px 2px;align-items:start;">';
+  days.forEach(function(dd){
+    var ds=dateStr(dd);
+    var items=getUnifiedItems(ds);
+    items.sort(function(a,b){return(a._time||'').localeCompare(b._time||'');});
+    var todayBg=isToday(dd)?'background:color-mix(in srgb,var(--accent-primary) 4%,transparent);':'';
+    h+='<div style="display:flex;flex-direction:column;gap:4px;padding:2px;min-height:60px;border-right:1px solid var(--border-default);'+todayBg+'">';
+    items.forEach(function(it){
+      var col=getItemColor(it);
+      var handler=it._isEvent?'openEditEvent':'openEditAppt';
+      var mn=memberName(it._empId);
+      var timeStr=it._time?formatTime(it._time):'';
+      var badge=it._isEvent?'<span style="font-size:7px;background:'+col+';padding:1px 3px;border-radius:2px;margin-left:2px;color:#fff;">EVT</span>':'';
+      var r2=100,g2=100,b2=200;
+      if(col&&col[0]==='#'){var hx=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2=parseInt(hx.slice(0,2),16)||100;g2=parseInt(hx.slice(2,4),16)||100;b2=parseInt(hx.slice(4,6),16)||200;}
+      var bg='rgba('+r2+','+g2+','+b2+',0.35)';
+      h+='<div style="background:'+bg+';border-left:3px solid '+col+';color:var(--text-primary);padding:5px 6px;border-radius:4px;cursor:pointer;font-size:10px;overflow:hidden;" onclick="event.stopPropagation();'+handler+'(this.dataset.id)" data-id="'+it._id+'">'+
+        '<div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it._title)+badge+'</div>'+
+        (timeStr?'<div style="font-size:9px;color:var(--text-secondary);">'+timeStr+'</div>':'')+
+        (mn?'<div style="font-size:9px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(mn)+'</div>':'')+
+        (it._location?'<div style="font-size:9px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it._location)+'</div>':'')+
+      '</div>';
     });
-  }
+    if(!items.length)h+='<div style="height:40px;"></div>';
+    h+='</div>';
+  });
   h+='</div></div>';
   el.innerHTML=h;
+  el.style.flexDirection='column';
 }
 
 function renderDay(){
