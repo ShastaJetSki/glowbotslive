@@ -334,11 +334,11 @@ async function loadKpis(){
 async function loadAppointments(){
   var el=document.getElementById('apptsContainer');
   var todayStr=new Date().toISOString().split('T')[0];
-  var r=await sb.from('sales_appointments').select('appointment_id,appointment_date,notes,contact_id,assigned_to,contacts(first_name,last_name)').eq('tenant_id',currentTenantId).gte('appointment_date',todayStr+'T00:00:00').lte('appointment_date',todayStr+'T23:59:59').order('appointment_date').limit(5);
+  var r=await sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,contact_id,assigned_to,contacts(first_name,last_name)').eq('tenant_id',currentTenantId).gte('appointment_date',todayStr+'T00:00:00').lte('appointment_date',todayStr+'T23:59:59').order('appointment_date').limit(5);
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No appointments today</div>';return;}
   el.innerHTML='<div class="appt-list">'+r.data.map(function(a){
     var dt=new Date(a.appointment_date);
-    var time=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+    var time=a.appointment_time?a.appointment_time.substring(0,5):(dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}));
     var name=a.contacts?((a.contacts.first_name||'')+' '+(a.contacts.last_name||'')).trim():'Unknown';
     return'<div class="appt-item"><div class="appt-time">'+time+'</div><div class="appt-info"><div class="appt-name">'+esc(name)+'</div><div class="appt-note">'+esc(a.notes||'No notes')+'</div></div></div>';
   }).join('')+'</div>';
@@ -369,11 +369,11 @@ async function loadContacts(){
 
 async function loadTasks(){
   var el=document.getElementById('tasksContainer');
-  var r=await sb.from('tasks').select('task_id,title,due_date,status').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).neq('status','done').order('due_date',{ascending:true,nullsFirst:false}).limit(6);
+  var r=await sb.from('tasks').select('task_id,title,due_at,status').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).neq('status','done').order('due_date',{ascending:true,nullsFirst:false}).limit(6);
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks — you\'re all caught up! 🎉</div>';return;}
   var today=new Date();today.setHours(0,0,0,0);
   el.innerHTML='<div class="task-list">'+r.data.map(function(t){
-    var due=t.due_date?new Date(t.due_date):null;
+    var due=t.due_at?new Date(t.due_at):null;
     var overdue=due&&due<today;
     var dueLabel=due?due.toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
     return'<div class="task-item"><div class="task-check" onclick="toggleTask(\''+t.task_id+'\',this)"></div><div class="task-text">'+esc(t.title||'Untitled')+'</div>'+(dueLabel?'<div class="task-due'+(overdue?' overdue':'')+'" >'+dueLabel+'</div>':'')+'</div>';
