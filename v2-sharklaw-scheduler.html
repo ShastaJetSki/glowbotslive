@@ -637,7 +637,7 @@ function renderWeek(){
   h+='</div>';
 
   // Body - equal width columns, cards taller
-  h+='<div style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 #111;">'+
+  h+='<div id="weekBody" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 #111;">'+
      '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;align-items:start;">';
 
   days.forEach(function(dd){
@@ -853,13 +853,45 @@ function navNext(dir){slideNav(dir||'left',function(){_doNavNext();});}
 
 (function(){
   var va=document.getElementById('viewArea');if(!va)return;
-  var accX=0,accY=0,accTimer=null,THRESHOLD=150;
+  var accX=0,accY=0,accTimer=null;
+  var THRESHOLD_NAV=400;   // aggressive scroll needed to navigate weeks
+  var THRESHOLD_X=150;     // horizontal swipe threshold
+  var SCROLL_TIMEOUT=600;  // reset accumulator after this ms of inactivity
+
   va.addEventListener('wheel',function(e){
-    e.preventDefault();if(scrollLocked)return;
-    accX+=e.deltaX;accY+=e.deltaY;clearTimeout(accTimer);accTimer=setTimeout(function(){accX=0;accY=0;},400);
+    // In week view, check if the week body container can scroll vertically
+    if(currentView==='week'){
+      var weekBody=document.getElementById('weekBody');
+      if(weekBody&&weekBody.scrollHeight>weekBody.clientHeight+4){
+        // Can scroll internally - let vertical scroll happen naturally unless very aggressive
+        var isHoriz=Math.abs(e.deltaX)>Math.abs(e.deltaY);
+        if(!isHoriz){
+          // Vertical - let it scroll the container, only navigate if accumulator is very high
+          accY+=e.deltaY;
+          clearTimeout(accTimer);
+          accTimer=setTimeout(function(){accX=0;accY=0;},SCROLL_TIMEOUT);
+          var atTop=weekBody.scrollTop<=2;
+          var atBot=weekBody.scrollTop+weekBody.clientHeight>=weekBody.scrollHeight-2;
+          // Allow natural scroll unless at boundary AND accumulated enough
+          if((e.deltaY<0&&atTop&&accY<=-THRESHOLD_NAV)||(e.deltaY>0&&atBot&&accY>=THRESHOLD_NAV)){
+            e.preventDefault();
+            if(scrollLocked)return;
+            accY>0?navNext('up'):navPrev('down');
+            accX=0;accY=0;
+          }
+          // else let browser scroll naturally
+          return;
+        }
+      }
+    }
+    // Default: prevent and accumulate for nav
+    e.preventDefault();
+    if(scrollLocked)return;
+    accX+=e.deltaX;accY+=e.deltaY;
+    clearTimeout(accTimer);accTimer=setTimeout(function(){accX=0;accY=0;},SCROLL_TIMEOUT);
     var ax=Math.abs(accX),ay=Math.abs(accY);
-    if(ay>=THRESHOLD&&ay>=ax){accY>0?navNext('up'):navPrev('down');accX=0;accY=0;}
-    else if(ax>=THRESHOLD&&ax>ay){accX>0?navNext('left'):navPrev('right');accX=0;accY=0;}
+    if(ay>=THRESHOLD_NAV&&ay>=ax){accY>0?navNext('up'):navPrev('down');accX=0;accY=0;}
+    else if(ax>=THRESHOLD_X&&ax>ay){accX>0?navNext('left'):navPrev('right');accX=0;accY=0;}
   },{passive:false});
 })();
 
