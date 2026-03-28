@@ -197,6 +197,7 @@
   <div class="kpi-pill"><div class="kpi-val" id="kAppts">—</div><div class="kpi-lbl">Today's Appts</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kTasks">—</div><div class="kpi-lbl">Open Tasks</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kStage">—</div><div class="kpi-lbl">Active Stage</div></div>
+  <div class="kpi-pill"><div class="kpi-val" id="k7Days">—</div><div class="kpi-lbl">Appts Next 7 Days</div></div>
 </div>
 
 <!-- GREETING -->
@@ -318,7 +319,7 @@ async function loadKpis(){
   var [cr,mr,ar,tr]=await Promise.all([
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false'),
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).or('is_deleted.is.null,is_deleted.eq.false'),
-    sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr+'T00:00:00').lte('appointment_date',todayStr+'T23:59:59'),
+    sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).neq('status','cancelled'),
     sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).neq('status','done')
   ]);
   document.getElementById('kTotal').textContent=cr.count??0;
@@ -326,6 +327,11 @@ async function loadKpis(){
   document.getElementById('kAppts').textContent=ar.count??0;
   document.getElementById('kTasks').textContent=tr.count??0;
   // Top funnel stage
+  // Next 7 days appointments
+  var next7=new Date();next7.setDate(next7.getDate()+7);
+  var next7Str=next7.toISOString().split('T')[0];
+  var a7r=await sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str).neq('status','cancelled');
+  document.getElementById('k7Days').textContent=a7r.count??0;
   var sr=await sb.from('contacts').select('funnel_stage').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');
   if(sr.data&&sr.data.length){var freq={};sr.data.forEach(function(c){var s=c.funnel_stage||1;freq[s]=(freq[s]||0)+1;});var top=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];})[0];document.getElementById('kStage').textContent='S'+top;}
   else{document.getElementById('kStage').textContent='—';}
@@ -334,11 +340,10 @@ async function loadKpis(){
 async function loadAppointments(){
   var el=document.getElementById('apptsContainer');
   var todayStr=new Date().toISOString().split('T')[0];
-  var r=await sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,contact_id,assigned_to,contacts(first_name,last_name)').eq('tenant_id',currentTenantId).gte('appointment_date',todayStr+'T00:00:00').lte('appointment_date',todayStr+'T23:59:59').order('appointment_date').limit(5);
+  var r=await sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,contact_id,assigned_to,contacts(first_name,last_name)').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).neq('status','cancelled').order('appointment_time').limit(5);
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No appointments today</div>';return;}
   el.innerHTML='<div class="appt-list">'+r.data.map(function(a){
-    var dt=new Date(a.appointment_date);
-    var time=a.appointment_time?a.appointment_time.substring(0,5):(dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}));
+    var time=a.appointment_time?a.appointment_time.substring(0,5):'—';
     var name=a.contacts?((a.contacts.first_name||'')+' '+(a.contacts.last_name||'')).trim():'Unknown';
     return'<div class="appt-item"><div class="appt-time">'+time+'</div><div class="appt-info"><div class="appt-name">'+esc(name)+'</div><div class="appt-note">'+esc(a.notes||'No notes')+'</div></div></div>';
   }).join('')+'</div>';
@@ -369,7 +374,7 @@ async function loadContacts(){
 
 async function loadTasks(){
   var el=document.getElementById('tasksContainer');
-  var r=await sb.from('tasks').select('task_id,title,due_at,status').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).neq('status','done').order('due_date',{ascending:true,nullsFirst:false}).limit(6);
+  var r=await sb.from('tasks').select('task_id,title,due_at,status').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).neq('status','done').order('due_at',{ascending:true,nullsFirst:false}).limit(6);
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks — you\'re all caught up! 🎉</div>';return;}
   var today=new Date();today.setHours(0,0,0,0);
   el.innerHTML='<div class="task-list">'+r.data.map(function(t){
