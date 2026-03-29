@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
   <title>Dashboard – SharkLaw V2</title>
-  <script>(function(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);})();<\/script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>
+  <script>(function(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);})()</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{--bg-primary:#0b0f14;--bg-secondary:#0f1621;--bg-card:#1a2535;--bg-hover:#223044;--border-default:#223044;--text-primary:#e8eef6;--text-secondary:#9fb0c3;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
     [data-theme="dark-blue"]{--bg-primary:#0b0f14;--bg-secondary:#0f1621;--bg-card:#1a2535;--bg-hover:#223044;--border-default:#223044;--text-primary:#e8eef6;--text-secondary:#9fb0c3;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
@@ -389,9 +389,9 @@ async function loadTasks(){
   var r=await sb.from('tasks').select('task_id,title,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).not('status','eq','done').order('due_at',{ascending:true,nullsFirst:false}).limit(8);
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks &#8212; all caught up! &#127881;</div>';return;}
   var today=new Date();today.setHours(0,0,0,0);
-  el.innerHTML='<div class="task-list">'+r.data.map(function(t){var due=t.due_at?new Date(t.due_at):null;var overdue=due&&due<today;var pc='pri-'+(t.priority||'normal');return'<div class="task-item'+(overdue?' is-overdue':'')+'"><div class="task-check" onclick="toggleTask(''+t.task_id+'',this)"></div><div class="task-text">'+esc(t.title||'Untitled')+'</div><span class="task-pri '+pc+'">'+esc(t.priority||'normal')+'</span>'+(due?'<div class="task-due'+(overdue?' overdue':'')+'">'+fmtDate(t.due_at)+'</div>':'')+'</div>';}).join('')+'</div>';
+  el.innerHTML='<div class="task-list">'+r.data.map(function(t){var due=t.due_at?new Date(t.due_at):null;var overdue=due&&due<today;var pc='pri-'+(t.priority||'normal');return'<div class="task-item'+(overdue?' is-overdue':'')+'"><div class="task-check" onclick="toggleTask(this.dataset.tid,this)" data-tid='+t.task_id+'></div><div class="task-text">'+esc(t.title||'Untitled')+'</div><span class="task-pri '+pc+'">'+esc(t.priority||'normal')+'</span>'+(due?'<div class="task-due'+(overdue?' overdue':'')+'">'+fmtDate(t.due_at)+'</div>':'')+'</div>';}).join('')+'</div>';
 }
-async function toggleTask(id,el){sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
+async function toggleTask(id,el){if(!id&&el)id=el.dataset.tid;sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
 function openNewTaskModal(){
   document.getElementById('taskTitle').value='';document.getElementById('taskDesc').value='';document.getElementById('taskPriority').value='normal';
   document.getElementById('taskDue').value=new Date(Date.now()+86400000).toISOString().split('T')[0];
@@ -413,8 +413,7 @@ async function loadMessages(){
   var unread=allMessages.filter(function(m){return!m.is_read;}).length;
   var badge=document.getElementById('unreadBadge');badge.textContent=unread;badge.style.display=unread>0?'inline-block':'none';
   if(!allMessages.length){el.innerHTML='<div class="empty-state">No messages</div>';return;}
-  el.innerHTML='<div class="inbox-list">'+allMessages.map(function(m){return'<div class="inbox-item'+(m.is_read?'':' unread')+'" onclick="openMessage(''+m.notification_id+'')"><div class="inbox-hdr"><div class="inbox-ttl">'+esc(m.title||'Notification')+'</div><div class="inbox-ts">'+fmtAgo(m.created_at)+'</div></div><div class="inbox-body">'+esc((m.body||'').replace(/
-/g,' '))+'</div></div>';}).join('')+'</div>';
+  el.innerHTML='<div class="inbox-list">'+allMessages.map(function(m){return'<div class="inbox-item'+(m.is_read?'':' unread')+'" onclick="openMessage(this.dataset.mid)" data-mid='+m.notification_id+'><div class="inbox-hdr"><div class="inbox-ttl">'+esc(m.title||'Notification')+'</div><div class="inbox-ts">'+fmtAgo(m.created_at)+'</div></div><div class="inbox-body">'+esc((m.body||'').replace(/\n/g,' '))+'</div></div>';}).join('')+'</div>';
 }
 async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');}
 function openComposeModal(){document.getElementById('composeTo').innerHTML='<option value="">Select recipient</option><option value="all">All Team Members</option>';allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();document.getElementById('composeTo').innerHTML+='<option value="'+m.member_id+'">'+esc(n)+'</option>';});document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';document.getElementById('composeModal').classList.add('active');}
@@ -442,7 +441,7 @@ async function loadFollowups(){
   el.innerHTML='<div class="contacts-list">'+contacts.map(function(c){
     var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown';
     var days=Math.floor((Date.now()-new Date(c.created_at))/86400000);
-    return'<div class="followup-item" onclick="location.href='v2-sharklaw-profiles.html?id='+c.contact_id+''"><div class="fu-name">'+esc(name)+'</div><div class="fu-days">'+days+'d ago</div></div>';
+    return'<div class="followup-item" onclick="location.href=this.dataset.url" data-url="v2-sharklaw-profiles.html?id='+c.contact_id+'"><div class="fu-name">'+esc(name)+'</div><div class="fu-days">'+days+'d ago</div></div>';
   }).join('')+'</div>';
 }
 
@@ -506,6 +505,6 @@ async function init(){
   loadTeam();
 }
 init().catch(console.error);
-<\/script>
+</script>
 </body>
 </html>
