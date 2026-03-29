@@ -402,12 +402,6 @@
         <div class="fg"><label class="fl">Cost ($) *</label><input type="number" class="fi" id="iValue" min="0" step="0.01" placeholder="0" value="" onfocus="if(this.value==='0'||this.value==='0.00')this.value=''" onblur="if(this.value==='')this.value='0'"></div>
         <div class="fg"><label class="fl">In Stock</label><input type="number" class="fi" id="iQty" min="0" placeholder="0" value="" onfocus="if(this.value==='0')this.value=''" onblur="if(this.value==='')this.value='0'"></div>
       </div>
-      <div class="fr2">
-        <div class="fg">
-          <label class="fl">Default Give Qty</label>
-          <input type="number" class="fi" id="iDefaultGive" min="1" placeholder="1" value="" onfocus="if(this.value==='1')this.value=''" onblur="if(this.value==='')this.value='1'">
-          <div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">Default qty when Give Swag is clicked</div>
-        </div>
         <div class="fg" style="grid-column:1/-1;">
           <label class="fl">Give Qty Options (dropdown)</label>
           <input type="text" class="fi" id="iGiveOptions" placeholder="e.g. 1000,2000,3000,4000,5000 — leave blank for number input">
@@ -415,13 +409,7 @@
         </div>
         <div class="fg"><label class="fl">Low Stock Alert (qty)</label><input type="number" class="fi" id="iLow" min="0" placeholder="0" value="" onfocus="if(this.value==='0')this.value=''" onblur="if(this.value==='')this.value='0'"></div>
       </div>
-      <div class="fg">
-        <label class="fl">Qty Being Given Now</label>
-        <input type="number" class="fi" id="iGiveNow" min="0" placeholder="0" value="0"
-          onfocus="if(this.value==='0')this.value=''"
-          onblur="if(this.value==='')this.value='0'">
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Enter qty being distributed now (e.g. 1000 flyers, 100 posters). Leave 0 to skip.</div>
-      </div>
+
 
       <div class="fg"><label class="fl">Notes</label><textarea class="fta" id="iNotes"></textarea></div>
       <div id="itemModalMsg" style="font-size:13px;color:#ef4444;"></div>
@@ -560,7 +548,6 @@ function renderInventory(){
     var cls=qty===0?'out':qty<=low?'low':'good';
     var pct=Math.min(100,item.quantity_on_hand?Math.round(qty/item.quantity_on_hand*100):100);
     var barColor=qty===0?'#ef4444':qty<=low?'#f59e0b':'#22c55e';
-  var giveOpts=item.bin_location?item.bin_location.split(',').map(function(v){return v.trim();}).filter(Boolean):[];
     return '<div class="inv-card '+cls+'" onclick="openItemModal(this.dataset.iid)" data-iid="'+item.item_id+'">'  
       +'<div class="inv-name">'+esc(item.part_name||'')+'</div><div style="font-size:10px;color:var(--accent-light);margin-top:1px;">Give qty: '+(item.selling_price||1)+'</div>'
       +(item.description?'<div class="inv-cat">'+esc(item.description.substring(0,40))+'</div>':'<div class="inv-cat">No description</div>')
@@ -631,12 +618,12 @@ function openItemModal(id){if(id&&id.dataset)id=id.dataset.iid;
   
   document.getElementById('iValue').value=item?item.unit_cost||'':'';
   document.getElementById('iQty').value=item?item.quantity_on_hand||'':'';
-  document.getElementById('iDefaultGive').value=item?item.selling_price||1:1;
-  document.getElementById('iGiveOptions').value=item?item.bin_location||'':'';
+  
+  
   document.getElementById('iLow').value=item?item.reorder_point||'':'';
   document.getElementById('iNotes').value=item?item.description||'':'';
   document.getElementById('itemModalMsg').textContent='';
-  document.getElementById('iGiveNow').value='0';
+  
   document.getElementById('itemModal').classList.add('active');
 }
 function closeItemModal(){document.getElementById('itemModal').classList.remove('active');editItemId=null;}
@@ -648,8 +635,6 @@ async function saveItem(){
     part_name:name,
     part_number:document.getElementById('iSku').value.trim()||null,
     unit_cost:parseFloat(document.getElementById('iValue').value)||0,
-    selling_price:parseInt(document.getElementById('iDefaultGive').value)||1,
-    bin_location:document.getElementById('iGiveOptions').value.trim()||null,
     quantity_on_hand:parseInt(document.getElementById('iQty').value)||0,
     reorder_point:parseInt(document.getElementById('iLow').value)||0,
     description:document.getElementById('iNotes').value.trim()||null,
@@ -664,24 +649,7 @@ async function saveItem(){
     r=await sb.from('swag_inventory').insert(payload);
   }
   if(r.error){document.getElementById('itemModalMsg').textContent=r.error.message;return;}
-  // Record bulk give if qty entered
-  var giveNow=parseInt(document.getElementById('iGiveNow').value)||0;
-  if(giveNow>0){
-    var itemName=payload.part_name||name;
-    var givePayload={
-      tenant_id:TENANT,
-      item_name:itemName,
-      quantity:giveNow,
-      value:(parseFloat(document.getElementById('iValue').value)||0)*giveNow,
-      given_by:currentUserId,
-      given_date:new Date().toISOString()
-    };
-    await sb.from('swag_given').insert(givePayload);
-  }
-  closeItemModal();
-  await loadAll();
-  showToast(editItemId?'Item updated!':'Item saved!'+(giveNow>0?' · '+giveNow+' recorded as given':''));
-}
+
 
 async function deleteItem(){
   if(!editItemId||!confirm('Delete this item?'))return;
@@ -691,21 +659,13 @@ async function deleteItem(){
 }
 
 /* ── GIVE MODAL ── */
-function openGiveFromCard(btn){
-  var card=btn.closest('[data-iid]')||btn.parentElement;
-  var sel=card.querySelector('.give-qty-sel');
-  var inp=card.querySelector('.give-qty-inp');
-  var qty=sel?parseInt(sel.value):inp?parseInt(inp.value)||1:1;
-  var iid=btn.dataset.gid;
-  openGiveModal(iid,qty);
-}
-function openGiveModal(itemId,preQty){
+function openGiveModal(itemId){
   giveItemId=itemId;
   var item=allItems.find(function(i){return i.item_id===itemId;});
   document.getElementById('giveItemName').textContent=item?item.part_name:'Item';
   document.getElementById('giveItemStock').textContent=(item?item.quantity_on_hand||0:0)+' in stock';
   document.getElementById('giveItemName').textContent=item?item.part_name:'Item';
-  var defaultQty=preQty||(item?(item.selling_price||1):1);
+  var defaultQty=1;
   var giveOptions=item&&item.bin_location?item.bin_location.split(',').map(function(v){return v.trim();}).filter(Boolean):[];
   var gWrap=document.getElementById('gQtyWrap');
   if(giveOptions.length){
@@ -800,6 +760,7 @@ async function loadAll(){
 }
 
 /* ── INIT ── */
+}
 async function init(){
   var session=await checkAuth();if(!session)return;
   var authId=session.user?.id,email=session.user?.email;userEmail=email;
