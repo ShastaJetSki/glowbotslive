@@ -406,7 +406,12 @@
         <div class="fg">
           <label class="fl">Default Give Qty</label>
           <input type="number" class="fi" id="iDefaultGive" min="1" placeholder="1" value="" onfocus="if(this.value==='1')this.value=''" onblur="if(this.value==='')this.value='1'">
-          <div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">Auto-fills when giving this item (e.g. 1 shirt, 100 posters, 1000 flyers)</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">Default qty when Give Swag is clicked</div>
+        </div>
+        <div class="fg" style="grid-column:1/-1;">
+          <label class="fl">Give Qty Options (dropdown)</label>
+          <input type="text" class="fi" id="iGiveOptions" placeholder="e.g. 1000,2000,3000,4000,5000 — leave blank for number input">
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">Comma-separated list. If set, shows a dropdown instead of free-entry when giving this item.</div>
         </div>
         <div class="fg"><label class="fl">Low Stock Alert (qty)</label><input type="number" class="fi" id="iLow" min="0" placeholder="0" value="" onfocus="if(this.value==='0')this.value=''" onblur="if(this.value==='')this.value='0'"></div>
       </div>
@@ -442,7 +447,7 @@
         <div style="font-size:12px;color:var(--text-secondary);" id="giveItemStock"></div>
       </div>
       <div class="fr2">
-        <div class="fg"><label class="fl">Quantity *</label><input type="number" class="fi" id="gQty" min="1" placeholder="1" value="" onfocus="if(this.value==='1')this.value=''" onblur="if(this.value==='')this.value='1'"></div>
+        <div class="fg"><label class="fl">Quantity *</label><div id="gQtyWrap"></div></div>
         <div class="fg"><label class="fl">Date</label>
           <div style="position:relative;">
             <input type="text" class="fi" id="gDateDisplay" placeholder="Select date…" readonly onclick="toggleDatePicker()" style="cursor:pointer;padding-right:40px;">
@@ -623,6 +628,7 @@ function openItemModal(id){if(id&&id.dataset)id=id.dataset.iid;
   document.getElementById('iValue').value=item?item.unit_cost||'':'';
   document.getElementById('iQty').value=item?item.quantity_on_hand||'':'';
   document.getElementById('iDefaultGive').value=item?item.selling_price||1:1;
+  document.getElementById('iGiveOptions').value=item?item.bin_location||'':'';
   document.getElementById('iLow').value=item?item.reorder_point||'':'';
   document.getElementById('iNotes').value=item?item.description||'':'';
   document.getElementById('itemModalMsg').textContent='';
@@ -639,6 +645,7 @@ async function saveItem(){
     part_number:document.getElementById('iSku').value.trim()||null,
     unit_cost:parseFloat(document.getElementById('iValue').value)||0,
     selling_price:parseInt(document.getElementById('iDefaultGive').value)||1,
+    bin_location:document.getElementById('iGiveOptions').value.trim()||null,
     quantity_on_hand:parseInt(document.getElementById('iQty').value)||0,
     reorder_point:parseInt(document.getElementById('iLow').value)||0,
     description:document.getElementById('iNotes').value.trim()||null,
@@ -685,7 +692,15 @@ function openGiveModal(itemId){
   var item=allItems.find(function(i){return i.item_id===itemId;});
   document.getElementById('giveItemName').textContent=item?item.part_name:'Item';
   document.getElementById('giveItemStock').textContent=(item?item.quantity_on_hand||0:0)+' in stock';
-  document.getElementById('gQty').value=item?(item.selling_price||1):1;
+  var defaultQty=item?(item.selling_price||1):1;
+  var giveOptions=item&&item.bin_location?item.bin_location.split(',').map(function(v){return v.trim();}).filter(Boolean):[];
+  var gWrap=document.getElementById('gQtyWrap');
+  if(giveOptions.length){
+    var optHtml=giveOptions.map(function(v){return'<option value="'+v+'"'+(v===String(defaultQty)?' selected':'')+'>'+v+'</option>';}).join('');
+    gWrap.innerHTML='<select class="fsel" id="gQty" style="width:100%;">'+optHtml+'</select>';
+  } else {
+    gWrap.innerHTML='<input type="number" class="fi" id="gQty" min="1" value="'+defaultQty+'" style="width:100%;">';
+  }
   var today=new Date();
   dpSelected=today;dpDate=new Date(today.getFullYear(),today.getMonth(),1);
   document.getElementById('gDate').value=today.toISOString().split('T')[0];
