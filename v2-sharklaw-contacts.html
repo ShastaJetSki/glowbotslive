@@ -263,7 +263,13 @@
 <div class="page-wrap">
   <!-- CONTROLS BAR -->
   <div class="controls-bar">
-    <input type="text" id="searchInput" placeholder="Search name, phone, email, org…" oninput="renderContacts()" style="flex:1;max-width:320px;padding:8px 12px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:14px;">
+    <div style="position:relative;flex:1;max-width:360px;">
+      <input type="text" id="searchInput" placeholder="My contacts (click) or search all…" autocomplete="off"
+        oninput="handleContactSearch(this.value)"
+        onfocus="showMyContactsDrop()"
+        style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:14px;">
+      <div id="searchDrop" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;z-index:300;max-height:260px;overflow-y:auto;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.5);"></div>
+    </div>
     <select id="typeFilter" onchange="renderContacts()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;">
       <option value="">All Types</option>
       <option value="MC">MC</option>
@@ -443,7 +449,7 @@ function buildCard(c){
   var stage=stageName(c.funnel_stage);
   var firstName=esc(c.first_name||'Unknown');
   var org=esc(c.organization_name||'');
-  return '<div class="cc" style="background:rgba('+rgb+',0.2);border-left-color:'+col+';" onclick="openEditModal(this.dataset.cid)" data-cid="'+c.contact_id+'">'
+  return '<div class="cc" style="background:rgba('+rgb+',0.2);border-left-color:'+col+';" onclick="goProfile(this.dataset.cid)" data-cid="'+c.contact_id+'">'
     +'<div class="cc-row"><span class="cc-name">'+firstName+'</span><span class="cc-org">'+org+'</span></div>'
     +'<div class="cc-row"><span class="cc-phone">'+esc(phone)+'</span><span class="cc-type">'+esc(type)+'</span></div>'
     +'<div class="cc-row"><span class="cc-rep">'+esc(mn)+'</span><span class="cc-stage">'+esc(stage)+'</span></div>'
@@ -459,6 +465,7 @@ function renderAlpha(contacts){
 }
 
 /* ── MODAL ── */
+function goProfile(id){location.href="v2-sharklaw-profiles.html?id="+id;}
 function openAddModal(){
   editingId=null;
   document.getElementById('modalTitle').textContent='Add Contact';
@@ -558,6 +565,57 @@ async function loadMembers(){
 }
 
 /* ── INIT ── */
+/* ── CONTACT SEARCH DROPDOWN ── */
+function showMyContactsDrop(){
+  var q=(document.getElementById('searchInput').value||'').trim();
+  if(q){handleContactSearch(q);return;}
+  var mine=allContacts.filter(function(c){return c.assigned_to===currentUserId;});
+  mine.sort(function(a,b){return((a.last_name||a.first_name||'')).localeCompare(b.last_name||b.first_name||'');});
+  renderSearchDrop(mine,'My Contacts');
+}
+function handleContactSearch(q){
+  if(!q.trim()){showMyContactsDrop();return;}
+  var matches=allContacts.filter(function(c){
+    var n=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
+    var org=(c.organization_name||'').toLowerCase();
+    var ph=(c.phone||'').replace(/[^0-9]/g,'');
+    return n.includes(q.toLowerCase())||org.includes(q.toLowerCase())||ph.includes(q.replace(/[^0-9]/g,''));
+  }).slice(0,15);
+  renderSearchDrop(matches,'');
+  renderContacts();
+}
+function renderSearchDrop(list,header){
+  var drop=document.getElementById('searchDrop');
+  if(!list.length&&!header){drop.style.display='none';return;}
+  var h='';
+  if(header)h+='<div style="padding:6px 12px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border-default);">'+header+'</div>';
+  if(!list.length){h+='<div style="padding:10px 12px;font-size:13px;color:var(--text-secondary);">No contacts found</div>';}
+  else{h+=list.map(function(c){
+    var n=((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown';
+    var org=c.organization_name?'<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">'+esc(c.organization_name)+'</span>':'';
+    var col=memberColor(c.assigned_to);
+    return '<div class="sdrop-row" data-cid="'+c.contact_id+'" style="padding:9px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border-default);display:flex;align-items:center;gap:8px;">'
+      +'<span style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0;display:inline-block;"></span>'
+      +'<span style="font-weight:600;">'+esc(n)+'</span>'+org
+    +'</div>';
+  }).join('');}
+  drop.innerHTML=h;
+  drop.querySelectorAll('.sdrop-row').forEach(function(el){
+    el.addEventListener('click',function(){
+      goProfile(this.dataset.cid);
+    });
+    el.addEventListener('mouseover',function(){this.style.background='var(--bg-hover)';});
+    el.addEventListener('mouseout',function(){this.style.background='';});
+  });
+  drop.style.display='block';
+}
+document.addEventListener('click',function(e){
+  var drop=document.getElementById('searchDrop');
+  if(drop&&!drop.contains(e.target)&&e.target.id!=='searchInput'){
+    drop.style.display='none';
+  }
+});
+
 async function init(){
   var session=await checkAuth();if(!session)return;
   var authId=session.user?.id;
