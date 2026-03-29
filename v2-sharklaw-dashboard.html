@@ -195,7 +195,7 @@
 <div class="mobile-top-header">
   <div class="mobile-header-bar">
     <button class="mobile-menu-toggle" onclick="toggleMenu()">&#9776;</button>
-    <div class="mobile-header-center"><div class="mobile-header-title">Dashboard</div><div class="biz-name" id="mBiz">Loading...</div></div>
+    <div class="mobile-header-center"><div class="mobile-header-title">Dashboard</div><div class="biz-name" id="mUserName">Loading...</div></div>
     <button class="theme-btn" onclick="cycleTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg></button>
   </div>
   <div class="mobile-menu-content" id="mobileMenuContent">
@@ -403,7 +403,7 @@ var THEME_NAMES={'dark-blue':'Dark Blue','midnight':'Midnight','ocean':'Ocean','
 var userThemeBank=['dark-blue'],themeIndex=0;
 function loadTheme(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);themeIndex=Math.max(0,userThemeBank.indexOf(t));}
 function cycleTheme(){if(userThemeBank.length<=1){showToast('Unlock more themes in Settings!');return;}themeIndex=(themeIndex+1)%userThemeBank.length;var t=userThemeBank[themeIndex];document.documentElement.setAttribute('data-theme',t);localStorage.setItem('app-theme',t);showToast(THEME_NAMES[t]||t);}
-async function loadThemeBank(){if(!currentUserId)return;try{var r=await sb.from('user_theme_bank').select('theme_key').eq('user_id',currentUserId);if(r.data&&r.data.length){userThemeBank=['dark-blue'].concat(r.data.map(function(x){return x.theme_key;}));userThemeBank=[...new Set(userThemeBank)];}loadTheme();}catch(e){}}
+function loadThemeBank(){loadTheme();}
 loadTheme();
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
@@ -440,14 +440,14 @@ async function loadTodayCards(){
 async function loadKpis(){
   var todayStr=new Date().toISOString().split('T')[0];
   var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=next7.toISOString().split('T')[0];
-  var [cr,mr,ar,a7r,tr,sr,or2]=await Promise.all([
+  var [cr,mr,ar,a7r,tr,sr,pipeR,or2]=await Promise.all([
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false'),
     (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     sb.from('swag_inventory').select('item_id',{count:'exact',head:true}).eq('tenant_id',currentTenantId).lte('quantity_on_hand',5),
-    sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('pipeline_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
+    sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
     (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
   document.getElementById('kTotal').textContent=cr.count??0;
@@ -456,6 +456,7 @@ async function loadKpis(){
   document.getElementById('k7Days').textContent=a7r.count??0;
   document.getElementById('kTasks').textContent=tr.count??0;
   document.getElementById('kSwagLow').textContent=sr.count??0;
+  if(document.getElementById('kInPipeline'))document.getElementById('kInPipeline').textContent=pipeR?.count??0;
   document.getElementById('kOverdue').textContent=or2?.count??0;
 }
 async function loadAppointments(){
@@ -503,13 +504,17 @@ async function saveTask(){
   closeModal('newTaskModal');showToast('Task created!');loadTasks();loadKpis();
 }
 async function loadMessages(){
-  var el=document.getElementById('messagesContainer');
-  var r=await sb.from('notifications').select('*').eq('tenant_id',currentTenantId).eq('recipient_id',currentUserId).order('created_at',{ascending:false}).limit(8);
-  allMessages=r.data||[];
-  var unread=allMessages.filter(function(m){return!m.is_read;}).length;
-  var badge=document.getElementById('unreadBadge');badge.textContent=unread;badge.style.display=unread>0?'inline-block':'none';
-  if(!allMessages.length){el.innerHTML='<div class="empty-state">No messages</div>';return;}
-  el.innerHTML='<div class="inbox-list">'+allMessages.map(function(m){return'<div class="inbox-item'+(m.is_read?'':' unread')+'" onclick="openMessage(this.dataset.mid)" data-mid='+m.notification_id+'><div class="inbox-hdr"><div class="inbox-ttl">'+esc(m.title||'Notification')+'</div><div class="inbox-ts">'+fmtAgo(m.created_at)+'</div></div><div class="inbox-body">'+esc((m.body||'').replace(/\n/g,' '))+'</div></div>';}).join('')+'</div>';
+  try{
+    var r=await sb.from('notifications').select('*').eq('tenant_id',currentTenantId).eq('recipient_id',currentUserId).order('created_at',{ascending:false}).limit(8);
+    allMessages=r.data||[];
+    var el=document.getElementById('msgContainer');
+    if(!el)return;
+    if(!allMessages.length){el.innerHTML='<div class="empty-state">No messages</div>';return;}
+    el.innerHTML=allMessages.map(function(m){return'<div class="msg-item'+(m.is_read?'':' unread')+'" data-mid="'+m.notification_id+'" onclick="openMessage(this.dataset.mid)"><div class="msg-title">'+esc(m.title||'Notification')+'</div><div class="msg-sub">'+new Date(m.created_at).toLocaleDateString()+'</div></div>';}).join('');
+  }catch(e){
+    var el=document.getElementById('msgContainer');
+    if(el)el.innerHTML='<div class="empty-state">Messages unavailable</div>';
+  }
 }
 async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');}
 function openComposeModal(){document.getElementById('composeTo').innerHTML='<option value="">Select recipient</option><option value="all">All Team Members</option>';allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();document.getElementById('composeTo').innerHTML+='<option value="'+m.member_id+'">'+esc(n)+'</option>';});document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';document.getElementById('composeModal').classList.add('active');}
@@ -518,11 +523,11 @@ async function loadSwag(){var el=document.getElementById('swagContainer');var r=
 function loadTeam(){var el=document.getElementById('teamContainer');if(!allMembers.length){el.innerHTML='<div class="empty-state">No team members</div>';return;}var ORDER=['owner','admin','manager','sr_associate','associate','jr_associate'];var sorted=allMembers.slice().sort(function(a,b){return(ORDER.indexOf(a.role)<0?99:ORDER.indexOf(a.role))-(ORDER.indexOf(b.role)<0?99:ORDER.indexOf(b.role));});function rLabel(r){var m={owner:'Owner',admin:'Admin',manager:'Manager',sr_associate:'Sr. Associate',associate:'Associate',jr_associate:'Jr. Associate'};return m[r]||r||'Team';}el.innerHTML='<div class="team-list">'+sorted.map(function(m){var name=((m.first_name||'')+' '+(m.last_name||'')).trim()||m.email||'Unknown';var initials=((m.first_name||'?')[0]+((m.last_name||'')[0]||'')).toUpperCase();var color=m.color||'#6b7280';var phone=formatPhone(m.phone||'');return'<div class="emp-row"><div class="emp-av" style="background:'+color+';">'+initials+'</div><div class="emp-info"><div class="emp-nm">'+esc(name)+'</div><div class="emp-role-lbl">'+rLabel(m.role)+(m.department?' &middot; '+m.department:'')+'</div></div><div class="emp-acts">'+(phone?'<a href="tel:'+m.phone+'" class="emp-act">Call</a>':'')+(m.email?'<a href="mailto:'+m.email+'" class="emp-act">Email</a>':'')+'</div></div>';}).join('')+'</div>';}
 async function loadPipeline(){
   var el=document.getElementById('pipelineContainer');
-  var r=await sb.from('contacts').select('pipeline_stage').eq('tenant_id',currentTenantId).not('pipeline_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false');
+  var r=await sb.from('contacts').select('pipeline_stage').eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false');
   var contacts=r.data||[];
   if(!contacts.length){el.innerHTML='<div class="empty-state">No contacts in pipeline yet</div>';return;}
   var stages={};
-  contacts.forEach(function(c){var s=c.pipeline_stage||'Unknown';stages[s]=(stages[s]||0)+1;});
+  contacts.forEach(function(c){var s=c.funnel_stage||'Unknown';stages[s]=(stages[s]||0)+1;});
   var stageColors=['#6366f1','#3b82f6','#14b8a6','#f59e0b','#22c55e','#6b7280'];
   var keys=Object.keys(stages);
   el.innerHTML='<div class="pipeline-stages">'+keys.map(function(s,i){var c=stageColors[i%stageColors.length];return'<a href="v2-sharklaw-pipeline.html" class="stage-pill"><div class="stage-pill-count" style="color:'+c+'">'+stages[s]+'</div><div class="stage-pill-name">'+esc(s)+'</div><div class="stage-pill-bar" style="background:'+c+'"></div></a>';}).join('')+'</div>';
@@ -708,7 +713,7 @@ async function init(){
   }
   var bsR=await sb.from('business_settings').select('business_name').eq('tenant_id',currentTenantId).single();
   var bizLabel=(bsR.data&&bsR.data.business_name)||currentUserName;
-  document.getElementById('dUserName').textContent=currentUserName||userEmail||'';document.getElementById('mBiz').textContent=bizLabel;
+  document.getElementById('dUserName').textContent=currentUserName||userEmail||'';document.getElementById('dUserName').textContent=currentUserName||userEmail||'';
   await loadThemeBank();
   var mr=await sb.from('team_members').select('member_id,first_name,last_name,email,phone,role,color,department').eq('tenant_id',currentTenantId).eq('is_active',true).order('last_name');
   allMembers=mr.data||[];
