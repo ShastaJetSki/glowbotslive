@@ -316,7 +316,7 @@ var sb=window.supabase.createClient(SB_URL,SB_KEY);
 var currentTenantId=null,currentUserId=null,currentUserRole=null;
 var contact=null,allMembers=[],funnelStages={},contactAppts=[],contactSwag=[],contactActivity=[];
 
-var DEFAULT_STAGES={1:{name:'1st Contact',color:'#3b82f6'},2:{name:'Follow Up',color:'#06b6d4'},3:{name:'Swag Approved',color:'#8b5cf6'},4:{name:'Receive Artwork',color:'#f59e0b'},5:{name:'Deliver Pop Up',color:'#10b981'},6:{name:'Confirmed Partnership',color:'#ef4444'}};
+var DEFAULT_STAGES={1:{name:'1st Contact',color:'#6366f1'},2:{name:'Follow Up',color:'#14b8a6'},3:{name:'Swag Approved',color:'#a855f7'},4:{name:'Receive Artwork',color:'#f59e0b'},5:{name:'Deliver Pop Up',color:'#22c55e'},6:{name:'Confirmed Partnership',color:'#3b82f6'},7:{name:'Follow Up (Old)',color:'#6b7280'}};
 
 var THEME_NAMES={'dark-blue':'Dark Blue','blue-light':'Blue Light','slate-dark':'Slate Dark','slate-light':'Slate Light','ocean-dark':'Ocean Dark','ocean-light':'Ocean Light','midnight-dark':'Midnight','lavender-light':'Lavender','forest-dark':'Forest','mint-light':'Mint','crimson-dark':'Crimson','coral-light':'Coral','amber-dark':'Amber','honey-light':'Honey','rose-dark':'Rose','sky-light':'Sky','cyber-dark':'Cyber','sand-light':'Sand'};
 var userThemeBank=['dark-blue'],themeIndex=0;
@@ -373,7 +373,7 @@ function renderProfile(){
   // Swag rows
   var swagHtml=contactSwag.length===0?'<div style="padding:14px 16px;font-size:13px;color:var(--text-secondary);font-style:italic;">No swag given yet</div>':
     contactSwag.map(function(g){
-      return '<div class="swag-row"><div><div class="swag-item-name">'+esc(g.swag_inventory?g.swag_inventory.name:'Unknown Item')+'</div><div class="swag-item-sub">Qty: '+(g.quantity||1)+' · '+fmtDate(g.given_at)+'</div></div><div class="swag-val">$'+parseFloat(g.value||0).toFixed(2)+'</div></div>';
+      return '<div class="swag-row"><div><div class="swag-item-name">'+esc(g.item_name||'Unknown Item')+'</div><div class="swag-item-sub">Qty: '+(g.quantity||1)+' · '+fmtDate(g.given_date)+'</div></div><div class="swag-val">$'+parseFloat(g.value||0).toFixed(2)+'</div></div>';
     }).join('');
 
   // Appointments
@@ -573,20 +573,21 @@ async function init(){
   var contactId=params.get('id');
   if(!contactId){document.getElementById('profileWrap').innerHTML='<div style="text-align:center;padding:60px;color:var(--text-secondary);">No contact ID provided. <a href="v2-sharklaw-contacts.html" style="color:var(--accent-light);">Go back</a></div>';return;}
 
-  if(email){
-    var r=await sb.from('team_members').select('member_id,tenant_id,role,is_active').eq('email',email).single();
-    if(r.data){
-      if(r.data.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('login.html?reason=deactivated');return;}
-      currentTenantId=r.data.tenant_id;currentUserId=r.data.member_id;currentUserRole=r.data.role;
-    }
+  var TENANT='55555555-5555-5555-5555-555555555555';
+  var authId=session?.user?.id;
+  var tmRow=null;
+  if(authId){var ra=await sb.from('team_members').select('member_id,tenant_id,role,is_active').eq('auth_user_id',authId).eq('tenant_id',TENANT).maybeSingle();if(ra.data)tmRow=ra.data;}
+  if(!tmRow&&email){var rb=await sb.from('team_members').select('member_id,tenant_id,role,is_active').eq('email',email).eq('tenant_id',TENANT).maybeSingle();if(rb.data)tmRow=rb.data;}
+  if(tmRow){
+    if(tmRow.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html?reason=deactivated');return;}
+    currentTenantId=tmRow.tenant_id;currentUserId=tmRow.member_id;currentUserRole=tmRow.role;
   }
   if(!currentTenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data?.tenant_id)currentTenantId=r2.data.tenant_id;}
   await loadUserThemeBank();
 
   // Load funnel stages
   var sr=await sb.from('funnel_stages').select('*').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('sort_order');
-  if(sr.data&&sr.data.length>0){funnelStages={};sr.data.forEach(function(row){funnelStages[row.stage_id]={name:row.stage_name,color:row.stage_color};});}
-  else{funnelStages=JSON.parse(JSON.stringify(DEFAULT_STAGES));}
+  funnelStages=JSON.parse(JSON.stringify(DEFAULT_STAGES));
 
   // Load team members
   var mr=await sb.from('team_members').select('member_id,first_name,last_name,email,color').eq('tenant_id',currentTenantId).eq('is_active',true).order('last_name');
@@ -599,8 +600,8 @@ async function init(){
 
   // Load related data in parallel
   var [apptR,swagR,actR]=await Promise.all([
-    sb.from('sales_appointments').select('*').eq('contact_id',contactId).order('appointment_date',{ascending:false}),
-    sb.from('swag_given').select('*,swag_inventory(name)').eq('contact_id',contactId).order('given_at',{ascending:false}),
+    sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,assigned_to,customer_name').eq('contact_id',contactId).order('appointment_date',{ascending:false}),
+    sb.from('swag_given').select('*').eq('contact_id',contactId).eq('tenant_id',TENANT).order('given_date',{ascending:false}),
     sb.from('funnel_activity').select('*').eq('contact_id',contactId).order('changed_at',{ascending:false}).limit(10)
   ]);
   contactAppts=apptR.data||[];
