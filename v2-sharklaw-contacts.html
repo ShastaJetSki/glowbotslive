@@ -282,12 +282,6 @@
     </select>
     <select id="stageFilter" onchange="renderContacts()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;">
       <option value="">All Stages</option>
-      <option value="Lead">Lead</option>
-      <option value="Contacted">Contacted</option>
-      <option value="Qualified">Qualified</option>
-      <option value="Proposal">Proposal</option>
-      <option value="Signed">Signed</option>
-      <option value="Closed">Closed</option>
     </select>
     <select id="memberFilter" onchange="renderContacts()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;">
       <option value="">All Reps</option>
@@ -356,9 +350,6 @@
         <div class="fg"><label class="fl">Pipeline Stage</label>
           <select class="fsel" id="mStage">
             <option value="">None</option>
-            <option value="Lead">Lead</option><option value="Contacted">Contacted</option>
-            <option value="Qualified">Qualified</option><option value="Proposal">Proposal</option>
-            <option value="Signed">Signed</option><option value="Closed">Closed</option>
           </select>
         </div>
         <div class="fg"><label class="fl">Assign To</label><select class="fsel" id="mAssign"><option value="">Unassigned</option></select></div>
@@ -559,14 +550,36 @@ async function loadContacts(){
   renderContacts();
 }
 
+async function loadStages(){
+  // Load actual pipeline stages from business_settings
+  var r=await sb.from('business_settings').select('pipeline_stages').eq('tenant_id',TENANT).single();
+  var stages=[];
+  if(r.data&&r.data.pipeline_stages&&r.data.pipeline_stages.length){
+    stages=r.data.pipeline_stages.map(function(s){return typeof s==='string'?s:(s.name||s);});
+  }
+  // Also get any stages actually used in contacts (in case they differ)
+  if(!stages.length){
+    var cr=await sb.from('contacts').select('funnel_stage').eq('tenant_id',TENANT).not('funnel_stage','is',null);
+    var used=[];
+    (cr.data||[]).forEach(function(c){if(c.funnel_stage&&used.indexOf(c.funnel_stage)<0)used.push(c.funnel_stage);});
+    stages=used.sort();
+  }
+  // Populate stage filter
+  var sf=document.getElementById('stageFilter');
+  sf.innerHTML='<option value="">All Stages</option>';
+  stages.forEach(function(s){sf.innerHTML+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
+  // Populate modal stage select
+  var ms=document.getElementById('mStage');
+  ms.innerHTML='<option value="">None</option>';
+  stages.forEach(function(s){ms.innerHTML+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
+}
+
 async function loadMembers(){
   var r=await sb.from('team_members').select('member_id,first_name,last_name,color,role').eq('tenant_id',TENANT).eq('is_active',true).order('last_name');
   allMembers=r.data||[];
-  // Populate member filter
   var sel=document.getElementById('memberFilter');
   sel.innerHTML='<option value="">All Reps</option>';
   allMembers.forEach(function(m){sel.innerHTML+='<option value="'+m.member_id+'">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
-  // Populate assign dropdown in modal
   var asel=document.getElementById('mAssign');
   asel.innerHTML='<option value="">Unassigned</option>';
   allMembers.forEach(function(m){asel.innerHTML+='<option value="'+m.member_id+'">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
@@ -585,7 +598,7 @@ async function init(){
   currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName;
   document.getElementById('mUserName').textContent=currentUserName;
-  await loadMembers();
+  await Promise.all([loadStages(),loadMembers()]);
   await loadContacts();
 }
 init();
