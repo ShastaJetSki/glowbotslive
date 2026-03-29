@@ -37,8 +37,8 @@
     html{background:var(--bg-primary);min-height:100%;}
     body{font-family:system-ui;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;}
 
-    .theme-toggle-btn{width:36px;height:36px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;}
-    .theme-toggle-btn{background:var(--bg-card);}.theme-toggle-btn:hover{background:var(--bg-hover);color:var(--text-primary);}
+    .theme-toggle-btn,.theme-btn{width:36px;height:36px;border-radius:8px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+    .theme-toggle-btn:hover,.theme-btn:hover{background:var(--bg-hover);color:var(--text-primary);}
     .theme-toggle-btn svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;}
     .theme-toast{position:fixed;bottom:200px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border-default);color:var(--text-primary);padding:12px 20px;border-radius:10px;font-size:14px;z-index:1000;display:none;white-space:nowrap;}
     .theme-toast.show{display:block;}
@@ -419,7 +419,7 @@ function renderProfile(){
       '<div class="hero-actions">'+
         (c.phone?'<a href="tel:'+esc(c.phone)+'" class="action-btn">📞 Call</a><a href="sms:'+esc(c.phone)+'" class="action-btn">💬 Text</a>':'')+
         (c.email?'<a href="mailto:'+esc(c.email)+'" class="action-btn">✉️ Email</a>':'')+
-        '<button class="action-btn primary" onclick="openEdit()" style="background:var(--accent-primary);border-color:var(--accent-primary);color:#fff;font-weight:600;">Edit</button>'+
+        '<button class="action-btn primary" onclick="openEdit()" style="background:color-mix(in srgb,var(--accent-primary) 60%,transparent);border-color:color-mix(in srgb,var(--accent-primary) 60%,transparent);color:#fff;font-weight:600;">Edit</button>'+
       '</div>'+
     '</div>'+
 
@@ -493,7 +493,7 @@ async function quickStage(stageId){
   if(r.error){contact.funnel_stage=oldStage;showToast('Error saving stage');return;}
   await sb.from('funnel_activity').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,from_stage:oldStage,to_stage:stageId,changed_by:currentUserId,changed_at:new Date().toISOString()}).catch(function(){});
   // Reload activity
-  var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10);
+  var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10).catch(function(){return{data:[]};});
   contactActivity=ar.data||[];
   renderProfile();showToast('Stage updated');
 }
@@ -563,7 +563,7 @@ async function saveEdit(){
   Object.assign(contact,u);
   if(oldStage!==newStage){
     await sb.from('funnel_activity').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,from_stage:oldStage,to_stage:newStage,changed_by:currentUserId,changed_at:new Date().toISOString()}).catch(function(){});
-    var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10);
+    var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10).catch(function(){return{data:[]};});
     contactActivity=ar.data||[];
   }
   closeEdit();renderProfile();showToast('Saved!');
@@ -613,7 +613,7 @@ async function init(){
     sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,assigned_to,customer_name').eq('contact_id',contactId).order('appointment_date',{ascending:false}),
     sb.from('swag_given').select('*').eq('contact_id',contactId).eq('tenant_id',TENANT).order('given_date',{ascending:false}),
     sb.from('funnel_activity').select('*').eq('contact_id',contactId).order('changed_at',{ascending:false}).limit(10)
-  ]);
+  ]).catch(function(){return [{data:[]},{data:[]},{data:[]}];});
   contactAppts=apptR.data||[];
   contactSwag=swagR.data||[];
   contactActivity=actR.data||[];
