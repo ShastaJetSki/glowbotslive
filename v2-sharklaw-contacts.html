@@ -447,7 +447,7 @@ function buildCard(c){
   var rgb=hexToRgb(col);
   var type=c.customer_type||'';
   var initials=((c.first_name||'?')[0]+((c.last_name||'')[0]||'')).toUpperCase();
-  var stage=c.funnel_stage||'';
+  var stage=stageName(c.funnel_stage);
 
   return '<div class="cc" style="background:rgba('+rgb+',0.2);border-left:4px solid '+col+';" onclick="openEditModal(\''+c.contact_id+'\')">'
     // Row 1: name + type badge
@@ -550,28 +550,18 @@ async function loadContacts(){
   renderContacts();
 }
 
-async function loadStages(){
-  // Load actual pipeline stages from business_settings
-  var r=await sb.from('business_settings').select('pipeline_stages').eq('tenant_id',TENANT).single();
-  var stages=[];
-  if(r.data&&r.data.pipeline_stages&&r.data.pipeline_stages.length){
-    stages=r.data.pipeline_stages.map(function(s){return typeof s==='string'?s:(s.name||s);});
-  }
-  // Also get any stages actually used in contacts (in case they differ)
-  if(!stages.length){
-    var cr=await sb.from('contacts').select('funnel_stage').eq('tenant_id',TENANT).not('funnel_stage','is',null);
-    var used=[];
-    (cr.data||[]).forEach(function(c){if(c.funnel_stage&&used.indexOf(c.funnel_stage)<0)used.push(c.funnel_stage);});
-    stages=used.sort();
-  }
-  // Populate stage filter
+// Stage number -> name mapping
+var STAGE_MAP={'1':'1st Contact','2':'Follow Up','3':'Swag Approved','4':'Receive Artwork','5':'Deliver Pop Up','6':'Confirmed Partnership','7':'Follow Up (Old)'};
+var STAGE_ORDER=['1','2','3','4','5','6','7'];
+function stageName(val){return STAGE_MAP[String(val)]||val||'';}
+
+function loadStages(){
   var sf=document.getElementById('stageFilter');
   sf.innerHTML='<option value="">All Stages</option>';
-  stages.forEach(function(s){sf.innerHTML+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
-  // Populate modal stage select
+  STAGE_ORDER.forEach(function(k){if(STAGE_MAP[k])sf.innerHTML+='<option value="'+k+'">'+STAGE_MAP[k]+'</option>';});
   var ms=document.getElementById('mStage');
   ms.innerHTML='<option value="">None</option>';
-  stages.forEach(function(s){ms.innerHTML+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
+  STAGE_ORDER.forEach(function(k){if(STAGE_MAP[k])ms.innerHTML+='<option value="'+k+'">'+STAGE_MAP[k]+'</option>';});
 }
 
 async function loadMembers(){
@@ -598,7 +588,8 @@ async function init(){
   currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName;
   document.getElementById('mUserName').textContent=currentUserName;
-  await Promise.all([loadStages(),loadMembers()]);
+  loadStages();
+  await loadMembers();
   await loadContacts();
 }
 init();
