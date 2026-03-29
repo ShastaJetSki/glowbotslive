@@ -560,13 +560,17 @@ function renderInventory(){
     var cls=qty===0?'out':qty<=low?'low':'good';
     var pct=Math.min(100,item.quantity_on_hand?Math.round(qty/item.quantity_on_hand*100):100);
     var barColor=qty===0?'#ef4444':qty<=low?'#f59e0b':'#22c55e';
+  var giveOpts=item.bin_location?item.bin_location.split(',').map(function(v){return v.trim();}).filter(Boolean):[];
     return '<div class="inv-card '+cls+'" onclick="openItemModal(this.dataset.iid)" data-iid="'+item.item_id+'">'  
       +'<div class="inv-name">'+esc(item.part_name||'')+'</div><div style="font-size:10px;color:var(--accent-light);margin-top:1px;">Give qty: '+(item.selling_price||1)+'</div>'
       +(item.description?'<div class="inv-cat">'+esc(item.description.substring(0,40))+'</div>':'<div class="inv-cat">No description</div>')
-      +'<div class="inv-qty-row"><div><div class="inv-qty-lbl" style="margin-bottom:2px;">Given All Time</div><div class="inv-qty '+cls+'">'+getItemAllTime(item.part_name)+'</div></div><div style="text-align:right;"><div class="inv-qty-lbl" style="margin-bottom:2px;">'+(qty===0?'Out of Stock':qty<=low?'Low Stock':'In Stock')+'</div><div style="font-size:18px;font-weight:700;color:'+(qty===0?'#ef4444':qty<=low?'#f59e0b':'#22c55e')+';">'+qty+'</div></div></div>'
+      +'<div class="inv-qty-row"><div class="inv-qty '+cls+'">'+qty+'</div><div class="inv-qty-lbl">'+(qty===0?'Out of Stock':qty<=low?'Low Stock':'In Stock')+'</div></div>'
       +'<div class="inv-bar-wrap"><div class="inv-bar" style="width:'+pct+'%;background:'+barColor+';"></div></div>'
       +(item.unit_cost?'<div class="inv-val">$'+parseFloat(item.unit_cost).toFixed(2)+' each &middot; YTD: $'+getItemYTD(item.part_name)+'</div>':'')
-      +'<button style="margin-top:10px;width:100%;padding:7px;border-radius:6px;background:var(--accent-primary);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openGiveModal(this.closest(String.fromCharCode(91)+\'data-iid\'+String.fromCharCode(93)).dataset.iid)">Give Swag</button>'
+      +'<div style="margin-top:10px;display:flex;gap:6px;align-items:center;" onclick="event.stopPropagation();">'
+      +(giveOpts.length?'<select class="give-qty-sel" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-primary);font-size:13px;">'+giveOpts.map(function(v){return'<option value="'+v+'">'+v+'</option>';}).join('')+'</select>':'<input type="number" class="give-qty-inp" min="1" value="'+(item.selling_price||1)+'" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-primary);font-size:13px;">')
+      +'<button data-gid="'+item.item_id+'" onclick="openGiveFromCard(this)" style="padding:6px 14px;border-radius:6px;background:var(--accent-primary);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;">Give</button>'
+      +'</div>'
     +'</div>';
   }).join('');
 }
@@ -687,12 +691,21 @@ async function deleteItem(){
 }
 
 /* ── GIVE MODAL ── */
-function openGiveModal(itemId){
+function openGiveFromCard(btn){
+  var card=btn.closest('[data-iid]')||btn.parentElement;
+  var sel=card.querySelector('.give-qty-sel');
+  var inp=card.querySelector('.give-qty-inp');
+  var qty=sel?parseInt(sel.value):inp?parseInt(inp.value)||1:1;
+  var iid=btn.dataset.gid;
+  openGiveModal(iid,qty);
+}
+function openGiveModal(itemId,preQty){
   giveItemId=itemId;
   var item=allItems.find(function(i){return i.item_id===itemId;});
   document.getElementById('giveItemName').textContent=item?item.part_name:'Item';
   document.getElementById('giveItemStock').textContent=(item?item.quantity_on_hand||0:0)+' in stock';
-  var defaultQty=item?(item.selling_price||1):1;
+  document.getElementById('giveItemName').textContent=item?item.part_name:'Item';
+  var defaultQty=preQty||(item?(item.selling_price||1):1);
   var giveOptions=item&&item.bin_location?item.bin_location.split(',').map(function(v){return v.trim();}).filter(Boolean):[];
   var gWrap=document.getElementById('gQtyWrap');
   if(giveOptions.length){
