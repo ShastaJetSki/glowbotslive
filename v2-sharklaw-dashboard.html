@@ -450,14 +450,14 @@ async function loadKpis(){
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
     (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
-  document.getElementById('kTotal').textContent=cr.count??0;
-  document.getElementById('kMine').textContent=mr.count??0;document.getElementById('kMineLabel').textContent=viewMode==='mine'?'My Contacts':'Team Contacts';
-  document.getElementById('kAppts').textContent=ar.count??0;
-  document.getElementById('k7Days').textContent=a7r.count??0;
-  document.getElementById('kTasks').textContent=tr.count??0;
-  document.getElementById('kSwagLow').textContent=sr.count??0;
+  if(document.getElementById('kTotal'))document.getElementById('kTotal').textContent=cr.count??0;
+  if(document.getElementById('kMine'))document.getElementById('kMine').textContent=mr.count??0;if(document.getElementById('kMineLabel'))document.getElementById('kMineLabel').textContent=viewMode==='mine'?'My Contacts':'Team Contacts';
+  if(document.getElementById('kAppts'))document.getElementById('kAppts').textContent=ar.count??0;
+  if(document.getElementById('k7Days'))document.getElementById('k7Days').textContent=a7r.count??0;
+  if(document.getElementById('kTasks'))document.getElementById('kTasks').textContent=tr.count??0;
+  if(document.getElementById('kSwagLow'))document.getElementById('kSwagLow').textContent=sr.count??0;
   if(document.getElementById('kInPipeline'))document.getElementById('kInPipeline').textContent=pipeR?.count??0;
-  document.getElementById('kOverdue').textContent=or2?.count??0;
+  if(document.getElementById('kOverdue'))document.getElementById('kOverdue').textContent=or2?.count??0;
 }
 async function loadAppointments(){
   var el=document.getElementById('apptsContainer');
@@ -504,16 +504,16 @@ async function saveTask(){
   closeModal('newTaskModal');showToast('Task created!');loadTasks();loadKpis();
 }
 async function loadMessages(){
+  var el=document.getElementById('msgContainer');
+  if(!el)return;
   try{
     var r=await sb.from('notifications').select('*').eq('tenant_id',currentTenantId).eq('recipient_id',currentUserId).order('created_at',{ascending:false}).limit(8);
+    if(r.error){el.innerHTML='<div class="empty-state">No messages</div>';return;}
     allMessages=r.data||[];
-    var el=document.getElementById('msgContainer');
-    if(!el)return;
     if(!allMessages.length){el.innerHTML='<div class="empty-state">No messages</div>';return;}
     el.innerHTML=allMessages.map(function(m){return'<div class="msg-item'+(m.is_read?'':' unread')+'" data-mid="'+m.notification_id+'" onclick="openMessage(this.dataset.mid)"><div class="msg-title">'+esc(m.title||'Notification')+'</div><div class="msg-sub">'+new Date(m.created_at).toLocaleDateString()+'</div></div>';}).join('');
   }catch(e){
-    var el=document.getElementById('msgContainer');
-    if(el)el.innerHTML='<div class="empty-state">Messages unavailable</div>';
+    el.innerHTML='<div class="empty-state">No messages</div>';
   }
 }
 async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');}
