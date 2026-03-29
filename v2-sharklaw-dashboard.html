@@ -182,6 +182,10 @@
     .dash-section.dragging{opacity:.4;border:2px dashed var(--accent-primary);border-radius:10px;}
     .dash-section.drag-over{border-top:3px solid var(--accent-primary);}
     .drag-hint{font-size:14px;color:var(--text-secondary);margin-left:4px;opacity:.5;}
+    .view-toggle-wrap{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);}
+    .view-toggle{display:flex;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+    .vt-btn{padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-secondary);transition:all .15s;border-radius:20px;}
+    .vt-btn.active{background:var(--accent-primary);color:#fff;}
     .dash-drag-handle:hover .drag-hint{opacity:1;}
     @media(max-width:768px){.desktop-header{display:none!important;}.mobile-top-header{display:block;}.mobile-bottom-nav{display:block!important;}body{padding-bottom:120px;}.form-row{grid-template-columns:1fr;}.modal-overlay{align-items:flex-end;}}
     @media(min-width:769px){.mobile-top-header{display:none!important;}.mobile-bottom-nav{display:none!important;}.main{max-width:980px;margin:0 auto;padding:16px 24px;}.modal-overlay{align-items:center;padding:20px;}.modal-box{border-radius:16px;}}
@@ -223,15 +227,24 @@
 </div>
 <div class="kpi-bar">
   <div class="kpi-pill"><div class="kpi-val" id="kTotal">&#8212;</div><div class="kpi-lbl">Total Contacts</div></div>
-  <div class="kpi-pill"><div class="kpi-val" id="kMine">&#8212;</div><div class="kpi-lbl">My Contacts</div></div>
+  <div class="kpi-pill"><div class="kpi-val" id="kMine">&#8212;</div><div class="kpi-lbl" id="kMineLabel">My Contacts</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kAppts">&#8212;</div><div class="kpi-lbl">Today's Appts</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kTasks">&#8212;</div><div class="kpi-lbl">Open Tasks</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="k7Days">&#8212;</div><div class="kpi-lbl">Next 7 Days</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kOverdue">&#8212;</div><div class="kpi-lbl">Overdue Tasks</div></div>
 </div>
-<div class="greeting-bar">
-  <div class="greeting-time" id="greetTime"></div>
-  <div class="greeting-name" id="greetName">Welcome back</div>
+<div class="greeting-bar" style="display:flex;justify-content:space-between;align-items:center;">
+  <div>
+    <div class="greeting-time" id="greetTime"></div>
+    <div class="greeting-name" id="greetName">Welcome back</div>
+  </div>
+  <div class="view-toggle-wrap" id="viewToggleWrap" style="display:none;">
+    <span style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;">View</span>
+    <div class="view-toggle">
+      <button class="vt-btn active" id="vtMine" onclick="setViewMode('mine')">Mine</button>
+      <button class="vt-btn" id="vtAll" onclick="setViewMode('all')">All</button>
+    </div>
+  </div>
 </div>
 <div class="main">
   <div class="today-cards-wrap">
@@ -415,10 +428,11 @@ async function checkAuth(){var r=await sb.auth.getSession(),s=r.data.session;if(
 async function loadTodayCards(){
   var todayStr=new Date().toISOString().split('T')[0];
   var isOA=['owner','admin'].includes(currentUserRole||'');
+  var filterMine=!isOA||(viewMode==='mine');
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time');
-  if(!isOA&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
+  if(filterMine&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
   var eq2=sb.from('events').select('*').eq('tenant_id',currentTenantId).eq('event_date',todayStr).order('event_time');
-  if(!isOA&&currentUserId)eq2=eq2.eq('assigned_to',currentUserId);
+  if(filterMine&&currentUserId)eq2=eq2.eq('assigned_to',currentUserId);
   var [ar,er]=await Promise.all([aq,eq2]);
   var appts=ar.data||[],events=er.data||[];
   document.getElementById('todayApptsCount').textContent=appts.length;
@@ -433,16 +447,16 @@ async function loadKpis(){
   var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=next7.toISOString().split('T')[0];
   var [cr,mr,ar,a7r,tr,sr,or2]=await Promise.all([
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false'),
-    sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).or('is_deleted.is.null,is_deleted.eq.false'),
-    sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr),
-    sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str),
-    sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).not('status','eq','done'),
+    (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     sb.from('swag_inventory').select('item_id',{count:'exact',head:true}).eq('tenant_id',currentTenantId).lte('quantity_on_hand',5),
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('pipeline_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
-    sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).not('status','eq','done').lt('due_at',new Date().toISOString())
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
   document.getElementById('kTotal').textContent=cr.count??0;
-  document.getElementById('kMine').textContent=mr.count??0;
+  document.getElementById('kMine').textContent=mr.count??0;document.getElementById('kMineLabel').textContent=viewMode==='mine'?'My Contacts':'Team Contacts';
   document.getElementById('kAppts').textContent=ar.count??0;
   document.getElementById('k7Days').textContent=a7r.count??0;
   document.getElementById('kTasks').textContent=tr.count??0;
@@ -452,19 +466,28 @@ async function loadKpis(){
 async function loadAppointments(){
   var el=document.getElementById('apptsContainer');
   var todayStr=new Date().toISOString().split('T')[0];
-  var r=await sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time').limit(8);
+  var isOAa=['owner','admin'].includes(currentUserRole||'');
+  var apptQ=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time').limit(8);
+  if(!isOAa||(viewMode==='mine'))apptQ=apptQ.eq('assigned_to',currentUserId);
+  var r=await apptQ;
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No appointments today</div>';return;}
   el.innerHTML='<div class="appt-list">'+r.data.map(function(a){var ec=memberColor(a.assigned_to);return'<div class="appt-item" style="border-left-color:'+ec+'"><div class="appt-time">'+fmt12(a.appointment_time)+'</div><div><div class="appt-name">'+esc(a.customer_name||'Walk-in')+'</div><div class="appt-note">'+(a.service_type||'General')+(a.notes?' &middot; '+esc(a.notes):'')+'</div></div></div>';}).join('')+'</div>';
 }
 async function loadContacts(){
   var el=document.getElementById('contactsContainer');
-  var r=await sb.from('contacts').select('contact_id,first_name,last_name,phone,organization_name,customer_type,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('created_at',{ascending:false}).limit(6);
+  var isOAc=['owner','admin'].includes(currentUserRole||'');
+  var cQ=sb.from('contacts').select('contact_id,first_name,last_name,phone,organization_name,customer_type,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('created_at',{ascending:false}).limit(6);
+  if(!isOAc||(viewMode==='mine'))cQ=cQ.eq('assigned_to',currentUserId);
+  var r=await cQ;
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No contacts yet</div>';return;}
   el.innerHTML='<div class="contacts-list">'+r.data.map(function(c){var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown';var ec=memberColor(c.assigned_to);var en=memberName(c.assigned_to);var phone=formatPhone(c.phone||'');return'<a href="v2-sharklaw-profiles.html?id='+c.contact_id+'" class="cc" style="border-left-color:'+ec+'"><div class="cc-header"><div class="cc-name">'+esc(name)+'</div>'+(c.organization_name?'<span class="cc-org">'+esc(c.organization_name)+'</span>':'')+'</div><div class="cc-row">'+(phone?'<span class="cc-phone">'+esc(phone)+'</span>':'<span style="font-size:12px;color:var(--text-secondary);">No phone</span>')+'<span class="cc-assigned"><span class="cc-dot" style="background:'+ec+'"></span>'+esc(en)+'</span></div>'+(c.customer_type?'<div style="margin-top:3px;font-size:11px;color:var(--text-secondary);">'+esc(c.customer_type)+'</div>':'')+'</a>';}).join('')+'</div>';
 }
 async function loadTasks(){
   var el=document.getElementById('tasksContainer');
-  var r=await sb.from('tasks').select('task_id,title,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).not('status','eq','done').order('due_at',{ascending:true,nullsFirst:false}).limit(8);
+  var isOAt=['owner','admin'].includes(currentUserRole||'');
+  var tQ=sb.from('tasks').select('task_id,title,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).not('status','eq','done').order('due_at',{ascending:true,nullsFirst:false}).limit(8);
+  if(!isOAt||(viewMode==='mine'))tQ=tQ.eq('assigned_to',currentUserId);
+  var r=await tQ;
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks &#8212; all caught up! &#127881;</div>';return;}
   var today=new Date();today.setHours(0,0,0,0);
   el.innerHTML='<div class="task-list">'+r.data.map(function(t){var due=t.due_at?new Date(t.due_at):null;var overdue=due&&due<today;var pc='pri-'+(t.priority||'normal');return'<div class="task-item'+(overdue?' is-overdue':'')+'"><div class="task-check" onclick="toggleTask(this.dataset.tid,this)" data-tid='+t.task_id+'></div><div class="task-text">'+esc(t.title||'Untitled')+'</div><span class="task-pri '+pc+'">'+esc(t.priority||'normal')+'</span>'+(due?'<div class="task-due'+(overdue?' overdue':'')+'">'+fmtDate(t.due_at)+'</div>':'')+'</div>';}).join('')+'</div>';
@@ -513,7 +536,10 @@ async function loadPipeline(){
 async function loadFollowups(){
   var el=document.getElementById('followupContainer');
   var cutoff=new Date();cutoff.setDate(cutoff.getDate()-7);
-  var r=await sb.from('contacts').select('contact_id,first_name,last_name,created_at,assigned_to').eq('tenant_id',currentTenantId).eq('assigned_to',currentUserId).or('is_deleted.is.null,is_deleted.eq.false').lte('created_at',cutoff.toISOString()).order('created_at',{ascending:false}).limit(6);
+  var isOAf=['owner','admin'].includes(currentUserRole||'');
+  var fQ=sb.from('contacts').select('contact_id,first_name,last_name,created_at,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').lte('created_at',cutoff.toISOString()).order('created_at',{ascending:false}).limit(6);
+  if(!isOAf||(viewMode==='mine'))fQ=fQ.eq('assigned_to',currentUserId);
+  var r=await fQ;
   var contacts=r.data||[];
   if(!contacts.length){el.innerHTML='<div class="empty-state">No follow-ups due</div>';return;}
   el.innerHTML='<div class="contacts-list">'+contacts.map(function(c){
@@ -529,10 +555,11 @@ async function loadWeek(){
   for(var i=0;i<7;i++){var d=new Date(today);d.setDate(today.getDate()+i);days.push(d);}
   var startStr=days[0].toISOString().split('T')[0];
   var endStr=days[6].toISOString().split('T')[0];
-  var [ar,er]=await Promise.all([
-    sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time'),
-    sb.from('events').select('event_date,event_time,event_name,assigned_to').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time')
-  ]);
+  var isOAw=['owner','admin'].includes(currentUserRole||'');
+  var waq=sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time');
+  var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
+  if(!isOAw||(viewMode==='mine')){waq=waq.eq('assigned_to',currentUserId);weq=weq.eq('assigned_to',currentUserId);}
+  var [ar,er]=await Promise.all([waq,weq]);
   var appts=ar.data||[],events=er.data||[];
   var DAYS2=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var html='';
@@ -644,6 +671,18 @@ function initDragSections(){
   sections.forEach(addListeners);
 }
 
+var viewMode=localStorage.getItem('dash-view-mode')||'mine';
+
+function setViewMode(mode){
+  viewMode=mode;
+  localStorage.setItem('dash-view-mode',mode);
+  document.getElementById('vtMine').classList.toggle('active',mode==='mine');
+  document.getElementById('vtAll').classList.toggle('active',mode==='all');
+  // Reload all data sections
+  Promise.all([loadKpis(),loadTodayCards(),loadAppointments(),loadContacts(),loadTasks(),loadMessages(),loadFollowups(),loadWeek()]);
+  loadTeam();
+}
+
 async function init(){
   var s=await checkAuth();if(!s)return;
   var authId=s.user?.id,email=s.user?.email;userEmail=email;
@@ -659,6 +698,19 @@ async function init(){
   var ds=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('greetTime').textContent=g+' · '+ds;
   document.getElementById('greetName').textContent='Welcome back, '+fn;
+  // Show Mine/All toggle for admin/owner
+  if(['owner','admin'].includes(currentUserRole)){
+    var toggleWrap=document.getElementById('viewToggleWrap');
+    if(toggleWrap){
+      toggleWrap.style.display='flex';
+      // Restore saved preference
+      document.getElementById('vtMine').classList.toggle('active',viewMode==='mine');
+      document.getElementById('vtAll').classList.toggle('active',viewMode==='all');
+    }
+  } else {
+    // Non-admin always sees Mine only
+    viewMode='mine';
+  }
   var bsR=await sb.from('business_settings').select('business_name').eq('tenant_id',currentTenantId).single();
   var bizLabel=(bsR.data&&bsR.data.business_name)||currentUserName;
   document.getElementById('dBiz').textContent=bizLabel;document.getElementById('mBiz').textContent=bizLabel;
