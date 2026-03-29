@@ -197,6 +197,9 @@
     .alpha-anchor{scroll-margin-top:80px;}
     /* CONTACT GRID */
     .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+    .view-toggle{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--border-default);background:var(--bg-card);}
+    .vt-btn{padding:5px 14px;font-size:12px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;}
+    .vt-btn.active{background:var(--accent-primary);color:#fff;}
     .empty-state{text-align:center;padding:40px;color:var(--text-secondary);font-size:14px;grid-column:1/-1;}
     /* CONTACT CARD */
     .cc{border-radius:8px;padding:12px 14px;cursor:pointer;transition:filter .15s;border-left:4px solid;display:flex;flex-direction:column;gap:7px;min-width:0;}
@@ -254,13 +257,18 @@
       <a href="v2-sharklaw-pipeline.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Pipeline</a>
       <a href="v2-sharklaw-swag.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Swag</a>
       <a href="v2-sharklaw-settings.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Settings</a>
-      
+      <div id="viewToggleWrap" style="margin-left:auto;display:flex;align-items:center;">
+        <div class="view-toggle">
+          <button class="vt-btn" id="vtAll" onclick="setViewMode('all')">All</button>
+          <button class="vt-btn" id="vtMine" onclick="setViewMode('mine')">Mine</button>
+        </div>
+      </div>
     </nav>
   </div>
 </div>
 
 <!-- MAIN CONTENT -->
-<div class="page-wrap">
+<div class="page-wrap" id="pageWrap" style="display:none;">
   <!-- CONTROLS BAR -->
   <div class="controls-bar">
     <div style="position:relative;flex:1;max-width:360px;">
@@ -374,6 +382,7 @@ var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI
 var TENANT='55555555-5555-5555-5555-555555555555';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
 var currentUserId=null,currentUserRole=null,currentUserName='',userEmail=null;
+var viewMode=localStorage.getItem('contacts-view-mode')||'all';
 var allContacts=[],allMembers=[];
 var editingId=null;
 
@@ -401,22 +410,34 @@ async function checkAuth(){
 async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');}
 
 /* ── CONTACTS ── */
+function setViewMode(mode){
+  viewMode=mode;
+  localStorage.setItem('contacts-view-mode',mode);
+  document.getElementById('vtAll').classList.toggle('active',mode==='all');
+  document.getElementById('vtMine').classList.toggle('active',mode==='mine');
+  renderContacts();
+}
 function getFiltered(){
+  if(viewMode==='mine')return allContacts.filter(function(c){return c.assigned_to===currentUserId;}).filter(applyFilters);
+  return allContacts.filter(applyFilters);
+}
+function applyFilters(c){
   var search=(document.getElementById('searchInput').value||'').toLowerCase().trim();
   var tf=document.getElementById('typeFilter').value;
   var sf=document.getElementById('stageFilter').value;
   var mf=document.getElementById('memberFilter').value;
-  return allContacts.filter(function(c){
-    if(tf&&(c.customer_type||'')!==tf)return false;
-    if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
-    if(mf&&(c.assigned_to||'')!==mf)return false;
-    if(search){
-      var n=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
-      var p=fmt(c.phone||'');
-      if(n.indexOf(search)<0&&p.indexOf(search)<0&&(c.email||'').toLowerCase().indexOf(search)<0&&(c.organization_name||'').toLowerCase().indexOf(search)<0)return false;
-    }
-    return true;
-  });
+  var tf=document.getElementById('typeFilter').value;
+  var sf=document.getElementById('stageFilter').value;
+  var mf=document.getElementById('memberFilter').value;
+  if(tf&&(c.customer_type||'')!==tf)return false;
+  if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
+  if(mf&&(c.assigned_to||'')!==mf)return false;
+  if(search){
+    var n=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
+    var p=fmt(c.phone||'');
+    if(n.indexOf(search)<0&&p.indexOf(search)<0&&(c.email||'').toLowerCase().indexOf(search)<0&&(c.organization_name||'').toLowerCase().indexOf(search)<0)return false;
+  }
+  return true;
 }
 
 function renderContacts(){
@@ -627,7 +648,9 @@ async function init(){
   currentUserId=row.member_id;currentUserRole=row.role;
   currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName;
+  setViewMode(viewMode);
   document.getElementById('mUserName').textContent=currentUserName;
+  document.getElementById('pageWrap').style.display='';
   loadStages();
   await loadMembers();
   await loadContacts();
