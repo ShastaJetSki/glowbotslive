@@ -148,16 +148,29 @@
 
   async function doRedirect(session){
     var email=(session.user&&session.user.email||'').toLowerCase().trim();
-    if(!email){location.replace(DASHBOARD);return;}
+    if(!email){showErr('Could not read account email. Please try again.');btn.disabled=false;btn.textContent='Sign In';return;}
     try{
-      var r=await sb.from('team_members').select('is_active').eq('email',email).single();
-      if(r.data&&r.data.is_active===false){
+      var r=await sb.from('team_members').select('is_active').eq('email',email).eq('tenant_id','55555555-5555-5555-5555-555555555555').single();
+      if(!r.data){
+        // Email authenticated with Supabase but not a SharkLaw team member
+        await sb.auth.signOut();lsClear();
+        showErr('No SharkLaw account found for '+email+'. Contact your administrator.');
+        btn.disabled=false;btn.textContent='Sign In';
+        return;
+      }
+      if(r.data.is_active===false){
         await sb.auth.signOut();lsClear();
         showErr('Account deactivated. Contact your administrator.');
         btn.disabled=false;btn.textContent='Sign In';
         return;
       }
-    }catch(e){/* if lookup fails, redirect anyway — auth was valid */}
+    }catch(e){
+      // Lookup failed — do NOT redirect, block access
+      await sb.auth.signOut();lsClear();
+      showErr('Could not verify account. Check your connection and try again.');
+      btn.disabled=false;btn.textContent='Sign In';
+      return;
+    }
     location.replace(DASHBOARD);
   }
 
