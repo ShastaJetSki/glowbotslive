@@ -383,6 +383,7 @@ var TENANT='55555555-5555-5555-5555-555555555555';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
 var currentUserId=null,currentUserRole=null,currentUserName='',userEmail=null;
 var viewMode=localStorage.getItem('contacts-view-mode')||'all';
+var activeLetter='';
 var allContacts=[],allMembers=[];
 var editingId=null;
 
@@ -410,6 +411,10 @@ async function checkAuth(){
 async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');}
 
 /* ── CONTACTS ── */
+function setLetter(l){
+  activeLetter=l;
+  renderContacts();
+}
 function setViewMode(mode){
   viewMode=mode;
   localStorage.setItem('contacts-view-mode',mode);
@@ -418,8 +423,11 @@ function setViewMode(mode){
   renderContacts();
 }
 function getFiltered(){
-  if(viewMode==='mine')return allContacts.filter(function(c){return c.assigned_to===currentUserId;}).filter(applyFilters);
-  return allContacts.filter(applyFilters);
+  var base=viewMode==='mine'?allContacts.filter(function(c){return c.assigned_to===currentUserId;}):allContacts;
+  return base.filter(function(c){
+    if(activeLetter&&(c.first_name||c.last_name||'#')[0].toUpperCase()!==activeLetter)return false;
+    return applyFilters(c);
+  });
 }
 function applyFilters(c){
   var search=(document.getElementById('searchInput').value||'').toLowerCase().trim();
@@ -455,7 +463,7 @@ function renderContacts(){
   var lastLetter='';
   filtered.forEach(function(c){
     var letter=((c.first_name||c.last_name||'#')[0]).toUpperCase();
-    if(letter!==lastLetter){html+='<div class="alpha-anchor" id="letter-'+letter+'" style="display:contents;"></div>';lastLetter=letter;}
+    lastLetter=letter;
     html+=buildCard(c);
   });
   grid.innerHTML=html;
@@ -482,7 +490,11 @@ function renderAlpha(contacts){
   var letters=[];
   contacts.forEach(function(c){var l=((c.first_name||c.last_name||'#')[0]).toUpperCase();if(letters.indexOf(l)<0)letters.push(l);});
   letters.sort();
-  strip.innerHTML=letters.map(function(l){return'<a class="alpha-btn" href="#letter-'+l+'" onclick="event.preventDefault();var el=document.getElementById(\'letter-'+l+'\');if(el)el.scrollIntoView({behavior:\'smooth\'});">'+l+'</a>';}).join('');
+  // All button first
+  var allBtn='<a class="alpha-btn'+(activeLetter===''?' on':'')+'" href="#" onclick="event.preventDefault();setLetter(\'\')">All</a>';
+  strip.innerHTML=allBtn+letters.map(function(l){
+    return'<a class="alpha-btn'+(activeLetter===l?' on':'')+'" href="#" onclick="event.preventDefault();setLetter(\''+l+'\')">'+l+'</a>';
+  }).join('');
 }
 
 /* ── MODAL ── */
