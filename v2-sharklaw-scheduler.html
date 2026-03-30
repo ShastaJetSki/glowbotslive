@@ -685,14 +685,75 @@ async function saveEvent(){
 async function deleteEvent(){if(!editingEventId||!confirm('Delete this event?'))return;await sb.from('events').update({is_deleted:true}).eq('event_id',editingEventId);closeEventModal();showToast('Deleted');await loadEvents();renderCalLayers();render();}
 
 var scrollLocked=false;
-function slideNav(dir,cb){if(scrollLocked)return;scrollLocked=true;var slider=document.getElementById('viewSlider');var exitT=dir==='left'?'translateX(-100%)':dir==='right'?'translateX(100%)':dir==='up'?'translateY(-100%)':'translateY(100%)';var enterT=dir==='left'?'translateX(100%)':dir==='right'?'translateX(-100%)':dir==='up'?'translateY(100%)':'translateY(-100%)';slider.style.transform=exitT;setTimeout(function(){cb();slider.classList.add('no-transition');slider.style.transform=enterT;slider.offsetHeight;slider.classList.remove('no-transition');slider.style.transform='translateX(0) translateY(0)';setTimeout(function(){scrollLocked=false;},350);},320);}
+function slideNav(dir,cb){
+  if(scrollLocked)return;scrollLocked=true;
+  var slider=document.getElementById('viewSlider');
+  var exitT=dir==='left'?'translateX(-100%)':dir==='right'?'translateX(100%)':dir==='up'?'translateY(-100%)':'translateY(100%)';
+  var enterT=dir==='left'?'translateX(100%)':dir==='right'?'translateX(-100%)':dir==='up'?'translateY(100%)':'translateY(-100%)';
+  slider.style.transform=exitT;
+  setTimeout(function(){cb();slider.classList.add('no-transition');slider.style.transform=enterT;slider.offsetHeight;slider.classList.remove('no-transition');slider.style.transform='translateX(0) translateY(0)';setTimeout(function(){scrollLocked=false;},350);},320);
+}
 function navPrev(dir){slideNav(dir||'right',function(){_doNavPrev();});}
 function navNext(dir){slideNav(dir||'left',function(){_doNavNext();});}
 
+// ── Mouse wheel navigation ──
 (function(){
-  var sx=0,sy=0,active=false;var SWIPE_MIN=120;
-  document.addEventListener('touchstart',function(e){var t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true;},{passive:true});
-  document.addEventListener('touchend',function(e){if(!active||scrollLocked)return;active=false;var t=e.changedTouches[0];var dx=t.clientX-sx,dy=t.clientY-sy;var ax=Math.abs(dx),ay=Math.abs(dy);if(ax<SWIPE_MIN&&ay<SWIPE_MIN)return;if(ax>=ay){dx>0?navPrev('right'):navNext('left');}else{dy>0?navPrev('down'):navNext('up');}},{passive:true});
+  var va=document.getElementById('viewArea');
+  if(!va)return;
+  var accX=0,accY=0,accTimer=null;
+  var NAV_THRESHOLD=300;
+  var RESET_MS=500;
+
+  va.addEventListener('wheel',function(e){
+    if(scrollLocked)return;
+
+    // If inside a vertically scrollable container, let it scroll naturally
+    // unless we're at the boundary
+    var scrollEl=e.target.closest('#weekBody,.day-scroll,.cal-events');
+    if(scrollEl){
+      var atTop=scrollEl.scrollTop<=1;
+      var atBot=scrollEl.scrollTop+scrollEl.clientHeight>=scrollEl.scrollHeight-1;
+      var isVert=Math.abs(e.deltaY)>Math.abs(e.deltaX);
+      if(isVert){
+        // Only intercept if at boundary
+        if(!(e.deltaY<0&&atTop)&&!(e.deltaY>0&&atBot))return;
+      }
+    }
+
+    e.preventDefault();
+    var ax=Math.abs(e.deltaX),ay=Math.abs(e.deltaY);
+    // Accumulate in dominant axis
+    if(ay>=ax){accY+=e.deltaY;accX=0;}
+    else{accX+=e.deltaX;accY=0;}
+    clearTimeout(accTimer);
+    accTimer=setTimeout(function(){accX=0;accY=0;},RESET_MS);
+
+    if(Math.abs(accY)>=NAV_THRESHOLD){
+      accY>0?navNext('up'):navPrev('down');accX=0;accY=0;
+    } else if(Math.abs(accX)>=NAV_THRESHOLD){
+      accX>0?navNext('left'):navPrev('right');accX=0;accY=0;
+    }
+  },{passive:false});
+})();
+
+// ── Touch swipe navigation ──
+(function(){
+  var sx=0,sy=0,startTarget=null,active=false;
+  var SWIPE_MIN=80;
+  document.addEventListener('touchstart',function(e){
+    var t=e.touches[0];sx=t.clientX;sy=t.clientY;startTarget=e.target;active=true;
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(!active||scrollLocked){active=false;return;}active=false;
+    var t=e.changedTouches[0];var dx=t.clientX-sx,dy=t.clientY-sy;
+    var ax=Math.abs(dx),ay=Math.abs(dy);
+    if(ax<SWIPE_MIN&&ay<SWIPE_MIN)return;
+    // Don't swipe-navigate if touch started inside a scrollable content area
+    var scrollEl=startTarget&&startTarget.closest('#weekBody,.day-scroll,.cal-events');
+    if(scrollEl&&ay>ax)return; // vertical swipe in scrollable = let it scroll
+    if(ax>=ay){dx>0?navPrev('right'):navNext('left');}
+    else{dy>0?navPrev('down'):navNext('up');}
+  },{passive:true});
 })();
 
 var resizeTimer;
