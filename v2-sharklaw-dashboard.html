@@ -104,6 +104,11 @@
     .task-text.done{text-decoration:line-through;color:var(--text-secondary);}
     .task-due{font-size:11px;color:var(--text-secondary);white-space:nowrap;}
     .task-due.overdue{color:var(--text-primary);font-weight:600;}
+    .task-actions{display:flex;align-items:center;gap:5px;visibility:hidden;opacity:0;transition:opacity .15s;}
+    .task-item:hover .task-actions{visibility:visible;opacity:1;}
+    .task-action-btn{width:28px;height:28px;border-radius:7px;border:1px solid color-mix(in srgb,var(--accent-primary) 40%,transparent);background:color-mix(in srgb,var(--accent-primary) 12%,transparent);color:var(--accent-light);cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;transition:all .15s;flex-shrink:0;font-size:10px;font-weight:700;}
+    .task-action-btn:hover{background:var(--accent-primary);color:#fff;border-color:var(--accent-primary);}
+    .task-action-btn svg{width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;}
     .task-pri{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;flex-shrink:0;}
     .pri-urgent{background:rgba(220,38,38,.2);color:#fca5a5;}
     .pri-high{background:rgba(245,158,11,.2);color:#fcd34d;}
@@ -493,7 +498,21 @@ async function loadTasks(){
   var r=await tQ;
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks &#8212; all caught up! &#127881;</div>';return;}
   var today=new Date();today.setHours(0,0,0,0);
-  el.innerHTML='<div class="task-list">'+r.data.map(function(t){var due=t.due_at?new Date(t.due_at):null;var overdue=due&&due<today;var pc='pri-'+(t.priority||'normal');return'<div class="task-item'+(overdue?' is-overdue':'')+'"><div class="task-check" onclick="toggleTask(this.dataset.tid,this)" data-tid='+t.task_id+'></div><div class="task-text">'+esc(t.title||'Untitled')+'</div><span class="task-pri '+pc+'">'+esc(t.priority||'normal')+'</span>'+(due?'<div class="task-due'+(overdue?' overdue':'')+'">'+fmtDate(t.due_at)+'</div>':'')+'</div>';}).join('')+'</div>';
+  el.innerHTML='<div class="task-list">'+r.data.map(function(t){
+    var due=t.due_at?new Date(t.due_at):null;
+    var overdue=due&&due<today;
+    var pc='pri-'+(t.priority||'normal');
+    var tomorrowBtn='<button class="task-action-btn" data-tid="'+t.task_id+'" onclick="event.stopPropagation();reschedTask(this.dataset.tid,1)" title="Tomorrow">+1d</button>';
+    var calBtn='<button class="task-action-btn" data-tid="'+t.task_id+'" onclick="event.stopPropagation();pickTaskDate(this)" title="Pick date"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>';
+    var dueStr=due?'<div class="task-due'+(overdue?' overdue':'')+'" style="min-width:44px;text-align:right;">'+fmtDate(t.due_at)+'</div>':'<div style="min-width:44px;"></div>';
+    return'<div class="task-item'+(overdue?' is-overdue':'')+'" style="cursor:default;">'
+      +'<div class="task-check" onclick="toggleTask(this.dataset.tid,this)" data-tid='+t.task_id+'></div>'
+      +'<div class="task-text" style="flex:1;">'+esc(t.title||'Untitled')+'</div>'
+      +'<div class="task-actions">'+tomorrowBtn+calBtn+'</div>'
+      +'<span class="task-pri '+pc+'" style="margin-left:6px;">'+esc(t.priority||'normal')+'</span>'
+      +dueStr
+    +'</div>';
+  }).join('')+'</div>';
 }
 async function recordAttempt(contactId){
   // Update contact updated_at - resets the follow-up timer
@@ -502,6 +521,25 @@ async function recordAttempt(contactId){
   setTimeout(function(){loadFollowups();},1500);
 }
 
+async function reschedTask(taskId, daysAhead){
+  var d=new Date();d.setDate(d.getDate()+daysAhead);
+  await sb.from('tasks').update({due_at:d.toISOString(),updated_at:new Date().toISOString()}).eq('task_id',taskId);
+  loadTasks();
+}
+function pickTaskDate(btn){
+  var tid=btn.dataset.tid;
+  var inp=document.createElement('input');
+  inp.type='date';
+  inp.style.position='fixed';inp.style.opacity='0';inp.style.pointerEvents='none';
+  document.body.appendChild(inp);
+  inp.addEventListener('change',function(){
+    if(inp.value){
+      sb.from('tasks').update({due_at:new Date(inp.value).toISOString(),updated_at:new Date().toISOString()}).eq('task_id',tid).then(function(){loadTasks();});
+    }
+    document.body.removeChild(inp);
+  });
+  inp.click();
+}
 async function toggleTask(id,el){if(!id&&el)id=el.dataset.tid;sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
 function openNewTaskModal(){
   document.getElementById('taskTitle').value='';document.getElementById('taskDesc').value='';document.getElementById('taskPriority').value='normal';
