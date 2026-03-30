@@ -167,6 +167,7 @@
     .toast{position:fixed;bottom:140px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border-default);color:var(--text-primary);padding:10px 20px;border-radius:20px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;}
     .toast.show{opacity:1;}
     @keyframes sparkle{0%{transform:translate(0,0) scale(1);opacity:1;}100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0;}}
+    @keyframes calPop{from{opacity:0;transform:scale(.95) translateY(-4px);}to{opacity:1;transform:scale(1) translateY(0);}}
     .sparkle{position:fixed;width:8px;height:8px;border-radius:50%;pointer-events:none;animation:sparkle .6s ease-out forwards;z-index:9999;}
     .pipeline-stages{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;}
     .pipeline-stages::-webkit-scrollbar{display:none;}
@@ -515,33 +516,114 @@ async function reschedTask(taskId, currentDue, daysAhead){
 
 function pickTaskDate(btn){
   var tid=btn.dataset.tid;
-  var existing=document.getElementById("taskDatePop");
-  if(existing){var wasSame=existing.dataset.tid===tid;existing.remove();if(wasSame)return;}
+  var existing=document.getElementById('taskDatePop');
+  if(existing){var wasSame=existing.dataset.tid===tid;existing.remove();document.removeEventListener('mousedown',window._calOutside);if(wasSame)return;}
   var rect=btn.getBoundingClientRect();
-  var pop=document.createElement("div");
-  pop.id="taskDatePop";
+  var now=new Date();
+  var calYear=now.getFullYear(),calMonth=now.getMonth();
+  var selectedDate=null;
+  var calW=234;
+  var leftPos=Math.max(8,Math.min(rect.right-calW,window.innerWidth-calW-8));
+  var topPos=rect.bottom+6;
+  if(topPos+300>window.innerHeight)topPos=rect.top-306;
+  var pop=document.createElement('div');
+  pop.id='taskDatePop';
   pop.dataset.tid=tid;
-  var top=rect.bottom+6;
-  if(top+60>window.innerHeight)top=rect.top-54;
-  pop.style.cssText="position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--accent-primary);border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:flex;align-items:center;gap:8px;top:"+top+"px;left:"+Math.min(rect.left,window.innerWidth-220)+"px;";
-  var inp=document.createElement("input");
-  inp.type="date";
-  inp.style.cssText="padding:6px 10px;border-radius:7px;border:1px solid var(--border-default);background:var(--bg-secondary);color:var(--text-primary);font-size:14px;cursor:pointer;";
-  var okBtn=document.createElement("button");
-  okBtn.textContent="Set";
-  okBtn.style.cssText="padding:6px 12px;border-radius:7px;border:none;background:var(--accent-primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;";
-  pop.appendChild(inp);pop.appendChild(okBtn);
+  pop.style.cssText='position:fixed;z-index:9999;width:'+calW+'px;background:var(--bg-secondary);border:1px solid color-mix(in srgb,var(--accent-primary) 50%,var(--border-default));border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;top:'+topPos+'px;left:'+leftPos+'px;animation:calPop .15s ease-out;';
   document.body.appendChild(pop);
-  inp.focus();
-  function dismiss(){pop.remove();document.removeEventListener("mousedown",outside);}
-  function outside(e){if(!pop.contains(e.target)&&e.target!==btn)dismiss();}
-  setTimeout(function(){document.addEventListener("mousedown",outside);},10);
-  okBtn.addEventListener("click",function(){
-    if(!inp.value){showToast("Pick a date first");return;}
-    sb.from("tasks").update({due_at:new Date(inp.value).toISOString(),updated_at:new Date().toISOString()}).eq("task_id",tid).then(function(){loadTasks();showToast("Due date updated");});
-    dismiss();
-  });
-  inp.addEventListener("keydown",function(e){if(e.key==="Enter"&&inp.value)okBtn.click();if(e.key==="Escape")dismiss();});
+
+  function render(){
+    var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var DAYS=['Su','Mo','Tu','We','Th','Fr','Sa'];
+    var firstDay=new Date(calYear,calMonth,1).getDay();
+    var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+    var todayY=now.getFullYear(),todayM=now.getMonth(),todayD=now.getDate();
+    var todayStr=todayY+'-'+String(todayM+1).padStart(2,'0')+'-'+String(todayD).padStart(2,'0');
+
+    // Header
+    var html='<div style="padding:14px 14px 12px;">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+    html+='<button id="calPrev" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;line-height:1;">&#8249;</button>';
+    html+='<span style="font-size:13px;font-weight:700;color:var(--text-primary);letter-spacing:.2px;">'+MONTHS[calMonth]+' '+calYear+'</span>';
+    html+='<button id="calNext" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;line-height:1;">&#8250;</button>';
+    html+='</div>';
+
+    // Day headers
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;">';
+    DAYS.forEach(function(d){html+='<div style="text-align:center;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 0;letter-spacing:.4px;">'+d+'</div>';});
+    html+='</div>';
+
+    // Day grid
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;" id="calGrid">';
+    for(var i=0;i<firstDay;i++)html+='<div></div>';
+    for(var d2=1;d2<=daysInMonth;d2++){
+      var ds=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d2).padStart(2,'0');
+      var isToday=ds===todayStr;
+      var isSel=ds===selectedDate;
+      var isPast2=new Date(ds)<new Date(todayStr);
+      var cellStyle='display:flex;align-items:center;justify-content:center;height:30px;border-radius:7px;font-size:12px;font-weight:500;transition:background .1s,color .1s;';
+      if(isSel) cellStyle+='background:var(--accent-primary);color:#fff;font-weight:700;cursor:pointer;';
+      else if(isToday) cellStyle+='background:color-mix(in srgb,var(--accent-primary) 18%,transparent);color:var(--accent-light);font-weight:700;border:1px solid color-mix(in srgb,var(--accent-primary) 50%,transparent);cursor:pointer;';
+      else if(isPast2) cellStyle+='color:var(--text-secondary);opacity:.35;cursor:default;';
+      else cellStyle+='color:var(--text-primary);cursor:pointer;';
+      html+='<div class="calday" data-ds="'+ds+'" data-past="'+isPast2+'" style="'+cellStyle+'">'+d2+'</div>';
+    }
+    html+='</div>';
+
+    // Quick shortcuts
+    html+='<div style="display:flex;gap:5px;margin-top:10px;">';
+    var shortcuts=[['Today',0],['Tomorrow',1],['+3d',3],['+7d',7]];
+    shortcuts.forEach(function(s){
+      var sd=new Date();sd.setDate(sd.getDate()+s[1]);
+      var ds2=sd.getFullYear()+'-'+String(sd.getMonth()+1).padStart(2,'0')+'-'+String(sd.getDate()).padStart(2,'0');
+      var active=selectedDate===ds2;
+      html+='<button class="calshort" data-ds="'+ds2+'" style="flex:1;padding:5px 2px;border-radius:6px;border:1px solid '+(active?'var(--accent-primary)':'var(--border-default)')+';background:'+(active?'color-mix(in srgb,var(--accent-primary) 15%,transparent)':'transparent')+';color:'+(active?'var(--accent-light)':'var(--text-secondary)')+';font-size:10px;font-weight:600;cursor:pointer;letter-spacing:.3px;">'+s[0]+'</button>';
+    });
+    html+='</div>';
+
+    // Footer buttons
+    html+='<div style="display:flex;gap:8px;margin-top:10px;">';
+    html+='<button id="calClearBtn" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">Clear</button>';
+    html+='<button id="calSetBtn" style="flex:2;padding:8px;border-radius:8px;border:none;background:var(--accent-primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;opacity:'+(selectedDate?'1':'.45')+';transition:opacity .15s;">Set Date</button>';
+    html+='</div>';
+    html+='</div>';
+
+    pop.innerHTML=html;
+
+    // Wire up events via JS (no inline handlers = no quote hell)
+    pop.querySelector('#calPrev').onclick=function(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}render();};
+    pop.querySelector('#calNext').onclick=function(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}render();};
+    pop.querySelectorAll('.calday').forEach(function(el){
+      if(el.dataset.past==='true')return;
+      el.onmouseenter=function(){if(el.dataset.ds!==selectedDate)el.style.background='var(--bg-hover)';};
+      el.onmouseleave=function(){if(el.dataset.ds!==selectedDate)el.style.background='';};
+      el.onclick=function(){selectedDate=el.dataset.ds;render();};
+    });
+    pop.querySelectorAll('.calshort').forEach(function(el){
+      el.onmouseenter=function(){el.style.borderColor='var(--accent-primary)';};
+      el.onmouseleave=function(){if(selectedDate!==el.dataset.ds){el.style.borderColor='var(--border-default)';}};
+      el.onclick=function(){
+        selectedDate=el.dataset.ds;
+        var d=new Date(selectedDate);calYear=d.getFullYear();calMonth=d.getMonth();
+        render();
+      };
+    });
+    pop.querySelector('#calSetBtn').onclick=function(){
+      if(!selectedDate){showToast('Pick a date');return;}
+      sb.from('tasks').update({due_at:new Date(selectedDate+'T12:00:00').toISOString(),updated_at:new Date().toISOString()}).eq('task_id',tid).then(function(){loadTasks();showToast('Due date updated');});
+      dismiss();
+    };
+    pop.querySelector('#calClearBtn').onclick=function(){
+      sb.from('tasks').update({due_at:null,updated_at:new Date().toISOString()}).eq('task_id',tid).then(function(){loadTasks();showToast('Due date cleared');});
+      dismiss();
+    };
+  }
+
+  render();
+
+  function dismiss(){var p=document.getElementById('taskDatePop');if(p)p.remove();document.removeEventListener('mousedown',window._calOutside);}
+  window._calOutside=function(e){var p=document.getElementById('taskDatePop');if(p&&!p.contains(e.target)&&e.target!==btn)dismiss();};
+  setTimeout(function(){document.addEventListener('mousedown',window._calOutside);},10);
 }
 async function toggleTask(id,el){if(!id&&el)id=el.dataset.tid;sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
 function openNewTaskModal(){
