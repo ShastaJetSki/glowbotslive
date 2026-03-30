@@ -335,10 +335,7 @@
         <div><div class="setting-label">New contact assigned</div><div class="setting-desc">Notify rep when contact is assigned to them</div></div>
         <label class="toggle-switch"><input type="checkbox" id="notifNewAssignment" checked><span class="toggle-slider"></span></label>
       </div>
-      <div class="section-title" style="margin-top:20px;">Pipeline Stage Reminders</div>
-      <div class="setting-desc" style="margin-bottom:12px;">Set how many days after a contact enters each stage before a follow-up task is automatically created for the assigned rep. Set to 0 to disable for that stage.</div>
-      <div id="stageReminderRows" style="display:flex;flex-direction:column;gap:8px;"></div>
-      <div id="stageReminderMsg" style="margin-top:8px;font-size:13px;color:var(--accent-light);"></div>
+
       <button class="btn btn-primary" style="margin-top:16px;" onclick="saveNotifSettings()">Save Notification Settings</button>
       <div id="notifMsg" style="margin-top:8px;"></div>
     </div></div>
@@ -788,20 +785,36 @@ async function loadStages(){
   pipelineStages=(r.data&&r.data.pipeline_stages&&r.data.pipeline_stages.length)?r.data.pipeline_stages:JSON.parse(JSON.stringify(DEFAULT_STAGES));
   renderStages();
 }
+function getReminderDays(stageId){
+  var def={'1':7,'2':7,'3':7,'4':7,'5':7,'6':30,'7':90};
+  return stageReminders[stageId]!==undefined?stageReminders[stageId]:(def[String(stageId)]||7);
+}
+function reminderDropdown(stageId){
+  var cur=getReminderDays(stageId);
+  var opts=[7,14,30,60,90].map(function(d){
+    return'<option value="'+d+'"'+(cur===d?' selected':'')+'>'+d+' days</option>';
+  }).join('');
+  return'<select class="stage-reminder-sel" data-sid="'+stageId+'" onchange="stageReminders[this.dataset.sid]=parseInt(this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-secondary);font-size:11px;cursor:pointer;">'+opts+'</select>';
+}
 function renderStages(){
   document.getElementById('stageList').innerHTML=pipelineStages.map(function(s,i){
+    var sid=s.id||String(i+1);
     return'<div class="stage-row" data-idx="'+i+'">'
-      +'<span class="stage-drag" title="Drag to reorder">⠿</span>'
-      +'<span class="stage-color-dot" style="background:'+s.color+';"></span>'
-      +'<span class="stage-name">'+s.name+'</span>'
+      +'<span class="stage-drag" title="Drag to reorder">&#8942;&#8942;</span>'
+      +'<span class="stage-dot" style="background:'+s.color+';width:12px;height:12px;border-radius:50%;display:inline-block;flex-shrink:0;"></span>'
+      +'<span style="flex:1;font-size:14px;">'+s.name+'</span>'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-right:8px;">'
+        +'<span style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Remind</span>'
+        +reminderDropdown(sid)
+      +'</div>'
       +'<input type="color" value="'+s.color+'" style="width:32px;height:28px;border:none;background:none;cursor:pointer;border-radius:4px;" oninput="pipelineStages['+i+'].color=this.value;renderStages();" onclick="event.stopPropagation();">'
-      +'<button class="stage-del" onclick="pipelineStages.splice('+i+',1);renderStages();">✕</button>'
+      +'<button class="stage-del" onclick="pipelineStages.splice('+i+',1);renderStages();">&#10005;</button>'
     +'</div>';
   }).join('');
 }
 function addStage(){var n=document.getElementById('newStageName').value.trim(),c=document.getElementById('newStageColor').value;if(!n)return;pipelineStages.push({name:n,color:c});document.getElementById('newStageName').value='';renderStages();}
 async function saveStages(){
-  var r=await sb.from('business_settings').update({pipeline_stages:pipelineStages,updated_at:new Date().toISOString()}).eq('tenant_id',TENANT_ID);
+  var r=await sb.from('business_settings').update({pipeline_stages:pipelineStages,stage_reminders:stageReminders,updated_at:new Date().toISOString()}).eq('tenant_id',TENANT_ID);
   var msg=document.getElementById('stageMsg');
   if(r.error){msg.innerHTML='<span class="error">'+r.error.message+'</span>';}
   else{msg.innerHTML='<span class="success">✓ Stages saved!</span>';setTimeout(function(){msg.innerHTML='';},3000);}
@@ -832,22 +845,9 @@ async function saveSwagCategories(){
 
 /* ─── NOTIFICATIONS ─── */
 var STAGE_MAP_S={'1':'1st Contact','2':'Follow Up','3':'Swag Approved','4':'Receive Artwork','5':'Deliver Pop Up','6':'Confirmed Partnership','7':'Follow Up (Old)'};
-var stageReminders={};
+var stageReminders={'1':7,'2':7,'3':7,'4':7,'5':7,'6':30,'7':90};
 
-function renderStageReminderRows(){
-  var html='';
-  [1,2,3,4,5,6,7].forEach(function(id){
-    var days=stageReminders[id]||0;
-    html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-default);">'
-      +'<div><div class="setting-label">'+STAGE_MAP_S[id]+'</div></div>'
-      +'<div style="display:flex;align-items:center;gap:8px;">'
-        +'<input type="number" min="0" max="365" value="'+days+'" id="sr_'+id+'" style="width:70px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-primary);font-size:13px;text-align:center;">'
-        +'<span style="font-size:12px;color:var(--text-secondary);">days <span style="font-size:11px;">(0 = off)</span></span>'
-      +'</div>'
-    +'</div>';
-  });
-  document.getElementById('stageReminderRows').innerHTML=html;
-}
+
 
 async function loadNotifSettings(){
   var r=await sb.from('business_settings').select('notification_settings').eq('tenant_id',TENANT_ID).single();
