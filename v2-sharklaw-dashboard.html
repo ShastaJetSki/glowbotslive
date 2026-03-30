@@ -237,7 +237,7 @@
   <div class="kpi-pill"><div class="kpi-val" id="k7Days">&#8212;</div><div class="kpi-lbl">Next 7 Days</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kOverdue">&#8212;</div><div class="kpi-lbl">Overdue Tasks</div></div>
 </div>
-<div class="greeting-bar">
+<div class="greeting-bar" id="pageWrap" style="display:none;">
   <div class="greeting-time" id="greetTime"></div>
   <div class="greeting-name" id="greetName">Welcome back</div>
 </div>
@@ -323,7 +323,7 @@
         </div>
       </div>
       <div class="dash-section-body" id="sectionBody-tasks">
-        <div id="tasksContainer"><div class="empty-state">Loading&#8230;</div></div>
+        <div id="tasksContainer" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border-default) transparent;padding-right:4px;"><div class="empty-state">Loading&#8230;</div></div>
       </div>
     </div>
 
@@ -535,17 +535,42 @@ async function loadPipeline(){
 
 async function loadFollowups(){
   var el=document.getElementById('followupContainer');
-  var cutoff=new Date();cutoff.setDate(cutoff.getDate()-7);
+  // Load stage reminder settings
+  var reminders={'1':7,'2':7,'3':7,'4':7,'5':7,'6':30,'7':90};
+  try{
+    var br=await sb.from('business_settings').select('stage_reminders').eq('tenant_id',currentTenantId).single();
+    if(br.data&&br.data.stage_reminders&&Object.keys(br.data.stage_reminders).length)reminders=br.data.stage_reminders;
+  }catch(e){}
+  // Load contacts
   var isOAf=['owner','admin'].includes(currentUserRole||'');
-  var fQ=sb.from('contacts').select('contact_id,first_name,last_name,created_at,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').lte('created_at',cutoff.toISOString()).order('created_at',{ascending:false}).limit(6);
+  var fQ=sb.from('contacts').select('contact_id,first_name,last_name,funnel_stage,updated_at,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('updated_at',{ascending:true}).limit(50);
   if(!isOAf||(viewMode==='mine'))fQ=fQ.eq('assigned_to',currentUserId);
   var r=await fQ;
   var contacts=r.data||[];
-  if(!contacts.length){el.innerHTML='<div class="empty-state">No follow-ups due</div>';return;}
-  el.innerHTML='<div class="contacts-list">'+contacts.map(function(c){
+  var now=Date.now();
+  // Filter contacts overdue for their stage reminder
+  var overdue=contacts.filter(function(c){
+    var stage=String(c.funnel_stage||'1');
+    var days=parseInt(reminders[stage]||7);
+    if(!days)return false;
+    var daysSince=Math.floor((now-new Date(c.updated_at))/86400000);
+    return daysSince>=days;
+  }).sort(function(a,b){return new Date(a.updated_at)-new Date(b.updated_at);}).slice(0,8);
+  if(!overdue.length){el.innerHTML='<div class="empty-state">No follow-ups due</div>';return;}
+  var STAGE_NAMES={'1':'1st Contact','2':'Follow Up','3':'Swag Approved','4':'Receive Artwork','5':'Deliver Pop Up','6':'Confirmed Partnership','7':'Follow Up (Old)'};
+  var STAGE_COLORS={'1':'#6366f1','2':'#14b8a6','3':'#a855f7','4':'#f59e0b','5':'#22c55e','6':'#3b82f6','7':'#6b7280'};
+  el.innerHTML='<div class="contacts-list">'+overdue.map(function(c){
     var name=((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown';
-    var days=Math.floor((Date.now()-new Date(c.created_at))/86400000);
-    return'<div class="followup-item" onclick="location.href=this.dataset.url" data-url="v2-sharklaw-profiles.html?id='+c.contact_id+'"><div class="fu-name">'+esc(name)+'</div><div class="fu-days">'+days+'d ago</div></div>';
+    var stage=String(c.funnel_stage||'1');
+    var days=Math.floor((now-new Date(c.updated_at))/86400000);
+    var dueIn=parseInt(reminders[stage]||7);
+    var overdueDays=days-dueIn;
+    var col=STAGE_COLORS[stage]||'#f59e0b';
+    return'<div class="followup-item" style="border-left-color:'+col+';" onclick="location.href=this.dataset.url" data-url="v2-sharklaw-profiles.html?id='+c.contact_id+'">'
+      +'<div style="flex:1;"><div class="fu-name">'+esc(name)+'</div>'
+      +'<div style="font-size:11px;color:var(--text-secondary);">'+esc(STAGE_NAMES[stage]||'Stage '+stage)+'</div></div>'
+      +'<div class="fu-days" style="color:'+(overdueDays>0?'#ef4444':'#f59e0b')+';">'+overdueDays+'d overdue</div>'
+    +'</div>';
   }).join('')+'</div>';
 }
 
