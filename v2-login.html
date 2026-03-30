@@ -89,13 +89,13 @@
     <div class="footer-links">
       <a href="#">Privacy</a>
       <a href="#">Terms</a>
-      <a href="mailto:support@sharklawrules.com">Support</a>
+      <a href="/cdn-cgi/l/email-protection#f0838580809f8284b0839891829b9c918782859c9583de939f9d">Support</a>
     </div>
     <div class="footer-copy">&copy; 2026 Shark Law. All rights reserved.</div>
   </div>
 </div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 (function(){
   var SB_URL='https://wiwbmvmgrutjfbnqhfnb.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indpd2Jtdm1ncnV0amZibnFoZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjY4NzQsImV4cCI6MjA5MDI0Mjg3NH0.puEaHAJijQPSi1ziuYsqTRZnSAALK0tpH1myrLz7dYk';
@@ -133,17 +133,33 @@
   function showOk(m){okEl.textContent=m;okEl.classList.add('show');errEl.classList.remove('show');}
   function clearMsgs(){errEl.classList.remove('show');okEl.classList.remove('show');}
 
-  // Check existing session quietly on load
+  // Check existing session quietly on load — use a lightweight version that
+  // only redirects if we can confirm the session, never blocks or shows errors
   (async function(){
     try{
       var r=await sb.auth.getSession();
-      if(r.data&&r.data.session){doRedirect(r.data.session);return;}
+      if(r.data&&r.data.session){
+        var email=(r.data.session.user&&r.data.session.user.email||'').toLowerCase().trim();
+        if(email){
+          var chk=await sb.from('team_members').select('is_active').eq('email',email).eq('tenant_id','55555555-5555-5555-5555-555555555555').maybeSingle();
+          if(chk.data&&chk.data.is_active!==false){location.replace(DASHBOARD);}
+          else{await sb.auth.signOut();lsClear();}
+        }
+        return;
+      }
       var t=lsGet('sb_access_token'),rf=lsGet('sb_refresh_token');
       if(t&&rf){
         var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});
-        if(sr.data&&sr.data.session){doRedirect(sr.data.session);}
+        if(sr.data&&sr.data.session){
+          var email2=(sr.data.session.user&&sr.data.session.user.email||'').toLowerCase().trim();
+          if(email2){
+            var chk2=await sb.from('team_members').select('is_active').eq('email',email2).eq('tenant_id','55555555-5555-5555-5555-555555555555').maybeSingle();
+            if(chk2.data&&chk2.data.is_active!==false){location.replace(DASHBOARD);}
+            else{await sb.auth.signOut();lsClear();}
+          }
+        }
       }
-    }catch(e){/* silent */}
+    }catch(e){/* silent — just show the login form */}
   })();
 
   async function doRedirect(session){
@@ -236,11 +252,4 @@
   btn.addEventListener('click',login);
   emailEl.addEventListener('keydown',function(e){if(e.key==='Enter')pwEl.focus();});
   pwEl.addEventListener('keydown',function(e){
-    // Only submit on Enter if both fields have values — prevents autofill ghost submit
-    if(e.key==='Enter'&&emailEl.value.trim()&&pwEl.value)login();
-  });
-
-})();
-</script>
-</body>
-</html>
+    // Only submit on Enter if both fie
