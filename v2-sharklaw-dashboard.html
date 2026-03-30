@@ -414,7 +414,7 @@ loadTheme();
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
 function toggleMenu(){document.getElementById('mobileMenuContent').classList.toggle('expanded');}
-function closeModal(id){document.getElementById(id).classList.remove('active');}
+function closeModal(id){document.getElementById(id).classList.remove('active');document.getElementById(id).style.display='none';}
 function logout(){sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');}
 function formatPhone(v){if(!v)return'';var d=v.replace(/\D/g,'').slice(0,10);if(d.length<=3)return d;if(d.length<=6)return d.slice(0,3)+'-'+d.slice(3);return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6);}
 function fmt12(t){if(!t)return'';var p=t.split(':'),h=parseInt(p[0]),m=(p[1]||'00').substring(0,2);return(h%12||12)+':'+m+(h>=12?'PM':'AM');}
@@ -486,7 +486,8 @@ async function loadTasks(){
     var due=t.due_at?new Date(t.due_at):null;
     var overdue=due&&due<today;
     var pc='pri-'+(t.priority||'normal');
-    var tomorrowBtn='<button class="task-action-btn" data-tid="'+t.task_id+'" onclick="event.stopPropagation();reschedTask(this.dataset.tid,1)" title="Tomorrow">+1d</button>';
+    // FIX: pass current due_at as data-due so reschedTask adds 1d from the task's actual due date
+    var tomorrowBtn='<button class="task-action-btn" data-tid="'+t.task_id+'" data-due="'+(t.due_at||'')+'" onclick="event.stopPropagation();reschedTask(this.dataset.tid,this.dataset.due,1)" title="+1 Day">+1d</button>';
     var calBtn='<button class="task-action-btn" data-tid="'+t.task_id+'" onclick="event.stopPropagation();pickTaskDate(this)" title="Pick date"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>';
     var dueStr=due?'<div class="task-due'+(overdue?' overdue':'')+'" style="min-width:44px;text-align:right;">'+fmtDate(t.due_at)+'</div>':'<div style="min-width:44px;"></div>';
     return'<div class="task-item'+(overdue?' is-overdue':'')+'" style="cursor:default;">'
@@ -499,17 +500,19 @@ async function loadTasks(){
   }).join('')+'</div>';
 }
 async function recordAttempt(contactId){
-  // Update contact updated_at - resets the follow-up timer
   await sb.from('contacts').update({updated_at:new Date().toISOString()}).eq('contact_id',contactId);
-  // Reload follow-ups after short delay so action has time to complete
   setTimeout(function(){loadFollowups();},1500);
 }
 
-async function reschedTask(taskId, daysAhead){
-  var d=new Date();d.setDate(d.getDate()+daysAhead);
-  await sb.from('tasks').update({due_at:d.toISOString(),updated_at:new Date().toISOString()}).eq('task_id',taskId);
+// FIX: reschedTask now accepts currentDue and advances from that date, not from today.
+// This means overdue tasks move forward by 1 real day, not to tomorrow.
+async function reschedTask(taskId, currentDue, daysAhead){
+  var base = currentDue ? new Date(currentDue) : new Date();
+  base.setDate(base.getDate() + daysAhead);
+  await sb.from('tasks').update({due_at:base.toISOString(),updated_at:new Date().toISOString()}).eq('task_id',taskId);
   loadTasks();
 }
+
 function pickTaskDate(btn){
   var tid=btn.dataset.tid;
   var inp=document.createElement('input');
@@ -552,39 +555,24 @@ async function loadMessages(){
     el.innerHTML='<div class="empty-state">No messages</div>';
   }
 }
-async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');}
-function openComposeModal(){document.getElementById('composeTo').innerHTML='<option value="">Select recipient</option><option value="all">All Team Members</option>';allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();document.getElementById('composeTo').innerHTML+='<option value="'+m.member_id+'">'+esc(n)+'</option>';});document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';document.getElementById('composeModal').classList.add('active');}
+async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');document.getElementById('msgDetailModal').style.display='flex';}
+function openComposeModal(){document.getElementById('composeTo').innerHTML='<option value="">Select recipient</option><option value="all">All Team Members</option>';allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();document.getElementById('composeTo').innerHTML+='<option value="'+m.member_id+'">'+esc(n)+'</option>';});document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';document.getElementById('composeModal').classList.add('active');document.getElementById('composeModal').style.display='flex';}
 async function sendMessage(){var to=document.getElementById('composeTo').value,subj=document.getElementById('composeSubject').value.trim(),body=document.getElementById('composeBody').value.trim();if(!subj||!body||!to){showToast('Fill in all fields');return;}var now=new Date().toISOString(),inserts=[];if(to==='all'){allMembers.forEach(function(m){inserts.push({tenant_id:currentTenantId,recipient_id:m.member_id,notification_type:'message',title:subj,body:'From: '+currentUserName+'\n\n'+body,is_read:false,created_at:now});});}else{inserts.push({tenant_id:currentTenantId,recipient_id:to,notification_type:'message',title:subj,body:'From: '+currentUserName+'\n\n'+body,is_read:false,created_at:now});}inserts.push({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: '+subj,body:'To: '+(to==='all'?'All Team':memberName(to))+'\n\n'+body,is_read:true,created_at:now});await sb.from('notifications').insert(inserts);closeModal('composeModal');showToast('Message sent!');loadMessages();}
-async function loadSwag(){var el=document.getElementById('swagContainer');var r=await sb.from('swag_inventory').select('item_id,item_name,category,quantity_on_hand').eq('tenant_id',currentTenantId).lte('quantity_on_hand',5).order('quantity_on_hand');if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">All items well-stocked &#10003;</div>';return;}el.innerHTML='<div class="swag-list">'+r.data.map(function(s){var isOut=(s.quantity_on_hand||0)===0;return'<div class="swag-item '+(isOut?'out':'low')+'"><div class="swag-info"><div class="swag-nm">'+esc(s.item_name||'Item')+'</div><div class="swag-cat">'+esc(s.category||'&#8212;')+'</div></div><div class="swag-qty"><div class="swag-qty-val">'+s.quantity_on_hand+'</div><div class="swag-qty-lbl">'+(isOut?'Out':'Low')+'</div></div></div>';}).join('')+'</div>';}
+async function loadSwag(){var el=document.getElementById('swagContainer');if(!el)return;var r=await sb.from('swag_inventory').select('item_id,item_name,category,quantity_on_hand').eq('tenant_id',currentTenantId).lte('quantity_on_hand',5).order('quantity_on_hand');if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">All items well-stocked &#10003;</div>';return;}el.innerHTML='<div class="swag-list">'+r.data.map(function(s){var isOut=(s.quantity_on_hand||0)===0;return'<div class="swag-item '+(isOut?'out':'low')+'"><div class="swag-info"><div class="swag-nm">'+esc(s.item_name||'Item')+'</div><div class="swag-cat">'+esc(s.category||'&#8212;')+'</div></div><div class="swag-qty"><div class="swag-qty-val">'+s.quantity_on_hand+'</div><div class="swag-qty-lbl">'+(isOut?'Out':'Low')+'</div></div></div>';}).join('')+'</div>';}
 function loadTeam(){var el=document.getElementById('teamContainer');if(!allMembers.length){el.innerHTML='<div class="empty-state">No team members</div>';return;}var ORDER=['owner','admin','manager','sr_associate','associate','jr_associate'];var sorted=allMembers.slice().sort(function(a,b){return(ORDER.indexOf(a.role)<0?99:ORDER.indexOf(a.role))-(ORDER.indexOf(b.role)<0?99:ORDER.indexOf(b.role));});function rLabel(r){var m={owner:'Owner',admin:'Admin',manager:'Manager',sr_associate:'Sr. Associate',associate:'Associate',jr_associate:'Jr. Associate'};return m[r]||r||'Team';}el.innerHTML='<div class="team-list">'+sorted.map(function(m){var name=((m.first_name||'')+' '+(m.last_name||'')).trim()||m.email||'Unknown';var initials=((m.first_name||'?')[0]+((m.last_name||'')[0]||'')).toUpperCase();var color=m.color||'#6b7280';var phone=formatPhone(m.phone||'');return'<div class="emp-row"><div class="emp-av" style="background:'+color+';">'+initials+'</div><div class="emp-info"><div class="emp-nm">'+esc(name)+'</div><div class="emp-role-lbl">'+rLabel(m.role)+(m.department?' &middot; '+m.department:'')+'</div></div><div class="emp-acts">'+(phone?'<a href="tel:'+m.phone+'" class="emp-act">Call</a>':'')+(m.email?'<a href="mailto:'+m.email+'" class="emp-act">Email</a>':'')+'</div></div>';}).join('')+'</div>';}
-async function loadPipeline(){
-  var el=document.getElementById('pipelineContainer');
-  var r=await sb.from('contacts').select('pipeline_stage').eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false');
-  var contacts=r.data||[];
-  if(!contacts.length){el.innerHTML='<div class="empty-state">No contacts in pipeline yet</div>';return;}
-  var stages={};
-  contacts.forEach(function(c){var s=c.funnel_stage||'Unknown';stages[s]=(stages[s]||0)+1;});
-  var stageColors=['#6366f1','#3b82f6','#14b8a6','#f59e0b','#22c55e','#6b7280'];
-  var keys=Object.keys(stages);
-  el.innerHTML='<div class="pipeline-stages">'+keys.map(function(s,i){var c=stageColors[i%stageColors.length];return'<a href="v2-sharklaw-pipeline.html" class="stage-pill"><div class="stage-pill-count" style="color:'+c+'">'+stages[s]+'</div><div class="stage-pill-name">'+esc(s)+'</div><div class="stage-pill-bar" style="background:'+c+'"></div></a>';}).join('')+'</div>';
-}
-
 async function loadFollowups(){
   var el=document.getElementById('followupContainer');
-  // Load stage reminder settings
   var reminders={'1':7,'2':7,'3':7,'4':7,'5':7,'6':30,'7':90};
   try{
     var br=await sb.from('business_settings').select('stage_reminders').eq('tenant_id',currentTenantId).single();
     if(br.data&&br.data.stage_reminders&&Object.keys(br.data.stage_reminders).length)reminders=br.data.stage_reminders;
   }catch(e){}
-  // Load contacts
   var isOAf=['owner','admin'].includes(currentUserRole||'');
   var fQ=sb.from('contacts').select('contact_id,first_name,last_name,phone,email,funnel_stage,updated_at,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('updated_at',{ascending:true}).limit(50);
   if(!isOAf||(viewMode==='mine'))fQ=fQ.eq('assigned_to',currentUserId);
   var r=await fQ;
   var contacts=r.data||[];
   var now=Date.now();
-  // Filter contacts overdue for their stage reminder
   var overdue=contacts.filter(function(c){
     var stage=String(c.funnel_stage||'1');
     var days=parseInt(reminders[stage]||7);
@@ -670,7 +658,6 @@ function toggleSection(key){
     body.classList.add('collapsed');
     if(btn)btn.classList.add('collapsed');
   }
-  // Save collapsed state
   var states={};
   try{states=JSON.parse(localStorage.getItem('dash-collapsed')||'{}');}catch(e){}
   states[key]=!isCollapsed;
@@ -695,12 +682,11 @@ function initDragSections(){
   var sections=Array.from(container.querySelectorAll('.dash-section'));
   var dragged=null;
 
-  // Apply saved order
   var saved=[];
   try{saved=JSON.parse(localStorage.getItem('dash-section-order')||'[]');}catch(e){}
   if(saved.length){
     saved.forEach(function(key){
-      if(key==='tasks'||key==='messages')return; // Fixed in twin-wrap
+      if(key==='tasks'||key==='messages')return;
       var el=container.querySelector('[data-key="'+key+'"]');
       if(el)container.appendChild(el);
     });
@@ -716,7 +702,6 @@ function initDragSections(){
     el.addEventListener('dragend',function(){
       el.classList.remove('dragging');
       container.querySelectorAll('.dash-section').forEach(function(s){s.classList.remove('drag-over');});
-      // Save order
       var order=Array.from(container.querySelectorAll('.dash-section')).map(function(s){return s.dataset.key;});
       localStorage.setItem('dash-section-order',JSON.stringify(order));
       dragged=null;
@@ -743,14 +728,13 @@ function initDragSections(){
 }
 
 var viewMode=localStorage.getItem('dash-view-mode')||'mine';
-localStorage.removeItem('dash-section-order'); // Reset drag order - tasks/messages now fixed in twin-wrap
+localStorage.removeItem('dash-section-order');
 
 function setViewMode(mode){
   viewMode=mode;
   localStorage.setItem('dash-view-mode',mode);
   document.getElementById('vtMine').classList.toggle('active',mode==='mine');
   document.getElementById('vtAll').classList.toggle('active',mode==='all');
-  // Reload all data sections
   Promise.all([loadKpis(),loadTodayCards(),loadContacts(),loadTasks(),loadMessages(),loadFollowups(),loadWeek()]);
   loadTeam();
 }
@@ -770,23 +754,20 @@ async function init(){
   var ds=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('greetTime').textContent=g+' · '+ds;
   document.getElementById('greetName').textContent='Welcome back, '+fn;
-  // Show Mine/All toggle for admin/owner
+  document.getElementById('pageWrap').style.display='';
   if(['owner','admin'].includes(currentUserRole)){
     var toggleWrap=document.getElementById('viewToggleWrap');
     if(toggleWrap){
       toggleWrap.style.display='flex';
-      // Restore saved preference
       document.getElementById('vtMine').classList.toggle('active',viewMode==='mine');
       document.getElementById('vtAll').classList.toggle('active',viewMode==='all');
     }
   } else {
-    // Non-admin always sees Mine only
     viewMode='mine';
   }
-  var bsR=await sb.from('business_settings').select('business_name').eq('tenant_id',currentTenantId).single();
-  var bizLabel=(bsR.data&&bsR.data.business_name)||currentUserName;
-  document.getElementById('dUserName').textContent=currentUserName||userEmail||'';document.getElementById('dUserName').textContent=currentUserName||userEmail||'';
   await loadThemeBank();
+  document.getElementById('dUserName').textContent=currentUserName||userEmail||'';
+  document.getElementById('mUserName').textContent=currentUserName||userEmail||'';
   var mr=await sb.from('team_members').select('member_id,first_name,last_name,email,phone,role,color,department').eq('tenant_id',currentTenantId).eq('is_active',true).order('last_name');
   allMembers=mr.data||[];
   initDragSections();restoreCollapsed();
