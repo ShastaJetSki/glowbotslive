@@ -371,7 +371,15 @@
       <div class="form-group"><label class="form-label">Assign To</label><select class="form-select" id="taskAssignee"><option value="">Unassigned</option></select></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Priority</label><select class="form-select" id="taskPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
-        <div class="form-group"><label class="form-label">Due Date</label><input type="date" class="form-input" id="taskDue"></div>
+        <div class="form-group"><label class="form-label">Due Date</label>
+  <div style="position:relative;">
+    <button type="button" id="taskDueBtn" onclick="openModalCal(this)" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-secondary);font-size:15px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent-primary)'" onmouseout="this.style.borderColor='var(--border-default)'">
+      <span id="taskDueLabel">No due date</span>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--text-secondary);stroke-width:2;fill:none;flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    </button>
+  </div>
+  <input type="hidden" id="taskDue">
+</div>
       </div>
     </div>
     <div class="modal-ft"><div class="modal-btns"><button class="btn-primary" onclick="saveTask()">Create Task</button><button class="btn-secondary" onclick="closeModal('newTaskModal')">Cancel</button></div></div>
@@ -514,6 +522,101 @@ async function reschedTask(taskId, currentDue, daysAhead){
   loadTasks();
 }
 
+function openModalCal(btn){
+  var existing=document.getElementById('taskDatePop');
+  if(existing){var wasSame=existing.dataset.modal==='1';existing.remove();document.removeEventListener('mousedown',window._calOutside);if(wasSame)return;}
+  var rect=btn.getBoundingClientRect();
+  var now=new Date();
+  var initVal=document.getElementById('taskDue').value;
+  var calYear=initVal?parseInt(initVal.split('-')[0]):now.getFullYear();
+  var calMonth=initVal?parseInt(initVal.split('-')[1])-1:now.getMonth();
+  var selectedDate=initVal||null;
+  var calW=234;
+  var leftPos=Math.max(8,Math.min(rect.left,window.innerWidth-calW-8));
+  var topPos=rect.bottom+6;
+  if(topPos+310>window.innerHeight)topPos=rect.top-316;
+  var pop=document.createElement('div');
+  pop.id='taskDatePop';
+  pop.dataset.modal='1';
+  pop.style.cssText='position:fixed;z-index:10001;width:'+calW+'px;background:var(--bg-secondary);border:1px solid color-mix(in srgb,var(--accent-primary) 50%,var(--border-default));border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;top:'+topPos+'px;left:'+leftPos+'px;animation:calPop .15s ease-out;';
+  document.body.appendChild(pop);
+
+  function renderModal(){
+    var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var DAYS=['Su','Mo','Tu','We','Th','Fr','Sa'];
+    var firstDay=new Date(calYear,calMonth,1).getDay();
+    var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+    var todayStr=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    var html='<div style="padding:14px 14px 12px;">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+    html+='<button id="mCalPrev" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;line-height:1;">&#8249;</button>';
+    html+='<span style="font-size:13px;font-weight:700;color:var(--text-primary);">'+MONTHS[calMonth]+' '+calYear+'</span>';
+    html+='<button id="mCalNext" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;line-height:1;">&#8250;</button>';
+    html+='</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;">';
+    DAYS.forEach(function(d){html+='<div style="text-align:center;font-size:10px;font-weight:600;color:var(--text-secondary);padding:3px 0;letter-spacing:.4px;">'+d+'</div>';});
+    html+='</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+    for(var i=0;i<firstDay;i++)html+='<div></div>';
+    for(var d2=1;d2<=daysInMonth;d2++){
+      var ds=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d2).padStart(2,'0');
+      var isToday=ds===todayStr;var isSel=ds===selectedDate;
+      var isPast=new Date(ds)<new Date(todayStr);
+      var cellStyle='display:flex;align-items:center;justify-content:center;height:30px;border-radius:7px;font-size:12px;font-weight:500;transition:background .1s;';
+      if(isSel)cellStyle+='background:var(--accent-primary);color:#fff;font-weight:700;cursor:pointer;';
+      else if(isToday)cellStyle+='background:color-mix(in srgb,var(--accent-primary) 18%,transparent);color:var(--accent-light);font-weight:700;border:1px solid color-mix(in srgb,var(--accent-primary) 50%,transparent);cursor:pointer;';
+      else if(isPast)cellStyle+='color:var(--text-secondary);opacity:.35;cursor:default;';
+      else cellStyle+='color:var(--text-primary);cursor:pointer;';
+      html+='<div class="mcalday" data-ds="'+ds+'" data-past="'+isPast+'" style="'+cellStyle+'">'+d2+'</div>';
+    }
+    html+='</div>';
+    html+='<div style="display:flex;gap:5px;margin-top:10px;">';
+    [['Today',0],['Tomorrow',1],['+3d',3],['+7d',7]].forEach(function(s){
+      var sd=new Date();sd.setDate(sd.getDate()+s[1]);
+      var ds2=sd.getFullYear()+'-'+String(sd.getMonth()+1).padStart(2,'0')+'-'+String(sd.getDate()).padStart(2,'0');
+      var active=selectedDate===ds2;
+      html+='<button class="mcalshort" data-ds="'+ds2+'" style="flex:1;padding:5px 2px;border-radius:6px;border:1px solid '+(active?'var(--accent-primary)':'var(--border-default)')+';background:'+(active?'color-mix(in srgb,var(--accent-primary) 15%,transparent)':'transparent')+';color:'+(active?'var(--accent-light)':'var(--text-secondary)')+';font-size:10px;font-weight:600;cursor:pointer;">'+s[0]+'</button>';
+    });
+    html+='</div>';
+    html+='<div style="display:flex;gap:8px;margin-top:10px;">';
+    html+='<button id="mCalClear" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">Clear</button>';
+    html+='<button id="mCalSet" style="flex:2;padding:8px;border-radius:8px;border:none;background:var(--accent-primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;opacity:'+(selectedDate?'1':'.45')+';">Set Date</button>';
+    html+='</div></div>';
+    pop.innerHTML=html;
+    pop.querySelector('#mCalPrev').onclick=function(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderModal();};
+    pop.querySelector('#mCalNext').onclick=function(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderModal();};
+    pop.querySelectorAll('.mcalday').forEach(function(el){
+      if(el.dataset.past==='true')return;
+      el.onmouseenter=function(){if(el.dataset.ds!==selectedDate)el.style.background='var(--bg-hover)';};
+      el.onmouseleave=function(){if(el.dataset.ds!==selectedDate)el.style.background='';};
+      el.onclick=function(){selectedDate=el.dataset.ds;renderModal();};
+    });
+    pop.querySelectorAll('.mcalshort').forEach(function(el){
+      el.onmouseenter=function(){el.style.borderColor='var(--accent-primary)';};
+      el.onmouseleave=function(){if(selectedDate!==el.dataset.ds)el.style.borderColor='var(--border-default)';};
+      el.onclick=function(){selectedDate=el.dataset.ds;var d=new Date(selectedDate);calYear=d.getFullYear();calMonth=d.getMonth();renderModal();};
+    });
+    pop.querySelector('#mCalSet').onclick=function(){
+      if(!selectedDate){showToast('Pick a date');return;}
+      document.getElementById('taskDue').value=selectedDate;
+      var d=new Date(selectedDate+'T12:00:00');
+      document.getElementById('taskDueLabel').textContent=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      document.getElementById('taskDueLabel').style.color='var(--text-primary)';
+      dismissModal();
+    };
+    pop.querySelector('#mCalClear').onclick=function(){
+      selectedDate=null;document.getElementById('taskDue').value='';
+      document.getElementById('taskDueLabel').textContent='No due date';
+      document.getElementById('taskDueLabel').style.color='var(--text-secondary)';
+      dismissModal();
+    };
+  }
+  renderModal();
+  function dismissModal(){var p=document.getElementById('taskDatePop');if(p)p.remove();document.removeEventListener('mousedown',window._calOutside);}
+  window._calOutside=function(e){var p=document.getElementById('taskDatePop');if(p&&!p.contains(e.target)&&e.target!==btn)dismissModal();};
+  setTimeout(function(){document.addEventListener('mousedown',window._calOutside);},10);
+}
+
 function pickTaskDate(btn){
   var tid=btn.dataset.tid;
   var existing=document.getElementById('taskDatePop');
@@ -628,7 +731,7 @@ function pickTaskDate(btn){
 async function toggleTask(id,el){if(!id&&el)id=el.dataset.tid;sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
 function openNewTaskModal(){
   document.getElementById('taskTitle').value='';document.getElementById('taskDesc').value='';document.getElementById('taskPriority').value='normal';
-  document.getElementById('taskDue').value=new Date(Date.now()+86400000).toISOString().split('T')[0];
+  var tmrw=new Date(Date.now()+86400000);var tmrwStr=tmrw.getFullYear()+'-'+String(tmrw.getMonth()+1).padStart(2,'0')+'-'+String(tmrw.getDate()).padStart(2,'0');document.getElementById('taskDue').value=tmrwStr;document.getElementById('taskDueLabel').textContent=tmrw.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});document.getElementById('taskDueLabel').style.color='var(--text-primary)';
   var sel=document.getElementById('taskAssignee');sel.innerHTML='<option value="">Unassigned</option>';
   allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();sel.innerHTML+='<option value="'+m.member_id+'"'+(m.member_id===currentUserId?' selected':'')+'>'+esc(n)+'</option>';});
   document.getElementById('newTaskModal').style.display='flex';
