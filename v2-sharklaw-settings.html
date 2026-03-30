@@ -335,6 +335,10 @@
         <div><div class="setting-label">New contact assigned</div><div class="setting-desc">Notify rep when contact is assigned to them</div></div>
         <label class="toggle-switch"><input type="checkbox" id="notifNewAssignment" checked><span class="toggle-slider"></span></label>
       </div>
+      <div class="section-title" style="margin-top:20px;">Pipeline Stage Reminders</div>
+      <div class="setting-desc" style="margin-bottom:12px;">Set how many days after a contact enters each stage before a follow-up task is automatically created for the assigned rep. Set to 0 to disable for that stage.</div>
+      <div id="stageReminderRows" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div id="stageReminderMsg" style="margin-top:8px;font-size:13px;color:var(--accent-light);"></div>
       <button class="btn btn-primary" style="margin-top:16px;" onclick="saveNotifSettings()">Save Notification Settings</button>
       <div id="notifMsg" style="margin-top:8px;"></div>
     </div></div>
@@ -778,10 +782,10 @@ async function reactivateMember(){
 }
 
 /* ─── PIPELINE STAGES ─── */
-var DEFAULT_STAGES=[{name:'Lead',color:'#6366f1'},{name:'Contacted',color:'#3b82f6'},{name:'Qualified',color:'#14b8a6'},{name:'Proposal',color:'#f59e0b'},{name:'Signed',color:'#22c55e'},{name:'Closed',color:'#6b7280'}];
+var DEFAULT_STAGES=[{id:1,name:'1st Contact',color:'#6366f1'},{id:2,name:'Follow Up',color:'#14b8a6'},{id:3,name:'Swag Approved',color:'#a855f7'},{id:4,name:'Receive Artwork',color:'#f59e0b'},{id:5,name:'Deliver Pop Up',color:'#22c55e'},{id:6,name:'Confirmed Partnership',color:'#3b82f6'},{id:7,name:'Follow Up (Old)',color:'#6b7280'}];
 async function loadStages(){
   var r=await sb.from('business_settings').select('pipeline_stages').eq('tenant_id',TENANT_ID).single();
-  pipelineStages=(r.data&&r.data.pipeline_stages)?r.data.pipeline_stages:DEFAULT_STAGES;
+  pipelineStages=(r.data&&r.data.pipeline_stages&&r.data.pipeline_stages.length)?r.data.pipeline_stages:JSON.parse(JSON.stringify(DEFAULT_STAGES));
   renderStages();
 }
 function renderStages(){
@@ -827,6 +831,24 @@ async function saveSwagCategories(){
 }
 
 /* ─── NOTIFICATIONS ─── */
+var STAGE_MAP_S={'1':'1st Contact','2':'Follow Up','3':'Swag Approved','4':'Receive Artwork','5':'Deliver Pop Up','6':'Confirmed Partnership','7':'Follow Up (Old)'};
+var stageReminders={};
+
+function renderStageReminderRows(){
+  var html='';
+  [1,2,3,4,5,6,7].forEach(function(id){
+    var days=stageReminders[id]||0;
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-default);">'
+      +'<div><div class="setting-label">'+STAGE_MAP_S[id]+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;">'
+        +'<input type="number" min="0" max="365" value="'+days+'" id="sr_'+id+'" style="width:70px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-primary);color:var(--text-primary);font-size:13px;text-align:center;">'
+        +'<span style="font-size:12px;color:var(--text-secondary);">days <span style="font-size:11px;">(0 = off)</span></span>'
+      +'</div>'
+    +'</div>';
+  });
+  document.getElementById('stageReminderRows').innerHTML=html;
+}
+
 async function loadNotifSettings(){
   var r=await sb.from('business_settings').select('notification_settings').eq('tenant_id',TENANT_ID).single();
   if(r.data&&r.data.notification_settings){
@@ -839,6 +861,17 @@ async function loadNotifSettings(){
   }
 }
 async function saveNotifSettings(){
+  // Collect stage reminder values
+  var newReminders={};
+  [1,2,3,4,5,6,7].forEach(function(id){
+    var el=document.getElementById('sr_'+id);
+    if(el)newReminders[id]=parseInt(el.value)||0;
+  });
+  stageReminders=newReminders;
+  // Save to business_settings
+  await sb.from('business_settings').update({stage_reminders:newReminders,updated_at:new Date().toISOString()}).eq('tenant_id',TENANT_ID);
+  document.getElementById('stageReminderMsg').textContent='Stage reminders saved!';
+  setTimeout(function(){document.getElementById('stageReminderMsg').textContent='';},3000);
   var data={email_reminder:document.getElementById('notifEmailReminder').checked,lead_time:document.getElementById('notifLeadTime').value,followup:document.getElementById('notifFollowup').checked,followup_days:document.getElementById('notifFollowupDays').value,new_assignment:document.getElementById('notifNewAssignment').checked};
   var r=await sb.from('business_settings').update({notification_settings:data,updated_at:new Date().toISOString()}).eq('tenant_id',TENANT_ID);
   var msg=document.getElementById('notifMsg');
