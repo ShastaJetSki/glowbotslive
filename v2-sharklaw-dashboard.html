@@ -515,21 +515,33 @@ async function reschedTask(taskId, currentDue, daysAhead){
 
 function pickTaskDate(btn){
   var tid=btn.dataset.tid;
+  var existing=document.getElementById("taskDatePop");
+  if(existing){var wasSame=existing.dataset.tid===tid;existing.remove();if(wasSame)return;}
   var rect=btn.getBoundingClientRect();
-  var inp=document.createElement('input');
-  inp.type='date';
-  // Must NOT have pointer-events:none — that blocks the native picker interaction
-  inp.style.cssText='position:fixed;left:'+rect.left+'px;top:'+rect.bottom+'px;opacity:0;width:1px;height:1px;border:none;padding:0;margin:0;z-index:9999;';
-  document.body.appendChild(inp);
-  inp.addEventListener('change',function(){
-    if(inp.value){
-      sb.from('tasks').update({due_at:new Date(inp.value).toISOString(),updated_at:new Date().toISOString()}).eq('task_id',tid).then(function(){loadTasks();showToast('Due date updated');});
-    }
-    inp.remove();
-  });
-  inp.addEventListener('blur',function(){setTimeout(function(){inp.remove();},200);});
-  inp.click();
+  var pop=document.createElement("div");
+  pop.id="taskDatePop";
+  pop.dataset.tid=tid;
+  var top=rect.bottom+6;
+  if(top+60>window.innerHeight)top=rect.top-54;
+  pop.style.cssText="position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--accent-primary);border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:flex;align-items:center;gap:8px;top:"+top+"px;left:"+Math.min(rect.left,window.innerWidth-220)+"px;";
+  var inp=document.createElement("input");
+  inp.type="date";
+  inp.style.cssText="padding:6px 10px;border-radius:7px;border:1px solid var(--border-default);background:var(--bg-secondary);color:var(--text-primary);font-size:14px;cursor:pointer;";
+  var okBtn=document.createElement("button");
+  okBtn.textContent="Set";
+  okBtn.style.cssText="padding:6px 12px;border-radius:7px;border:none;background:var(--accent-primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;";
+  pop.appendChild(inp);pop.appendChild(okBtn);
+  document.body.appendChild(pop);
   inp.focus();
+  function dismiss(){pop.remove();document.removeEventListener("mousedown",outside);}
+  function outside(e){if(!pop.contains(e.target)&&e.target!==btn)dismiss();}
+  setTimeout(function(){document.addEventListener("mousedown",outside);},10);
+  okBtn.addEventListener("click",function(){
+    if(!inp.value){showToast("Pick a date first");return;}
+    sb.from("tasks").update({due_at:new Date(inp.value).toISOString(),updated_at:new Date().toISOString()}).eq("task_id",tid).then(function(){loadTasks();showToast("Due date updated");});
+    dismiss();
+  });
+  inp.addEventListener("keydown",function(e){if(e.key==="Enter"&&inp.value)okBtn.click();if(e.key==="Escape")dismiss();});
 }
 async function toggleTask(id,el){if(!id&&el)id=el.dataset.tid;sparkles(el);el.classList.add('done');var p=el.nextElementSibling;if(p)p.classList.add('done');await sb.from('tasks').update({status:'done',updated_at:new Date().toISOString()}).eq('task_id',id);setTimeout(function(){loadTasks();loadKpis();},800);}
 function openNewTaskModal(){
