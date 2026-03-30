@@ -103,7 +103,7 @@
     .task-text{flex:1;font-size:13px;}
     .task-text.done{text-decoration:line-through;color:var(--text-secondary);}
     .task-due{font-size:11px;color:var(--text-secondary);white-space:nowrap;}
-    .task-due.overdue{color:#ef4444;font-weight:600;}
+    .task-due.overdue{color:var(--text-primary);font-weight:600;}
     .task-pri{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;flex-shrink:0;}
     .pri-urgent{background:rgba(220,38,38,.2);color:#fca5a5;}
     .pri-high{background:rgba(245,158,11,.2);color:#fcd34d;}
@@ -452,10 +452,10 @@ async function loadKpis(){
     (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
-    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     sb.from('swag_inventory').select('item_id',{count:'exact',head:true}).eq('tenant_id',currentTenantId).lte('quantity_on_hand',5),
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
-    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','eq','done').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
   if(document.getElementById('kTotal'))document.getElementById('kTotal').textContent=cr.count??0;
   if(document.getElementById('kMine'))document.getElementById('kMine').textContent=mr.count??0;if(document.getElementById('kMineLabel'))document.getElementById('kMineLabel').textContent=viewMode==='mine'?'My Contacts':'Team Contacts';
@@ -488,7 +488,7 @@ async function loadContacts(){
 async function loadTasks(){
   var el=document.getElementById('tasksContainer');
   var isOAt=['owner','admin'].includes(currentUserRole||'');
-  var tQ=sb.from('tasks').select('task_id,title,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).not('status','eq','done').order('due_at',{ascending:true,nullsFirst:false}).limit(8);
+  var tQ=sb.from('tasks').select('task_id,title,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).not('status','in','("done","completed")').order('due_at',{ascending:true,nullsFirst:false}).limit(10);
   if(!isOAt||(viewMode==='mine'))tQ=tQ.eq('assigned_to',currentUserId);
   var r=await tQ;
   if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">No open tasks &#8212; all caught up! &#127881;</div>';return;}
@@ -513,7 +513,7 @@ function openNewTaskModal(){
 async function saveTask(){
   var title=document.getElementById('taskTitle').value.trim();if(!title){showToast('Enter a task title');return;}
   var aid=document.getElementById('taskAssignee').value||currentUserId;
-  var data={tenant_id:currentTenantId,title:title,description:document.getElementById('taskDesc').value.trim()||null,priority:document.getElementById('taskPriority').value,status:'pending',assigned_to:aid,due_at:document.getElementById('taskDue').value?new Date(document.getElementById('taskDue').value).toISOString():null,created_at:new Date().toISOString()};
+  var data={tenant_id:currentTenantId,title:title,description:document.getElementById('taskDesc').value.trim()||null,priority:document.getElementById('taskPriority').value,status:'open',assigned_to:aid,created_by:currentUserId,due_at:document.getElementById('taskDue').value?new Date(document.getElementById('taskDue').value).toISOString():null,created_at:new Date().toISOString()};
   var r=await sb.from('tasks').insert(data);if(r.error){showToast('Error: '+r.error.message);return;}
   closeModal('newTaskModal');showToast('Task created!');loadTasks();loadKpis();
 }
