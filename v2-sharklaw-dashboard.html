@@ -412,6 +412,9 @@ var SB_URL='https://wiwbmvmgrutjfbnqhfnb.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indpd2Jtdm1ncnV0amZibnFoZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjY4NzQsImV4cCI6MjA5MDI0Mjg3NH0.puEaHAJijQPSi1ziuYsqTRZnSAALK0tpH1myrLz7dYk';
 var TENANT_ID='55555555-5555-5555-5555-555555555555';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
+
+// Use local date (not UTC) to match date picker values
+function localDateStr(d){var dt=d||new Date();return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
 var currentTenantId=TENANT_ID,currentUserId=null,currentUserRole=null,currentUserName='',userEmail=null;
 var allMembers=[],allMessages=[];
 var THEME_NAMES={'dark-blue':'Dark Blue','midnight':'Midnight','ocean':'Ocean','navy':'Navy','forest':'Forest','crimson':'Crimson','grey':'Grey'};
@@ -436,7 +439,7 @@ function sparkles(el){var r=el.getBoundingClientRect(),cols=['#3b82f6','#10b981'
 function toggleTodayCard(id){var body=document.getElementById(id).querySelector('.today-card-body');body.style.display=body.style.display==='none'?'':'none';}
 async function checkAuth(){var r=await sb.auth.getSession(),s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.href='v2-login.html';return null;}}return s;}
 async function loadTodayCards(){
-  var todayStr=new Date().toISOString().split('T')[0];
+  var todayStr=localDateStr();
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).or('is_deleted.is.null,is_deleted.eq.false').order('appointment_time');
   var eq2=sb.from('events').select('*').eq('tenant_id',currentTenantId).eq('event_date',todayStr).or('is_deleted.is.null,is_deleted.eq.false').order('event_time');
   var [ar,er]=await Promise.all([aq,eq2]);
@@ -487,8 +490,8 @@ async function loadTodayCards(){
   }).join(''):'<div class="today-card-empty">No events today</div>';
 }
 async function loadKpis(){
-  var todayStr=new Date().toISOString().split('T')[0];
-  var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=next7.toISOString().split('T')[0];
+  var todayStr=localDateStr();
+  var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=localDateStr(next7);
   var [cr,mr,ar,a7r,tr,sr,pipeR,or2]=await Promise.all([
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false'),
     (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
@@ -920,8 +923,8 @@ async function loadWeek(){
   var el=document.getElementById('weekContainer');
   var today=new Date(),days=[];
   for(var i=0;i<7;i++){var d=new Date(today);d.setDate(today.getDate()+i);days.push(d);}
-  var startStr=days[0].toISOString().split('T')[0];
-  var endStr=days[6].toISOString().split('T')[0];
+  var startStr=localDateStr(days[0]);
+  var endStr=localDateStr(days[6]);
   var isOAw=['owner','admin'].includes(currentUserRole||'');
   var waq=sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time');
   var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
@@ -931,12 +934,12 @@ async function loadWeek(){
   var DAYS2=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var html='';
   days.forEach(function(d){
-    var ds=d.toISOString().split('T')[0];
+    var ds=localDateStr(d);
     var da=appts.filter(function(a){return a.appointment_date===ds;});
     var de=events.filter(function(e){return e.event_date===ds;});
     var all=da.concat(de.map(function(e){return{_time:e.event_time,_name:e.event_name,_isEvt:true,assigned_to:e.assigned_to};}));
     all.sort(function(a,b){return(a.appointment_time||a._time||'').localeCompare(b.appointment_time||b._time||'');});
-    var isToday2=ds===today.toISOString().split('T')[0];
+    var isToday2=ds===localDateStr(today);
     var dayLabel=DAYS2[d.getDay()]+' '+d.getMonth()+1+'/'+d.getDate();
     if(!all.length)return;
     html+='<div class="week-day'+(isToday2?' today-col':'')+'"><div class="week-day-hdr"><div class="week-day-label">'+dayLabel+(isToday2?' · Today':'')+'</div><div class="week-day-count">'+all.length+'</div></div><div class="week-day-items">';
