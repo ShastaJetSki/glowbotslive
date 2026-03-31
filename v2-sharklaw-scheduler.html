@@ -237,6 +237,7 @@
       .mw-event-line3{font-size:12px;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .mw-event-badge-row{text-align:right;margin-top:4px;}
       .mw-event-badge{font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;letter-spacing:.5px;}
+      .mw-month-hdr{padding:8px 8px 4px 8px;font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;background:var(--bg-secondary);border-top:2px solid var(--accent-primary);position:sticky;top:0;z-index:5;}
     }
     @media(min-width:769px){.mobile-top-header{display:none !important;}.mobile-bottom-nav{display:none !important;}
     /* 14-day removed */
@@ -749,21 +750,18 @@ function renderWeek(){
     el.style.flexDirection='column';
 
   }else{
-    // ── MOBILE: continuous scroll — 60 days back, 180 days forward ──
+    // ── MOBILE: continuous scroll — always re-render, preserve scroll position ──
     el.style.flexDirection='column';
 
-    // Only rebuild the DOM if not already rendered (avoids losing scroll pos on minor re-renders)
-    var existingList=document.getElementById('mobileWeekList');
-    if(existingList){
-      // Already rendered — just scroll to viewDate without rebuilding
-      mwScrollTo(dateStr(viewDate),'smooth');
-      return;
-    }
+    // Save current scroll position so re-renders are invisible to user
+    var oldList=document.getElementById('mobileWeekList');
+    var savedScroll=oldList?oldList.scrollTop:-1;
 
-    // Build the full date range
+    // Build the full date range: 60 days back, 180 days forward from today
     var today=new Date();today.setHours(0,0,0,0);
     var cur=new Date(today);cur.setDate(today.getDate()-60);
     var endDate=new Date(today);endDate.setDate(today.getDate()+180);
+    var sm2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     var h='<div class="mobile-week-list" id="mobileWeekList">';
     while(cur<=endDate){
@@ -772,19 +770,19 @@ function renderWeek(){
       var items=getUnifiedItems(ds);
       items.sort(function(a,b){return(a._time||'').localeCompare(b._time||'');});
       var yr=cur.getFullYear(),mo2=cur.getMonth(),dt=cur.getDate();
-      var sm2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      // Show month label at start of each month
-      var isFirst=dt===1;
-      if(isFirst){
-        h+='<div style="padding:8px 8px 4px 8px;font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;background:var(--bg-secondary);border-top:2px solid var(--accent-primary);">'+sm2[mo2]+' '+yr+'</div>';
+
+      // Month header on 1st of each month
+      if(dt===1){
+        h+='<div class="mw-month-hdr">'+sm2[mo2]+' '+yr+'</div>';
       }
+
       h+='<div class="mw-day-row'+todayCls+'" id="mw-'+ds+'" data-ds="'+ds+'">';
-      // Left: day label
+      // Left: day label — tap to drill into day view
       h+='<div class="mw-day-label" onclick="viewDate=new Date('+yr+','+mo2+','+dt+');miniDate=new Date(viewDate);setView(\'day\');">'+
            '<span class="mw-day-name">'+DAYS[(cur.getDay()+6)%7]+'</span>'+
            '<div class="mw-day-num">'+dt+'</div>'+
          '</div>';
-      // Right: event cards
+      // Right: event cards — 3 lines each
       h+='<div class="mw-day-events">';
       if(!items.length){
         h+='<div style="height:100%;"></div>';
@@ -815,43 +813,39 @@ function renderWeek(){
     h+='</div>';
     el.innerHTML=h;
 
-    // Scroll to viewDate instantly on first render
-    setTimeout(function(){mwScrollTo(dateStr(viewDate),'instant');},0);
-
-    // Update header title as user scrolls
-    var list2=document.getElementById('mobileWeekList');
-    if(list2){
-      list2.addEventListener('scroll',function(){
-        var rows=list2.querySelectorAll('.mw-day-row');
-        var top=list2.getBoundingClientRect().top;
+    // Restore scroll or jump to viewDate on first load
+    setTimeout(function(){
+      var list=document.getElementById('mobileWeekList');
+      if(!list)return;
+      if(savedScroll>0){
+        list.scrollTop=savedScroll;
+      }else{
+        mwScrollTo(dateStr(viewDate),'instant');
+      }
+      // Live title update on scroll
+      list.addEventListener('scroll',function(){
+        var rows=list.querySelectorAll('.mw-day-row');
+        var top=list.getBoundingClientRect().top;
         for(var i=0;i<rows.length;i++){
-          var r=rows[i].getBoundingClientRect();
-          if(r.bottom>top+10){
-            var ds2=rows[i].getAttribute('data-ds');
-            if(ds2){
-              var d2=new Date(ds2+'T12:00:00');
-              var sm3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-              document.getElementById('schedTitle').textContent=sm3[d2.getMonth()]+' '+d2.getFullYear();
-            }
+          if(rows[i].getBoundingClientRect().bottom>top+10){
+            var d2=new Date((rows[i].getAttribute('data-ds')||'')+'T12:00:00');
+            if(!isNaN(d2))document.getElementById('schedTitle').textContent=sm2[d2.getMonth()]+' '+d2.getFullYear();
             break;
           }
         }
       },{passive:true});
-    }
+    },0);
   }
 }
 
 // Scroll helper for mobile continuous week
 function mwScrollTo(ds,behavior){
-  var target=document.getElementById('mw-'+ds);
-  if(!target)return;
   var list=document.getElementById('mobileWeekList');
   if(!list)return;
-  if(behavior==='instant'){
-    list.scrollTop=target.offsetTop;
-  }else{
-    target.scrollIntoView({behavior:'smooth',block:'start'});
-  }
+  var target=document.getElementById('mw-'+ds);
+  if(!target)return;
+  if(behavior==='instant'){list.scrollTop=target.offsetTop;}
+  else{target.scrollIntoView({behavior:'smooth',block:'start'});}
 }
 
 function renderDay(){
