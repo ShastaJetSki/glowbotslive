@@ -576,6 +576,10 @@ function toggleMember(id){if(visibleMemberIds.has(id))visibleMemberIds.delete(id
 function toggleAllMembers(){if(allMembersVisible){visibleMemberIds.clear();allMembersVisible=false;}else{allMembers.forEach(function(m){visibleMemberIds.add(m.member_id);});allMembersVisible=true;}renderMemberFilters();render();}
 
 function setView(v){
+  // Clear mobile week list when leaving week view so it rebuilds on return
+  if(currentView==='week'&&v!=='week'&&window.innerWidth<=768){
+    document.getElementById('weekView').innerHTML='';
+  }
   currentView=v;
   document.getElementById('monthView').style.display=v==='month'?'flex':'none';
   document.getElementById('weekView').style.display=v==='week'?'flex':'none';
@@ -590,6 +594,44 @@ function setView(v){
 function _doNavPrev(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()-1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()-7);else viewDate.setDate(viewDate.getDate()-1);miniDate=new Date(viewDate);render();renderMiniCal();}
 function _doNavNext(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()+1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()+7);else viewDate.setDate(viewDate.getDate()+1);miniDate=new Date(viewDate);render();renderMiniCal();}
 function goToday(){viewDate=new Date();miniDate=new Date();render();renderMiniCal();}
+
+// Override navPrev/navNext for mobile continuous week — scroll instead of re-render
+function navPrev(dir){
+  if(currentView==='week'&&window.innerWidth<=768){
+    viewDate.setDate(viewDate.getDate()-7);miniDate=new Date(viewDate);
+    var target=document.getElementById('mw-'+dateStr(viewDate));
+    if(target){mwScrollTo(dateStr(viewDate),'smooth');renderMiniCal();updateWeekTitle();return;}
+    // Target outside rendered range — force full re-render
+    document.getElementById('weekView').innerHTML='';
+    slideNav(dir||'right',function(){render();});return;
+  }
+  slideNav(dir||'right',function(){_doNavPrev();});
+}
+function navNext(dir){
+  if(currentView==='week'&&window.innerWidth<=768){
+    viewDate.setDate(viewDate.getDate()+7);miniDate=new Date(viewDate);
+    var target=document.getElementById('mw-'+dateStr(viewDate));
+    if(target){mwScrollTo(dateStr(viewDate),'smooth');renderMiniCal();updateWeekTitle();return;}
+    document.getElementById('weekView').innerHTML='';
+    slideNav(dir||'left',function(){render();});return;
+  }
+  slideNav(dir||'left',function(){_doNavNext();});
+}
+function goToday(){
+  viewDate=new Date();miniDate=new Date();
+  if(currentView==='week'&&window.innerWidth<=768){
+    var target=document.getElementById('mw-'+dateStr(viewDate));
+    if(target){mwScrollTo(dateStr(viewDate),'smooth');renderMiniCal();updateWeekTitle();return;}
+    document.getElementById('weekView').innerHTML='';
+  }
+  render();renderMiniCal();
+}
+function updateWeekTitle(){
+  if(currentView!=='week')return;
+  var ws=getWeekStart(viewDate),we=new Date(ws);we.setDate(we.getDate()+6);
+  var sm=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('schedTitle').textContent=sm[ws.getMonth()]+' '+ws.getDate()+' – '+sm[we.getMonth()]+' '+we.getDate()+', '+we.getFullYear();
+}
 
 function setDefaultView(){
   localStorage.setItem('sched-default-view',currentView);
@@ -707,22 +749,42 @@ function renderWeek(){
     el.style.flexDirection='column';
 
   }else{
-    // ── MOBILE: vertical list — day label left, events stack down ──
+    // ── MOBILE: continuous scroll — 60 days back, 180 days forward ──
     el.style.flexDirection='column';
-    var h='<div class="mobile-week-list">';
-    days.forEach(function(dd){
-      var ds=dateStr(dd);
-      var todayCls=isToday(dd)?' mw-today':'';
+
+    // Only rebuild the DOM if not already rendered (avoids losing scroll pos on minor re-renders)
+    var existingList=document.getElementById('mobileWeekList');
+    if(existingList){
+      // Already rendered — just scroll to viewDate without rebuilding
+      mwScrollTo(dateStr(viewDate),'smooth');
+      return;
+    }
+
+    // Build the full date range
+    var today=new Date();today.setHours(0,0,0,0);
+    var cur=new Date(today);cur.setDate(today.getDate()-60);
+    var endDate=new Date(today);endDate.setDate(today.getDate()+180);
+
+    var h='<div class="mobile-week-list" id="mobileWeekList">';
+    while(cur<=endDate){
+      var ds=dateStr(cur);
+      var todayCls=isToday(cur)?' mw-today':'';
       var items=getUnifiedItems(ds);
       items.sort(function(a,b){return(a._time||'').localeCompare(b._time||'');});
-      var yr=dd.getFullYear(),mn=dd.getMonth(),dt=dd.getDate();
-      h+='<div class="mw-day-row'+todayCls+'">';
-      // Left: day label — tap to drill into day view
-      h+='<div class="mw-day-label" onclick="viewDate=new Date('+yr+','+mn+','+dt+');miniDate=new Date(viewDate);setView(\'day\');">'+
-           '<span class="mw-day-name">'+DAYS[(dd.getDay()+6)%7]+'</span>'+
+      var yr=cur.getFullYear(),mo2=cur.getMonth(),dt=cur.getDate();
+      var sm2=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      // Show month label at start of each month
+      var isFirst=dt===1;
+      if(isFirst){
+        h+='<div style="padding:8px 8px 4px 8px;font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;background:var(--bg-secondary);border-top:2px solid var(--accent-primary);">'+sm2[mo2]+' '+yr+'</div>';
+      }
+      h+='<div class="mw-day-row'+todayCls+'" id="mw-'+ds+'" data-ds="'+ds+'">';
+      // Left: day label
+      h+='<div class="mw-day-label" onclick="viewDate=new Date('+yr+','+mo2+','+dt+');miniDate=new Date(viewDate);setView(\'day\');">'+
+           '<span class="mw-day-name">'+DAYS[(cur.getDay()+6)%7]+'</span>'+
            '<div class="mw-day-num">'+dt+'</div>'+
          '</div>';
-      // Right: events — same detail as day view cards
+      // Right: event cards
       h+='<div class="mw-day-events">';
       if(!items.length){
         h+='<div style="height:100%;"></div>';
@@ -733,10 +795,8 @@ function renderWeek(){
           var mn2=memberName(it._empId);
           var timeStr=it._time?formatTime(it._time):'';
           var endTime=it._data&&(it._data.appointment_end_time||it._data.event_end_time)?(' – '+formatTime(it._data.appointment_end_time||it._data.event_end_time)):'';
-          var loc=it._location||'';
-          var svc=it._service||'';
+          var loc=it._location||'';var svc=it._service||'';
           var dayLabel=it._isEvent?'EVENT':'APPT';
-          // Line 3: first available detail
           var line3=loc?esc(loc):mn2?esc(mn2):svc?esc(svc):'';
           var r2=100,g2=100,b2=200;
           if(col&&col[0]==='#'){var hx=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2=parseInt(hx.slice(0,2),16)||100;g2=parseInt(hx.slice(2,4),16)||100;b2=parseInt(hx.slice(4,6),16)||200;}
@@ -750,9 +810,47 @@ function renderWeek(){
         });
       }
       h+='</div></div>';
-    });
+      cur.setDate(cur.getDate()+1);
+    }
     h+='</div>';
     el.innerHTML=h;
+
+    // Scroll to viewDate instantly on first render
+    setTimeout(function(){mwScrollTo(dateStr(viewDate),'instant');},0);
+
+    // Update header title as user scrolls
+    var list2=document.getElementById('mobileWeekList');
+    if(list2){
+      list2.addEventListener('scroll',function(){
+        var rows=list2.querySelectorAll('.mw-day-row');
+        var top=list2.getBoundingClientRect().top;
+        for(var i=0;i<rows.length;i++){
+          var r=rows[i].getBoundingClientRect();
+          if(r.bottom>top+10){
+            var ds2=rows[i].getAttribute('data-ds');
+            if(ds2){
+              var d2=new Date(ds2+'T12:00:00');
+              var sm3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              document.getElementById('schedTitle').textContent=sm3[d2.getMonth()]+' '+d2.getFullYear();
+            }
+            break;
+          }
+        }
+      },{passive:true});
+    }
+  }
+}
+
+// Scroll helper for mobile continuous week
+function mwScrollTo(ds,behavior){
+  var target=document.getElementById('mw-'+ds);
+  if(!target)return;
+  var list=document.getElementById('mobileWeekList');
+  if(!list)return;
+  if(behavior==='instant'){
+    list.scrollTop=target.offsetTop;
+  }else{
+    target.scrollIntoView({behavior:'smooth',block:'start'});
   }
 }
 
