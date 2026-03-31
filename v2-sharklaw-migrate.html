@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shark Law — DB Migration Tool</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0b0f14; color: #e8eef6; min-height: 100vh; padding: 24px; }
+  h1 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .subtitle { color: #9fb0c3; font-size: 13px; margin-bottom: 28px; }
+  .db-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  @media(max-width:600px){ .db-grid { grid-template-columns: 1fr; } }
+  .db-card { background: #1a2535; border: 1px solid #223044; border-radius: 12px; padding: 16px; }
+  .db-card.v2 { border-color: #10b981; }
+  .db-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #9fb0c3; margin-bottom: 6px; }
+  .db-label.v2 { color: #10b981; }
+  .db-url { font-size: 12px; color: #60a5fa; word-break: break-all; }
+  .section { background: #1a2535; border: 1px solid #223044; border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; cursor: pointer; user-select: none; }
+  .section-header:hover { background: #223044; }
+  .section-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .badge-blue { background: #1d4ed8; color: #bfdbfe; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-yellow { background: #78350f; color: #fde68a; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+  .badge-gray { background: #374151; color: #d1d5db; }
+  .section-arrow { color: #9fb0c3; transition: transform .2s; font-size: 12px; }
+  .section-body { display: none; padding: 0 18px 18px; }
+  .section.open .section-body { display: block; }
+  .section.open .section-arrow { transform: rotate(180deg); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  th { text-align: left; padding: 7px 10px; background: #0f1621; color: #9fb0c3; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #223044; }
+  td { padding: 7px 10px; border-bottom: 1px solid #1a2535; color: #e8eef6; vertical-align: top; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #0f1621; }
+  .btn { padding: 10px 22px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-success { background: #10b981; color: #fff; }
+  .btn-success:hover:not(:disabled) { background: #059669; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-sm { padding: 6px 14px; font-size: 12px; }
+  .actions { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .log { background: #0f1621; border: 1px solid #223044; border-radius: 8px; padding: 14px 16px; font-size: 12px; font-family: monospace; max-height: 320px; overflow-y: auto; margin-top: 16px; }
+  .log-line { padding: 2px 0; border-bottom: 1px solid #1a2535; color: #9fb0c3; }
+  .log-line:last-child { border-bottom: none; }
+  .log-line.ok { color: #34d399; }
+  .log-line.err { color: #f87171; }
+  .log-line.info { color: #60a5fa; }
+  .log-line.warn { color: #fbbf24; }
+  .status-bar { background: #0f1621; border: 1px solid #223044; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; display: flex; gap: 24px; flex-wrap: wrap; }
+  .stat { text-align: center; }
+  .stat-val { font-size: 22px; font-weight: 700; color: #60a5fa; }
+  .stat-lbl { font-size: 11px; color: #9fb0c3; margin-top: 2px; }
+  .progress { background: #0f1621; border-radius: 4px; height: 6px; margin-top: 12px; overflow: hidden; }
+  .progress-bar { height: 100%; background: #3b82f6; border-radius: 4px; transition: width .3s; }
+  .empty { color: #9fb0c3; font-size: 13px; padding: 16px 0; text-align: center; }
+  .tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 4px; }
+  .tag-new { background: #1d4ed8; color: #bfdbfe; }
+  .tag-upd { background: #065f46; color: #6ee7b7; }
+  .conflict-select { background: #0f1621; border: 1px solid #334155; color: #e8eef6; border-radius: 6px; padding: 7px 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>⚡ Shark Law — DB Migration Tool</h1>
+<p class="subtitle">Pull last 3 days of changes from Old DB → push to V2 DB</p>
+
+<div class="db-grid">
+  <div class="db-card">
+    <div class="db-label">🔴 Old Database (Source)</div>
+    <div class="db-url">kxqkwpkmtgvmthpafoqx.supabase.co</div>
+  </div>
+  <div class="db-card v2">
+    <div class="db-label v2">🟢 V2 Database (Target)</div>
+    <div class="db-url" style="color:#34d399;">wiwbmvmgrutjfbnqhfnb.supabase.co</div>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <div class="stat"><div class="stat-val" id="statTotal">—</div><div class="stat-lbl">Total Records Found</div></div>
+  <div class="stat"><div class="stat-val" id="statContacts">—</div><div class="stat-lbl">Contacts</div></div>
+  <div class="stat"><div class="stat-val" id="statEvents">—</div><div class="stat-lbl">Events</div></div>
+  <div class="stat"><div class="stat-val" id="statAppts">—</div><div class="stat-lbl">Appointments</div></div>
+  <div class="stat"><div class="stat-val" id="statSwag">—</div><div class="stat-lbl">Swag</div></div>
+  <div class="stat"><div class="stat-val" id="statActivity">—</div><div class="stat-lbl">Funnel Activity</div></div>
+</div>
+
+<div class="actions">
+  <button class="btn btn-primary" id="btnScan" onclick="runScan()">🔍 Scan Last 3 Days</button>
+  <select class="conflict-select" id="conflictMode">
+    <option value="upsert">Upsert (update if exists)</option>
+    <option value="skip">Skip duplicates</option>
+    <option value="insert">Insert all</option>
+  </select>
+  <button class="btn btn-success" id="btnMigrate" onclick="runMigration()" disabled>🚀 Migrate to V2</button>
+</div>
+
+<div id="sectionsContainer"></div>
+
+<div id="logContainer" style="display:none;">
+  <div style="font-size:13px;font-weight:600;margin-top:8px;margin-bottom:6px;">Migration Log</div>
+  <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+  <div class="log" id="logBox"></div>
+</div>
+
+<script>
+const OLD_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+const OLD_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+const NEW_URL = 'https://wiwbmvmgrutjfbnqhfnb.supabase.co';
+const NEW_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indpd2Jtdm1ncnV0amZibnFoZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjY4NzQsImV4cCI6MjA5MDI0Mjg3NH0.puEaHAJijQPSi1ziuYsqTRZnSAALK0tpH1myrLz7dYk';
+
+const sbOld = supabase.createClient(OLD_URL, OLD_KEY);
+const sbNew = supabase.createClient(NEW_URL, NEW_KEY);
+
+const TABLES = [
+  { key: 'contacts',  table: 'customers',           pk: 'customer_id',      label: 'Contacts',       cols: ['customer_id','full_name','first_name','last_name','phone','email','organization_name','customer_type','funnel_stage','assigned_to','tenant_id','created_at','updated_at','notes','is_deleted'] },
+  { key: 'events',    table: 'events',               pk: 'event_id',         label: 'Events',         cols: ['event_id','title','description','start_time','end_time','assigned_to','tenant_id','created_at','updated_at','is_deleted','customer_id','event_type','location','all_day'] },
+  { key: 'appts',     table: 'sales_appointments',   pk: 'appointment_id',   label: 'Appointments',   cols: ['appointment_id','title','description','start_time','end_time','assigned_to','tenant_id','created_at','updated_at','is_deleted','customer_id','status','location','notes'] },
+  { key: 'swag',      table: 'swag_given',           pk: 'id',               label: 'Swag Given',     cols: ['id','customer_id','tenant_id','item_name','value','quantity','given_date','created_at','notes'] },
+  { key: 'activity',  table: 'funnel_activity',      pk: 'id',               label: 'Funnel Activity',cols: ['id','customer_id','tenant_id','action','old_stage','new_stage','created_at','user_id'] },
+];
+
+let scannedData = {};
+let migrating = false;
+
+function getCutoff() {
+  const d = new Date();
+  d.setDate(d.getDate() - 3);
+  return d.toISOString();
+}
+
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+async function fetchTable(cfg, cutoff) {
+  try {
+    const { data, error } = await sbOld
+      .from(cfg.table)
+      .select(cfg.cols.join(','))
+      .or(`created_at.gte.${cutoff},updated_at.gte.${cutoff}`)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('Fetch error for', cfg.table, e.message);
+    return [];
+  }
+}
+
+function renderSection(cfg, rows) {
+  const container = document.getElementById('sectionsContainer');
+  let existing = document.getElementById('sec-' + cfg.key);
+  if (existing) existing.remove();
+
+  const sec = document.createElement('div');
+  sec.className = 'section open';
+  sec.id = 'sec-' + cfg.key;
+
+  const badgeColor = rows.length > 0 ? 'badge-blue' : 'badge-gray';
+  sec.innerHTML = `
+    <div class="section-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="section-title">
+        ${cfg.label}
+        <span class="badge ${badgeColor}">${rows.length} record${rows.length !== 1 ? 's' : ''}</span>
+      </div>
+      <span class="section-arrow">▼</span>
+    </div>
+    <div class="section-body">
+      ${rows.length === 0 ? '<div class="empty">No new or updated records in the last 3 days</div>' : buildTable(cfg, rows)}
+    </div>
+  `;
+  container.appendChild(sec);
+}
+
+function buildTable(cfg, rows) {
+  const previewCols = cfg.cols.slice(0, 6);
+  let html = '<div style="overflow-x:auto;"><table><thead><tr>';
+  previewCols.forEach(c => { html += `<th>${c}</th>`; });
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    previewCols.forEach(c => {
+      let v = row[c];
+      if (v === null || v === undefined) v = '';
+      if (typeof v === 'string' && v.length > 30) v = v.slice(0, 30) + '…';
+      if (typeof v === 'boolean') v = v ? '✓' : '✗';
+      html += `<td title="${String(row[c] ?? '')}">${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+async function runScan() {
+  const btn = document.getElementById('btnScan');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning...';
+  document.getElementById('sectionsContainer').innerHTML = '';
+  document.getElementById('logContainer').style.display = 'none';
+  scannedData = {};
+
+  const cutoff = getCutoff();
+
+  let totalCount = 0;
+  for (const cfg of TABLES) {
+    const rows = await fetchTable(cfg, cutoff);
+    scannedData[cfg.key] = rows;
+    totalCount += rows.length;
+    renderSection(cfg, rows);
+  }
+
+  document.getElementById('statTotal').textContent = totalCount;
+  document.getElementById('statContacts').textContent = scannedData.contacts?.length ?? 0;
+  document.getElementById('statEvents').textContent = scannedData.events?.length ?? 0;
+  document.getElementById('statAppts').textContent = scannedData.appts?.length ?? 0;
+  document.getElementById('statSwag').textContent = scannedData.swag?.length ?? 0;
+  document.getElementById('statActivity').textContent = scannedData.activity?.length ?? 0;
+
+  btn.disabled = false;
+  btn.textContent = '🔍 Scan Last 3 Days';
+
+  if (totalCount > 0) {
+    document.getElementById('btnMigrate').disabled = false;
+  }
+}
+
+async function migrateTable(cfg, rows, mode) {
+  if (!rows || rows.length === 0) {
+    log(`${cfg.label}: nothing to migrate`, 'info');
+    return { ok: 0, err: 0 };
+  }
+
+  let ok = 0, err = 0;
+
+  // Clean rows — remove undefined keys
+  const clean = rows.map(row => {
+    const r = {};
+    cfg.cols.forEach(c => { if (row[c] !== undefined) r[c] = row[c]; });
+    return r;
+  });
+
+  try {
+    if (mode === 'upsert') {
+      const { error } = await sbNew.from(cfg.table).upsert(clean, { onConflict: cfg.pk, ignoreDuplicates: false });
+      if (error) throw error;
+      ok = clean.length;
+    } else if (mode === 'skip') {
+      const { error } = await sbNew.from(cfg.table).upsert(clean, { onConflict: cfg.pk, ignoreDuplicates: true });
+      if (error) throw error;
+      ok = clean.length;
+    } else {
+      // insert all in chunks of 50
+      for (let i = 0; i < clean.length; i += 50) {
+        const chunk = clean.slice(i, i + 50);
+        const { error } = await sbNew.from(cfg.table).insert(chunk);
+        if (error) { err += chunk.length; log(`${cfg.label} chunk error: ${error.message}`, 'err'); }
+        else ok += chunk.length;
+      }
+    }
+    log(`✅ ${cfg.label}: ${ok} records migrated`, 'ok');
+  } catch (e) {
+    err = clean.length;
+    log(`❌ ${cfg.label} failed: ${e.message}`, 'err');
+  }
+
+  return { ok, err };
+}
+
+async function runMigration() {
+  if (migrating) return;
+  migrating = true;
+
+  const mode = document.getElementById('conflictMode').value;
+  const btn = document.getElementById('btnMigrate');
+  btn.disabled = true;
+  btn.textContent = '⏳ Migrating...';
+
+  document.getElementById('logContainer').style.display = 'block';
+  document.getElementById('logBox').innerHTML = '';
+  setProgress(0);
+
+  log(`Starting migration — mode: ${mode}`, 'info');
+  log(`Source: kxqkwpkmtgvmthpafoqx  →  Target: wiwbmvmgrutjfbnqhfnb`, 'info');
+
+  let totalOk = 0, totalErr = 0;
+  const steps = TABLES.length;
+
+  for (let i = 0; i < TABLES.length; i++) {
+    const cfg = TABLES[i];
+    const rows = scannedData[cfg.key] || [];
+    log(`Processing ${cfg.label} (${rows.length} records)…`, '');
+    const { ok, err } = await migrateTable(cfg, rows, mode);
+    totalOk += ok;
+    totalErr += err;
+    setProgress(Math.round(((i + 1) / steps) * 100));
+  }
+
+  setProgress(100);
+  log('─────────────────────────────────────', '');
+  log(`Migration complete: ${totalOk} succeeded, ${totalErr} failed`, totalErr > 0 ? 'warn' : 'ok');
+
+  btn.disabled = false;
+  btn.textContent = '🚀 Migrate to V2';
+  migrating = false;
+}
+</script>
+</body>
+</html>
