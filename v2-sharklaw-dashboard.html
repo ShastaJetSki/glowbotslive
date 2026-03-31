@@ -437,12 +437,8 @@ function toggleTodayCard(id){var body=document.getElementById(id).querySelector(
 async function checkAuth(){var r=await sb.auth.getSession(),s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.href='v2-login.html';return null;}}return s;}
 async function loadTodayCards(){
   var todayStr=new Date().toISOString().split('T')[0];
-  var isOA=['owner','admin'].includes(currentUserRole||'');
-  var filterMine=!isOA||(viewMode==='mine');
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).or('is_deleted.is.null,is_deleted.eq.false').order('appointment_time');
-  if(filterMine&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
   var eq2=sb.from('events').select('*').eq('tenant_id',currentTenantId).eq('event_date',todayStr).or('is_deleted.is.null,is_deleted.eq.false').order('event_time');
-  if(filterMine&&currentUserId)eq2=eq2.eq('assigned_to',currentUserId);
   var [ar,er]=await Promise.all([aq,eq2]);
   var appts=ar.data||[],events=er.data||[];
   document.getElementById('todayApptsCount').textContent=appts.length;
@@ -1056,8 +1052,8 @@ async function init(){
   var s=await checkAuth();if(!s)return;
   var authId=s.user?.id,email=s.user?.email;userEmail=email;
   var memberRow=null;
-  if(authId){var r1=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('auth_user_id',authId).eq('tenant_id',TENANT_ID).maybeSingle();if(r1.data)memberRow=r1.data;}
-  if(!memberRow&&email){var r2=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('email',email).eq('tenant_id',TENANT_ID).maybeSingle();if(r2.data)memberRow=r2.data;}
+  if(authId){var r1=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('auth_user_id',authId).maybeSingle();if(r1.data)memberRow=r1.data;}
+  if(!memberRow&&email){var r2=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('email',email).maybeSingle();if(r2.data)memberRow=r2.data;}
   if(!memberRow){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');return;}
   if(memberRow.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html?reason=deactivated');return;}
   currentUserId=memberRow.member_id;currentUserRole=memberRow.role;currentTenantId=memberRow.tenant_id||TENANT_ID;
