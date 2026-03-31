@@ -238,15 +238,13 @@
       .sched-nav{display:none !important;}
       /* Show mobile-only Today button */
       .mobile-today-btn{display:flex !important;}
-      #mineAllToggle{display:flex !important;}
       /* Hide desktop view toggle + set default on mobile */
       .sched-controls .view-toggle{display:none !important;}
       .sched-controls .sched-today-btn{display:none !important;}
-      /* Mine / All toggle */
-      .mine-all-toggle{display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border-default);flex-shrink:0;}
-      .mat-opt{padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;background:var(--bg-card);color:var(--text-secondary);transition:all .15s;user-select:none;}
-      .mat-opt+.mat-opt{border-left:1px solid var(--border-default);}
-      .mat-opt.active{background:var(--accent-primary);color:#fff;}
+      /* Mine / All toggle — matches dashboard exactly */
+      .view-toggle{display:flex;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+      .vt-btn{padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-secondary);transition:all .15s;border-radius:20px;}
+      .vt-btn.active{background:var(--accent-primary);color:#fff;}
 
       /* ── MOBILE 7-DAY VERTICAL VIEW ───────────────────── */
       .mobile-week-list{display:flex;flex-direction:column;flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 #111;}
@@ -344,9 +342,11 @@
       <button class="sched-add-btn" onclick="openApptModal()">+ Appt</button>
       <button class="sched-add-btn" style="background:#f97316;" onclick="openEventModal()">+ Event</button>
       <button class="sched-add-btn mobile-today-btn" onclick="goToday()" style="display:none;background:transparent;border:1px solid var(--border-default);color:var(--text-primary);margin-left:6px;">Today</button>
-      <div class="mine-all-toggle" id="mineAllToggle" style="display:none;margin-left:8px;">
-        <span class="mat-opt" id="matMine" onclick="setMineAll('mine')">Mine</span>
-        <span class="mat-opt active" id="matAll" onclick="setMineAll('all')">All</span>
+      <div id="mineAllToggle" style="display:none;margin-left:8px;">
+        <div class="view-toggle">
+          <button class="vt-btn active" id="vtMine" onclick="setMineAll('mine')">Mine</button>
+          <button class="vt-btn" id="vtAll" onclick="setMineAll('all')">All</button>
+        </div>
       </div>
     </div>
   </div>
@@ -534,13 +534,30 @@ async function loadUserThemeBank(){
     if(r.data&&r.data.length>0){userThemeBank=['dark-blue'].concat(r.data.map(function(t){return t.theme_key;}));userThemeBank=[...new Set(userThemeBank)];}}catch(e){}
 }
 
-var mineAllMode='all'; // 'mine' or 'all'
+var mineAllMode=localStorage.getItem('sched-view-mode')||'mine';
 
 function setMineAll(mode){
   mineAllMode=mode;
-  document.getElementById('matMine').classList.toggle('active',mode==='mine');
-  document.getElementById('matAll').classList.toggle('active',mode==='all');
+  localStorage.setItem('sched-view-mode',mode);
+  var mine=document.getElementById('vtMine');
+  var all=document.getElementById('vtAll');
+  if(mine)mine.classList.toggle('active',mode==='mine');
+  if(all)all.classList.toggle('active',mode==='all');
   render();
+}
+
+// Show Mine/All toggle only for owners/admins/managers (same logic as dashboard)
+function maybeShowMineAll(){
+  var isOA=['owner','admin','manager'].includes((userRole||'').toLowerCase());
+  var tog=document.getElementById('mineAllToggle');
+  if(tog&&window.innerWidth<=768){
+    tog.style.display=isOA?'flex':'none';
+    // Sync button state to current mode
+    var mine=document.getElementById('vtMine');
+    var all=document.getElementById('vtAll');
+    if(mine)mine.classList.toggle('active',mineAllMode==='mine');
+    if(all)all.classList.toggle('active',mineAllMode==='all');
+  }
 }
 
 function getUnifiedItems(ds){
@@ -901,7 +918,7 @@ function mwScrollTo(ds,behavior){
 function renderDay(){
   var el=document.getElementById('dayView'),ds=dateStr(viewDate);
   var h='<div class="day-scroll">';
-  for(var hr=6;hr<22;hr++){
+  for(var hr=6;hr<24;hr++){
     var lb=hr===0?'12 AM':hr<12?hr+' AM':hr===12?'12 PM':(hr-12)+' PM';
     var items=getUnifiedItems(ds).filter(function(it){return parseInt((it._time||'09:00').split(':')[0])===hr;});
     h+='<div class="day-hour"><div class="day-hour-label">'+lb+'</div><div class="day-hour-content" onclick="clickDate(\''+ds+'\','+hr+')">';
@@ -993,16 +1010,29 @@ async function saveAppt(){
   var custName=document.getElementById('amCustName').value.trim();
   var custId=document.getElementById('amCustId').value;
   var dt=document.getElementById('amDate').value;
-  var dtEnd=document.getElementById('amEndDate').value||dt;
+  var dtEnd=document.getElementById('amEndDate').value;
+  var tEnd=document.getElementById('amEndTime').value;
   if(!custName||!dt){showToast('Customer name and date required');return;}
-  var data={customer_name:custName,contact_id:custId||null,appointment_date:dt,appointment_end_date:dtEnd!==dt?dtEnd:null,appointment_time:document.getElementById('amTime').value||null,appointment_end_time:document.getElementById('amEndTime').value||null,assigned_to:document.getElementById('amAssign').value||null,service_type:document.getElementById('amService').value.trim()||null,notes:document.getElementById('amNotes').value.trim()||null};
-  if(editingApptId){
-    await sb.from('sales_appointments').update(data).eq('appointment_id',editingApptId);showToast('Updated');
-  }else{
-    data.tenant_id=tenantId;data.status='scheduled';
-    await sb.from('sales_appointments').insert(data);showToast('Appointment created');
+  var data={customer_name:custName,contact_id:custId||null,appointment_date:dt,appointment_time:document.getElementById('amTime').value||null,assigned_to:document.getElementById('amAssign').value||null,service_type:document.getElementById('amService').value.trim()||null,notes:document.getElementById('amNotes').value.trim()||null};
+  if(dtEnd&&dtEnd!==dt)data.appointment_end_date=dtEnd;
+  if(tEnd)data.appointment_end_time=tEnd;
+  try{
+    if(editingApptId){
+      var r=await sb.from('sales_appointments').update(data).eq('appointment_id',editingApptId);
+      if(r.error)throw r.error;
+      showToast('Updated');
+    }else{
+      data.tenant_id=tenantId;data.status='scheduled';
+      data.created_at=new Date().toISOString();data.is_deleted=false;
+      var r=await sb.from('sales_appointments').insert(data);
+      if(r.error)throw r.error;
+      showToast('Appointment created');
+    }
+    closeApptModal();await loadAppointments();renderCalLayers();render();
+  }catch(e){
+    showToast('Error: '+(e.message||'Could not save appointment'));
+    console.error('saveAppt error:',e);
   }
-  closeApptModal();await loadAppointments();renderCalLayers();render();
 }
 
 async function deleteAppt(){
@@ -1044,15 +1074,28 @@ async function saveEvent(){
   var title=document.getElementById('emName').value.trim();
   var dt=document.getElementById('emDate').value;
   if(!title||!dt){showToast('Title and date required');return;}
-  var dtEnd=document.getElementById('emEndDate').value||dt;
-  var data={event_name:title,event_date:dt,event_end_date:dtEnd!==dt?dtEnd:null,event_time:document.getElementById('emTime').value||null,event_end_time:document.getElementById('emEndTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:document.getElementById('emAssign').value||null,notes:document.getElementById('emNotes').value.trim()||null};
-  if(editingEventId){
-    await sb.from('events').update(data).eq('event_id',editingEventId);showToast('Updated');
-  }else{
-    data.tenant_id=tenantId;
-    await sb.from('events').insert(data);showToast('Event created');
+  var dtEnd=document.getElementById('emEndDate').value;
+  var tEnd=document.getElementById('emEndTime').value;
+  var data={event_name:title,event_date:dt,event_time:document.getElementById('emTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:document.getElementById('emAssign').value||null,notes:document.getElementById('emNotes').value.trim()||null};
+  if(dtEnd&&dtEnd!==dt)data.event_end_date=dtEnd;
+  if(tEnd)data.event_end_time=tEnd;
+  try{
+    if(editingEventId){
+      var r=await sb.from('events').update(data).eq('event_id',editingEventId);
+      if(r.error)throw r.error;
+      showToast('Updated');
+    }else{
+      data.tenant_id=tenantId;
+      data.created_at=new Date().toISOString();data.is_deleted=false;
+      var r=await sb.from('events').insert(data);
+      if(r.error)throw r.error;
+      showToast('Event created');
+    }
+    closeEventModal();await loadEvents();renderCalLayers();render();
+  }catch(e){
+    showToast('Error: '+(e.message||'Could not save event'));
+    console.error('saveEvent error:',e);
   }
-  closeEventModal();await loadEvents();renderCalLayers();render();
 }
 
 async function deleteEvent(){
@@ -1158,6 +1201,7 @@ async function init(){
   if(!tenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data)tenantId=r2.data.tenant_id;}
   await loadUserThemeBank();
   await Promise.all([loadMembers(),loadContacts(),loadAppointments(),loadEvents()]);
+  maybeShowMineAll();
   setView(currentView);renderMiniCal();renderCalLayers();renderMemberFilters();
 }
 init();
