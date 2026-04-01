@@ -80,6 +80,82 @@ window.init = async function() {
   var t=document.getElementById('autosaveText');if(t)t.textContent='Auto-save on';
 };
 
+
+/* ===== SECTION DRAG TO REORDER ===== */
+var secOrder = ['sec-sponsor', 'sec-ticket', 'sec-vendor', 'sec-camping'];
+var secDragSrc = null;
+
+function attachSecDragHandles() {
+  secOrder.forEach(function(secId) {
+    var title = document.getElementById(secId);
+    if (!title) return;
+    var handle = title.querySelector('.section-drag');
+    if (!handle) return;
+
+    handle.addEventListener('dragstart', function(e) {
+      secDragSrc = secId;
+      title.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', secId);
+    });
+    handle.addEventListener('dragend', function() {
+      title.classList.remove('dragging');
+      document.querySelectorAll('.section-title').forEach(function(t){t.classList.remove('drag-over');});
+      secDragSrc = null;
+    });
+    title.addEventListener('dragover', function(e) {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      title.classList.add('drag-over');
+    });
+    title.addEventListener('dragleave', function() { title.classList.remove('drag-over'); });
+    title.addEventListener('drop', function(e) {
+      e.preventDefault(); title.classList.remove('drag-over');
+      if (!secDragSrc || secDragSrc === secId) return;
+
+      var fromIdx = secOrder.indexOf(secDragSrc);
+      var toIdx   = secOrder.indexOf(secId);
+      if (fromIdx < 0 || toIdx < 0) return;
+
+      // Reorder the secOrder array
+      secOrder.splice(toIdx, 0, secOrder.splice(fromIdx, 1)[0]);
+
+      // Physically reorder the DOM blocks (title + wrap pairs)
+      var container = title.parentNode;
+      secOrder.forEach(function(sid) {
+        var t = document.getElementById(sid);
+        if (!t) return;
+        var secMap = {'sec-sponsor':'sponsorSec','sec-ticket':'ticketSec','sec-vendor':'vendorSec','sec-camping':'campingSec'};
+        var wrap = document.getElementById(secMap[sid]);
+        container.appendChild(t);
+        if (wrap) container.appendChild(wrap);
+      });
+
+      // Save order
+      localStorage.setItem('elp-pkg-sec-order', JSON.stringify(secOrder));
+      attachSecDragHandles();
+    });
+  });
+}
+
+// Restore saved order on load
+function restoreSecOrder() {
+  var saved = localStorage.getItem('elp-pkg-sec-order');
+  if (!saved) return;
+  try {
+    var order = JSON.parse(saved);
+    if (!Array.isArray(order) || order.length !== 4) return;
+    secOrder = order;
+    var secMap = {'sec-sponsor':'sponsorSec','sec-ticket':'ticketSec','sec-vendor':'vendorSec','sec-camping':'campingSec'};
+    var container = document.getElementById('sec-sponsor').parentNode;
+    secOrder.forEach(function(sid) {
+      var t = document.getElementById(sid);
+      var wrap = document.getElementById(secMap[sid]);
+      if (t) container.appendChild(t);
+      if (wrap) container.appendChild(wrap);
+    });
+  } catch(e) {}
+}
+
 </script>
   <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -420,6 +496,14 @@ body.dark
   .level-meta{grid-template-columns:1fr 1fr!important;}
 }
   
+
+/* SECTION DRAG */
+.section-drag{width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);cursor:grab;font-size:15px;flex-shrink:0;opacity:0;transition:opacity .15s;margin-right:4px;}
+.section-title:hover .section-drag{opacity:1;}
+.section-drag:active{cursor:grabbing;}
+.section-title.dragging{opacity:.4;border-style:dashed;}
+.section-title.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow);}
+
 /* VIEW TABS — matches budget exactly */
 .view-tabs{display:flex;gap:2px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:3px;}
 .view-tab{padding:6px 14px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s;text-transform:uppercase;letter-spacing:.6px;font-family:inherit;}
@@ -569,10 +653,10 @@ body.dark
     <div class="dept-card"><div class="dept-val" id="kpiCamping">$0</div><div class="dept-lbl">Camping</div></div>
   </div>
 
-  <div class="section-title" onclick="toggleSection('sponsorSec',this)"><span class="section-title-left">SPONSOR LEVELS</span><button class="section-add-btn" onclick="event.stopPropagation();addLevel()">+ Add Level</button><span class="section-chv">▸</span></div>
+  <div class="section-title" id="sec-sponsor" onclick="toggleSection('sponsorSec',this)"><span class="section-drag" draggable="true" onclick="event.stopPropagation()" title="Drag to reorder">&#9783;</span><span class="section-title-left">SPONSOR LEVELS</span><button class="section-add-btn" onclick="event.stopPropagation();addLevel()">+ Add Level</button><span class="section-chv">▸</span></div>
   <div class="section-wrap" id="sponsorSec"><div id="levelsArea"></div></div>
 
-  <div class="section-title" style="margin-top:16px;" onclick="toggleSection('ticketSec',this)"><span class="section-title-left">TICKET PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addTickPkg()">+ Add Package</button><span class="section-chv">▸</span></div>
+  <div class="section-title" id="sec-ticket" style="margin-top:16px;" onclick="toggleSection('ticketSec',this)"><span class="section-drag" draggable="true" onclick="event.stopPropagation()" title="Drag to reorder">&#9783;</span><span class="section-title-left">TICKET PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addTicketPackage()">+ Add Package</button><span class="section-chv">▸</span></div>
   <div class="section-wrap" id="ticketSec">
     <div class="summary-bar" id="tickSummary">
       <div><div class="sb-val" id="tbPkgs">0</div><div class="sb-lbl">Packages</div></div>
@@ -584,7 +668,7 @@ body.dark
     <div id="tickArea"></div>
   </div>
 
-  <div class="section-title" style="margin-top:16px;" onclick="toggleSection('vendorSec',this)"><span class="section-title-left">VENDOR PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addVendorPkg()">+ Add Package</button><span class="section-chv">▸</span></div>
+  <div class="section-title" id="sec-vendor" style="margin-top:16px;" onclick="toggleSection('vendorSec',this)"><span class="section-drag" draggable="true" onclick="event.stopPropagation()" title="Drag to reorder">&#9783;</span><span class="section-title-left">VENDOR PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addVendorPackage()">+ Add Package</button><span class="section-chv">▸</span></div>
   <div class="section-wrap" id="vendorSec">
     <div class="summary-bar" id="vendorSummary">
       <div><div class="sb-val" id="vbPkgs">0</div><div class="sb-lbl">Packages</div></div>
@@ -596,7 +680,7 @@ body.dark
     <div id="vendorArea"></div>
   </div>
 
-  <div class="section-title" style="margin-top:16px;" onclick="toggleSection('campingSec',this)"><span class="section-title-left">CAMPING PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addCampingPkg()">+ Add Package</button><span class="section-chv">▸</span></div>
+  <div class="section-title" id="sec-camping" style="margin-top:16px;" onclick="toggleSection('campingSec',this)"><span class="section-drag" draggable="true" onclick="event.stopPropagation()" title="Drag to reorder">&#9783;</span><span class="section-title-left">CAMPING PACKAGES</span><button class="section-add-btn" onclick="event.stopPropagation();addCampingPackage()">+ Add Package</button><span class="section-chv">▸</span></div>
   <div class="section-wrap" id="campingSec">
     <div class="summary-bar" id="campingSummary">
       <div><div class="sb-val" id="cbPkgs">0</div><div class="sb-lbl">Packages</div></div>
@@ -774,6 +858,7 @@ function exitReadOnly(){document.getElementById('editorView').classList.remove('
 function printSheet(){var sheetName=document.getElementById('sheetName').value||'Sponsor Sheet';var eventDate=document.getElementById('sheetEvent').value||'';var venue=document.getElementById('sheetVenue').value||'';var sub=[];if(eventDate)sub.push(eventDate);if(venue)sub.push(venue);sub.push('Printed '+new Date().toLocaleDateString());document.getElementById('printTitle').textContent=sheetName;document.getElementById('printSub').textContent=sub.join(' · ');document.querySelectorAll('.section-wrap').forEach(function(w){w.classList.add('open');});document.querySelectorAll('.section-chv').forEach(function(c){c.textContent='▾';});document.querySelectorAll('.level-card').forEach(function(c){c.classList.add('expanded');});setTimeout(function(){window.print();},200);}
 async function init(){var s=await checkAuth();if(!s)return;userId=s.user.id;var email=s.user.email||'';if(email){var ur=await sb.from('users').select('tenant_id,user_id').eq('email',email).single();if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;}}if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}if(!tenantId){toast('Could not determine tenant');return;}await detectRole();await loadSheets();renderSelects();updateReviewCounts();updateActionButtons();var lastId=localStorage.getItem('elp-last-sponsor');if(lastId&&(lastId==='preloaded'||allSheets.find(function(s){return s.sheet_id===lastId;}))){syncSel(lastId);}else{loadPreloaded();}}
 init();
+document.addEventListener("DOMContentLoaded", function(){restoreSecOrder();attachSecDragHandles();});
 window.addEventListener('beforeunload',function(){if(dirty&&currentSheetId&&currentSheetId!=='preloaded'){navigator.sendBeacon||autoSave();}});
 document.addEventListener('visibilitychange',function(){if(document.hidden&&dirty)autoSave();});
 </script>
