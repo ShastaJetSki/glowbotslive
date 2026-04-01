@@ -345,25 +345,14 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     <div class="sched-board-header">
       <div class="sched-board-title" id="boardTitle">Entertainment Schedule</div>
       <div class="sched-board-actions">
-        <select id="eventStartSel" class="sb-btn" style="min-width:90px;" onchange="saveTimeRange();renderBoard()" title="Event start time">
-          <option value="10">10:00 AM</option>
-          <option value="11">11:00 AM</option>
-          <option value="12" selected>12:00 PM</option>
-          <option value="13">1:00 PM</option>
-          <option value="14">2:00 PM</option>
-          <option value="15">3:00 PM</option>
-          <option value="16">4:00 PM</option>
-          <option value="17">5:00 PM</option>
-          <option value="18">6:00 PM</option>
-        </select>
-        <select id="eventEndSel" class="sb-btn" style="min-width:90px;" onchange="saveTimeRange();renderBoard()" title="Event end time">
-          <option value="18">6:00 PM</option>
-          <option value="19">7:00 PM</option>
-          <option value="20">8:00 PM</option>
-          <option value="21">9:00 PM</option>
-          <option value="22" selected>10:00 PM</option>
-          <option value="23">11:00 PM</option>
-          <option value="24">Midnight</option>
+        <span style="font-size:10px;color:rgba(255,255,255,.3);font-family:'Space Mono',monospace;">FROM</span>
+        <input type="time" id="eventStartSel" class="sb-btn" value="08:00" style="min-width:100px;color-scheme:dark;" onchange="saveTimeRange();renderBoard()" title="Event start time">
+        <span style="font-size:10px;color:rgba(255,255,255,.3);font-family:'Space Mono',monospace;">TO</span>
+        <input type="time" id="eventEndSel" class="sb-btn" value="22:00" style="min-width:100px;color-scheme:dark;" onchange="saveTimeRange();renderBoard()" title="Event end time">
+        <select id="tickIntervalSel" class="sb-btn" style="min-width:80px;" onchange="saveTimeRange();renderBoard()" title="Tick interval">
+          <option value="15">15 min</option>
+          <option value="30" selected>30 min</option>
+          <option value="60">1 hour</option>
         </select>
         <button class="sb-btn add-stage" onclick="addStage()">+ Stage</button>
       </div>
@@ -595,19 +584,22 @@ function saveTimeRange() {
   if (!currentProjectId) return;
   var s = document.getElementById('eventStartSel').value;
   var e = document.getElementById('eventEndSel').value;
-  localStorage.setItem('elp-sched-time-'+currentProjectId, s+','+e);
+  var i = document.getElementById('tickIntervalSel').value;
+  localStorage.setItem('elp-sched-time-'+currentProjectId, s+'|'+e+'|'+i);
 }
 
 function restoreTimeRange() {
   if (!currentProjectId) return;
   var saved = localStorage.getItem('elp-sched-time-'+currentProjectId);
   if (!saved) return;
-  var parts = saved.split(',');
-  if (parts.length !== 2) return;
+  var parts = saved.split('|');
+  if (parts.length < 2) return;
   var startSel = document.getElementById('eventStartSel');
   var endSel   = document.getElementById('eventEndSel');
+  var intSel   = document.getElementById('tickIntervalSel');
   if (startSel) startSel.value = parts[0];
   if (endSel)   endSel.value   = parts[1];
+  if (intSel && parts[2]) intSel.value = parts[2];
 }
 
 /* ─── VIEW ─── */
@@ -636,24 +628,34 @@ function renderBoard(){
 }
 
 function renderTimelineView(area){
-  var startH=parseInt(document.getElementById('eventStartSel').value)||12;
-  var endH  =parseInt(document.getElementById('eventEndSel').value)||22;
-  var totalMins=(endH-startH)*60;
-  var PX_PER_MIN=3.2;
-  var trackW=totalMins*PX_PER_MIN;
+  // Parse time inputs (HH:MM)
+  function parseTInput(id, fallback) {
+    var val = document.getElementById(id).value || fallback;
+    var parts = val.split(':');
+    return parseInt(parts[0])*60 + parseInt(parts[1]||0);
+  }
+  var startMins = parseTInput('eventStartSel','08:00');
+  var endMins   = parseTInput('eventEndSel','22:00');
+  if(endMins <= startMins) endMins = startMins + 60;
+  var totalMins = endMins - startMins;
+  var tickInterval = parseInt(document.getElementById('tickIntervalSel').value)||30;
+  var PX_PER_MIN = 3.5;
+  var trackW = totalMins * PX_PER_MIN;
 
-  // Build time ruler
+  // Build time ruler with selected interval
   var rulerH='';
-  for(var h=startH;h<=endH;h++){
-    var label=h===12?'12 PM':h<12?h+' AM':h===24?'12 AM':(h-12)+' PM';
-    rulerH+='<div class="time-tick" style="width:'+(60*PX_PER_MIN)+'px;">'+label+'</div>';
+  for(var m=startMins; m<=endMins; m+=tickInterval){
+    var h=Math.floor(m/60), min=m%60;
+    var ampm=h<12?'AM':'PM'; var h12=h%12||12;
+    var label=h12+':'+(min<10?'0':'')+min+' '+ampm;
+    rulerH+='<div class="time-tick" style="width:'+(tickInterval*PX_PER_MIN)+'px;">'+label+'</div>';
   }
 
   var stagesH='';
   allStages.forEach(function(stage){
     var acts=allActs.filter(function(a){return a.stage_id===stage.stage_id;}).sort(function(a,b){return timeToMins(a.start_time)-timeToMins(b.start_time);});
     var actsH='';
-    var prevEnd=startH*60;
+    var prevEnd=startMins;
 
     if(!acts.length){
       actsH='<div class="stage-empty" onclick="openActModal(\''+stage.stage_id+'\',null)"><div class="stage-empty-icon">＋</div>Add first act to '+stage.stage_name+'</div>';
@@ -661,8 +663,8 @@ function renderTimelineView(area){
       acts.forEach(function(act,i){
         var actStart=timeToMins(act.start_time);
         var dur=parseInt(act.duration_minutes)||45;
-        var left=Math.max(0,(actStart-startH*60))*PX_PER_MIN;
-        var width=Math.max(40,dur*PX_PER_MIN);
+        var left=Math.max(0,(actStart-startMins))*PX_PER_MIN;
+        var width=Math.max(36,dur*PX_PER_MIN);
         var gap=actStart-prevEnd;
         var endTime=actStart+dur;
         var startLabel=minsToTime(actStart);
