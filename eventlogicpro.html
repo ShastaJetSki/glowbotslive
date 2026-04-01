@@ -106,23 +106,28 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .section-label{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;}
 
 /* DEPT CARDS */
-.dept-card{background:var(--bg-card);border-radius:10px;margin-bottom:8px;border:1px solid var(--border);overflow:hidden;}
-.dept-card.my-dept{border-left:3px solid var(--accent);}
-.dept-card-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;cursor:pointer;transition:background .15s;gap:8px;}
+/* DEPT CARDS — matches budget strip style */
+.dept-card{background:var(--bg-card);border-radius:10px;margin-bottom:8px;border:1px solid var(--border);overflow:hidden;transition:border-color .2s;}
+.dept-card:hover{border-color:var(--text-secondary);}
+.dept-card-header{display:flex;align-items:center;padding:12px 14px;cursor:pointer;transition:background .15s;gap:10px;}
 .dept-card-header:hover{background:var(--bg-hover);}
-.dept-card-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
-.dept-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.dept-lead-tag{font-size:11px;color:var(--text-secondary);white-space:nowrap;background:var(--bg-hover);padding:2px 8px;border-radius:10px;}
-.dept-card-kpis{display:flex;gap:0;align-items:center;flex-shrink:0;}
-.dept-kpi{text-align:center;width:58px;}
-.dept-kpi-val{font-size:16px;font-weight:700;}
-.dept-kpi-lbl{font-size:9px;color:var(--text-secondary);text-transform:uppercase;}
-.dept-mini-progress{width:56px;height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden;margin-left:8px;}
-.dept-mini-progress-fill{height:100%;border-radius:3px;transition:width .3s;}
-.dept-expand{font-size:11px;color:var(--text-secondary);transition:transform .2s;margin-left:8px;flex-shrink:0;}
-.dept-card-header.collapsed .dept-expand{transform:rotate(-90deg);}
+.dept-drag{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);cursor:grab;font-size:14px;flex-shrink:0;opacity:0;transition:opacity .15s;}
+.dept-card:hover .dept-drag{opacity:1;}
+.dept-drag:active{cursor:grabbing;}
+.dept-color-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.dept-card-info{flex:1;min-width:0;}
+.dept-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
+.dept-subtitle{font-size:11px;color:var(--text-secondary);margin-top:2px;}
+.dept-card-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.dept-total{font-size:15px;font-weight:700;}
+.dept-del-btn{width:22px;height:22px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:all .15s;padding:0;}
+.dept-del-btn:hover{background:rgba(220,38,38,.1);color:var(--accent);}
+.dept-chv{font-size:12px;color:var(--text-secondary);transition:transform .2s;width:20px;text-align:center;}
+.dept-card-header.collapsed .dept-chv{transform:rotate(-90deg);}
 .dept-body{border-top:1px solid var(--border);overflow:hidden;transition:max-height .3s ease;}
 .dept-body.collapsed{max-height:0!important;border-top:none;}
+.dept-card.dragging{opacity:.4;border:1px dashed var(--accent);}
+.dept-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow);}
 
 /* TASK ROWS */
 .task-row{display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
@@ -576,17 +581,22 @@ async function loadMembers(){
   var r=await sb.from('event_members').select('*').eq('tenant_id',tenantId).order('first_name');
   allMembers=r.data||[];
 }
+var deptColors = {};
 async function loadEstimateBudgets(){
-  estimateBudgets={};
+  estimateBudgets={};deptColors={};
   if(!currentProjectId)return;
   var er=await sb.from('event_estimates').select('estimate_id').eq('event_project_id',currentProjectId).eq('status','published').limit(1);
   var est=er.data&&er.data[0];
   if(!est){er=await sb.from('event_estimates').select('estimate_id').eq('event_project_id',currentProjectId).limit(1);est=er.data&&er.data[0];}
   if(!est)return;
-  var cr=await sb.from('estimate_categories').select('title,category_key').eq('estimate_id',est.estimate_id).eq('category_type','expense');
+  var cr=await sb.from('estimate_categories').select('title,category_key,color').eq('estimate_id',est.estimate_id).eq('category_type','expense');
   var lr=await sb.from('estimate_line_items').select('category_key,estimated_cost').eq('estimate_id',est.estimate_id).eq('category_type','expense');
   var lines=lr.data||[];
-  (cr.data||[]).forEach(function(c){var total=lines.filter(function(l){return l.category_key===c.category_key;}).reduce(function(s,l){return s+(parseFloat(l.estimated_cost)||0);},0);if(total>0)estimateBudgets[c.title.toLowerCase()]=total;});
+  (cr.data||[]).forEach(function(c){
+    var total=lines.filter(function(l){return l.category_key===c.category_key;}).reduce(function(s,l){return s+(parseFloat(l.estimated_cost)||0);},0);
+    if(total>0)estimateBudgets[c.title.toLowerCase()]=total;
+    if(c.color)deptColors[c.title.toLowerCase()]=c.color;
+  });
 }
 
 /* ===== PROJECT SEARCH ===== */
