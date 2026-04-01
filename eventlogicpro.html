@@ -525,11 +525,52 @@ async function loadProjects(){
 }
 async function loadProjectData(){
   if(!currentProjectId)return;
+
+  // Load departments
   var dr=await sb.from('event_departments').select('*').eq('event_project_id',currentProjectId).order('sort_order');
   allDepartments=dr.data||[];
+
+  // Load tasks
   var tr=await sb.from('event_tasks').select('*').eq('event_project_id',currentProjectId).order('sort_order');
   allTasks=tr.data||[];
+
   await loadEstimateBudgets();
+
+  // Sort departments to match budget category order
+  await syncDeptOrderFromBudget();
+}
+
+async function syncDeptOrderFromBudget(){
+  // Find linked estimate
+  var er=await sb.from('event_estimates').select('estimate_id').eq('event_project_id',currentProjectId).order('updated_at',{ascending:false}).limit(1);
+  if(!er.data||!er.data.length)return;
+  var estId=er.data[0].estimate_id;
+
+  // Load expense categories in their budget sort order
+  var cr=await sb.from('estimate_categories').select('title,sort_order').eq('estimate_id',estId).eq('category_type','expense').order('sort_order');
+  var cats=cr.data||[];
+  if(!cats.length)return;
+
+  // Build a lookup: category title (lowercase) -> sort_order
+  var orderMap={};
+  cats.forEach(function(c,i){orderMap[c.title.toLowerCase()]=i;});
+
+  // Sort allDepartments to match
+  allDepartments.sort(function(a,b){
+    var ai=orderMap[a.department_name.toLowerCase()];
+    var bi=orderMap[b.department_name.toLowerCase()];
+    if(ai===undefined)ai=999;
+    if(bi===undefined)bi=999;
+    return ai-bi;
+  });
+
+  // Persist the new sort_order back to event_departments
+  for(var i=0;i<allDepartments.length;i++){
+    if(allDepartments[i].sort_order!==i){
+      allDepartments[i].sort_order=i;
+      await sb.from('event_departments').update({sort_order:i}).eq('event_department_id',allDepartments[i].event_department_id);
+    }
+  }
 }
 async function loadMembers(){
   var r=await sb.from('event_members').select('*').eq('tenant_id',tenantId).order('first_name');
