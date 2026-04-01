@@ -191,6 +191,14 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .detail-panel-title{font-size:16px;font-weight:700;flex:1;margin-right:10px;}
 .detail-panel-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-secondary);line-height:1;}
 
+
+/* DEPT DRAG */
+.dept-drag{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);cursor:grab;font-size:14px;flex-shrink:0;opacity:0;transition:opacity .15s;}
+.dept-card:hover .dept-drag{opacity:1;}
+.dept-drag:active{cursor:grabbing;}
+.dept-card.dragging{opacity:.4;border:1px dashed var(--accent);}
+.dept-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow);}
+
 /* TOAST */
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--accent);color:var(--text-primary);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;z-index:3000;display:none;box-shadow:var(--shadow);}
 .toast.show{display:block;animation:toastIn .3s ease;}
@@ -645,6 +653,7 @@ function renderDepartments(){
   var h='';
   allDepartments.forEach(function(dept){h+=renderDeptCard(dept);});
   area.innerHTML=h;
+  attachDeptDragHandles();
   // Restore expanded state
   allDepartments.forEach(function(dept){
     var body=document.getElementById('deptBody-'+dept.event_department_id);
@@ -665,6 +674,7 @@ function renderDeptCard(dept){
   var pctColor=pct>=100?'#22c55e':pct>=50?'#eab308':'var(--accent)';
   var h='<div class="dept-card" id="dept-'+dept.event_department_id+'">';
   h+='<div class="dept-card-header collapsed" onclick="toggleDept(\''+dept.event_department_id+'\')">';
+  h+='<div class="dept-drag" draggable="true" onclick="event.stopPropagation()" title="Drag to reorder">&#9783;</div>';
   h+='<div class="dept-card-left"><span class="dept-name">'+esc(dept.department_name)+'</span>';
   if(leadName)h+='<span class="dept-lead-tag">'+esc(leadName)+'</span>';
   h+='</div>';
@@ -920,6 +930,54 @@ function openDetailPanel(taskId){
   document.getElementById('detailPanel').classList.add('show');
 }
 function closeDetailPanel(){document.getElementById('detailOverlay').classList.remove('show');document.getElementById('detailPanel').classList.remove('show');}
+
+
+/* ===== DEPT DRAG TO REORDER ===== */
+var deptDragSrcIdx = null;
+
+function attachDeptDragHandles() {
+  document.querySelectorAll('.dept-drag').forEach(function(handle) {
+    var card = handle.closest('.dept-card');
+    if (!card) return;
+    handle.addEventListener('dragstart', function(e) {
+      var id = card.id.replace('dept-','');
+      deptDragSrcIdx = allDepartments.findIndex(function(d){return d.event_department_id===id;});
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', deptDragSrcIdx);
+    });
+    handle.addEventListener('dragend', function() {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.dept-card').forEach(function(c){c.classList.remove('drag-over');});
+      deptDragSrcIdx = null;
+    });
+    card.addEventListener('dragover', function(e) {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', function() { card.classList.remove('drag-over'); });
+    card.addEventListener('drop', function(e) {
+      e.preventDefault(); card.classList.remove('drag-over');
+      var id = card.id.replace('dept-','');
+      var toIdx = allDepartments.findIndex(function(d){return d.event_department_id===id;});
+      if (deptDragSrcIdx === null || deptDragSrcIdx === toIdx) return;
+      var moved = allDepartments.splice(deptDragSrcIdx, 1)[0];
+      allDepartments.splice(toIdx, 0, moved);
+      saveDeptOrder();
+      renderDepartments();
+      attachDeptDragHandles();
+    });
+  });
+}
+
+async function saveDeptOrder() {
+  for (var i = 0; i < allDepartments.length; i++) {
+    allDepartments[i].sort_order = i;
+    await sb.from('event_departments')
+      .update({sort_order: i})
+      .eq('event_department_id', allDepartments[i].event_department_id);
+  }
+}
 
 /* ===== INIT ===== */
 async function init(){
