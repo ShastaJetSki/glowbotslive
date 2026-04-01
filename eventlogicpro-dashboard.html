@@ -657,6 +657,7 @@ async function createNewEvent() {
   var newProject = r.data;
   var templateId = document.getElementById('newEvTemplate').value;
   if (templateId) { await loadTemplateIntoEvent(newProject.event_project_id, templateId); }
+  else { await createDefaultDepartments(newProject.event_project_id); }
   await addEventToCalendar(newProject);
   closeNewEventModal();
   toast('"' + name + '" created!');
@@ -750,6 +751,29 @@ function updateCollapseBtn() {
   btn.classList.toggle('all-collapsed', allCollapsed);
   lbl.textContent = allCollapsed ? 'Expand All' : 'Collapse All';
   localStorage.setItem('elp-all-collapsed', allCollapsed);
+}
+
+
+/* ===== DEFAULT DEPARTMENTS (blank event) ===== */
+async function createDefaultDepartments(projectId) {
+  var depts = [
+    { name: 'General Planning', tasks: ['Define event goals and objectives','Set event date and venue','Build master timeline','Confirm key vendors and contacts'] },
+    { name: 'Marketing', tasks: ['Design flyer and promotional materials','Set up social media event page','Send invitations or announcements','Track RSVPs or ticket sales'] },
+    { name: 'Day-of Operations', tasks: ['Build run-of-show schedule','Assign staff and volunteer roles','Set up venue layout','Post-event breakdown and cleanup'] }
+  ];
+  for (var i = 0; i < depts.length; i++) {
+    var dr = await sb.from('event_departments').insert({
+      tenant_id: tenantId, event_project_id: projectId,
+      department_name: depts[i].name, sort_order: i
+    }).select().single();
+    if (dr.error || !dr.data) continue;
+    var taskRows = depts[i].tasks.map(function(t, ti) {
+      return { tenant_id: tenantId, event_project_id: projectId,
+        event_department_id: dr.data.event_department_id,
+        task_title: t, sort_order: ti, is_complete: false, created_by: userId };
+    });
+    await sb.from('event_tasks').insert(taskRows);
+  }
 }
 
 /* ===== INIT ===== */
