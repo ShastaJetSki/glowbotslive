@@ -662,23 +662,54 @@ function setViewGrid(cols){
 function openUploadModal(){
   if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}
   document.getElementById('uploadLabel').value='';
-  pendingUploadFile = null;
-  document.getElementById('uploadFile').value='';
   document.getElementById('uploadShared').checked=false;
   document.getElementById('uploadPreviewWrap').style.display='none';
+  document.getElementById('uploadPreviewImg').src='';
   var fp=document.getElementById('filePickerRow');if(fp)fp.style.display='';
   document.getElementById('uploadModal').classList.add('show');
+  // If a file is already pending, show its preview
+  if(pendingUploadFile) previewFile(pendingUploadFile);
 }
-function closeUploadModal(){document.getElementById('uploadModal').classList.remove('show');}
+
+function closeUploadModal(){
+  document.getElementById('uploadModal').classList.remove('show');
+}
+
+function previewFile(file){
+  if(!file)return;
+  var label=document.getElementById('uploadLabel');
+  if(!label.value) label.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
+  var wrap=document.getElementById('uploadPreviewWrap');
+  var picker=document.getElementById('filePickerRow');
+  var meta=document.getElementById('uploadFileMeta');
+  if(file.type.startsWith('image/')){
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var img=document.getElementById('uploadPreviewImg');
+      img.src=ev.target.result; img.style.display='block';
+      wrap.style.display='block';
+      if(picker)picker.style.display='none';
+      var i=new Image();
+      i.onload=function(){meta.textContent=i.width+' × '+i.height+' · '+fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();};
+      i.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    document.getElementById('uploadPreviewImg').style.display='none';
+    meta.textContent=file.name+' · '+fmtSize(file.size);
+    wrap.style.display='block';
+    if(picker)picker.style.display='none';
+  }
+}
 
 function previewUpload(e){
-  var file = e.target.files && e.target.files[0]; if(!file) return;
-  pendingUploadFile = file;
+  var file=e.target.files&&e.target.files[0];if(!file)return;
+  pendingUploadFile=file;
   previewFile(file);
 }
 
 function clearUploadFile(){
-  pendingUploadFile = null;
+  pendingUploadFile=null;
   document.getElementById('uploadFile').value='';
   document.getElementById('uploadPreviewWrap').style.display='none';
   document.getElementById('uploadPreviewImg').src='';
@@ -687,102 +718,61 @@ function clearUploadFile(){
 }
 
 async function saveMedia(){
-  var file = pendingUploadFile || (document.getElementById('uploadFile').files[0]);
-  var label=document.getElementById('uploadLabel').value.trim()||'Untitled';
+  var file=pendingUploadFile||(document.getElementById('uploadFile').files[0]);
+  if(!file){toast('Choose a file first');return;}
+  var label=document.getElementById('uploadLabel').value.trim()||file.name;
   var category=document.getElementById('uploadCategory').value;
   var shared=document.getElementById('uploadShared').checked;
-  if(!file){toast('Choose a file first');return;}
-  var statusEl=document.getElementById('autosaveText');
-  var dotEl=document.getElementById('autosaveDot');
+  var dotEl=document.getElementById('autosaveDot'),statusEl=document.getElementById('autosaveText');
   if(dotEl)dotEl.className='autosave-dot saving';
   if(statusEl)statusEl.textContent='Uploading...';
-
-  try {
-    // Get dimensions + base64 preview for images
-    var width=null, height=null, preview_url=null, storage_path=null;
+  try{
+    var width=null,height=null,preview_url=null,storage_path=null;
     if(file.type.startsWith('image/')){
-      var dataUrl = await new Promise(function(res,rej){
-        var reader=new FileReader();
-        reader.onload=function(e){res(e.target.result);};
-        reader.onerror=rej;
-        reader.readAsDataURL(file);
-      });
-      await new Promise(function(res){
-        var i=new Image();
-        i.onload=function(){width=i.width;height=i.height;res();};
-        i.src=dataUrl;
-      });
-      // Try Supabase storage first, fall back to storing data URL
-      try {
+      var dataUrl=await new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.onerror=rej;r.readAsDataURL(file);});
+      await new Promise(function(res){var i=new Image();i.onload=function(){width=i.width;height=i.height;res();};i.src=dataUrl;});
+      try{
         var path=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
         var up=await sb.storage.from(BUCKET).upload(path,file,{upsert:true});
-        if(!up.error){
-          storage_path=path;
-          preview_url=sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-        } else {
-          // Storage bucket not set up yet — use data URL as preview
-          preview_url=dataUrl;
-        }
-      } catch(storageErr){
-        preview_url=dataUrl;
-      }
+        if(!up.error){storage_path=path;preview_url=sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;}
+        else{preview_url=dataUrl;}
+      }catch(se){preview_url=dataUrl;}
     } else {
-      // Non-image — try storage upload only
-      try {
-        var path2=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
-        var up2=await sb.storage.from(BUCKET).upload(path2,file,{upsert:true});
-        if(!up2.error){
-          storage_path=path2;
-          preview_url=sb.storage.from(BUCKET).getPublicUrl(path2).data.publicUrl;
-        }
-      } catch(e2){}
+      try{
+        var p2=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
+        var u2=await sb.storage.from(BUCKET).upload(p2,file,{upsert:true});
+        if(!u2.error){storage_path=p2;preview_url=sb.storage.from(BUCKET).getPublicUrl(p2).data.publicUrl;}
+      }catch(e2){}
     }
-
-    // Save metadata to DB
-    var row={
-      tenant_id:tenantId, event_project_id:currentProjectId,
-      file_name:file.name, label:label, category:category,
-      file_type:file.type, file_size:file.size,
-      width:width, height:height,
-      storage_path:storage_path,
-      preview_url:preview_url,
-      shared:shared, uploaded_by:userId,
-    };
+    var row={tenant_id:tenantId,event_project_id:currentProjectId,file_name:file.name,label:label,category:category,file_type:file.type,file_size:file.size,width:width,height:height,storage_path:storage_path,preview_url:preview_url,shared:shared,uploaded_by:userId};
     var r=await sb.from('event_media').insert(row).select().single();
     if(r.error){toast('DB error: '+r.error.message);if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';return;}
+    pendingUploadFile=null;
     allMedia.unshift(r.data);
-    closeUploadModal();
-    updateBadges();
-    renderGrid();
-    if(dotEl)dotEl.className='autosave-dot';
-    if(statusEl)statusEl.textContent='Saved just now';
+    closeUploadModal();updateBadges();renderGrid();
+    if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Saved just now';
     toast('✓ '+label+' uploaded');
-  } catch(e){
+  }catch(e){
     toast('Upload failed: '+e.message);
-    if(dotEl)dotEl.className='autosave-dot';
-    if(statusEl)statusEl.textContent='Ready';
+    if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';
   }
 }
 
-
 /* ─── DROP INPUT HANDLER ─── */
-function handleDropInput(e) {
-  var files = e.target.files;
-  if (!files || !files.length) return;
-  if (!currentProjectId) { toast('Select an event first'); document.getElementById('projSearchInput').focus(); return; }
-  pendingUploadFile = files[0];
-  // Auto-guess category from filename
-  var fname = files[0].name.toLowerCase();
-  var sel = document.getElementById('uploadCategory');
-  if(fname.indexOf('flyer')>=0||fname.indexOf('fly')>=0) sel.value=fname.indexOf('-b')>=0||fname.indexOf('_b')>=0||fname.indexOf('back')>=0?'flyer-b':'flyer';
+function handleDropInput(e){
+  var files=e.target.files;if(!files||!files.length)return;
+  if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}
+  pendingUploadFile=files[0];
+  var fname=files[0].name.toLowerCase();
+  var sel=document.getElementById('uploadCategory');
+  if(fname.indexOf('flyer')>=0) sel.value=fname.indexOf('back')>=0||fname.indexOf('-b')>=0?'flyer-b':'flyer';
   else if(fname.indexOf('poster')>=0) sel.value='poster';
   else if(fname.indexOf('sign')>=0) sel.value='sign';
   else if(fname.indexOf('logo')>=0) sel.value='logo';
   else if(fname.indexOf('banner')>=0) sel.value='banner';
-  else if(fname.indexOf('social')>=0||fname.indexOf('ig_')>=0||fname.indexOf('fb_')>=0) sel.value='social';
-  previewFile(files[0]);
+  else if(fname.indexOf('social')>=0||fname.indexOf('ig_')>=0) sel.value='social';
   openUploadModal();
-  if(files.length > 1) toast(files.length+' files — uploading one at a time');
+  if(files.length>1) toast(files.length+' files — uploading one at a time');
 }
 
 /* ─── DROP ZONE ─── */
