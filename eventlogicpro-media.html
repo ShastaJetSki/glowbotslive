@@ -424,13 +424,17 @@ function handleDropInput(e) {
         <label class="form-label">Label / Name</label>
         <input type="text" class="form-input" id="uploadLabel" placeholder="e.g. Main Poster 24x36">
       </div>
-      <div class="form-group">
+      <!-- File row: hidden when preview loaded, shown when no file yet -->
+      <div class="form-group" id="filePickerRow">
         <label class="form-label">File</label>
         <input type="file" class="form-input" id="uploadFile" accept="image/*,.pdf,.ai,.psd,.eps,.svg" onchange="previewUpload(event)" style="padding:6px;">
       </div>
-      <div id="uploadPreviewWrap" style="display:none;margin-top:8px;text-align:center;">
-        <img id="uploadPreviewImg" style="max-width:100%;max-height:180px;border-radius:8px;object-fit:contain;background:#111;padding:8px;">
-        <div id="uploadFileMeta" style="font-size:11px;color:var(--text-secondary);margin-top:6px;font-family:'Space Mono',monospace;"></div>
+      <div id="uploadPreviewWrap" style="display:none;margin-top:4px;">
+        <div style="position:relative;display:inline-block;width:100%;">
+          <img id="uploadPreviewImg" style="max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;background:#0f0f12;display:block;width:100%;">
+          <button onclick="clearUploadFile()" title="Change file" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:14px;cursor:pointer;backdrop-filter:blur(4px);">✕</button>
+        </div>
+        <div id="uploadFileMeta" style="font-size:10px;color:var(--text-secondary);margin-top:5px;font-family:'Space Mono',monospace;letter-spacing:.3px;"></div>
       </div>
       <div class="form-group" style="margin-top:14px;">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -664,33 +668,45 @@ function openUploadModal(){
   document.getElementById('uploadFile').value='';
   document.getElementById('uploadShared').checked=false;
   document.getElementById('uploadPreviewWrap').style.display='none';
+  var fp=document.getElementById('filePickerRow');if(fp)fp.style.display='';
   document.getElementById('uploadModal').classList.add('show');
 }
 function closeUploadModal(){document.getElementById('uploadModal').classList.remove('show');}
 
 function previewUpload(e){
-  var file=e.target.files[0];if(!file)return;
+  var file=e.target.files&&e.target.files[0];if(!file)return;
   var label=document.getElementById('uploadLabel');
-  if(!label.value)label.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
+  if(!label.value)label.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
   var wrap=document.getElementById('uploadPreviewWrap');
+  var picker=document.getElementById('filePickerRow');
   var meta=document.getElementById('uploadFileMeta');
-  meta.textContent=fmtSize(file.size)+' · '+file.type;
+  meta.textContent=fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();
   if(file.type.startsWith('image/')){
     var reader=new FileReader();
     reader.onload=function(ev){
       var img=document.getElementById('uploadPreviewImg');
-      img.src=ev.target.result;
-      img.style.display='block';
+      img.src=ev.target.result;img.style.display='block';
       wrap.style.display='block';
+      if(picker)picker.style.display='none';
       var i=new Image();
-      i.onload=function(){meta.textContent=i.width+'×'+i.height+' · '+fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();};
+      i.onload=function(){meta.textContent=i.width+' × '+i.height+' · '+fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();};
       i.src=ev.target.result;
     };
     reader.readAsDataURL(file);
   } else {
     document.getElementById('uploadPreviewImg').style.display='none';
+    meta.textContent=file.name+' · '+fmtSize(file.size);
     wrap.style.display='block';
+    if(picker)picker.style.display='none';
   }
+}
+
+function clearUploadFile(){
+  document.getElementById('uploadFile').value='';
+  document.getElementById('uploadPreviewWrap').style.display='none';
+  document.getElementById('uploadPreviewImg').src='';
+  var picker=document.getElementById('filePickerRow');
+  if(picker)picker.style.display='';
 }
 
 async function saveMedia(){
