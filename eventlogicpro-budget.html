@@ -479,12 +479,17 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
     </div>
     <div id="expBox"></div>
 
-    <!-- Revenue categories -->
+    <!-- Revenue from Packages (read-only pull) -->
     <div class="sec-hdr" style="margin-top:24px;">
-      <div class="sec-ttl">Revenue</div>
-      <button class="abtn" onclick="openAddCat('revenue')">+ Add Revenue Source</button>
+      <div class="sec-ttl" style="display:flex;align-items:center;gap:8px;">
+        Projected Revenue
+        <span style="font-size:11px;font-weight:600;color:var(--text-secondary);background:var(--bg-hover);padding:2px 8px;border-radius:10px;">from Packages</span>
+      </div>
+      <a href="eventlogicpro-sponsors.html" id="packagesLink" style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;">Edit in Packages &rarr;</a>
     </div>
-    <div id="revBox"></div>
+    <div id="revSummaryBox" style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;">
+      <div style="font-size:13px;color:var(--text-secondary);text-align:center;">Select an event to see projected revenue from linked packages.</div>
+    </div>
 
   </div><!-- /editorView -->
 
@@ -710,6 +715,7 @@ function selectProject(projectId) {
   // Store and render budget pills
   localStorage.setItem('elp-last-project', projectId);
   renderBudgetPills();
+  loadPackagesRevenue(projectId);
 
   // Auto-load the official budget, else the first one
   var projectBudgets = allEstimates.filter(function(e){return e.event_project_id===projectId;});
@@ -821,32 +827,12 @@ var DEF_EXP = [
     'Merch booth setup (tables, signage, lights)','Event t-shirt order (100 units)'
   ]}
 ];
-var DEF_REV = [
-  {id:'rev_tickets', color:'#22c55e', title:'Ticket Sales', items:[
-    'General Admission','VIP tickets','Early Bird GA','Day-of walk-up GA'
-  ]},
-  {id:'rev_sponsors',color:'#16a34a', title:'Sponsor Revenue', items:[
-    'Platinum sponsor (1 x $3,000)','Gold sponsors (2 x $1,200)','Silver sponsors (3 x $600)'
-  ]},
-  {id:'rev_vendors', color:'#059669', title:'Vendor Fees', items:[
-    'Powered vendor booths','Non-powered booths','Food truck spots'
-  ]},
-  {id:'rev_bar',     color:'#10b981', title:'Bar Revenue', items:[
-    'Estimated bar and beer garden sales'
-  ]},
-  {id:'rev_merch',   color:'#34d399', title:'Merchandise Sales', items:[
-    'Event t-shirt sales','Hat and accessory sales'
-  ]}
-];
 
 function makeDefaults() {
   var exp = DEF_EXP.map(function(c){
     return {id:c.id,color:c.color,title:c.title,items:c.items.map(function(n){return {name:n,est:0,act:0,due:'pre'};})};
   });
-  var rev = DEF_REV.map(function(c){
-    return {id:c.id,color:c.color,title:c.title,items:c.items.map(function(n){return {name:n,est:0,act:0,due:'day'};})};
-  });
-  return {exp:exp, rev:rev};
+  return {exp:exp};
 }
 
 /* ===== LOAD ===== */
@@ -880,7 +866,7 @@ async function loadEstimateData(id) {
       if (!obj.items.length) obj.items = [{name:'',est:0,act:0,due:'pre'}];
       if (c.category_type==='revenue') revCats.push(obj); else expCats.push(obj);
     });
-  } else { var d = makeDefaults(); expCats = d.exp; revCats = d.rev; }
+  } else { var d = makeDefaults(); expCats = d.exp; revCats = []; }
   setViewMode('editor');
   updateActionButtons();
   render();
@@ -890,7 +876,8 @@ function clearForm() {
   document.getElementById('eName').value = '';
   document.getElementById('eDate').value = '';
   document.getElementById('eAtt').value  = '';
-  var d = makeDefaults(); expCats = d.exp; revCats = d.rev;
+  var d = makeDefaults(); expCats = d.exp;
+  revCats = [];
   updateActionButtons(); render();
 }
 
@@ -986,16 +973,18 @@ function renderCat(c, idx, type) {
 }
 
 function calcTotals() {
-  var exp=0,rev=0,cnt=0;
+  var exp=0,cnt=0;
   expCats.forEach(function(c){c.items.forEach(function(i){exp+=(parseFloat(i.est)||0);cnt++;});});
-  revCats.forEach(function(c){c.items.forEach(function(i){rev+=(parseFloat(i.est)||0);});});
-  var net = rev - exp;
   document.getElementById('totExp').textContent = '$' + fmt(exp);
-  document.getElementById('totRev').textContent = '$' + fmt(rev);
+  document.getElementById('totLI').textContent = cnt + ' line items';
+  // Net is calculated against packages revenue loaded separately
+  var pkgRevEl = document.getElementById('pkgRevTotal');
+  var pkgRev = pkgRevEl ? (parseFloat(pkgRevEl.dataset.value)||0) : 0;
+  var net = pkgRev - exp;
   var ne = document.getElementById('totNet');
   ne.textContent = (net >= 0 ? '+$' : '-$') + fmt(Math.abs(net));
   ne.className = 'svl ' + (net >= 0 ? 'pos' : 'neg');
-  document.getElementById('totLI').textContent = cnt + ' line items';
+  document.getElementById('totRev').textContent = pkgRev > 0 ? '$' + fmt(pkgRev) : '--';
 }
 
 /* ===== INTERACTIONS ===== */
@@ -1004,7 +993,12 @@ function updDue(type,ci,li,val,sel){(type==='expense'?expCats:revCats)[ci].items
 function updVal(type,ci,li,field,val){(type==='expense'?expCats:revCats)[ci].items[li][field]=parseFloat(val)||0;markDirty();calcTotals();}
 function rmItem(type,ci,li){(type==='expense'?expCats:revCats)[ci].items.splice(li,1);render();markDirty();}
 function addItem(type,ci){(type==='expense'?expCats:revCats)[ci].items.push({name:'',est:0,act:0,due:'pre'});render();markDirty();}
-function deleteCat(type,ci){if(!confirm('Delete this category?'))return;if(type==='expense')expCats.splice(ci,1);else revCats.splice(ci,1);render();markDirty();}
+function deleteCat(type,ci){
+  if(!confirm('Delete this category and all its line items?'))return;
+  if(type==='expense'){var cat=expCats[ci];expCats.splice(ci,1);if(cat)syncDeptDelete(cat.title);}
+  else revCats.splice(ci,1);
+  render();markDirty();
+}
 function markDirty(){dirty=true;}
 
 function toggleSec(id){var el=document.getElementById('sec-'+id);if(!el)return;el.classList.toggle('expanded');if(el.classList.contains('expanded'))expandedSet.add(id);else expandedSet.delete(id);}
@@ -1048,26 +1042,26 @@ function confirmAddCat(){
   var cat={id:id,color:selColor,title:name,items:[{name:'',est:0,act:0,due:'pre'}]};
   if(addingType==='expense')expCats.push(cat);else revCats.push(cat);
   closeModal();expandedSet.add(id);render();markDirty();toast('"'+name+'" added');
+  syncDeptAdd(name, selColor);
 }
 
 /* ===== SAVE / LOAD ===== */
 async function saveToDb(silent) {
   if (!tenantId){if(!silent)toast('Not authenticated');return;}
   if (!currentEstId){if(!silent)toast('Select or create a budget first');return;}
-  var exp=0,rev=0;
+  var exp=0;
   expCats.forEach(function(c){c.items.forEach(function(i){exp+=(parseFloat(i.est)||0);});});
-  revCats.forEach(function(c){c.items.forEach(function(i){rev+=(parseFloat(i.est)||0);});});
+  var pkgRevEl=document.getElementById('pkgRevTotal');
+  var pkgRev=pkgRevEl?(parseFloat(pkgRevEl.dataset.value)||0):0;
   var eName=document.getElementById('eName').value||'Untitled';
-  await sb.from('event_estimates').update({event_name:eName,event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:rev,net_profit:rev-exp}).eq('estimate_id',currentEstId);
+  await sb.from('event_estimates').update({event_name:eName,event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:pkgRev,net_profit:pkgRev-exp}).eq('estimate_id',currentEstId);
   await sb.from('estimate_categories').delete().eq('estimate_id',currentEstId);
   var catRows=[];
   expCats.forEach(function(c,i){catRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'expense',title:c.title,color:c.color,sort_order:i});});
-  revCats.forEach(function(c,i){catRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',title:c.title,color:c.color,sort_order:i+100});});
   if(catRows.length)await sb.from('estimate_categories').insert(catRows);
   await sb.from('estimate_line_items').delete().eq('estimate_id',currentEstId);
   var lineRows=[],ord=0;
   expCats.forEach(function(c){c.items.forEach(function(it){lineRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'expense',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:ord++,due_timing:it.due||'pre'});});});
-  revCats.forEach(function(c){c.items.forEach(function(it){lineRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:ord++,due_timing:it.due||'pre'});});});
   if(lineRows.length)await sb.from('estimate_line_items').insert(lineRows);
   await loadEstimates();
   dirty=false;
@@ -1253,6 +1247,114 @@ function spGetRecommended(ratios,att,hrs,acts,booths,gates,etype){var r={};var g
 function spBuild(){var ratios=spGetRatios();var att=Math.max(1,parseInt(document.getElementById('spAtt').value)||500);var hrs=Math.max(1,parseInt(document.getElementById('spHrs').value)||8);var acts=parseInt(document.getElementById('spActs').value)||0;var booths=parseInt(document.getElementById('spBooths').value)||0;var gates=Math.max(1,parseInt(document.getElementById('spGates').value)||2);var etype=document.getElementById('spType').value;var rec=spGetRecommended(ratios,att,hrs,acts,booths,gates,etype);var tbody=document.getElementById('spRows');tbody.innerHTML='';SP_ROLE_DEFS.forEach(function(role){var cfg=ratios.find(function(r){return r.id===role.id;})||{};var recommended=rec[role.id]||0;var h=Math.round(hrs*(cfg.hoursMulti||1));var rate=cfg.rate!==undefined?cfg.rate:0;var sub=recommended*rate*h;var tr=document.createElement('tr');if(recommended===0)tr.style.opacity='0.4';tr.innerHTML='<td><span class="sp-role-name">'+role.label+'</span><span class="sp-badge '+role.badge+'">'+role.cat+'</span></td>'+'<td style="color:var(--text-secondary);font-size:12px;"><span class="spRec">'+recommended+'</span></td>'+'<td><input type="number" class="spCount" value="'+recommended+'" min="0" oninput="spCalc()"></td>'+'<td><input type="number" class="spRate" value="'+rate+'" min="0" step="0.5" oninput="spCalc()"></td>'+'<td style="color:var(--text-secondary);font-size:12px;" class="spHrs">'+h+'</td>'+'<td style="font-weight:700;" class="spSub">'+(sub>0?'$'+Math.round(sub).toLocaleString():'$0')+'</td>';tbody.appendChild(tr);});spCalc();}
 function spCalc(){var hrs=Math.max(1,parseInt(document.getElementById('spHrs').value)||8);var att=Math.max(1,parseInt(document.getElementById('spAtt').value)||500);var ratios=spGetRatios();var rows=document.querySelectorAll('#spRows tr');var totalStaff=0,totalCost=0,totalHours=0;rows.forEach(function(tr,i){var cfg=ratios[i]||{};var count=parseInt(tr.querySelector('.spCount').value)||0;var rate=parseFloat(tr.querySelector('.spRate').value)||0;var h=Math.round(hrs*(cfg.hoursMulti||1));var sub=count*rate*h;tr.querySelector('.spHrs').textContent=h;tr.querySelector('.spSub').textContent=sub>0?'$'+Math.round(sub).toLocaleString():'$0';tr.style.opacity=count===0?'0.4':'1';totalStaff+=count;totalCost+=sub;totalHours+=count*h;});document.getElementById('spSumStaff').textContent=totalStaff;document.getElementById('spSumHours').textContent=totalHours.toLocaleString();document.getElementById('spSumCost').textContent='$'+Math.round(totalCost).toLocaleString();document.getElementById('spSumPer').textContent=att>0?'$'+(totalCost/att).toFixed(2):'$0';}
 function spAddToBudget(){var costEl=document.getElementById('spSumCost');var staffEl=document.getElementById('spSumStaff');if(!costEl)return;var totalCost=parseInt(costEl.textContent.replace(/[^0-9]/g,''))||0;var totalStaff=parseInt(staffEl.textContent)||0;if(totalCost===0){toast('No staff cost to add');return;}if(!currentEstId){toast('Select a budget first');setViewMode('editor');return;}var existing=expCats.find(function(c){return c.id==='staffing'||c.title.toLowerCase().indexOf('staff')>=0;});if(existing){existing.items.push({name:'Staff planner estimate ('+totalStaff+' staff)',est:totalCost,act:0,due:'pre'});}else{var newCat={id:'staffing_'+Date.now(),color:'#fb923c',title:'Staffing & Crew',items:[{name:'Staff planner estimate ('+totalStaff+' staff)',est:totalCost,act:0,due:'pre'}]};expCats.push(newCat);expandedSet.add(newCat.id);}markDirty();render();var msg=document.getElementById('spAddMsg');msg.style.display='inline';setTimeout(function(){msg.style.display='none';},2500);toast('Staff cost $'+Math.round(totalCost).toLocaleString()+' added to budget');}
+
+
+/* ===================================================================
+   DEPARTMENT SYNC  (event_departments <-> estimate_categories)
+   event_departments is the single source of truth.
+   Budget categories map by name/key to departments.
+=================================================================== */
+
+async function syncDeptAdd(catTitle, catColor) {
+  if (!currentProjectId) return;
+  // Create matching department in event_departments if it doesn't exist
+  var existing = await sb.from('event_departments')
+    .select('event_department_id')
+    .eq('event_project_id', currentProjectId)
+    .eq('department_name', catTitle)
+    .limit(1);
+  if (!existing.data || !existing.data.length) {
+    var count = await sb.from('event_departments').select('event_department_id',{count:'exact'}).eq('event_project_id',currentProjectId);
+    await sb.from('event_departments').insert({
+      tenant_id: tenantId,
+      event_project_id: currentProjectId,
+      department_name: catTitle,
+      sort_order: (count.count || 0)
+    });
+  }
+}
+
+async function syncDeptDelete(catTitle) {
+  if (!currentProjectId) return;
+  // Delete matching department from event_departments
+  await sb.from('event_departments')
+    .delete()
+    .eq('event_project_id', currentProjectId)
+    .eq('department_name', catTitle);
+}
+
+/* Load packages revenue for selected project/sheet */
+async function loadPackagesRevenue(projectId) {
+  var box = document.getElementById('revSummaryBox');
+  var pkgRevEl = document.getElementById('pkgRevTotal');
+  if (!box) return;
+  if (!projectId) {
+    box.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);text-align:center;">Select an event to see projected revenue from linked packages.</div>';
+    if (pkgRevEl) pkgRevEl.dataset.value = '0';
+    calcTotals();
+    return;
+  }
+
+  // Find linked sponsor sheet
+  var sr = await sb.from('event_sponsor_sheets')
+    .select('sheet_id,sheet_name,rev_data,status')
+    .eq('event_project_id', projectId)
+    .limit(1);
+  var sheet = sr.data && sr.data[0];
+
+  // Get ticket/sponsor/vendor/camping package totals
+  var pkgLink = 'eventlogicpro-sponsors.html?event=' + projectId;
+  var el = document.getElementById('packagesLink');
+  if (el) el.href = pkgLink;
+
+  if (!sheet) {
+    box.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><span style="font-size:13px;color:var(--text-secondary);">No package sheet linked yet.</span><a href="'+pkgLink+'" style="font-size:12px;color:var(--accent);font-weight:600;">Create in Packages &rarr;</a></div>';
+    if (pkgRevEl) pkgRevEl.dataset.value = '0';
+    calcTotals();
+    return;
+  }
+
+  // Load package totals
+  var tr = await sb.from('event_ticket_packages').select('price').eq('sheet_id', sheet.sheet_id);
+  var vr = await sb.from('event_vendor_packages').select('price').eq('sheet_id', sheet.sheet_id);
+  var lvr = await sb.from('event_sponsor_levels').select('price').eq('sheet_id', sheet.sheet_id);
+
+  var tickTotal = 0, vendTotal = 0, sponTotal = 0;
+  // Use rev_data quantities if available for revenue estimate
+  var rd = {};
+  try { if (sheet.rev_data) rd = JSON.parse(sheet.rev_data); } catch(e) {}
+
+  var tickPrices = (tr.data||[]).map(function(p){return parseFloat(p.price)||0;});
+  var vendPrices = (vr.data||[]).map(function(p){return parseFloat(p.price)||0;});
+  var sponPrices = (lvr.data||[]).map(function(p){return parseFloat(p.price)||0;});
+
+  // Revenue = price * goal qty (from rev_data), or just list prices if no goals set
+  tickPrices.forEach(function(p,i){ tickTotal += p * ((rd.ticket && rd.ticket[i]) || 0); });
+  vendPrices.forEach(function(p,i){ vendTotal += p * ((rd.vendor && rd.vendor[i]) || 0); });
+  sponPrices.forEach(function(p,i){ sponTotal += p * ((rd.sponsor && rd.sponsor[i]) || 0); });
+
+  var grandTotal = tickTotal + vendTotal + sponTotal;
+
+  var rows = [
+    {label:'Ticket Sales',     val:tickTotal, color:'#22c55e', link:'Ticket Packages'},
+    {label:'Sponsor Revenue',  val:sponTotal, color:'#16a34a', link:'Sponsor Levels'},
+    {label:'Vendor Fees',      val:vendTotal, color:'#059669', link:'Vendor Packages'},
+  ];
+
+  var h = '<div style="display:flex;flex-direction:column;gap:0;">';
+  rows.forEach(function(row) {
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);">';
+    h += '<div style="display:flex;align-items:center;gap:8px;"><div style="width:10px;height:10px;border-radius:50%;background:'+row.color+';flex-shrink:0;"></div><span style="font-size:13px;font-weight:600;">'+row.label+'</span></div>';
+    h += '<span style="font-size:14px;font-weight:700;color:'+row.color+';">$'+fmt(row.val)+'</span></div>';
+  });
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0 2px;">';
+  h += '<span style="font-size:13px;font-weight:700;">Total Projected Revenue</span>';
+  h += '<span id="pkgRevTotal" data-value="'+grandTotal+'" style="font-size:18px;font-weight:800;color:#16a34a;">$'+fmt(grandTotal)+'</span></div>';
+  if (!grandTotal) h += '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">Set quantity goals on the <a href="'+pkgLink+'" style="color:var(--accent);">Packages page</a> to see revenue projections here.</div>';
+  h += '</div>';
+  box.innerHTML = h;
+  calcTotals();
+}
 
 /* ===== INIT ===== */
 async function init() {
