@@ -270,8 +270,8 @@ body.dark .toast{background:#f0f0f0;color:#111;}
       <div class="kpi-label">Tasks Done</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-value" id="kpiDeadlines">--</div>
-      <div class="kpi-label">Due This Week</div>
+      <div class="kpi-value" id="kpiNetPL">--</div>
+      <div class="kpi-label">Est. Net P/L</div>
     </div>
   </div>
 
@@ -464,28 +464,49 @@ async function loadSiteMaps() {
 /* ===== KPIs ===== */
 function renderKPIs() {
   var today = new Date().toISOString().split('T')[0];
+
   var upcoming = allProjects.filter(function(p) {
     if (p.status === 'completed' || p.status === 'cancelled') return false;
     if (!p.event_date) return true;
     return (p.event_end_date || p.event_date) >= today;
   });
-  var totalBudget = 0;
-  upcoming.forEach(function(p) { totalBudget += parseFloat(p.total_budget) || 0; });
+
+  // Budget = sum of total_expenses from linked estimates, fallback to project.total_budget
+  var totalBudget  = 0;
+  var totalRevenue = 0;
+  upcoming.forEach(function(p) {
+    var est = allEstimates.find(function(e) { return e.event_project_id === p.event_project_id; });
+    if (est) {
+      totalBudget  += parseFloat(est.total_expenses) || 0;
+      totalRevenue += parseFloat(est.total_revenue)  || 0;
+    } else {
+      totalBudget += parseFloat(p.total_budget) || 0;
+    }
+  });
+
+  var netPL = totalRevenue - totalBudget;
+
+  // Tasks across upcoming events only
   var upcomingIds = {};
   upcoming.forEach(function(p) { upcomingIds[p.event_project_id] = true; });
   var upTasks = allTasks.filter(function(t) { return upcomingIds[t.event_project_id]; });
   var done  = upTasks.filter(function(t) { return t.is_complete; }).length;
   var total = upTasks.filter(function(t) { return !t.is_cancelled; }).length;
-  var now = new Date();
-  var week = new Date(now.getTime() + 7 * 86400000);
-  var deadlines = upTasks.filter(function(t) {
-    if (t.is_complete || t.is_cancelled || !t.deadline) return false;
-    var d = new Date(t.deadline); return d >= now && d <= week;
-  }).length;
-  document.getElementById('kpiEvents').textContent    = upcoming.length;
-  document.getElementById('kpiBudget').textContent    = totalBudget >= 1000 ? '$' + (totalBudget/1000).toFixed(1) + 'k' : '$' + totalBudget.toLocaleString();
-  document.getElementById('kpiTasks').textContent     = done + '/' + total;
-  document.getElementById('kpiDeadlines').textContent = deadlines;
+
+  function fmtMoney(n) {
+    var abs = Math.abs(n);
+    var str = abs >= 1000 ? '$' + (abs/1000).toFixed(1) + 'k' : '$' + abs.toLocaleString(undefined, {maximumFractionDigits:0});
+    return n < 0 ? '-' + str : str;
+  }
+
+  document.getElementById('kpiEvents').textContent  = upcoming.length;
+  document.getElementById('kpiBudget').textContent  = fmtMoney(totalBudget);
+  document.getElementById('kpiTasks').textContent   = done + '/' + total;
+  document.getElementById('kpiNetPL').textContent   = fmtMoney(netPL);
+
+  // Color the Net P/L card
+  var plEl = document.getElementById('kpiNetPL');
+  if (plEl) plEl.style.color = netPL >= 0 ? '#16a34a' : '#DC2626';
 }
 
 /* ===== RENDER EVENTS ===== */
