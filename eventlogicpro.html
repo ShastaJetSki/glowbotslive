@@ -204,6 +204,14 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .dept-card.dragging{opacity:.4;border:1px dashed var(--accent);}
 .dept-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow);}
 
+
+/* AUTOSAVE INDICATOR */
+.autosave-indicator{font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;white-space:nowrap;margin-left:auto;}
+.autosave-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;animation:asPulse 2s infinite;}
+.autosave-dot.saving{background:#f59e0b;animation:none;}
+.autosave-dot.idle{background:var(--border);animation:none;}
+@keyframes asPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
 /* TOAST */
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--accent);color:var(--text-primary);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;z-index:3000;display:none;box-shadow:var(--shadow);}
 .toast.show{display:block;animation:toastIn .3s ease;}
@@ -310,6 +318,10 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
         <span class="proj-pill-name" id="projPillName"></span>
         <button class="proj-pill-clear" onclick="clearProject()" title="Clear">&times;</button>
       </div>
+    </div>
+    <div class="autosave-indicator" id="autosaveIndicator">
+      <div class="autosave-dot" id="autosaveDot"></div>
+      <span id="autosaveText">All changes saved</span>
     </div>
   </div>
 
@@ -632,6 +644,7 @@ async function selectProject(projectId){
   updateQuickLinks();
   await loadProjectData();
   renderAll();
+  showSaved();
 }
 
 function clearProject(){
@@ -642,6 +655,7 @@ function clearProject(){
   allDepartments=[];allTasks=[];estimateBudgets={};
   localStorage.removeItem('elp-last-project');
   renderAll();
+  showNoProject();
 }
 
 function updateQuickLinks(){
@@ -789,6 +803,7 @@ function collapseAllDepts(){document.querySelectorAll('.dept-card-header:not(.co
 
 /* ===== TASK STATUS ===== */
 async function cycleTaskStatus(taskId){
+  showSaving();
   var task=allTasks.find(function(t){return t.event_task_id===taskId;});if(!task)return;
   var newComplete,newCancelled;
   if(!task.is_complete&&!task.is_cancelled){newComplete=true;newCancelled=false;}
@@ -796,7 +811,7 @@ async function cycleTaskStatus(taskId){
   else{newComplete=false;newCancelled=false;}
   await sb.from('event_tasks').update({is_complete:newComplete,is_cancelled:newCancelled}).eq('event_task_id',taskId);
   task.is_complete=newComplete;task.is_cancelled=newCancelled;
-  renderAll();
+  renderAll();showSaved();
 }
 
 /* ===== TASK MODAL ===== */
@@ -868,7 +883,7 @@ async function saveTask(){
     // Sync cost to budget category
     syncTaskCostToBudget(editingTaskDeptId, data.cost);
   }
-  closeTaskModal();renderAll();toast(editingTaskId?'Task updated':'Task added');
+  closeTaskModal();renderAll();showSaved();toast(editingTaskId?'Task updated':'Task added');
 }
 
 async function deleteTask(){
@@ -876,7 +891,7 @@ async function deleteTask(){
   if(!confirm('Delete this task?'))return;
   await sb.from('event_tasks').delete().eq('event_task_id',editingTaskId);
   allTasks=allTasks.filter(function(t){return t.event_task_id!==editingTaskId;});
-  closeTaskModal();renderAll();toast('Task deleted');
+  closeTaskModal();renderAll();showSaved();toast('Task deleted');
 }
 
 function syncTaskCostToBudget(deptId, cost){
@@ -893,7 +908,7 @@ async function addDepartmentPrompt(){
   allDepartments.push(r.data);
   // Sync to budget: create matching estimate_category if budget exists
   syncDeptToBudget(name.trim());
-  renderAll();toast('"'+name.trim()+'" added');
+  renderAll();showSaved();toast('"'+name.trim()+'" added');
 }
 
 async function syncDeptToBudget(deptName){
@@ -1024,6 +1039,7 @@ function attachDeptDragHandles() {
 }
 
 async function saveDeptOrder() {
+  showSaving();
   // 1. Update event_departments sort_order
   for (var i = 0; i < allDepartments.length; i++) {
     allDepartments[i].sort_order = i;
@@ -1060,6 +1076,45 @@ async function saveDeptOrder() {
         .eq('category_id', match.category_id);
     }
   }
+  showSaved();
+}
+
+
+/* ===== AUTOSAVE INDICATOR ===== */
+var lastSaveTime = null;
+var saveTickInterval = null;
+
+function showSaving() {
+  var dot  = document.getElementById('autosaveDot');
+  var text = document.getElementById('autosaveText');
+  if (!dot || !text) return;
+  dot.className = 'autosave-dot saving';
+  text.textContent = 'Saving...';
+}
+
+function showSaved() {
+  lastSaveTime = new Date();
+  var dot  = document.getElementById('autosaveDot');
+  var text = document.getElementById('autosaveText');
+  if (!dot || !text) return;
+  dot.className = 'autosave-dot';
+  text.textContent = 'Saved just now';
+  if (!saveTickInterval) {
+    saveTickInterval = setInterval(function() {
+      if (!lastSaveTime) return;
+      var diff = Math.round((new Date() - lastSaveTime) / 60000);
+      var t = document.getElementById('autosaveText');
+      if (t) t.textContent = diff < 1 ? 'Saved just now' : 'Saved ' + diff + 'm ago';
+    }, 30000);
+  }
+}
+
+function showNoProject() {
+  var dot  = document.getElementById('autosaveDot');
+  var text = document.getElementById('autosaveText');
+  if (!dot || !text) return;
+  dot.className = 'autosave-dot idle';
+  text.textContent = 'Select an event';
 }
 
 /* ===== INIT ===== */
