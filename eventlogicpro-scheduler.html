@@ -401,7 +401,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       </div>
       <div class="form-group">
         <label class="form-label">Act / Set Name</label>
-        <input type="text" class="form-input" id="amName" placeholder="e.g. Big Money Luke, Soundcheck, Lunch Break">
+        <input type="text" class="form-input" id="amName" placeholder="e.g. Big Money Luke, Soundcheck, Lunch Break" oninput="onActNameChange()">
       </div>
       <div class="form-group">
         <label class="form-label">Type</label>
@@ -413,6 +413,15 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
           <option value="setup">Setup / Load-in</option>
           <option value="break">Break</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Band / Act Color</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="act-color-swatches" id="amColorSwatches"></div>
+          <input type="color" id="amColorPicker" style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;" title="Custom color" onchange="selectActColor(this.value)">
+          <div id="amColorPreview" style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Same name = same color automatically remembered</div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -857,6 +866,55 @@ function trackDblClick(e, stageId, startMins, pxPerMin) {
   }, 50);
 }
 
+
+/* ─── ACT COLOR PICKER ─── */
+var ACT_PALETTE = ['#DC2626','#7c3aed','#0284c7','#059669','#d97706','#db2777','#f97316','#0891b2','#65a30d','#9333ea','#e11d48','#0d9488'];
+var bandColors = JSON.parse(localStorage.getItem('elp-band-colors')||'{}');
+var currentActColor = '#0284c7';
+
+function buildSwatches(activeColor) {
+  var wrap = document.getElementById('amColorSwatches');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  ACT_PALETTE.forEach(function(c) {
+    var el = document.createElement('div');
+    el.className = 'acs' + (c === activeColor ? ' active' : '');
+    el.style.background = c;
+    el.title = c;
+    el.onclick = function() { selectActColor(c); };
+    wrap.appendChild(el);
+  });
+}
+
+function initActColorPicker(actName, existingColor) {
+  currentActColor = existingColor || (actName && bandColors[actName.toLowerCase()]) || ACT_PALETTE[Math.floor(Math.random()*ACT_PALETTE.length)];
+  buildSwatches(currentActColor);
+  document.getElementById('amColorPicker').value = currentActColor.indexOf('rgb')<0 ? currentActColor : '#0284c7';
+  document.getElementById('amColorPreview').style.background = currentActColor;
+}
+
+function selectActColor(color) {
+  currentActColor = color;
+  buildSwatches(color);
+  var picker = document.getElementById('amColorPicker');
+  if (picker) picker.value = color;
+  document.getElementById('amColorPreview').style.background = color;
+}
+
+// Auto-fill color when name changes
+function onActNameChange() {
+  var name = document.getElementById('amName').value.trim().toLowerCase();
+  if (name && bandColors[name]) {
+    selectActColor(bandColors[name]);
+  }
+}
+
+function saveBandColor(name, color) {
+  if (!name) return;
+  bandColors[name.toLowerCase()] = color;
+  localStorage.setItem('elp-band-colors', JSON.stringify(bandColors));
+}
+
 /* ─── DRAG TO REORDER ACTS ─── */
 function actDragStart(e,actId,stageId){
   dragActId=actId;dragStageId=stageId;
@@ -958,11 +1016,13 @@ function openActModal(stageId,actId,e){
       document.getElementById('amDur').value=act.duration_minutes||45;
       document.getElementById('amNotes').value=act.notes||'';
       document.getElementById('amStage').value=act.stage_id;
+      initActColorPicker(act.act_name, act.color||null);
     }
   } else {
     document.getElementById('amName').value='';
     document.getElementById('amType').value='performer';
     document.getElementById('amNotes').value='';
+    initActColorPicker('', null);
     // Auto set start time after last act on this stage
     var stageActs=allActs.filter(function(a){return a.stage_id===stageId;});
     var lastEnd=stageActs.reduce(function(max,a){return Math.max(max,timeToMins(a.start_time)+(parseInt(a.duration_minutes)||45));},parseInt(document.getElementById('eventStartSel').value)*60);
@@ -982,8 +1042,10 @@ async function saveAct(){
     start_time:document.getElementById('amStart').value,
     duration_minutes:parseInt(document.getElementById('amDur').value)||45,
     notes:document.getElementById('amNotes').value.trim()||null,
-    stage_id:stageId
+    stage_id:stageId,
+    color:currentActColor||null
   };
+  saveBandColor(name, currentActColor);
   showSaving();
   if(editingActId){
     await sb.from('event_schedule_acts').update(data).eq('act_id',editingActId);
