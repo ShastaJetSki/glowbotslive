@@ -335,7 +335,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <span class="chip" onclick="setFilter('flyer')">Flyers</span>
       <span class="chip" onclick="setFilter('poster')">Posters</span>
       <span class="chip" onclick="setFilter('sign')">Signs</span>
-      <span class="chip" onclick="setFilter('social')">Social Media</span>
+      <span class="chip" onclick="setFilter('social')">Socials</span>
       <span class="chip" onclick="setFilter('banner')">Banners</span>
       <span class="chip" onclick="setFilter('other')">Other</span>
     </div>
@@ -533,7 +533,7 @@ function setFilter(f){
   var tabMap={all:'tabAll',flyer:'tabFlyers',poster:'tabPosters',sign:'tabSigns',social:'tabSocial',logo:'tabLogos'};
   var el=document.getElementById(tabMap[f]);if(el)el.classList.add('active');
   // chips
-  var chipMap={all:0,flyer:1,poster:2,sign:3,social:4,other:6};
+  var chipMap={all:0,flyer:1,poster:2,sign:3,social:4,logo:5};
   var chips=document.querySelectorAll('.chip');
   Object.keys(chipMap).forEach(function(k){if(k===f&&chips[chipMap[k]])chips[chipMap[k]].classList.add('active');});
   renderGrid();
@@ -660,37 +660,58 @@ async function saveMedia(){
   if(statusEl)statusEl.textContent='Uploading...';
 
   try {
-    // Get file dimensions if image
-    var width=null,height=null;
+    // Get dimensions + base64 preview for images
+    var width=null, height=null, preview_url=null, storage_path=null;
     if(file.type.startsWith('image/')){
-      await new Promise(function(res){
-        var url=URL.createObjectURL(file);var i=new Image();
-        i.onload=function(){width=i.width;height=i.height;URL.revokeObjectURL(url);res();};
-        i.src=url;
+      var dataUrl = await new Promise(function(res,rej){
+        var reader=new FileReader();
+        reader.onload=function(e){res(e.target.result);};
+        reader.onerror=rej;
+        reader.readAsDataURL(file);
       });
-    }
-
-    // Upload to Supabase storage
-    var path=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
-    var up=await sb.storage.from(BUCKET).upload(path,file,{upsert:true});
-    var preview_url=null;
-    if(!up.error){
-      var pu=sb.storage.from(BUCKET).getPublicUrl(path);
-      preview_url=pu.data.publicUrl;
+      await new Promise(function(res){
+        var i=new Image();
+        i.onload=function(){width=i.width;height=i.height;res();};
+        i.src=dataUrl;
+      });
+      // Try Supabase storage first, fall back to storing data URL
+      try {
+        var path=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
+        var up=await sb.storage.from(BUCKET).upload(path,file,{upsert:true});
+        if(!up.error){
+          storage_path=path;
+          preview_url=sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        } else {
+          // Storage bucket not set up yet — use data URL as preview
+          preview_url=dataUrl;
+        }
+      } catch(storageErr){
+        preview_url=dataUrl;
+      }
+    } else {
+      // Non-image — try storage upload only
+      try {
+        var path2=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
+        var up2=await sb.storage.from(BUCKET).upload(path2,file,{upsert:true});
+        if(!up2.error){
+          storage_path=path2;
+          preview_url=sb.storage.from(BUCKET).getPublicUrl(path2).data.publicUrl;
+        }
+      } catch(e2){}
     }
 
     // Save metadata to DB
     var row={
-      tenant_id:tenantId,event_project_id:currentProjectId,
-      file_name:file.name,label:label,category:category,
-      file_type:file.type,file_size:file.size,
-      width:width,height:height,
-      storage_path:up.error?null:path,
+      tenant_id:tenantId, event_project_id:currentProjectId,
+      file_name:file.name, label:label, category:category,
+      file_type:file.type, file_size:file.size,
+      width:width, height:height,
+      storage_path:storage_path,
       preview_url:preview_url,
-      shared:shared,uploaded_by:userId,
+      shared:shared, uploaded_by:userId,
     };
     var r=await sb.from('event_media').insert(row).select().single();
-    if(r.error){toast('Error: '+r.error.message);return;}
+    if(r.error){toast('DB error: '+r.error.message);if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';return;}
     allMedia.unshift(r.data);
     closeUploadModal();
     updateBadges();
