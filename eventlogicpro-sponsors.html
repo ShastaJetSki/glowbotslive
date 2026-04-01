@@ -8,7 +8,79 @@
   <link rel="icon" type="image/png" href="favicon-eventlogic-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="favicon-eventlogic-192.png">
   <meta name="apple-mobile-web-app-title" content="Event Logic Pro">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+/* ===== PACKAGES PROJECT SEARCH ===== */
+var pkgProjAcResults = [], pkgProjAcIndex = -1;
+var pkgAllProjects = [];
+
+async function loadPkgProjects() {
+  var r = await sb.from('event_projects').select('event_project_id,event_name,event_date,venue,color_tag').eq('tenant_id', tenantId).order('event_date', {ascending:true});
+  pkgAllProjects = (r.data||[]).filter(function(p){return p.status!=='cancelled';});
+}
+
+function projSearch(val) {
+  var query = (val||'').trim().toLowerCase();
+  var ac = document.getElementById('projAutocomplete'); if(!ac)return;
+  var filtered = query.length===0 ? pkgAllProjects.slice(0,12) : pkgAllProjects.filter(function(p){
+    return (p.event_name||'').toLowerCase().indexOf(query)>=0||(p.venue||'').toLowerCase().indexOf(query)>=0;
+  }).slice(0,12);
+  pkgProjAcResults=filtered; pkgProjAcIndex=-1;
+  ac.innerHTML = filtered.length
+    ? filtered.map(function(p){var color=p.color_tag||'#DC2626';var date=p.event_date?new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'No date';return '<div class="proj-ac-item" onclick="selectPkgProject(''+p.event_project_id+'')"><div class="proj-ac-dot" style="background:'+color+'"></div><div><div class="proj-ac-name">'+(p.event_name||'Untitled')+'</div><div class="proj-ac-sub">'+date+(p.venue?' &bull; '+p.venue:'')+'</div></div></div>';}).join('')
+    : '<div class="proj-ac-empty">No events found</div>';
+  ac.classList.add('show');
+}
+
+function projSearchKey(e) {
+  var ac=document.getElementById('projAutocomplete');var items=ac.querySelectorAll('.proj-ac-item');
+  if(e.key==='ArrowDown'){e.preventDefault();pkgProjAcIndex=Math.min(pkgProjAcIndex+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('active',i===pkgProjAcIndex);});}
+  else if(e.key==='ArrowUp'){e.preventDefault();pkgProjAcIndex=Math.max(pkgProjAcIndex-1,0);items.forEach(function(el,i){el.classList.toggle('active',i===pkgProjAcIndex);});}
+  else if(e.key==='Enter'){if(pkgProjAcIndex>=0&&pkgProjAcResults[pkgProjAcIndex])selectPkgProject(pkgProjAcResults[pkgProjAcIndex].event_project_id);}
+  else if(e.key==='Escape'){ac.classList.remove('show');}
+}
+
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.proj-search-wrap')){var ac=document.getElementById('projAutocomplete');if(ac)ac.classList.remove('show');}
+});
+
+async function selectPkgProject(projectId) {
+  var p=pkgAllProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;
+  var sr=await sb.from('event_sponsor_sheets').select('sheet_id').eq('event_project_id',projectId).order('updated_at',{ascending:false}).limit(1);
+  document.getElementById('projPillDot').style.background=p.color_tag||'#DC2626';
+  document.getElementById('projPillName').textContent=p.event_name||'Untitled';
+  document.getElementById('projPillWrap').style.display='';
+  document.getElementById('projSearchInput').value='';
+  document.getElementById('projAutocomplete').classList.remove('show');
+  localStorage.setItem('elp-last-project',projectId);
+  if(sr.data&&sr.data[0]){syncSel(sr.data[0].sheet_id);}
+  else{clearForm();toast('No package sheet yet — click + New Sheet to create one');}
+}
+
+function clearPkgProject(){
+  document.getElementById('projPillWrap').style.display='none';
+  document.getElementById('projSearchInput').value='';
+  localStorage.removeItem('elp-last-project');
+  clearForm();
+}
+
+/* Autosave indicator */
+var pkgLastSave=null;
+function pkgShowSaving(){var d=document.getElementById('autosaveDot'),t=document.getElementById('autosaveText');if(d)d.className='autosave-dot saving';if(t)t.textContent='Saving...';}
+function pkgShowSaved(){pkgLastSave=new Date();var d=document.getElementById('autosaveDot'),t=document.getElementById('autosaveText');if(d)d.className='autosave-dot';if(t)t.textContent='Saved just now';}
+
+/* Load projects in init — patch existing init */
+var _pkgOrigInit = typeof init === 'function' ? init : null;
+window.init = async function() {
+  if(_pkgOrigInit) await _pkgOrigInit();
+  await loadPkgProjects();
+  // Restore last project pill
+  var lastProj = new URLSearchParams(window.location.search).get('event') || localStorage.getItem('elp-last-project');
+  if(lastProj){var p=pkgAllProjects.find(function(x){return x.event_project_id===lastProj;});if(p){document.getElementById('projPillDot').style.background=p.color_tag||'#DC2626';document.getElementById('projPillName').textContent=p.event_name||'Untitled';document.getElementById('projPillWrap').style.display='';}}
+  // Show autosave on after init
+  var t=document.getElementById('autosaveText');if(t)t.textContent='Auto-save on';
+};
+
+</script>
   <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -28,6 +100,39 @@ body.dark{
 html{scrollbar-gutter:stable;background:var(--bg-primary);}
 html.dark{background:#111;}
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden;}
+
+
+/* PROJ SEARCH + TABS BAR */
+.proj-bar{padding:10px 24px;display:flex;align-items:center;gap:10px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.proj-search-wrap{position:relative;flex:1;max-width:480px;}
+.proj-search-input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text-primary);font-size:13px;font-family:inherit;}
+.proj-search-input:focus{outline:none;border-color:var(--accent);}
+.proj-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-secondary);width:14px;height:14px;pointer-events:none;}
+.proj-autocomplete{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:300;max-height:280px;overflow-y:auto;display:none;}
+.proj-autocomplete.show{display:block;}
+.proj-ac-item{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;transition:background .1s;}
+.proj-ac-item:hover,.proj-ac-item.active{background:var(--bg-hover);}
+.proj-ac-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.proj-ac-name{font-size:13px;font-weight:600;color:var(--text-primary);}
+.proj-ac-sub{font-size:11px;color:var(--text-secondary);}
+.proj-ac-empty{padding:14px 12px;font-size:13px;color:var(--text-secondary);text-align:center;}
+.proj-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:20px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;font-weight:600;white-space:nowrap;max-width:240px;}
+.proj-pill-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.proj-pill-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.proj-pill-clear{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:14px;padding:0;margin-left:2px;}
+.proj-pill-clear:hover{color:var(--accent);}
+.autosave-indicator{font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;white-space:nowrap;margin-left:auto;}
+.autosave-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;animation:asPulse 2s infinite;}
+.autosave-dot.saving{background:#f59e0b;animation:none;}
+@keyframes asPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.tabs-bar{padding:6px 24px;display:flex;align-items:center;justify-content:space-between;background:var(--bg-card);border-bottom:1px solid var(--border);}
+.view-tabs{display:flex;gap:2px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:3px;}
+.view-tab{padding:6px 14px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s;text-transform:uppercase;letter-spacing:.6px;font-family:inherit;}
+.view-tab:hover{color:var(--text-primary);background:rgba(0,0,0,.04);}
+body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
+.view-tab.active{background:var(--bg-card);color:var(--text-primary);box-shadow:0 1px 4px rgba(0,0,0,.10);border:1px solid var(--border);}
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border-radius:10px;padding:1px 5px;font-size:9px;margin-left:4px;font-weight:700;min-width:16px;}
+.tabs-action-btns{display:flex;align-items:center;gap:8px;}
 
 /* ===== HEADER (canonical layout) ===== */
 .desktop-header{position:sticky;top:0;z-index:100;background:var(--bg-primary);border-bottom:1px solid var(--border);}
@@ -372,19 +477,43 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
       <a class="logout-link" onclick="logout()">Logout</a>
     </div>
   </div>
-  <div class="hdr-bar" style="padding:8px 24px;">
-    <select class="hdr-sel" id="deskSheetSel" onchange="syncSel(this.value)"></select>
-    <button class="hdr-btn primary" onclick="createSheet()">+ New Sheet</button>
-    <button class="hdr-btn" onclick="saveToDb()">Save</button>
-    <button class="hdr-btn" onclick="printSheet()">Print</button>
-    <button class="hdr-btn success" id="deskSubmitBtn" onclick="submitForReview()" style="display:none;">Submit for Review</button>
-    <button class="hdr-btn publish" id="deskPublishBtn" onclick="publishSheet()" style="display:none;">Publish as Official</button>
-    <button class="hdr-btn danger" id="deskDelBtn" onclick="deleteSheet()" style="display:none;">Delete</button>
+  <!-- SEARCH BAR -->
+  <div class="proj-bar">
+    <div class="proj-search-wrap">
+      <svg class="proj-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="proj-search-input" id="projSearchInput" placeholder="Search events..."
+        autocomplete="off" oninput="projSearch(this.value)" onfocus="projSearch(this.value)" onkeydown="projSearchKey(event)">
+      <div class="proj-autocomplete" id="projAutocomplete"></div>
+    </div>
+    <div id="projPillWrap" style="display:none;">
+      <div class="proj-pill">
+        <div class="proj-pill-dot" id="projPillDot"></div>
+        <span class="proj-pill-name" id="projPillName"></span>
+        <button class="proj-pill-clear" onclick="clearPkgProject()">&times;</button>
+      </div>
+    </div>
+    <div class="autosave-indicator" id="autosaveIndicator">
+      <div class="autosave-dot" id="autosaveDot"></div>
+      <span id="autosaveText">Auto-save on</span>
+    </div>
   </div>
-  <div class="view-tabs" id="deskViewTabs">
-    <div class="view-tab active" onclick="setViewMode('editor')">My Sheets</div>
-    <div class="view-tab" onclick="setViewMode('review')">Review Board <span class="tab-badge" id="deskReviewCount">0</span></div>
-    <div class="view-tab" onclick="setViewMode('official')">Official</div>
+
+  <!-- TABS + ACTIONS -->
+  <div class="tabs-bar">
+    <div class="view-tabs">
+      <div class="view-tab active" onclick="setViewMode('editor')">Editor</div>
+      <div class="view-tab" onclick="setViewMode('review')">Review Board <span class="tab-badge" id="deskReviewCount">0</span></div>
+      <div class="view-tab" onclick="setViewMode('official')">Official</div>
+    </div>
+    <div class="tabs-action-btns">
+      <button class="hdr-btn" onclick="saveToDb()">Save</button>
+      <button class="hdr-btn" onclick="printSheet()">Print</button>
+      <button class="hdr-btn success" id="deskSubmitBtn" onclick="submitForReview()" style="display:none;">Submit for Review</button>
+      <button class="hdr-btn publish" id="deskPublishBtn" onclick="publishSheet()" style="display:none;">Publish as Official</button>
+      <button class="hdr-btn danger" id="deskDelBtn" onclick="deleteSheet()" style="display:none;">Delete</button>
+      <button class="hdr-btn primary" onclick="createSheet()">+ New Sheet</button>
+    </div>
+  </div>
   </div>
 </div>
 
