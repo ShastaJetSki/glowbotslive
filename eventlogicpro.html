@@ -1012,11 +1012,41 @@ function attachDeptDragHandles() {
 }
 
 async function saveDeptOrder() {
+  // 1. Update event_departments sort_order
   for (var i = 0; i < allDepartments.length; i++) {
     allDepartments[i].sort_order = i;
     await sb.from('event_departments')
       .update({sort_order: i})
       .eq('event_department_id', allDepartments[i].event_department_id);
+  }
+
+  // 2. Sync to estimate_categories so Budget matches
+  if (!currentProjectId) return;
+  var er = await sb.from('event_estimates')
+    .select('estimate_id')
+    .eq('event_project_id', currentProjectId)
+    .order('updated_at', {ascending: false})
+    .limit(1);
+  if (!er.data || !er.data.length) return;
+  var estId = er.data[0].estimate_id;
+
+  // Load all expense categories for this estimate
+  var cr = await sb.from('estimate_categories')
+    .select('category_id,title')
+    .eq('estimate_id', estId)
+    .eq('category_type', 'expense');
+  var cats = cr.data || [];
+  if (!cats.length) return;
+
+  // Match each department name to its category and update sort_order
+  for (var j = 0; j < allDepartments.length; j++) {
+    var deptName = allDepartments[j].department_name.toLowerCase();
+    var match = cats.find(function(c) { return c.title.toLowerCase() === deptName; });
+    if (match) {
+      await sb.from('estimate_categories')
+        .update({sort_order: j})
+        .eq('category_id', match.category_id);
+    }
   }
 }
 
