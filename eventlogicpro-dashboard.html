@@ -538,11 +538,11 @@ function renderEventGrid(projects) {
 
     var chevSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="18 15 12 9 6 15"/></svg>';
 
-    html += '<div class="' + cardClass + '" id="card-' + eid + '">';
+    html += '<div class="' + cardClass + '" id="card-' + eid + '" onclick="openEditEventModal(\'' + eid + '\')">';
     html += '<div class="event-card-stripe" style="background:' + color + '"></div>';
 
     // Clickable header
-    html += '<div class="event-card-header" onclick="toggleCard(\'' + eid + '\')">';
+    html += '<div class="event-card-header" onclick="event.stopPropagation();toggleCard(\'' + eid + '\')">';
     html += '<div class="event-card-header-left">';
     html += '<div class="event-card-header-name">' + esc(p.event_name || 'Untitled') + '</div>';
     html += '<div class="event-card-header-sub">';
@@ -776,6 +776,67 @@ async function createDefaultDepartments(projectId) {
   }
 }
 
+
+/* ===== EDIT EVENT MODAL ===== */
+function openEditEventModal(eid) {
+  var p = allProjects.find(function(p) { return p.event_project_id === eid; });
+  if (!p) return;
+  document.getElementById('editEvId').value       = eid;
+  document.getElementById('editEvName').value     = p.event_name    || '';
+  document.getElementById('editEvDate').value     = p.event_date    || '';
+  document.getElementById('editEvEndDate').value  = p.event_end_date || '';
+  document.getElementById('editEvVenue').value    = p.venue         || '';
+  document.getElementById('editEvDesc').value     = p.description   || '';
+  document.getElementById('editEvStatus').value   = p.status        || 'planning';
+  var color = p.color_tag || '#DC2626';
+  document.getElementById('editEvColor').value = color;
+  document.querySelectorAll('#editColorChips .color-chip').forEach(function(c) {
+    c.classList.toggle('selected', c.dataset.color === color);
+  });
+  document.getElementById('editEventModal').classList.add('show');
+}
+
+function closeEditEventModal() {
+  document.getElementById('editEventModal').classList.remove('show');
+}
+
+function selectEditColor(el) {
+  document.querySelectorAll('#editColorChips .color-chip').forEach(function(c) { c.classList.remove('selected'); });
+  el.classList.add('selected');
+  document.getElementById('editEvColor').value = el.dataset.color;
+}
+
+async function saveEditEvent() {
+  var eid  = document.getElementById('editEvId').value;
+  var name = document.getElementById('editEvName').value.trim();
+  if (!name) { toast('Event name is required'); return; }
+  var data = {
+    event_name:     name,
+    event_date:     document.getElementById('editEvDate').value    || null,
+    event_end_date: document.getElementById('editEvEndDate').value || null,
+    venue:          document.getElementById('editEvVenue').value.trim()  || null,
+    description:    document.getElementById('editEvDesc').value.trim()   || null,
+    color_tag:      document.getElementById('editEvColor').value   || '#DC2626',
+    status:         document.getElementById('editEvStatus').value  || 'planning',
+  };
+  var r = await sb.from('event_projects').update(data).eq('event_project_id', eid);
+  if (r.error) { toast('Error: ' + r.error.message); return; }
+  toast('"' + name + '" updated');
+  closeEditEventModal();
+  await loadProjects();
+  await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+  renderKPIs();
+  renderEvents();
+  updateCollapseBtn();
+}
+
+function confirmDeleteFromEdit() {
+  var eid  = document.getElementById('editEvId').value;
+  var name = document.getElementById('editEvName').value;
+  closeEditEventModal();
+  confirmDelete(eid, name);
+}
+
 /* ===== INIT ===== */
 async function init() {
   var s = await checkAuth(); if (!s) return;
@@ -803,5 +864,71 @@ async function init() {
 }
 init();
 </script>
+
+<!-- EDIT EVENT MODAL -->
+<div class="modal-overlay" id="editEventModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Edit Event</div>
+      <button class="modal-close" onclick="closeEditEventModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editEvId">
+      <div class="form-group">
+        <label class="form-label">Event Name *</label>
+        <input type="text" class="form-input" id="editEvName" placeholder="e.g. The Big Rock and Roll Show">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" class="form-input" id="editEvDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="date" class="form-input" id="editEvEndDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Venue</label>
+        <input type="text" class="form-input" id="editEvVenue" placeholder="Venue name or address">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea" id="editEvDesc" placeholder="Optional notes about this event"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Event Color</label>
+        <div class="color-chips" id="editColorChips">
+          <div class="color-chip" data-color="#DC2626" style="background:#DC2626;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#EA580C" style="background:#EA580C;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#D97706" style="background:#D97706;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#16A34A" style="background:#16A34A;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#0284C7" style="background:#0284C7;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#7C3AED" style="background:#7C3AED;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#DB2777" style="background:#DB2777;" onclick="selectEditColor(this)"></div>
+          <div class="color-chip" data-color="#475569" style="background:#475569;" onclick="selectEditColor(this)"></div>
+        </div>
+        <input type="hidden" id="editEvColor" value="#DC2626">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-select" id="editEvStatus">
+          <option value="planning">Planning</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="event-card-btn del" onclick="confirmDeleteFromEdit()">Delete Event</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-secondary" onclick="closeEditEventModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveEditEvent()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
