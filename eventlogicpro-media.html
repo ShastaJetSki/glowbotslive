@@ -115,23 +115,19 @@ function handleDropInput(e) {
   var files = e.target.files;
   if (!files || !files.length) return;
   if (!currentProjectId) { toast('Select an event first'); document.getElementById('projSearchInput').focus(); return; }
-  // Load first file into modal for quick upload
-  var dt = new DataTransfer();
-  dt.items.add(files[0]);
-  document.getElementById('uploadFile').files = dt.files;
-  previewUpload({target: {files: dt.files}});
+  pendingUploadFile = files[0];
   // Auto-guess category from filename
-  var name = files[0].name.toLowerCase();
-  var sel  = document.getElementById('uploadCategory');
-  if(name.indexOf('flyer')>=0||name.indexOf('fly')>=0) sel.value=name.indexOf('-b')>=0||name.indexOf('_b')>=0||name.indexOf('back')>=0?'flyer-b':'flyer';
-  else if(name.indexOf('poster')>=0) sel.value='poster';
-  else if(name.indexOf('sign')>=0) sel.value='sign';
-  else if(name.indexOf('logo')>=0) sel.value='logo';
-  else if(name.indexOf('banner')>=0) sel.value='banner';
-  else if(name.indexOf('social')>=0||name.indexOf('ig')>=0||name.indexOf('fb')>=0) sel.value='social';
+  var fname = files[0].name.toLowerCase();
+  var sel = document.getElementById('uploadCategory');
+  if(fname.indexOf('flyer')>=0||fname.indexOf('fly')>=0) sel.value=fname.indexOf('-b')>=0||fname.indexOf('_b')>=0||fname.indexOf('back')>=0?'flyer-b':'flyer';
+  else if(fname.indexOf('poster')>=0) sel.value='poster';
+  else if(fname.indexOf('sign')>=0) sel.value='sign';
+  else if(fname.indexOf('logo')>=0) sel.value='logo';
+  else if(fname.indexOf('banner')>=0) sel.value='banner';
+  else if(fname.indexOf('social')>=0||fname.indexOf('ig_')>=0||fname.indexOf('fb_')>=0) sel.value='social';
+  previewFile(files[0]);
   openUploadModal();
-  // Queue remaining files
-  if(files.length > 1) toast(files.length+' files selected — uploading one at a time');
+  if(files.length > 1) toast(files.length+' files — uploading one at a time');
 }
 
 /* ─── DROP ZONE ─── */
@@ -472,6 +468,7 @@ var tenantId = null, userId = null;
 var allProjects = [], allMedia = [], currentProjectId = null;
 var currentFilter = 'all', lightboxIdx = 0;
 var projAcResults = [], projAcIndex = -1;
+var pendingUploadFile = null; // holds file from drop zone
 
 /* ─── DARK MODE ─── */
 var isDark = localStorage.getItem('elp_dark_mode') === 'true';
@@ -665,6 +662,7 @@ function setViewGrid(cols){
 function openUploadModal(){
   if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}
   document.getElementById('uploadLabel').value='';
+  pendingUploadFile = null;
   document.getElementById('uploadFile').value='';
   document.getElementById('uploadShared').checked=false;
   document.getElementById('uploadPreviewWrap').style.display='none';
@@ -674,34 +672,13 @@ function openUploadModal(){
 function closeUploadModal(){document.getElementById('uploadModal').classList.remove('show');}
 
 function previewUpload(e){
-  var file=e.target.files&&e.target.files[0];if(!file)return;
-  var label=document.getElementById('uploadLabel');
-  if(!label.value)label.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
-  var wrap=document.getElementById('uploadPreviewWrap');
-  var picker=document.getElementById('filePickerRow');
-  var meta=document.getElementById('uploadFileMeta');
-  meta.textContent=fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();
-  if(file.type.startsWith('image/')){
-    var reader=new FileReader();
-    reader.onload=function(ev){
-      var img=document.getElementById('uploadPreviewImg');
-      img.src=ev.target.result;img.style.display='block';
-      wrap.style.display='block';
-      if(picker)picker.style.display='none';
-      var i=new Image();
-      i.onload=function(){meta.textContent=i.width+' × '+i.height+' · '+fmtSize(file.size)+' · '+file.type.split('/').pop().toUpperCase();};
-      i.src=ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  } else {
-    document.getElementById('uploadPreviewImg').style.display='none';
-    meta.textContent=file.name+' · '+fmtSize(file.size);
-    wrap.style.display='block';
-    if(picker)picker.style.display='none';
-  }
+  var file = e.target.files && e.target.files[0]; if(!file) return;
+  pendingUploadFile = file;
+  previewFile(file);
 }
 
 function clearUploadFile(){
+  pendingUploadFile = null;
   document.getElementById('uploadFile').value='';
   document.getElementById('uploadPreviewWrap').style.display='none';
   document.getElementById('uploadPreviewImg').src='';
@@ -710,7 +687,7 @@ function clearUploadFile(){
 }
 
 async function saveMedia(){
-  var file=document.getElementById('uploadFile').files[0];
+  var file = pendingUploadFile || (document.getElementById('uploadFile').files[0]);
   var label=document.getElementById('uploadLabel').value.trim()||'Untitled';
   var category=document.getElementById('uploadCategory').value;
   var shared=document.getElementById('uploadShared').checked;
@@ -793,23 +770,19 @@ function handleDropInput(e) {
   var files = e.target.files;
   if (!files || !files.length) return;
   if (!currentProjectId) { toast('Select an event first'); document.getElementById('projSearchInput').focus(); return; }
-  // Load first file into modal for quick upload
-  var dt = new DataTransfer();
-  dt.items.add(files[0]);
-  document.getElementById('uploadFile').files = dt.files;
-  previewUpload({target: {files: dt.files}});
+  pendingUploadFile = files[0];
   // Auto-guess category from filename
-  var name = files[0].name.toLowerCase();
-  var sel  = document.getElementById('uploadCategory');
-  if(name.indexOf('flyer')>=0||name.indexOf('fly')>=0) sel.value=name.indexOf('-b')>=0||name.indexOf('_b')>=0||name.indexOf('back')>=0?'flyer-b':'flyer';
-  else if(name.indexOf('poster')>=0) sel.value='poster';
-  else if(name.indexOf('sign')>=0) sel.value='sign';
-  else if(name.indexOf('logo')>=0) sel.value='logo';
-  else if(name.indexOf('banner')>=0) sel.value='banner';
-  else if(name.indexOf('social')>=0||name.indexOf('ig')>=0||name.indexOf('fb')>=0) sel.value='social';
+  var fname = files[0].name.toLowerCase();
+  var sel = document.getElementById('uploadCategory');
+  if(fname.indexOf('flyer')>=0||fname.indexOf('fly')>=0) sel.value=fname.indexOf('-b')>=0||fname.indexOf('_b')>=0||fname.indexOf('back')>=0?'flyer-b':'flyer';
+  else if(fname.indexOf('poster')>=0) sel.value='poster';
+  else if(fname.indexOf('sign')>=0) sel.value='sign';
+  else if(fname.indexOf('logo')>=0) sel.value='logo';
+  else if(fname.indexOf('banner')>=0) sel.value='banner';
+  else if(fname.indexOf('social')>=0||fname.indexOf('ig_')>=0||fname.indexOf('fb_')>=0) sel.value='social';
+  previewFile(files[0]);
   openUploadModal();
-  // Queue remaining files
-  if(files.length > 1) toast(files.length+' files selected — uploading one at a time');
+  if(files.length > 1) toast(files.length+' files — uploading one at a time');
 }
 
 /* ─── DROP ZONE ─── */
