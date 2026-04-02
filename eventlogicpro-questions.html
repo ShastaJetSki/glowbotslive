@@ -91,12 +91,12 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .kpi-lbl{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
 
 /* QUESTION GRID */
-.q-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;}
+.q-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;align-items:start;}
 
 /* QUESTION CARD — Shark Law style */
 .q-card{background:var(--bg-card);border:1px solid var(--border);border-left:4px solid #6b7280;border-radius:10px;padding:0;overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:default;}
 .q-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.10);}
-.q-card-head{padding:12px 14px 10px;}
+.q-card-head{padding:12px 14px 10px;flex:1;}
 .q-card-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
 .q-status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;}
 .q-status-dot.open{background:#ef4444;}
@@ -130,7 +130,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .q-answer-input:focus{outline:none;border-color:var(--accent);}
 
 /* CARD ACTIONS */
-.q-card-actions{padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;background:var(--bg-secondary);}
+.q-card-actions{padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;background:var(--bg-secondary);flex-shrink:0;margin-top:auto;}
 .qa-btn{padding:5px 12px;border-radius:5px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap;}
 .qa-btn:hover{background:var(--bg-hover);color:var(--text-primary);}
 .qa-btn.answer{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -433,6 +433,51 @@ var projAcResults=[],projAcIndex=-1;
 
 
 
+
+/* ── AUTO SCROLL WHILE DRAGGING ── */
+var _scrollRaf=null;
+var SCROLL_ZONE=80;   // px from edge that triggers scroll
+var SCROLL_SPEED=14;  // max px per frame
+
+function _autoScroll(e){
+  var x=e.clientX,y=e.clientY;
+  var vw=window.innerWidth,vh=window.innerHeight;
+  var dx=0,dy=0;
+
+  // Horizontal
+  if(x<SCROLL_ZONE)         dx=-(1-x/SCROLL_ZONE)*SCROLL_SPEED;
+  else if(x>vw-SCROLL_ZONE) dx= (1-(vw-x)/SCROLL_ZONE)*SCROLL_SPEED;
+
+  // Vertical
+  if(y<SCROLL_ZONE)         dy=-(1-y/SCROLL_ZONE)*SCROLL_SPEED;
+  else if(y>vh-SCROLL_ZONE) dy= (1-(vh-y)/SCROLL_ZONE)*SCROLL_SPEED;
+
+  if(dx!==0||dy!==0){
+    window.scrollBy(dx,dy);
+    // also scroll the content div if it overflows
+    var content=document.querySelector('.content');
+    if(content)content.scrollBy(dx,dy);
+  }
+}
+
+function _startScrollLoop(e){
+  if(_scrollRaf)return;
+  var lastE=e;
+  function loop(){
+    _autoScroll(lastE);
+    _scrollRaf=requestAnimationFrame(loop);
+  }
+  _scrollRaf=requestAnimationFrame(loop);
+  // Keep lastE fresh from dragover
+  document.addEventListener('dragover',function _track(ev){lastE=ev;},false);
+  document._dragTrack=_track;
+}
+
+function _stopScrollLoop(){
+  if(_scrollRaf){cancelAnimationFrame(_scrollRaf);_scrollRaf=null;}
+  if(document._dragTrack){document.removeEventListener('dragover',document._dragTrack);document._dragTrack=null;}
+}
+
 /* ── DRAG TO REORDER QUESTIONS ── */
 var dragQId=null;
 
@@ -441,9 +486,11 @@ function qDragStart(e){
   e.currentTarget.classList.add('dragging');
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',dragQId);
+  _startScrollLoop(e);
 }
 function qDragEnd(e){
   dragQId=null;
+  _stopScrollLoop();
   document.querySelectorAll('.q-card').forEach(function(c){c.classList.remove('dragging','drag-over');});
 }
 function qDragOver(e){
