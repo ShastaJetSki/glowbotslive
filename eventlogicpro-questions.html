@@ -139,6 +139,11 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .qa-btn.kb:hover{background:rgba(99,102,241,.2);}
 .qa-btn.danger{color:#ef4444;border-color:rgba(239,68,68,.3);}
 .qa-btn.danger:hover{background:rgba(239,68,68,.08);}
+
+.qcswatch{width:22px;height:22px;border-radius:5px;cursor:pointer;border:2px solid transparent;transition:all .15s;flex-shrink:0;}
+.qcswatch:hover{transform:scale(1.12);}
+.qcswatch.active{border-color:var(--text-primary);transform:scale(1.1);}
+
 .qa-btn-spacer{flex:1;}
 
 /* KB SECTION */
@@ -318,6 +323,15 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
         </div>
       </div>
       <div class="form-group">
+        <label class="form-label">Card Color</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div id="qmColorSwatches" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+          <input type="color" id="qmColorPicker" style="width:30px;height:30px;border-radius:5px;border:1px solid var(--border);cursor:pointer;padding:2px;background:var(--input-bg);" onchange="setQColor(this.value)">
+          <div id="qmColorPreview" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);border-left:5px solid #6b7280;"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Overrides department color on this card</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Asked by</label>
         <input type="text" class="form-input" id="qmAskedBy" placeholder="Your name">
       </div>
@@ -407,6 +421,40 @@ var currentFilter='all',currentDept='all';
 var editingQId=null,redirectingQId=null,answeringQId=null;
 var projAcResults=[],projAcIndex=-1;
 
+
+/* QUESTION CARD COLOR PICKER */
+var Q_PALETTE=['#0284c7','#7c3aed','#059669','#DC2626','#d97706','#db2777','#0891b2','#65a30d','#9333ea','#6b7280','#f97316','#e11d48'];
+var currentQColor=null;
+
+function buildQSwatches(activeColor){
+  var wrap=document.getElementById('qmColorSwatches');if(!wrap)return;
+  wrap.innerHTML='';
+  Q_PALETTE.forEach(function(c){
+    var el=document.createElement('div');
+    el.className='qcswatch'+(c===activeColor?' active':'');
+    el.style.background=c;el.title=c;
+    el.onclick=function(){setQColor(c);};
+    wrap.appendChild(el);
+  });
+  // Reset/auto option
+  var reset=document.createElement('div');
+  reset.className='qcswatch'+(activeColor===null?' active':'');
+  reset.style.background='linear-gradient(135deg,#6b7280 50%,transparent 50%)';
+  reset.style.border='1px dashed var(--border)';
+  reset.title='Auto (use department color)';
+  reset.onclick=function(){setQColor(null);};
+  wrap.appendChild(reset);
+}
+
+function setQColor(color){
+  currentQColor=color;
+  buildQSwatches(color);
+  var picker=document.getElementById('qmColorPicker');
+  var preview=document.getElementById('qmColorPreview');
+  if(picker&&color)picker.value=color;
+  if(preview){preview.style.borderLeftColor=color||'#6b7280';preview.style.background=color?'rgba('+hexToRgb(color)+',0.15)':'';}
+}
+
 /* DEPT COLORS */
 var DEPT_COLORS=['#0284c7','#059669','#7c3aed','#d97706','#DC2626','#db2777','#0891b2','#65a30d','#9333ea','#e11d48','#0d9488','#6b7280'];
 function deptColor(deptName){var idx=allDepts.findIndex(function(d){return d===deptName;});return DEPT_COLORS[idx>=0?idx%DEPT_COLORS.length:DEPT_COLORS.length-1];}
@@ -462,7 +510,7 @@ function renderGrid(){
 }
 
 function renderCard(q){
-  var col=deptColor(q.department||'General');
+  var col=q.card_color||deptColor(q.department||'General');
   var rgb=hexToRgb(col);
   var bgStyle='background:rgba('+rgb+',0.08);border-left-color:'+col+';';
   var statusClass=q.status||'open';
@@ -553,6 +601,7 @@ function openAddModal(){
   document.getElementById('qmAnswerGroup').style.display='none';
   document.getElementById('qmAnsweredByGroup').style.display='none';
   document.getElementById('qmDelBtn').style.display='none';
+  currentQColor=null;buildQSwatches(null);setQColor(null);
   populateDeptSelect();
   document.getElementById('qModal').classList.add('show');
   setTimeout(function(){document.getElementById('qmText').focus();},80);
@@ -573,6 +622,7 @@ function openEditModal(qId){
   document.getElementById('qmAnswerGroup').style.display=q.status==='answered'?'':'';
   document.getElementById('qmAnsweredByGroup').style.display=q.status==='answered'?'':'';
   document.getElementById('qmDelBtn').style.display='';
+  currentQColor=q.card_color||null;buildQSwatches(currentQColor);setQColor(currentQColor);
   populateDeptSelect(q.department);
   document.getElementById('qModal').classList.add('show');
 }
@@ -588,7 +638,7 @@ function populateDeptSelect(selected){
 async function saveQ(){
   var text=document.getElementById('qmText').value.trim();
   if(!text){toast('Enter a question');return;}
-  var data={question_text:text,department:document.getElementById('qmDept').value,asked_by:document.getElementById('qmAskedBy').value.trim()||null,directed_to:document.getElementById('qmDirectedTo').value.trim()||null,priority:document.getElementById('qmPriority').value,notes:document.getElementById('qmNotes').value.trim()||null};
+  var data={question_text:text,card_color:currentQColor||null,department:document.getElementById('qmDept').value,asked_by:document.getElementById('qmAskedBy').value.trim()||null,directed_to:document.getElementById('qmDirectedTo').value.trim()||null,priority:document.getElementById('qmPriority').value,notes:document.getElementById('qmNotes').value.trim()||null};
   showSaving();
   if(editingQId){
     await sb.from('event_questions').update(data).eq('question_id',editingQId);
