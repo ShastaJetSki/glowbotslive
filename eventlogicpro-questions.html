@@ -144,6 +144,16 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .qcswatch:hover{transform:scale(1.12);}
 .qcswatch.active{border-color:var(--text-primary);transform:scale(1.1);}
 
+
+/* DRAG TO REORDER */
+.q-card{position:relative;}
+.q-card.dragging{opacity:.35;outline:2px dashed var(--accent);outline-offset:2px;}
+.q-card.drag-over{outline:2px solid var(--accent);outline-offset:2px;transform:translateY(-3px);box-shadow:0 8px 24px rgba(220,38,38,.2);}
+.q-drag-handle{position:absolute;top:10px;right:10px;color:var(--text-secondary);opacity:.3;font-size:14px;cursor:grab;user-select:none;line-height:1;padding:2px 4px;border-radius:3px;transition:opacity .15s;}
+.q-drag-handle:hover{opacity:.7;background:var(--bg-hover);}
+.q-drag-handle:active{cursor:grabbing;}
+.q-card:hover .q-drag-handle{opacity:.5;}
+
 .qa-btn-spacer{flex:1;}
 
 /* KB SECTION */
@@ -422,6 +432,58 @@ var editingQId=null,redirectingQId=null,answeringQId=null;
 var projAcResults=[],projAcIndex=-1;
 
 
+
+/* ── DRAG TO REORDER QUESTIONS ── */
+var dragQId=null;
+
+function qDragStart(e){
+  dragQId=e.currentTarget.dataset.qid;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',dragQId);
+}
+function qDragEnd(e){
+  dragQId=null;
+  document.querySelectorAll('.q-card').forEach(function(c){c.classList.remove('dragging','drag-over');});
+}
+function qDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  if(e.currentTarget.dataset.qid!==dragQId)e.currentTarget.classList.add('drag-over');
+}
+function qDragLeave(e){e.currentTarget.classList.remove('drag-over');}
+function qDrop(e){
+  e.preventDefault();
+  var targetId=e.currentTarget.dataset.qid;
+  e.currentTarget.classList.remove('drag-over');
+  if(!dragQId||dragQId===targetId)return;
+  var fromIdx=allQuestions.findIndex(function(q){return q.question_id===dragQId;});
+  var toIdx=allQuestions.findIndex(function(q){return q.question_id===targetId;});
+  if(fromIdx<0||toIdx<0)return;
+  var moved=allQuestions.splice(fromIdx,1)[0];
+  allQuestions.splice(toIdx,0,moved);
+  saveQOrder();
+  renderGrid();
+}
+
+async function saveQOrder(){
+  allQuestions.forEach(function(q,i){
+    sb.from('event_questions').update({sort_order:i}).eq('question_id',q.question_id).then(function(){});
+  });
+  localStorage.setItem('elp-q-order-'+currentProjectId,JSON.stringify(allQuestions.map(function(q){return q.question_id;})));
+}
+
+function applySavedOrder(){
+  var hasSortOrder=allQuestions.some(function(q){return q.sort_order!=null;});
+  if(hasSortOrder){allQuestions.sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0);});return;}
+  var saved=localStorage.getItem('elp-q-order-'+currentProjectId);
+  if(!saved)return;
+  try{
+    var order=JSON.parse(saved);
+    allQuestions.sort(function(a,b){var ai=order.indexOf(a.question_id),bi=order.indexOf(b.question_id);if(ai<0)return 1;if(bi<0)return-1;return ai-bi;});
+  }catch(e){}
+}
+
 /* QUESTION CARD COLOR PICKER */
 var Q_PALETTE=['#0284c7','#7c3aed','#059669','#DC2626','#d97706','#db2777','#0891b2','#65a30d','#9333ea','#6b7280','#f97316','#e11d48'];
 var currentQColor=null;
@@ -479,7 +541,7 @@ async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session
 /* LOAD */
 async function loadProjects(){var r=await sb.from('event_projects').select('event_project_id,event_name,event_date,color_tag').eq('tenant_id',tenantId).order('event_date',{ascending:true});allProjects=r.data||[];}
 async function loadDepts(){if(!currentProjectId){allDepts=[];buildDeptChips();return;}var r=await sb.from('event_departments').select('name').eq('tenant_id',tenantId).order('sort_order');allDepts=(r.data||[]).map(function(d){return d.name;});if(!allDepts.length)allDepts=['General','Venue','Talent','Production','Security','Catering','Marketing'];buildDeptChips();}
-async function loadQuestions(){if(!currentProjectId){allQuestions=[];renderGrid();return;}var r=await sb.from('event_questions').select('*').eq('event_project_id',currentProjectId).order('created_at',{ascending:false});allQuestions=r.data||[];updateCounts();renderGrid();}
+async function loadQuestions(){if(!currentProjectId){allQuestions=[];renderGrid();return;}var r=await sb.from('event_questions').select('*').eq('event_project_id',currentProjectId).order('sort_order',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false});allQuestions=r.data||[];applySavedOrder();updateCounts();renderGrid();}
 
 /* PROJECT SEARCH */
 function projSearch(val){var q=(val||'').trim().toLowerCase();var ac=document.getElementById('projAutocomplete');if(!ac)return;var f=q.length===0?allProjects.slice(0,12):allProjects.filter(function(p){return (p.event_name||'').toLowerCase().indexOf(q)>=0;}).slice(0,12);projAcResults=f;projAcIndex=-1;ac.innerHTML=f.length?f.map(function(p){var c=p.color_tag||'#DC2626';var d=p.event_date?new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'No date';return '<div class="proj-ac-item" onclick="selectProject(\''+p.event_project_id+'\')"><div class="proj-ac-dot" style="background:'+c+'"></div><div><div class="proj-ac-name">'+(p.event_name||'Untitled')+'</div><div class="proj-ac-sub">'+d+'</div></div></div>';}).join(''):'<div class="proj-ac-empty">No events found</div>';ac.classList.add('show');}
@@ -544,7 +606,8 @@ function renderCard(q){
   actions+='<button class="qa-btn danger" onclick="deleteQ_direct(\''+q.question_id+'\')">✕</button>';
   actions+='</div>';
 
-  return '<div class="q-card" style="'+bgStyle+'">'
+  return '<div class="q-card" style="'+bgStyle+'" draggable="true" data-qid="'+q.question_id+'" ondragstart="qDragStart(event)" ondragend="qDragEnd(event)" ondragover="qDragOver(event)" ondragleave="qDragLeave(event)" ondrop="qDrop(event)">'
+    +'<div class="q-drag-handle" title="Drag to reorder">⠿</div>'
     +'<div class="q-card-head">'
       +'<div class="q-card-top"><div class="q-status-dot '+statusClass+'"></div><div class="q-text">'+esc(q.question_text)+'</div></div>'
       +'<div class="q-badge-row"><span class="q-dept-badge" style="background:rgba('+rgb+',.15);color:'+col+';">'+esc(q.department||'General')+'</span><span class="q-status-badge badge-'+statusClass+'">'+statusClass.toUpperCase()+'</span>'+kbBadge+priorityHtml+'</div>'
