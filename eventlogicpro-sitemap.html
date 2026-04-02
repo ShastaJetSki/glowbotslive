@@ -285,6 +285,16 @@ html,body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;backgro
       <button class="ct-btn" onclick="zoomFit()" title="Fit">&#9634;</button>
       <div class="ct-sep"></div>
       <button class="ct-btn" id="tbGrid" onclick="cycleGrid()" title="Grid S" id="tbGrid">⊞</button>
+      <div class="ct-sep"></div>
+      <button class="ct-btn" onclick="startScaleCalibration()" title="Calibrate Scale (draw line on known distance)" style="font-size:10px;font-weight:700;padding:0 6px;letter-spacing:-.3px;">📐 SCALE</button>
+    </div>
+    <!-- SCALE CALIBRATION MODE BAR -->
+    <div id="scaleModeBar" style="display:none;position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.9);border:1px solid #f59e0b;border-radius:10px;padding:10px 16px;display:none;align-items:center;gap:10px;z-index:50;font-size:12px;color:#f59e0b;font-weight:600;white-space:nowrap;backdrop-filter:blur(8px);">
+      <span>📐 Calibrate Scale — enter the real distance between your two clicked points:</span>
+      <input id="scaleDistInput" type="number" placeholder="e.g. 200" min="1" style="width:80px;padding:4px 8px;border-radius:5px;border:1px solid #f59e0b;background:#111;color:#f59e0b;font-size:12px;font-weight:700;outline:none;">
+      <span style="color:rgba(245,158,11,.7);">feet</span>
+      <button onclick="confirmScaleCal()" style="padding:5px 14px;border-radius:5px;border:none;background:#f59e0b;color:#000;font-weight:700;cursor:pointer;font-size:12px;">Confirm</button>
+      <button onclick="cancelScaleCal()" style="padding:5px 10px;border-radius:5px;border:1px solid rgba(245,158,11,.4);background:transparent;color:#f59e0b;cursor:pointer;font-size:12px;">Cancel</button>
     </div>
   </div>
   <!-- Right Panel -->
@@ -401,9 +411,9 @@ function updateToolbar(){document.getElementById('tbSelect').classList.toggle('a
 function setTool(t){tool=t;updateToolbar();if(t==='select')document.querySelectorAll('.shape-btn').forEach(function(b){b.classList.remove('active');});}
 function initCanvas(){wrap=document.getElementById('canvasWrap');mainCanvas=document.getElementById('mainCanvas');ctx=mainCanvas.getContext('2d');gridCanvas=document.getElementById('gridCanvas');gctx=gridCanvas.getContext('2d');resize();window.addEventListener('resize',resize);}
 function resize(){W=wrap.clientWidth;H=wrap.clientHeight;mainCanvas.width=W;mainCanvas.height=H;gridCanvas.width=W;gridCanvas.height=H;mainCanvas.style.width=W+'px';mainCanvas.style.height=H+'px';gridCanvas.style.width=W+'px';gridCanvas.style.height=H+'px';renderAll();}
-function drawGrid(){gctx.clearRect(0,0,W,H);if(!showGrid)return;var baseSize=typeof gridCycle!=="undefined"?gridCycleSizes[Math.min(gridCycle,2)]:20;var step=baseSize*zoom;var offX=panX%step,offY=panY%step;gctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--border').trim();gctx.lineWidth=0.5;gctx.globalAlpha=0.4;for(var x=offX;x<W;x+=step){gctx.beginPath();gctx.moveTo(x,0);gctx.lineTo(x,H);gctx.stroke();}for(var y=offY;y<H;y+=step){gctx.beginPath();gctx.moveTo(0,y);gctx.lineTo(W,y);gctx.stroke();}gctx.globalAlpha=1;}
+function drawGrid(){gctx.clearRect(0,0,W,H);drawScaleLine();if(!showGrid)return;var baseSize=typeof gridCycle!=="undefined"?gridCycleSizes[Math.min(gridCycle,2)]:16;var step=baseSize*zoom;var offX=panX%step,offY=panY%step;gctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--border').trim();gctx.lineWidth=0.5;gctx.globalAlpha=0.4;for(var x=offX;x<W;x+=step){gctx.beginPath();gctx.moveTo(x,0);gctx.lineTo(x,H);gctx.stroke();}for(var y=offY;y<H;y+=step){gctx.beginPath();gctx.moveTo(0,y);gctx.lineTo(W,y);gctx.stroke();}gctx.globalAlpha=1;}
 var gridCycle=0; // 0=small(20), 1=medium(40), 2=large(80), 3=off
-var gridCycleSizes=[20,40,80];
+var gridCycleSizes=[16,32,64]; // 10ft, 20ft, 40ft per square at 1px=0.625ft
 var gridCycleLabels=['Grid S','Grid M','Grid L','Grid Off'];
 function cycleGrid(){
   gridCycle=(gridCycle+1)%4;
@@ -420,6 +430,79 @@ function getObj(id){return objects.find(function(o){return o.id===id;});}
 function deleteObj(id){objects=objects.filter(function(o){return o.id!==id;});if(selectedId===id)selectedId=null;renderAll();renderLayers();renderProps();}
 function addPreset(p){var cx=(W/2-panX)/zoom,cy=(H/2-panY)/zoom;addObj(p.shape,cx-p.w/2,cy-p.h/2,p.w,p.h,p.color,p.label);tool='select';updateToolbar();}
 
+
+
+/* ── SCALE CALIBRATION ── */
+var scaleMode=false, scaleP1=null, scaleP2=null;
+var pixelsPerFoot=1.6; // default: 16px grid = 10ft, so 1.6px/ft
+var scaleLine=null; // {x1,y1,x2,y2} in canvas coords
+
+function startScaleCalibration(){
+  scaleMode=true; scaleP1=null; scaleP2=null;
+  setTool('select');
+  document.getElementById('scaleModeBar').style.display='flex';
+  toast('Click two points on a known distance, then enter the length in feet');
+}
+
+function cancelScaleCal(){
+  scaleMode=false; scaleP1=null; scaleP2=null; scaleLine=null;
+  document.getElementById('scaleModeBar').style.display='none';
+  renderAll();
+}
+
+function confirmScaleCal(){
+  if(!scaleP1||!scaleP2){toast('Click two points first');return;}
+  var feet=parseFloat(document.getElementById('scaleDistInput').value);
+  if(!feet||feet<=0){toast('Enter a valid distance in feet');return;}
+  var dx=(scaleP2.x-scaleP1.x)/zoom, dy=(scaleP2.y-scaleP1.y)/zoom;
+  var px=Math.sqrt(dx*dx+dy*dy);
+  pixelsPerFoot=px/feet;
+  var ftPerGridLine=10; // 1 grid square = 10 feet
+  var newGridPx=Math.round(pixelsPerFoot*ftPerGridLine);
+  gridCycleSizes=[newGridPx, newGridPx*2, newGridPx*4];
+  // Save scale with map
+  if(currentMapId){localStorage.setItem('elp-scale-'+currentMapId, JSON.stringify({pixelsPerFoot:pixelsPerFoot,gridSizes:gridCycleSizes}));}
+  cancelScaleCal();
+  drawGrid();
+  toast('Scale set: 1 grid square = 10 ft (1px = '+pixelsPerFoot.toFixed(2)+' ft)');
+}
+
+function loadSavedScale(mapId){
+  var saved=localStorage.getItem('elp-scale-'+mapId);
+  if(!saved)return;
+  try{var d=JSON.parse(saved);pixelsPerFoot=d.pixelsPerFoot;if(d.gridSizes)gridCycleSizes=d.gridSizes;}catch(e){}
+}
+
+// Hook scale point capture into canvas click
+function handleScaleClick(cx,cy){
+  // cx,cy are canvas pixel coords (not world coords)
+  if(!scaleP1){scaleP1={x:cx,y:cy};toast('Point 1 set — click the second point');renderAll();return;}
+  scaleP2={x:cx,y:cy};
+  scaleLine={x1:scaleP1.x,y1:scaleP1.y,x2:scaleP2.x,y2:scaleP2.y};
+  renderAll();
+  document.getElementById('scaleDistInput').focus();
+  toast('Points set — enter the distance in feet and click Confirm');
+}
+
+// Draw scale line during calibration
+function drawScaleLine(){
+  if(!scaleLine)return;
+  gctx.save();
+  gctx.strokeStyle='#f59e0b';gctx.lineWidth=2;gctx.setLineDash([6,3]);
+  gctx.beginPath();gctx.moveTo(scaleLine.x1,scaleLine.y1);gctx.lineTo(scaleLine.x2,scaleLine.y2);gctx.stroke();
+  [scaleLine.x1,scaleLine.x2].forEach(function(x,i){
+    var y=i===0?scaleLine.y1:scaleLine.y2;
+    gctx.fillStyle='#f59e0b';gctx.beginPath();gctx.arc(x,y,5,0,Math.PI*2);gctx.fill();
+  });
+  if(scaleP1&&scaleP2){
+    var dx=(scaleP2.x-scaleP1.x)/zoom,dy=(scaleP2.y-scaleP1.y)/zoom;
+    var px=Math.sqrt(dx*dx+dy*dy);
+    gctx.fillStyle='#f59e0b';gctx.font='bold 12px DM Sans,sans-serif';
+    var mx=(scaleLine.x1+scaleLine.x2)/2,my=(scaleLine.y1+scaleLine.y2)/2;
+    gctx.fillText(Math.round(px)+'px',mx+6,my-6);
+  }
+  gctx.setLineDash([]);gctx.restore();
+}
 
 /* ── LAYER MANAGEMENT ── */
 var layers=[{id:1,name:'Layer 1',visible:true,color:'#0284c7',objectIds:[]}];
@@ -540,7 +623,7 @@ mainCanvas.addEventListener('touchend',function(e){onUp({});});
 mainCanvas.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';});
 mainCanvas.addEventListener('drop',function(e){e.preventDefault();var file=e.dataTransfer.files&&e.dataTransfer.files[0];if(!file||!file.type.startsWith('image/'))return;var reader=new FileReader();reader.onload=function(ev){var img=new Image();img.onload=function(){bgImage=img;bgOpacity=0.3;document.getElementById('bgRemoveBtn').style.display='';renderAll();renderProps();toast('Background set');};img.src=ev.target.result;};reader.readAsDataURL(file);});}
 
-function onDown(e){var p=canvasXY(e);if(e.button===1){isPanning=true;dragStart=p;return;}if(tool==='draw'){isDrawing=true;drawStart=p;return;}var h=hitHandle(p.x,p.y);if(h){isResizing=true;resizeHandle=h;var obj=getObj(selectedId);dragStart=p;objStart={x:obj.x,y:obj.y,w:obj.w,h:obj.h};return;}var hit=hitTest(p.x,p.y);if(hit){selectedId=hit.id;isDragging=true;dragStart=p;objStart={x:hit.x,y:hit.y};renderAll();renderLayers();renderProps();}else{if(e.button===0&&!e.shiftKey){isPanning=true;dragStart=p;}selectedId=null;renderAll();renderLayers();renderProps();}}
+function onDown(e){if(scaleMode){var rect=document.getElementById("mainCanvas").getBoundingClientRect();handleScaleClick(e.clientX-rect.left,e.clientY-rect.top);return;}var p=canvasXY(e);if(e.button===1){isPanning=true;dragStart=p;return;}if(tool==='draw'){isDrawing=true;drawStart=p;return;}var h=hitHandle(p.x,p.y);if(h){isResizing=true;resizeHandle=h;var obj=getObj(selectedId);dragStart=p;objStart={x:obj.x,y:obj.y,w:obj.w,h:obj.h};return;}var hit=hitTest(p.x,p.y);if(hit){selectedId=hit.id;isDragging=true;dragStart=p;objStart={x:hit.x,y:hit.y};renderAll();renderLayers();renderProps();}else{if(e.button===0&&!e.shiftKey){isPanning=true;dragStart=p;}selectedId=null;renderAll();renderLayers();renderProps();}}
 function onMove(e){var p=canvasXY(e);if(isPanning){panX+=(p.x-dragStart.x);panY+=(p.y-dragStart.y);dragStart=p;renderAll();return;}if(isDragging){var obj=getObj(selectedId);if(!obj)return;obj.x=objStart.x+(p.x-dragStart.x)/zoom;obj.y=objStart.y+(p.y-dragStart.y)/zoom;renderAll();return;}if(isResizing){var obj=getObj(selectedId);if(!obj)return;var dx=(p.x-dragStart.x)/zoom,dy=(p.y-dragStart.y)/zoom;if(resizeHandle.includes('e'))obj.w=Math.max(10,objStart.w+dx);if(resizeHandle.includes('w')){obj.x=objStart.x+dx;obj.w=Math.max(10,objStart.w-dx);}if(resizeHandle.includes('s'))obj.h=Math.max(10,objStart.h+dy);if(resizeHandle.includes('n')){obj.y=objStart.y+dy;obj.h=Math.max(10,objStart.h-dy);}renderAll();return;}if(isDrawing&&drawStart){renderAll();var x1=(drawStart.x-panX)/zoom,y1=(drawStart.y-panY)/zoom,x2=(p.x-panX)/zoom,y2=(p.y-panY)/zoom;ctx.save();ctx.translate(panX,panY);ctx.scale(zoom,zoom);ctx.globalAlpha=0.5;drawShape(ctx,{shape:currentShape,x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1),color:currentColor});ctx.restore();return;}var h=hitHandle(p.x,p.y);if(h)mainCanvas.style.cursor=h==='nw'||h==='se'?'nwse-resize':'nesw-resize';else if(hitTest(p.x,p.y))mainCanvas.style.cursor='move';else mainCanvas.style.cursor=tool==='draw'?'crosshair':'grab';}
 function onUp(e){if(isDrawing&&drawStart){var p=canvasXY(e.clientX?e:drawStart);var x1=(drawStart.x-panX)/zoom,y1=(drawStart.y-panY)/zoom,x2=(p.x-panX)/zoom,y2=(p.y-panY)/zoom;if(Math.abs(x2-x1)>5||Math.abs(y2-y1)>5)addObj(currentShape,Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1),currentColor,'');}if(isDragging||isResizing)renderProps();isDragging=false;isResizing=false;isPanning=false;isDrawing=false;drawStart=null;}
 function onWheel(e){e.preventDefault();var p=canvasXY(e);var oldZoom=zoom;if(e.deltaY<0)zoom=Math.min(5,zoom*1.1);else zoom=Math.max(0.1,zoom/1.1);panX=p.x-(p.x-panX)*zoom/oldZoom;panY=p.y-(p.y-panY)*zoom/oldZoom;document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';renderAll();}
@@ -553,7 +636,7 @@ document.addEventListener('keydown',function(e){if(e.target.tagName==='INPUT'||e
 // ===== DB SAVE/LOAD =====
 async function loadMaps(){if(!tenantId)return;var r=await sb.from('site_maps').select('*').eq('tenant_id',tenantId).order('updated_at',{ascending:false});allMaps=r.data||[];renderMapSelect();}
 function renderMapSelect(){var sel=document.getElementById('mapSelect');var h='<option value="">-- Select Site Map --</option>';allMaps.forEach(function(m){h+='<option value="'+m.id+'"'+(m.id===currentMapId?' selected':'')+'>'+esc(m.name)+(m.is_shared?' [SHARED]':'')+'</option>';});sel.innerHTML=h;document.getElementById('deleteMapBtn').style.display=currentMapId?'':'none';}
-async function switchMap(id){if(!id){currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;panX=0;panY=0;zoom=1;renderAll();renderLayers();renderProps();renderMapSelect();return;}var map=allMaps.find(function(m){return m.id===id;});if(!map)return;currentMapId=id;objects=map.objects||[];nextId=objects.length?Math.max.apply(null,objects.map(function(o){return o.id;}))+1:1;panX=map.pan_x||0;panY=map.pan_y||0;zoom=map.zoom_level||1;bgOpacity=map.bg_opacity||0.3;selectedId=null;document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';if(map.bg_image_url){var img=new Image();img.onload=function(){bgImage=img;document.getElementById('bgRemoveBtn').style.display='';renderAll();};img.onerror=function(){bgImage=null;renderAll();};img.src=map.bg_image_url;}else{bgImage=null;document.getElementById('bgRemoveBtn').style.display='none';}localStorage.setItem('elp-last-map',id);renderAll();renderLayers();renderProps();renderMapSelect();}
+async function switchMap(id){if(!id){currentMapId=null;objects=[];nextId=1;selectedId=null;bgImage=null;panX=0;panY=0;zoom=1;loadSavedScale(currentMapId);renderAll();renderLayers();renderProps();renderMapSelect();return;}var map=allMaps.find(function(m){return m.id===id;});if(!map)return;currentMapId=id;objects=map.objects||[];nextId=objects.length?Math.max.apply(null,objects.map(function(o){return o.id;}))+1:1;panX=map.pan_x||0;panY=map.pan_y||0;zoom=map.zoom_level||1;bgOpacity=map.bg_opacity||0.3;selectedId=null;document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';if(map.bg_image_url){var img=new Image();img.onload=function(){bgImage=img;document.getElementById('bgRemoveBtn').style.display='';renderAll();};img.onerror=function(){bgImage=null;renderAll();};img.src=map.bg_image_url;}else{bgImage=null;document.getElementById('bgRemoveBtn').style.display='none';}localStorage.setItem('elp-last-map',id);renderAll();renderLayers();renderProps();renderMapSelect();}
 async function uploadBgImage(mapId){if(!bgImage||!bgImage.src||!bgImage.src.startsWith('data:'))return null;try{var parts=bgImage.src.split(',');var mime=parts[0].match(/:(.*?);/)[1];var b=atob(parts[1]);var arr=new Uint8Array(b.length);for(var i=0;i<b.length;i++)arr[i]=b.charCodeAt(i);var blob=new Blob([arr],{type:mime});var ext=mime.split('/')[1]||'png';var path=tenantId+'/'+mapId+'/bg.'+ext;var r=await sb.storage.from('sitemap-images').upload(path,blob,{upsert:true,contentType:mime});if(r.error)return null;return sb.storage.from('sitemap-images').getPublicUrl(path).data.publicUrl;}catch(e){return null;}}
 async function deleteBgImage(mapId){try{['png','jpg','jpeg','gif','webp'].forEach(async function(ext){await sb.storage.from('sitemap-images').remove([tenantId+'/'+mapId+'/bg.'+ext]);});}catch(e){}}
 async function saveMap(){if(!tenantId){toast('Not authenticated');return;}if(!currentMapId){var name=prompt('Name for this site map:','Site Map');if(!name||!name.trim())return;var ins=await sb.from('site_maps').insert({tenant_id:tenantId,created_by:authUid,name:name.trim(),objects:objects,bg_opacity:bgOpacity,pan_x:panX,pan_y:panY,zoom_level:zoom,is_shared:false}).select().single();if(ins.error){toast('Error: '+ins.error.message);return;}currentMapId=ins.data.id;var bgUrl=await uploadBgImage(currentMapId);if(bgUrl)await sb.from('site_maps').update({bg_image_url:bgUrl}).eq('id',currentMapId);localStorage.setItem('elp-last-map',currentMapId);}else{var bgUrl=await uploadBgImage(currentMapId);var upd={objects:objects,bg_opacity:bgOpacity,pan_x:panX,pan_y:panY,zoom_level:zoom,updated_at:new Date().toISOString()};if(bgUrl)upd.bg_image_url=bgUrl;else if(!bgImage)upd.bg_image_url=null;var r=await sb.from('site_maps').update(upd).eq('id',currentMapId);if(r.error){toast('Error: '+r.error.message);return;}}await loadMaps();toast('Site map saved');}
