@@ -804,9 +804,20 @@ async function confirmDelete(){
   var raw=localStorage.getItem('ll_demo_ids_'+pid);
   if(raw){
     var ids=JSON.parse(raw);
-    if(ids.goals&&ids.goals.length)await sb.from('life_goals').delete().in('id',ids.goals);
-    if(ids.tasks&&ids.tasks.length)await sb.from('life_tasks').delete().in('id',ids.tasks);
-    if(ids.cats&&ids.cats.length)await sb.from('life_categories').delete().in('id',ids.cats);
+    var catIds=ids.cats||[];
+    // ── Delete by category_id first — catches everything in those
+    //    categories including any tasks/goals the user added on top
+    if(catIds.length){
+      await sb.from('life_goals').delete().in('category_id',catIds);
+      await sb.from('life_tasks').delete().in('category_id',catIds);
+      await sb.from('life_categories').delete().in('id',catIds);
+    }
+    // ── Safety net: also delete any stored IDs that may have lost
+    //    their category_id (goals/tasks with null category_id)
+    var gIds=(ids.goals||[]);
+    var tIds=(ids.tasks||[]);
+    if(gIds.length)await sb.from('life_goals').delete().in('id',gIds);
+    if(tIds.length)await sb.from('life_tasks').delete().in('id',tIds);
   }
   localStorage.setItem('ll_demo_deleted_'+pid,'1');
   localStorage.removeItem('ll_demo_ids_'+pid);
