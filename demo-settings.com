@@ -364,11 +364,129 @@ CREATE POLICY "Users own goals" ON todo_goals FOR ALL USING (auth.uid() = user_i
 <div id="toast"></div>
 
 <script>
+
+// ===== MOCK DATA =====
+var userId = 'demo-user';
+var tenantId = 'demo-tenant';
+
+var today = new Date();
+function ds(offsetDays) {
+  var d = new Date(today); d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().split('T')[0];
+}
+function ts(offsetDays) {
+  var d = new Date(today); d.setDate(d.getDate() + offsetDays);
+  return d.toISOString();
+}
+
+var allCategories = [
+  { id:'cat1',  name:'House',            icon:'🏠', color:'#2563EB', section:'life',     sort_order:1, is_active:true },
+  { id:'cat2',  name:'Motorcycle',       icon:'🏍️', color:'#DC2626', section:'life',     sort_order:2, is_active:true },
+  { id:'cat3',  name:'Jet Ski',          icon:'🚤', color:'#0891B2', section:'life',     sort_order:3, is_active:true },
+  { id:'cat4',  name:'Car',              icon:'🚗', color:'#7C3AED', section:'life',     sort_order:4, is_active:true },
+  { id:'cat5',  name:'Garden',           icon:'🌱', color:'#16A34A', section:'life',     sort_order:5, is_active:true },
+  { id:'cat6',  name:'Q3 Launch',        icon:'🚀', color:'#D97706', section:'work',     sort_order:1, is_active:true },
+  { id:'cat7',  name:'Client Projects',  icon:'💼', color:'#4F46E5', section:'work',     sort_order:2, is_active:true },
+  { id:'cat8',  name:'Fitness',          icon:'💪', color:'#EA580C', section:'personal', sort_order:1, is_active:true },
+  { id:'cat9',  name:'Health',           icon:'🏥', color:'#BE185D', section:'personal', sort_order:2, is_active:true },
+  { id:'cat10', name:'Guitar',           icon:'🎸', color:'#7C3AED', section:'hobbies',  sort_order:1, is_active:true },
+  { id:'cat11', name:'Travel Planning',  icon:'✈️', color:'#0891B2', section:'hobbies',  sort_order:2, is_active:true },
+];
+
+var allTasks = [
+  // HOUSE
+  { id:'t1',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Fix roof leak above garage',        status:'todo',        priority:'urgent', due_date:ds(-3),  is_active:true, completed_at:null },
+  { id:'t2',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Paint living room & hallway',       status:'in_progress', priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t3',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Replace water heater',             status:'todo',        priority:'high',   due_date:ds(5),   is_active:true, completed_at:null },
+  { id:'t4',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Clean gutters & downspouts',       status:'done',        priority:'medium', due_date:ds(-10), is_active:true, completed_at:ts(-10) },
+  { id:'t5',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Install ceiling fan in bedroom',   status:'todo',        priority:'low',    due_date:ds(12),  is_active:true, completed_at:null },
+  { id:'t6',  user_id:'demo-user', category_id:'cat1', parent_id:null, title:'Reseal driveway cracks',           status:'done',        priority:'medium', due_date:ds(-5),  is_active:true, completed_at:ts(-5) },
+  { id:'t7',  user_id:'demo-user', category_id:'cat1', parent_id:'t2', title:'Buy paint supplies at Home Depot', status:'done',        priority:'medium', due_date:ds(-2),  is_active:true, completed_at:ts(-2) },
+  { id:'t8',  user_id:'demo-user', category_id:'cat1', parent_id:'t2', title:'Tape trim and baseboards',         status:'in_progress', priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  // MOTORCYCLE
+  { id:'t9',  user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Oil & filter change',              status:'todo',        priority:'urgent', due_date:ds(-5),  is_active:true, completed_at:null },
+  { id:'t10', user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Replace front & rear tires',       status:'todo',        priority:'high',   due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t11', user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Chain lubrication & tension check',status:'done',        priority:'medium', due_date:ds(-7),  is_active:true, completed_at:ts(-7) },
+  { id:'t12', user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Renew registration tags',          status:'todo',        priority:'urgent', due_date:ds(-1),  is_active:true, completed_at:null },
+  { id:'t13', user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Full detail & polish bodywork',    status:'todo',        priority:'low',    due_date:ds(14),  is_active:true, completed_at:null },
+  { id:'t14', user_id:'demo-user', category_id:'cat2', parent_id:null, title:'Check brake pads',                 status:'done',        priority:'high',   due_date:ds(-4),  is_active:true, completed_at:ts(-4) },
+  // JET SKI
+  { id:'t15', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Winterize and flush engine',       status:'done',        priority:'high',   due_date:ds(-14), is_active:true, completed_at:ts(-14) },
+  { id:'t16', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Replace spark plugs',              status:'todo',        priority:'high',   due_date:ds(-2),  is_active:true, completed_at:null },
+  { id:'t17', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Charge & test battery',            status:'todo',        priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t18', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Wax & buff hull',                  status:'todo',        priority:'low',    due_date:ds(7),   is_active:true, completed_at:null },
+  { id:'t19', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Book marina storage slot',         status:'done',        priority:'medium', due_date:ds(-6),  is_active:true, completed_at:ts(-6) },
+  { id:'t20', user_id:'demo-user', category_id:'cat3', parent_id:null, title:'Inspect life jackets & flares',    status:'todo',        priority:'medium', due_date:ds(3),   is_active:true, completed_at:null },
+  // CAR
+  { id:'t21', user_id:'demo-user', category_id:'cat4', parent_id:null, title:'Oil change — 5,000 miles overdue', status:'todo',        priority:'urgent', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t22', user_id:'demo-user', category_id:'cat4', parent_id:null, title:'Replace front brake pads',         status:'todo',        priority:'high',   due_date:ds(-1),  is_active:true, completed_at:null },
+  { id:'t23', user_id:'demo-user', category_id:'cat4', parent_id:null, title:'Tire rotation & balance',          status:'done',        priority:'medium', due_date:ds(-8),  is_active:true, completed_at:ts(-8) },
+  { id:'t24', user_id:'demo-user', category_id:'cat4', parent_id:null, title:'Interior detail & vacuum',         status:'todo',        priority:'low',    due_date:ds(6),   is_active:true, completed_at:null },
+  { id:'t25', user_id:'demo-user', category_id:'cat4', parent_id:null, title:'Replace windshield wipers',        status:'done',        priority:'low',    due_date:ds(-3),  is_active:true, completed_at:ts(-3) },
+  // GARDEN
+  { id:'t26', user_id:'demo-user', category_id:'cat5', parent_id:null, title:'Plant tomatoes & peppers',         status:'todo',        priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t27', user_id:'demo-user', category_id:'cat5', parent_id:null, title:'Fertilize front lawn',             status:'todo',        priority:'medium', due_date:ds(3),   is_active:true, completed_at:null },
+  { id:'t28', user_id:'demo-user', category_id:'cat5', parent_id:null, title:'Trim hedges & shape shrubs',       status:'todo',        priority:'low',    due_date:ds(-4),  is_active:true, completed_at:null },
+  { id:'t29', user_id:'demo-user', category_id:'cat5', parent_id:null, title:'Install drip irrigation system',   status:'in_progress', priority:'high',   due_date:ds(10),  is_active:true, completed_at:null },
+  { id:'t30', user_id:'demo-user', category_id:'cat5', parent_id:null, title:'Order heirloom seed packets',      status:'done',        priority:'low',    due_date:ds(-5),  is_active:true, completed_at:ts(-5) },
+  // Q3 LAUNCH
+  { id:'t31', user_id:'demo-user', category_id:'cat6', parent_id:null, title:'Finalize product specs doc',       status:'todo',        priority:'urgent', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t32', user_id:'demo-user', category_id:'cat6', parent_id:null, title:'Design review with UX team',       status:'todo',        priority:'high',   due_date:ds(-2),  is_active:true, completed_at:null },
+  { id:'t33', user_id:'demo-user', category_id:'cat6', parent_id:null, title:'QA regression testing',            status:'in_progress', priority:'high',   due_date:ds(4),   is_active:true, completed_at:null },
+  { id:'t34', user_id:'demo-user', category_id:'cat6', parent_id:null, title:'Write launch marketing brief',     status:'todo',        priority:'medium', due_date:ds(5),   is_active:true, completed_at:null },
+  { id:'t35', user_id:'demo-user', category_id:'cat6', parent_id:null, title:'Launch day checklist review',      status:'done',        priority:'high',   due_date:ds(-1),  is_active:true, completed_at:ts(-1) },
+  // CLIENT PROJECTS
+  { id:'t36', user_id:'demo-user', category_id:'cat7', parent_id:null, title:'Proposal for Apex Corp project',   status:'todo',        priority:'urgent', due_date:ds(-3),  is_active:true, completed_at:null },
+  { id:'t37', user_id:'demo-user', category_id:'cat7', parent_id:null, title:'Weekly status report',             status:'done',        priority:'medium', due_date:ds(-1),  is_active:true, completed_at:ts(-1) },
+  { id:'t38', user_id:'demo-user', category_id:'cat7', parent_id:null, title:'Invoice — Smith & Co. retainer',   status:'todo',        priority:'high',   due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t39', user_id:'demo-user', category_id:'cat7', parent_id:null, title:'Prep slides for Thursday call',    status:'todo',        priority:'medium', due_date:ds(2),   is_active:true, completed_at:null },
+  // FITNESS
+  { id:'t40', user_id:'demo-user', category_id:'cat8', parent_id:null, title:'Morning 5-mile run',               status:'done',        priority:'medium', due_date:ds(0),   is_active:true, completed_at:ts(0) },
+  { id:'t41', user_id:'demo-user', category_id:'cat8', parent_id:null, title:'Leg day at the gym',               status:'todo',        priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t42', user_id:'demo-user', category_id:'cat8', parent_id:null, title:'Sunday meal prep',                 status:'done',        priority:'medium', due_date:ds(-2),  is_active:true, completed_at:ts(-2) },
+  { id:'t43', user_id:'demo-user', category_id:'cat8', parent_id:null, title:'Register for local 5K race',       status:'todo',        priority:'low',    due_date:ds(7),   is_active:true, completed_at:null },
+  // HEALTH
+  { id:'t44', user_id:'demo-user', category_id:'cat9', parent_id:null, title:'Annual physical exam',             status:'todo',        priority:'high',   due_date:ds(-6),  is_active:true, completed_at:null },
+  { id:'t45', user_id:'demo-user', category_id:'cat9', parent_id:null, title:'Dentist — overdue 18 months',      status:'todo',        priority:'urgent', due_date:ds(-10), is_active:true, completed_at:null },
+  { id:'t46', user_id:'demo-user', category_id:'cat9', parent_id:null, title:'Eye exam & new glasses',           status:'todo',        priority:'medium', due_date:ds(4),   is_active:true, completed_at:null },
+  { id:'t47', user_id:'demo-user', category_id:'cat9', parent_id:null, title:'Pick up prescription refill',      status:'todo',        priority:'high',   due_date:ds(0),   is_active:true, completed_at:null },
+  // GUITAR
+  { id:'t48', user_id:'demo-user', category_id:'cat10', parent_id:null, title:'Practice F barre chord 30 min',  status:'todo',        priority:'medium', due_date:ds(0),   is_active:true, completed_at:null },
+  { id:'t49', user_id:'demo-user', category_id:'cat10', parent_id:null, title:'Learn "Wonderwall" chord changes',status:'in_progress', priority:'low',    due_date:ds(6),   is_active:true, completed_at:null },
+  { id:'t50', user_id:'demo-user', category_id:'cat10', parent_id:null, title:'Tune guitar & replace B string',  status:'done',        priority:'low',    due_date:ds(-3),  is_active:true, completed_at:ts(-3) },
+  { id:'t51', user_id:'demo-user', category_id:'cat10', parent_id:null, title:'Buy a pack of Dunlop picks',      status:'todo',        priority:'low',    due_date:ds(5),   is_active:true, completed_at:null },
+  // TRAVEL
+  { id:'t52', user_id:'demo-user', category_id:'cat11', parent_id:null, title:'Book flights to Japan (Oct)',     status:'todo',        priority:'high',   due_date:ds(2),   is_active:true, completed_at:null },
+  { id:'t53', user_id:'demo-user', category_id:'cat11', parent_id:null, title:'Research Kyoto ryokan hotels',    status:'in_progress', priority:'medium', due_date:ds(8),   is_active:true, completed_at:null },
+  { id:'t54', user_id:'demo-user', category_id:'cat11', parent_id:null, title:'Get travel insurance quotes',     status:'todo',        priority:'high',   due_date:ds(-1),  is_active:true, completed_at:null },
+  { id:'t55', user_id:'demo-user', category_id:'cat11', parent_id:null, title:'Buy new carry-on luggage',        status:'done',        priority:'medium', due_date:ds(-4),  is_active:true, completed_at:ts(-4) },
+  { id:'t56', user_id:'demo-user', category_id:'cat11', parent_id:null, title:'Renew passport (expires Aug)',    status:'todo',        priority:'urgent', due_date:ds(-7),  is_active:true, completed_at:null },
+];
+
+var allGoals = [
+  { id:'g1',  user_id:'demo-user', category_id:'cat11', name:'Japan Autumn Trip',           description:'2-week trip through Tokyo, Kyoto, and Osaka during fall foliage season.', type:'vacation',    status:'planning',    target_date:ds(180), estimated_cost:6500, is_active:true },
+  { id:'g2',  user_id:'demo-user', category_id:'cat11', name:'Road Trip — Pacific Coast Hwy', description:'Drive Highway 1 from San Francisco to San Diego over 10 days.',           type:'vacation',    status:'dreaming',    target_date:ds(90),  estimated_cost:2200, is_active:true },
+  { id:'g3',  user_id:'demo-user', category_id:'cat11', name:'Cancún All-Inclusive',         description:'Family beach vacation, all-inclusive resort for 7 days.',                  type:'vacation',    status:'booked',      target_date:ds(60),  estimated_cost:3800, is_active:true },
+  { id:'g4',  user_id:'demo-user', category_id:'cat8',  name:'Run a Half Marathon',          description:'Train consistently and complete a 13.1 mile race.',                        type:'goal',        status:'in_progress', target_date:ds(120), estimated_cost:150,  is_active:true },
+  { id:'g5',  user_id:'demo-user', category_id:'cat1',  name:'Finish Basement Renovation',   description:'Full basement finishing — drywall, flooring, bar area.',                   type:'goal',        status:'planning',    target_date:ds(365), estimated_cost:18000, is_active:true },
+  { id:'g6',  user_id:'demo-user', category_id:'cat6',  name:'Launch SaaS Product v2.0',     description:'Full redesign and feature expansion for Q3 launch.',                       type:'goal',        status:'in_progress', target_date:ds(45),  estimated_cost:null, is_active:true },
+  { id:'g7',  user_id:'demo-user', category_id:null,    name:'Skydive solo jump',            description:'Get licensed for solo skydiving. Complete AFF course.',                    type:'bucket_list', status:'dreaming',    target_date:null,    estimated_cost:2500, is_active:true },
+  { id:'g8',  user_id:'demo-user', category_id:null,    name:'See the Northern Lights',      description:'Alaska or Iceland — witness aurora borealis in person.',                   type:'bucket_list', status:'dreaming',    target_date:null,    estimated_cost:4000, is_active:true },
+  { id:'g9',  user_id:'demo-user', category_id:null,    name:'Ride motorcycle across country', description:'Coast-to-coast motorcycle trip on the open road.',                       type:'bucket_list', status:'planning',    target_date:null,    estimated_cost:3500, is_active:true },
+  { id:'g10', user_id:'demo-user', category_id:null,    name:'Learn to surf',                description:'Take surfing lessons in Hawaii or California.',                             type:'bucket_list', status:'dreaming',    target_date:null,    estimated_cost:800,  is_active:true },
+  { id:'g11', user_id:'demo-user', category_id:null,    name:'Write a novel',                description:'Finally commit to writing a full fiction novel. 80k words.',               type:'someday',     status:'dreaming',    target_date:null,    estimated_cost:null, is_active:true },
+  { id:'g12', user_id:'demo-user', category_id:null,    name:'Buy a sailboat',               description:'Learn to sail and eventually own a 28ft+ sailboat.',                       type:'someday',     status:'dreaming',    target_date:null,    estimated_cost:35000, is_active:true },
+  { id:'g13', user_id:'demo-user', category_id:null,    name:'Build a workshop garage',      description:'Detached workshop with woodworking tools and lift for the car.',            type:'someday',     status:'planning',    target_date:null,    estimated_cost:45000, is_active:true },
+  { id:'g14', user_id:'demo-user', category_id:'cat11', name:'Europe River Cruise',          description:'7-day Rhine river cruise with stops in Germany, Austria, Switzerland.',    type:'vacation',    status:'dreaming',    target_date:ds(500), estimated_cost:7200, is_active:true },
+  { id:'g15', user_id:'demo-user', category_id:null,    name:'Pay off the house',            description:'Accelerate mortgage payoff with extra principal payments.',                type:'goal',        status:'in_progress', target_date:ds(1800),estimated_cost:null, is_active:true },
+];
+// ===== END MOCK DATA =====
+
 var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var userId = null;
-var allCategories = [], taskCounts = {};
+
+
 var editingCatId = null;
 var selectedEmoji = '📋', selectedColor = '#4F46E5';
 var EMOJIS = ['🏠','🚗','🌿','💼','👤','🎨','🎯','✈️','🏋️','📚','🛒','💊','🔧','🎵','🍽️','💰','🐾','👶','💻','🌙','☀️','🎮','🏕️','🛁','🌺','🏔️','🎸','🎬','📝','⚽'];
@@ -481,29 +599,14 @@ async function deleteCat() {
   closeCatModal(); renderCatList(); toast('Category deleted');
 }
 
-async function loadData() {
-  var catRes = await sb.from('todo_categories').select('*').eq('user_id',userId).eq('is_active',true).order('section').order('sort_order');
-  allCategories = catRes.data || [];
-  var taskRes = await sb.from('todo_tasks').select('category_id').eq('user_id',userId).eq('is_active',true).neq('status','done');
-  (taskRes.data||[]).forEach(function(t){ if(t.category_id) taskCounts[t.category_id]=(taskCounts[t.category_id]||0)+1; });
+function loadData() {
+  taskCounts = {};
+  allTasks.forEach(function(t){ if(t.category_id) taskCounts[t.category_id]=(taskCounts[t.category_id]||0)+1; });
   renderCatList();
-  // Check sub
-  var tenantRes = await sb.from('tenants').select('subscription_status,trial_end').eq('owner_id',userId).maybeSingle();
-  if (tenantRes.data) {
-    var ss = tenantRes.data.subscription_status;
-    document.getElementById('subStatus').textContent = ss==='active' ? '✅ Active subscription' : ss==='trialing' ? '🔄 Free trial' : '⚠️ No active subscription';
-  } else {
-    document.getElementById('subStatus').textContent = 'No subscription found';
-  }
+  document.getElementById('subStatus').textContent = '✅ Active subscription — Life Logic Pro';
 }
-
-async function init() {
-  var s = await checkAuth(); if (!s) return;
-  userId = s.user.id;
-  document.getElementById('userEmail').textContent = s.user.email || 'Unknown';
-  loadData();
-}
-init();
+document.getElementById('userEmail').textContent = 'demo@lifelogic.app';
+loadData();
 </script>
 </body>
 </html>
