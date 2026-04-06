@@ -696,9 +696,14 @@ async function toggleTask(e,id,cur){
 
 async function quickAdd(cid){
   var inp=document.getElementById('qa-'+cid);if(!inp)return;
-  var title=inp.value.trim();if(!title)return;
-  var r=await sb.from('life_tasks').insert({title:title,category_id:cid,user_id:userId,status:'todo',priority:'medium',is_active:true}).select().single();
-  if(!r.error){_tasks.push(r.data);inp.value='';renderAll();toast('Task added!');}
+  var title=inp.value.trim();
+  if(!title){inp.focus();toast('Type a task title first');return;}
+  var r=await sb.from('life_tasks').insert({
+    title:title,category_id:cid,user_id:userId,
+    status:'todo',priority:'medium',is_active:true
+  }).select().single();
+  if(r.error){toast('Error: '+r.error.message);return;}
+  _tasks.push(r.data);inp.value='';renderAll();toast('Task added!');
 }
 async function addSub(pid,cid){
   var inp=document.getElementById('sub-'+pid);if(!inp)return;
@@ -708,6 +713,7 @@ async function addSub(pid,cid){
 }
 
 function openTaskModal(id){
+  try{
   _editTask=id||null;
   document.getElementById('tmTitle').textContent=id?'Edit Task':'New Task';
   document.getElementById('tmDel').style.display=id?'block':'none';
@@ -732,6 +738,7 @@ function openTaskModal(id){
     }
   }
   document.getElementById('taskModal').classList.add('open');
+  }catch(e){console.error('openTaskModal error:',e);toast('Error opening modal');}
 }
 function closeTaskModal(){document.getElementById('taskModal').classList.remove('open');}
 
@@ -748,7 +755,7 @@ async function saveTask(){
   var r;
   if(_editTask){r=await sb.from('life_tasks').update(d).eq('id',_editTask).select().single();if(!r.error){var i=_tasks.findIndex(function(t){return t.id===_editTask;});if(i>=0)_tasks[i]=r.data;}}
   else{r=await sb.from('life_tasks').insert(d).select().single();if(!r.error)_tasks.push(r.data);}
-  if(r.error){toast('Error: '+r.error.message);return;}
+  if(!r||r.error){toast('Error: '+(r&&r.error?r.error.message:'Unknown error'));return;}
   toast(_editTask?'Task updated!':'Task added!');closeTaskModal();renderAll();
 }
 async function deleteTask(){
