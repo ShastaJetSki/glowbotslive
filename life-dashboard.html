@@ -611,12 +611,12 @@ function addDays(n){var d=new Date();d.setDate(d.getDate()+n);return d.toISOStri
 // ── Cat icon/color picker helpers ──
 function buildIconPicker(pid,selIcon){
   document.getElementById(pid).innerHTML=CAT_ICONS.map(function(n){
-    return '<div class="ip-opt'+(n===selIcon?' sel':'')+'" onclick="pickIcon(this,''+n+'')">'+icon(n,18)+'</div>';
+    return '<div class="ip-opt'+(n===selIcon?' sel':'')+'" onclick="pickIcon(this,\''+n+'\')">'+icon(n,18)+'</div>';
   }).join('');
 }
 function buildColorPicker(pid,selColor){
   document.getElementById(pid).innerHTML=CAT_COLORS.map(function(c){
-    return '<div class="cp-opt'+(c===selColor?' sel':'')+'" style="background:'+c+'" onclick="pickColor(this,''+c+'')"></div>';
+    return '<div class="cp-opt'+(c===selColor?' sel':'')+'" style="background:'+c+'" onclick="pickColor(this,\''+c+'\')"></div>';
   }).join('');
 }
 function pickIcon(el,n){document.querySelectorAll('.ip-opt').forEach(function(x){x.classList.remove('sel');});el.classList.add('sel');_selIcon=n;}
@@ -739,7 +739,7 @@ var DEMO={
       {cat:'The Ring',name:'Get Booked on Regional TV Taping',type:'goal',status:'planning',desc:'Local cable wrestling show tapes every 3 months. Need to contact the booker directly'},
       {cat:'The Ring',name:'Wrestling School — Advanced Submission Course',type:'goal',status:'planning',cost:3500,desc:'Martinez Wrestling Academy 8-week program. Chain wrestling and submission holds.'},
       {cat:'The Ring',name:'European Wrestling Tour',type:'vacation',status:'someday',cost:12000,desc:"UK indie circuit, catch wrestling in Wigan, Germany's Westside Xtreme Wrestling"},
-      {cat:'The Shop',name:'Open My Own Shop — Big Matt's Auto',type:'goal',status:'dreaming',cost:95000,desc:'4 bays, alignment rack, tire machine. 3-4 year plan. Location TBD.'}
+      {cat:'The Shop',name:'Open My Own Shop — Big Matt\'s Auto',type:'goal',status:'dreaming',cost:95000,desc:'4 bays, alignment rack, tire machine. 3-4 year plan. Location TBD.'}
     ]
   }
 };
@@ -980,11 +980,8 @@ function updatePersonaHeader(pid){
 function renderDemoBar(){
   var active=['bobby','brenda','bigmatt'].filter(function(p){return !localStorage.getItem('ll_demo_deleted_'+p);});
   var bar=document.getElementById('demoBar');
-  // Always show bar if there are active (non-deleted) personas OR if we have any data
-  var hasData=_cats.length>0;
-  bar.style.display=(active.length||hasData)?'flex':'none';
+  bar.style.display=(active.length||_cats.length>0)?'flex':'none';
   if(!active.length){
-    // All deleted — show "add your own" message
     document.getElementById('demoPersonas').innerHTML=
       '<span style="color:rgba(255,255,255,.5);font-size:12px;">Demo users removed. Add your own categories below.</span>';
     return;
@@ -992,10 +989,12 @@ function renderDemoBar(){
   document.getElementById('demoPersonas').innerHTML=active.map(function(pid){
     var P=DEMO[pid],isAct=_activePersona===pid;
     return '<div class="persona-group">'+
-      '<button class="persona-btn'+(isAct?' active':'')+'" data-pid="'+pid+'" onclick="switchPersona(''+pid+'')">'+
+      '<button class="persona-btn'+(isAct?' active':'')+'" data-pid="'+pid+'" onclick="switchPersona(this.dataset.pid)">'+
         '<div class="persona-avatar" style="background:'+P.color+'">'+P.initials+'</div>'+P.name+
       '</button>'+
-      '<button class="persona-del-btn" onclick="promptDelete(''+pid+'')" title="Delete '+P.name+''s data forever">× Delete</button>'+
+      '<button class="persona-del-btn" onclick="promptDelete(this.previousElementSibling.dataset.pid)">'+
+        '× Delete'+
+      '</button>'+
     '</div>';
   }).join('');
 }
@@ -1024,17 +1023,17 @@ function renderStats(tasks){
 }
 
 function renderMyDay(cats,tasks){
-  var td=todayStr(),today=tasks.filter(function(t){return t.due_date===td&&t.status!=='done';});
+  var td=todayStr();
+  var today=tasks.filter(function(t){return t.due_date===td&&t.status!=='done';});
   var w=document.getElementById('mydayWrap');w.style.display=today.length?'block':'none';
   document.getElementById('mydayGrid').innerHTML=today.map(function(t){
     var cat=cats.find(function(c){return c.id===t.category_id;})||{};
-    return '<div class="myday-item" onclick="location.href='life-tasks.html?cat='+t.category_id+''">'+
+    return '<div class="myday-item" data-href="life-tasks.html?cat='+t.category_id+'" onclick="goTo(this)">'+
       '<div class="myday-dot" style="background:'+(cat.color||'#4F46E5')+'"></div>'+
       '<span class="myday-title">'+esc(t.title)+'</span>'+
       '<span class="badge b-'+(t.priority||'medium')+'">'+(t.priority||'medium')+'</span></div>';
   }).join('');
 }
-
 function renderUpcoming(cats,tasks){
   var td=todayStr(),nxt=addDays(7);
   var coming=tasks.filter(function(t){return t.due_date&&t.due_date>td&&t.due_date<=nxt&&t.status!=='done';});
@@ -1048,20 +1047,19 @@ function renderUpcoming(cats,tasks){
       '<span class="badge b-'+(t.priority||'medium')+'">'+(t.priority||'medium')+'</span></div>';
   }).join('');
 }
-
 function renderCats(cats,tasks){
   var td=todayStr();
-  var html=cats.map(function(cat){
+  var html2=cats.map(function(cat){
     var ct=tasks.filter(function(t){return t.category_id===cat.id;});
     var active=ct.filter(function(t){return t.status!=='done';});
     var done=ct.filter(function(t){return t.status==='done';});
     var over=active.filter(function(t){return t.due_date&&t.due_date<td;});
     var pct=ct.length?Math.round(done.length/ct.length*100):0;
-    return '<div class="cat-card" onclick="location.href='life-tasks.html?cat='+cat.id+''">'+
+    return '<div class="cat-card" data-href="life-tasks.html?cat='+cat.id+'" onclick="goTo(this)">'+
       '<div class="cat-top">'+
         '<div class="cat-ico" style="background:'+(cat.color||'#4F46E5')+'">'+icon(cat.icon||'clipboard',20)+'</div>'+
         '<div><div class="cat-name">'+esc(cat.name)+'</div><div class="cat-sec-tag">'+esc(cat.section||'')+'</div></div>'+
-        '<button class="cat-edit-btn" onclick="event.stopPropagation();openCatModal(''+cat.id+'')">'+icon('edit',14)+'</button>'+
+        '<button class="cat-edit-btn" data-cid="'+cat.id+'" onclick="event.stopPropagation();openCatModal(this.dataset.cid)">'+icon('edit',14)+'</button>'+
       '</div>'+
       '<div class="cat-stats">'+
         '<span class="cat-stat"><strong>'+active.length+'</strong> active</span>'+
@@ -1070,10 +1068,10 @@ function renderCats(cats,tasks){
       '<div class="cat-prog-bar"><div class="cat-prog-fill" style="width:'+pct+'%;background:'+(cat.color||'#4F46E5')+'"></div></div>'+
     '</div>';
   }).join('');
-  html+='<div class="cat-add-btn" onclick="openCatModal()">'+icon('plus',18)+' Add Category</div>';
-  document.getElementById('catGrid').innerHTML=html;
+  html2+='<div class="cat-add-btn" onclick="openCatModal()">'+icon('plus',18)+' Add Category</div>';
+  document.getElementById('catGrid').innerHTML=html2;
 }
-
+function goTo(el){location.href=el.dataset.href;}
 function openCatModal(id){
   _editCat=id||null;_selIcon='clipboard';_selColor='#4F46E5';
   document.getElementById('cmTitle').textContent=id?'Edit Category':'New Category';
