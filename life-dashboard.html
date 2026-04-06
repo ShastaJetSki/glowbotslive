@@ -368,6 +368,10 @@ body.dark #toast{background:#f4f4f5;color:#18181b;}
     <span class="demo-loading">Loading demo data…</span>
   </div>
   <div class="demo-bar-right">
+    <button class="help-btn" onclick="resetDemoData()" title="Clear local state and re-seed demo data" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);">
+      <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+      Reset Demo
+    </button>
     <button class="help-btn" onclick="openFaq()">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       Help &amp; FAQ
@@ -734,15 +738,73 @@ var DEMO={
   }
 };
 
+function resetDemoData(){
+  if(!confirm('Clear all demo state and re-seed? This will reload the page.'))return;
+  ['bobby','brenda','bigmatt'].forEach(function(p){
+    localStorage.removeItem('ll_demo_ids_'+p);
+    localStorage.removeItem('ll_demo_seeded_'+p);
+    localStorage.removeItem('ll_demo_deleted_'+p);
+  });
+  localStorage.removeItem('ll_demo_seeded');
+  localStorage.removeItem('ll_active_persona');
+  location.reload();
+}
+
 async function init(){
   var s=await checkAuth();if(!s)return;userId=s.user.id;
+
+  // 1. Check tables exist
+  var tableCheck=await sb.from('life_categories').select('id').limit(1);
+  if(tableCheck.error&&(tableCheck.error.code==='42P01'||tableCheck.error.message.indexOf('does not exist')>=0)){
+    document.getElementById('catGrid').innerHTML=
+      '<div style="grid-column:1/-1;padding:32px 24px;text-align:center;'+
+      'background:rgba(220,38,38,.06);border:1.5px solid rgba(220,38,38,.2);'+
+      'border-radius:var(--r-lg);">'+
+      '<div style="font-size:22px;margin-bottom:10px;">Warning</div>'+
+      '<strong style="font-size:15px;display:block;margin-bottom:8px;color:var(--red);">Database tables not found</strong>'+
+      '<div style="font-size:13px;color:var(--muted);max-width:440px;margin:0 auto;">'+
+      'Please run <strong>life-setup.sql</strong> in your Supabase SQL Editor first, then refresh this page.</div>'+
+      '<button onclick="location.reload()" style="margin-top:16px;padding:9px 22px;background:var(--accent);'+
+      'color:#fff;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:700;cursor:pointer;">'+
+      'Refresh</button></div>';
+    return;
+  }
+
+  // 2. Detect stale localStorage from a previously failed seed
+  var stale=false;
+  ['bobby','brenda','bigmatt'].forEach(function(p){
+    if(!localStorage.getItem('ll_demo_deleted_'+p)){
+      var raw=localStorage.getItem('ll_demo_ids_'+p);
+      var ids=raw?JSON.parse(raw):{cats:[]};
+      if(!ids.cats||ids.cats.length===0)stale=true;
+    }
+  });
+  if(stale){
+    ['bobby','brenda','bigmatt'].forEach(function(p){
+      localStorage.removeItem('ll_demo_ids_'+p);
+      localStorage.removeItem('ll_demo_seeded_'+p);
+    });
+    localStorage.removeItem('ll_demo_seeded');
+  }
+
   await loadData();
+
+  // 3. Seed if needed
   if(!localStorage.getItem('ll_demo_seeded')){
     document.getElementById('demoBar').style.display='flex';
-    document.getElementById('demoPersonas').innerHTML='<span class="demo-loading">Setting up demo data… this takes a moment</span>';
-    await seedAll();
+    document.getElementById('demoPersonas').innerHTML=
+      '<span class="demo-loading">Setting up demo data — one moment...</span>';
+    var seedOk=await seedAll();
+    if(!seedOk){
+      document.getElementById('demoPersonas').innerHTML=
+        '<span style="color:#fca5a5;font-size:12px;font-weight:600;">'+
+        'Demo setup failed — check Supabase RLS, then '+
+        '<a href="#" onclick="location.reload();return false;" '+
+        'style="color:#fca5a5;text-decoration:underline;">refresh</a></span>';
+    }
     await loadData();
   }
+
   var first=['bobby','brenda','bigmatt'].find(function(p){return !localStorage.getItem('ll_demo_deleted_'+p);});
   _activePersona=localStorage.getItem('ll_active_persona')||first||null;
   if(_activePersona&&localStorage.getItem('ll_demo_deleted_'+_activePersona))_activePersona=first||null;
@@ -759,11 +821,18 @@ async function loadData(){
 }
 
 async function seedAll(){
+  var anyOk=false;
   for(var p of ['bobby','brenda','bigmatt']){
-    if(!localStorage.getItem('ll_demo_seeded_'+p)&&!localStorage.getItem('ll_demo_deleted_'+p))
+    if(!localStorage.getItem('ll_demo_seeded_'+p)&&!localStorage.getItem('ll_demo_deleted_'+p)){
       await seedPersona(p);
+      var raw=localStorage.getItem('ll_demo_ids_'+p);
+      if(raw&&JSON.parse(raw).cats.length>0)anyOk=true;
+    } else {
+      anyOk=true; // already seeded or deleted
+    }
   }
-  localStorage.setItem('ll_demo_seeded','1');
+  if(anyOk)localStorage.setItem('ll_demo_seeded','1');
+  return anyOk;
 }
 
 async function seedPersona(pid){
