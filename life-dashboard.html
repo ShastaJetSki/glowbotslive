@@ -330,6 +330,9 @@ body.dark #toast{background:#f4f4f5;color:#18181b;}
 }
 @media(max-width:480px){.cat-grid{grid-template-columns:1fr;}}
 
+
+[data-nav]{cursor:pointer;}
+[data-nav]:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
 </style>
 </head>
 <body>
@@ -1022,90 +1025,80 @@ function renderStats(tasks){
   document.getElementById('sDone').textContent=tasks.filter(function(t){return t.status==='done'&&t.completed_at&&t.completed_at>=wk+'T00:00:00Z';}).length;
 }
 
+// ── Navigation helper — avoids all quote-escaping in rendered HTML ──
+document.addEventListener('click', function(e){
+  var card = e.target.closest('[data-nav]');
+  if(card && !e.target.closest('[data-stop]')){
+    window.location.href = card.dataset.nav;
+  }
+});
+
 function renderMyDay(cats,tasks){
   var td=todayStr();
   var today=tasks.filter(function(t){return t.due_date===td&&t.status!=='done';});
-  var w=document.getElementById('mydayWrap');w.style.display=today.length?'block':'none';
+  var w=document.getElementById('mydayWrap');
+  w.style.display=today.length?'block':'none';
   document.getElementById('mydayGrid').innerHTML=today.map(function(t){
     var cat=cats.find(function(c){return c.id===t.category_id;})||{};
-    return '<div class="myday-item" data-href="life-tasks.html?cat='+t.category_id+'" onclick="goTo(this)">'+
-      '<div class="myday-dot" style="background:'+(cat.color||'#4F46E5')+'"></div>'+
+    var color=cat.color||'#4F46E5';
+    var pri=t.priority||'medium';
+    return '<div class="myday-item" data-nav="life-tasks.html?cat='+t.category_id+'">'+
+      '<div class="myday-dot" style="background:'+color+'"></div>'+
       '<span class="myday-title">'+esc(t.title)+'</span>'+
-      '<span class="badge b-'+(t.priority||'medium')+'">'+(t.priority||'medium')+'</span></div>';
+      '<span class="badge b-'+pri+'">'+pri+'</span></div>';
   }).join('');
 }
+
 function renderUpcoming(cats,tasks){
   var td=todayStr(),nxt=addDays(7);
-  var coming=tasks.filter(function(t){return t.due_date&&t.due_date>td&&t.due_date<=nxt&&t.status!=='done';});
-  var w=document.getElementById('upWrap');w.style.display=coming.length?'block':'none';
+  var coming=tasks.filter(function(t){
+    return t.due_date&&t.due_date>td&&t.due_date<=nxt&&t.status!=='done';
+  });
+  var w=document.getElementById('upWrap');
+  w.style.display=coming.length?'block':'none';
   document.getElementById('upList').innerHTML=coming.slice(0,5).map(function(t){
     var cat=cats.find(function(c){return c.id===t.category_id;})||{};
     var dt=new Date(t.due_date+'T00:00:00');
+    var pri=t.priority||'medium';
     return '<div class="up-item">'+
-      '<div class="up-date"><div class="up-day">'+dt.getDate()+'</div><div class="up-mon">'+dt.toLocaleDateString('en-US',{month:'short'})+'</div></div>'+
-      '<div class="up-info"><div class="up-title">'+esc(t.title)+'</div><div class="up-cat">'+esc(cat.name||'')+'</div></div>'+
-      '<span class="badge b-'+(t.priority||'medium')+'">'+(t.priority||'medium')+'</span></div>';
+      '<div class="up-date"><div class="up-day">'+dt.getDate()+'</div>'+
+      '<div class="up-mon">'+dt.toLocaleDateString('en-US',{month:'short'})+'</div></div>'+
+      '<div class="up-info"><div class="up-title">'+esc(t.title)+'</div>'+
+      '<div class="up-cat">'+esc(cat.name||'')+'</div></div>'+
+      '<span class="badge b-'+pri+'">'+pri+'</span></div>';
   }).join('');
 }
+
 function renderCats(cats,tasks){
   var td=todayStr();
-  var html2=cats.map(function(cat){
+  var h=cats.map(function(cat){
     var ct=tasks.filter(function(t){return t.category_id===cat.id;});
     var active=ct.filter(function(t){return t.status!=='done';});
     var done=ct.filter(function(t){return t.status==='done';});
     var over=active.filter(function(t){return t.due_date&&t.due_date<td;});
     var pct=ct.length?Math.round(done.length/ct.length*100):0;
-    return '<div class="cat-card" data-href="life-tasks.html?cat='+cat.id+'" onclick="goTo(this)">'+
+    var color=cat.color||'#4F46E5';
+    var overdueHtml=over.length
+      ?'<span class="cat-overdue">'+over.length+' overdue</span>'
+      :'<span class="cat-stat"><strong>'+done.length+'</strong> done</span>';
+    return '<div class="cat-card" data-nav="life-tasks.html?cat='+cat.id+'">'+
       '<div class="cat-top">'+
-        '<div class="cat-ico" style="background:'+(cat.color||'#4F46E5')+'">'+icon(cat.icon||'clipboard',20)+'</div>'+
-        '<div><div class="cat-name">'+esc(cat.name)+'</div><div class="cat-sec-tag">'+esc(cat.section||'')+'</div></div>'+
-        '<button class="cat-edit-btn" data-cid="'+cat.id+'" onclick="event.stopPropagation();openCatModal(this.dataset.cid)">'+icon('edit',14)+'</button>'+
+        '<div class="cat-ico" style="background:'+color+'">'+icon(cat.icon||'clipboard',20)+'</div>'+
+        '<div><div class="cat-name">'+esc(cat.name)+'</div>'+
+        '<div class="cat-sec-tag">'+esc(cat.section||'')+'</div></div>'+
+        '<button class="cat-edit-btn" data-stop="1" data-cid="'+cat.id+'" '+
+          'onclick="openCatModal(this.dataset.cid)">'+icon('edit',14)+'</button>'+
       '</div>'+
       '<div class="cat-stats">'+
         '<span class="cat-stat"><strong>'+active.length+'</strong> active</span>'+
-        (over.length?'<span class="cat-overdue">'+over.length+' overdue</span>':'<span class="cat-stat"><strong>'+done.length+'</strong> done</span>')+
+        overdueHtml+
       '</div>'+
-      '<div class="cat-prog-bar"><div class="cat-prog-fill" style="width:'+pct+'%;background:'+(cat.color||'#4F46E5')+'"></div></div>'+
+      '<div class="cat-prog-bar">'+
+        '<div class="cat-prog-fill" style="width:'+pct+'%;background:'+color+'"></div>'+
+      '</div>'+
     '</div>';
   }).join('');
-  html2+='<div class="cat-add-btn" onclick="openCatModal()">'+icon('plus',18)+' Add Category</div>';
-  document.getElementById('catGrid').innerHTML=html2;
+  h+='<div class="cat-add-btn" onclick="openCatModal()">'+icon('plus',18)+' Add Category</div>';
+  document.getElementById('catGrid').innerHTML=h;
 }
-function goTo(el){location.href=el.dataset.href;}
-function openCatModal(id){
-  _editCat=id||null;_selIcon='clipboard';_selColor='#4F46E5';
-  document.getElementById('cmTitle').textContent=id?'Edit Category':'New Category';
-  document.getElementById('cmDelBtn').style.display=id?'block':'none';
-  document.getElementById('cmName').value='';document.getElementById('cmSection').value='life';
-  if(id){var c=_cats.find(function(x){return x.id===id;});if(c){document.getElementById('cmName').value=c.name;document.getElementById('cmSection').value=c.section||'life';_selIcon=c.icon||'clipboard';_selColor=c.color||'#4F46E5';}}
-  buildIconPicker('cmIconPicker',_selIcon);buildColorPicker('cmColorPicker',_selColor);
-  document.getElementById('catModal').classList.add('open');
-}
-function closeCatModal(){document.getElementById('catModal').classList.remove('open');}
-async function saveCat(){
-  var name=document.getElementById('cmName').value.trim();if(!name){toast('Name required');return;}
-  var d={name:name,icon:_selIcon,color:_selColor,section:document.getElementById('cmSection').value,user_id:userId,is_active:true};
-  var r;
-  if(_editCat){r=await sb.from('life_categories').update(d).eq('id',_editCat).select().single();if(!r.error){var i=_cats.findIndex(function(c){return c.id===_editCat;});if(i>=0)_cats[i]=r.data;}}
-  else{r=await sb.from('life_categories').insert(d).select().single();if(!r.error)_cats.push(r.data);}
-  if(r.error){toast('Error: '+r.error.message);return;}
-  toast(_editCat?'Updated!':'Category created!');closeCatModal();renderDashboard();
-}
-async function deleteCat(){
-  if(!_editCat||!confirm('Delete this category?'))return;
-  await sb.from('life_categories').update({is_active:false}).eq('id',_editCat);
-  _cats=_cats.filter(function(c){return c.id!==_editCat;});
-  closeCatModal();renderDashboard();toast('Deleted');
-}
-
-function openFaq(){document.getElementById('faqModal').classList.add('open');}
-function showFaq(btn,id){
-  document.querySelectorAll('.faq-nav-btn').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active');
-  document.querySelectorAll('.faq-sec').forEach(function(s){s.classList.remove('show');});
-  document.getElementById('faq-'+id).classList.add('show');
-}
-init();
-</script>
-</body>
-</html>
+>
