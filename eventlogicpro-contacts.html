@@ -207,6 +207,27 @@ body.dark .type-Other{background:#374151;color:#9ca3af;}
 .cc-kpi-lbl{font-size:8px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;margin-top:2px;}
 .cc-empty{text-align:center;padding:60px 20px;color:var(--text-secondary);font-size:14px;}
 
+/* ===== HISTORY COLLAPSIBLE ===== */
+.hist-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:0;user-select:none;}
+.hist-toggle:hover .hist-label{color:var(--accent);}
+.hist-label{font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;}
+.hist-arrow{font-size:12px;color:var(--text-secondary);transition:transform .2s;}
+.hist-arrow.open{transform:rotate(180deg);}
+.hist-body{overflow:hidden;max-height:0;transition:max-height .3s ease;}
+.hist-body.open{max-height:600px;}
+/* Modal event chip search */
+.modal-ev-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-secondary);border-radius:8px;margin-bottom:10px;}
+.modal-ev-input{flex:1;border:none;background:transparent;font-size:12px;color:var(--text-primary);outline:none;font-family:inherit;}
+.modal-ev-input::placeholder{color:var(--text-secondary);}
+.modal-ev-ac{position:absolute;top:100%;left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;z-index:10;box-shadow:var(--shadow);display:none;max-height:160px;overflow-y:auto;}
+.modal-ev-ac.open{display:block;}
+.modal-ev-ac-row{padding:8px 12px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--border);}
+.modal-ev-ac-row:last-child{border-bottom:none;}
+.modal-ev-ac-row:hover{background:var(--bg-hover);}
+.modal-ev-chip{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card);font-size:11px;font-weight:600;white-space:nowrap;}
+.modal-ev-chip-x{background:transparent;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;padding:0;line-height:1;}
+.modal-ev-chip-x:hover{color:var(--accent);}
+
 /* ===== MODALS ===== */
 .modal-bg{display:none;position:fixed;inset:0;background:var(--modal-overlay);z-index:200;align-items:center;justify-content:center;padding:20px;}
 .modal-bg.active{display:flex;}
@@ -842,17 +863,11 @@ function openDet(id){
   var timelineHtml=YEARS.map(function(y){
     var st=sponsorStatusForYear(c.customer_id,y);
     var isHl=hlYr&&y===hlYr;
-    var note=isHl?'<span class="spon-note">← selected event</span>':'';
     return'<div class="spon-row'+(isHl?' spon-highlight':'')+'">'+
       '<span class="spon-yr">'+y+(isHl?'<small>★</small>':'')+'</span>'+
       '<span class="spon-status s-'+st+'">'+slabel(st)+'</span>'+
-      note+
     '</div>';
   }).join('');
-
-  var cnt=confirmedCount(c.customer_id);
-  var first=firstSponsored(c.customer_id);
-  var last=lastSponsored(c.customer_id);
 
   var TYPE_OPTS=['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','MC Club','Other'];
   var ctO='<option value="">— Select type —</option>';
@@ -872,13 +887,21 @@ function openDet(id){
       '</div>'+
     '</div>'+
 
-    '<div class="sec"><div class="sec-title">Sponsorship History — Hellapalooza</div>'+
-      '<div class="spon-timeline">'+timelineHtml+'</div>'+
-      '<div class="stat-grid" style="margin-top:10px;">'+
-        '<div class="stat-card"><div class="stat-val">'+cnt+'</div><div class="stat-lbl">Confirmed Years</div></div>'+
-        '<div class="stat-card"><div class="stat-val">'+first+'</div><div class="stat-lbl">First Sponsored</div></div>'+
-        '<div class="stat-card"><div class="stat-val">'+last+'</div><div class="stat-lbl">Last Confirmed</div></div>'+
-        '<div class="stat-card"><div class="stat-val">'+(c.sponsor_is_active===false?'Closed':'Active')+'</div><div class="stat-lbl">Status</div></div>'+
+    '<div class="sec" style="margin-top:8px;">'+
+      '<div class="hist-toggle" onclick="toggleDetHistory()">'+
+        '<span class="hist-label">Sponsorship History — Hellapalooza</span>'+
+        '<span class="hist-arrow" id="histArrow">&#9660;</span>'+
+      '</div>'+
+      '<div class="hist-body" id="histBody">'+
+        '<div style="position:relative;margin:8px 0 6px;">'+
+          '<div class="modal-ev-bar">'+
+            '<span style="font-size:12px;color:var(--text-secondary);">🔍</span>'+
+            '<input class="modal-ev-input" id="mEvInput" data-cid="'+c.customer_id+'" placeholder="Filter by event..." oninput="onModalEvSearch(this.dataset.cid)" onfocus="onModalEvSearch(this.dataset.cid)">'+
+            '<div id="mEvChip"></div>'+
+          '</div>'+
+          '<div class="modal-ev-ac" id="mEvAc"></div>'+
+        '</div>'+
+        '<div class="spon-timeline" id="detTimeline">'+timelineHtml+'</div>'+
       '</div>'+
     '</div>'+
 
@@ -927,7 +950,80 @@ function openDet(id){
 
   document.getElementById('detailModal').classList.add('active');
 }
-function closeDet(){document.getElementById('detailModal').classList.remove('active');currentEditId=null;}
+function closeDet(){document.getElementById('detailModal').classList.remove('active');currentEditId=null;mEvActiveId='';}
+
+function toggleDetHistory(){
+  var body=document.getElementById('histBody');
+  var arrow=document.getElementById('histArrow');
+  if(!body)return;
+  body.classList.toggle('open');
+  if(arrow)arrow.classList.toggle('open');
+}
+
+var mEvActiveId='';
+function onModalEvSearch(cid){
+  var q=(document.getElementById('mEvInput').value||'').toLowerCase();
+  var ac=document.getElementById('mEvAc');
+  if(mEvActiveId){ac.classList.remove('open');return;}
+  var matches=allEvents.filter(function(e){
+    return (e.event_name+' '+e.event_year).toLowerCase().includes(q);
+  });
+  if(!matches.length){ac.classList.remove('open');return;}
+  ac.innerHTML=matches.map(function(e,i){
+    var col=eventColor(i);
+    var row=document.createElement('div');
+    row.className='modal-ev-ac-row';
+    row.dataset.eid=e.id;
+    row.dataset.cid=cid;
+    row.innerHTML='<div style="width:7px;height:7px;border-radius:50%;background:'+col+';flex-shrink:0;margin-right:6px;"></div>'+e.event_name+' '+e.event_year;
+    row.addEventListener('mousedown',function(){selectModalEvent(this.dataset.eid,this.dataset.cid);});
+    return row.outerHTML;
+  }).join('');
+  ac.classList.add('open');
+}
+
+function selectModalEvent(eid,cid){
+  mEvActiveId=String(eid);
+  var ev=allEvents.find(function(e){return String(e.id)===mEvActiveId;});
+  if(!ev)return;
+  document.getElementById('mEvInput').value='';
+  document.getElementById('mEvAc').classList.remove('open');
+  var idx=allEvents.indexOf(ev);
+  var col=eventColor(idx);
+  var chip=document.createElement('div');
+  chip.className='modal-ev-chip';
+  chip.innerHTML='<div style="width:7px;height:7px;border-radius:50%;background:'+col+';flex-shrink:0;"></div>'+
+    ev.event_name+' '+ev.event_year;
+  var x=document.createElement('button');
+  x.className='modal-ev-chip-x';
+  x.textContent='×';
+  x.dataset.cid=cid;
+  x.addEventListener('click',function(){clearModalEvent(this.dataset.cid);});
+  chip.appendChild(x);
+  document.getElementById('mEvChip').innerHTML='';
+  document.getElementById('mEvChip').appendChild(chip);
+  var c=allContacts.find(function(x){return x.customer_id==cid;});
+  if(!c)return;
+  var yr=ev.event_year;
+  var st=sponsorStatusForYear(c.customer_id,yr);
+  document.getElementById('detTimeline').innerHTML=
+    '<div class="spon-row spon-highlight">'+
+    '<span class="spon-yr">'+yr+' <small>★</small></span>'+
+    '<span class="spon-status s-'+st+'">'+slabel(st)+'</span></div>';
+}
+
+function clearModalEvent(cid){
+  mEvActiveId='';
+  document.getElementById('mEvChip').innerHTML='';
+  document.getElementById('mEvInput').placeholder='Filter by event...';
+  var c=allContacts.find(function(x){return x.customer_id==cid;});
+  if(!c)return;
+  document.getElementById('detTimeline').innerHTML=YEARS.map(function(y){
+    var st=sponsorStatusForYear(c.customer_id,y);
+    return'<div class="spon-row"><span class="spon-yr">'+y+'</span>'+
+      '<span class="spon-status s-'+st+'">'+slabel(st)+'</span></div>';
+  }).join('');
+}
 
 /* ===== SAVE DETAIL ===== */
 async function saveDet(){
