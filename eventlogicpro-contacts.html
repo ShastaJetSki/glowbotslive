@@ -1037,37 +1037,69 @@ function clearModalEvent(cid){
 async function logSponsorEvent(cid){
   var sel=document.getElementById('eSpEv');
   var res=document.getElementById('logResult');
-  if(!sel||!sel.value){if(res){res.className='log-result err';res.textContent='Select an event first.';res.style.display='block';}return;}
-  var eventId=parseInt(sel.value);
-  var ev=allEvents.find(function(e){return e.id===eventId;});
-  if(!ev)return;
+  if(!sel||!sel.value){
+    if(res){res.className='log-result err';res.textContent='Select an event first.';res.style.display='block';}
+    return;
+  }
+  var projId=sel.value;
+  var proj=allEventProjects.find(function(p){return p.event_project_id===projId;});
+  if(!proj)return;
   var btn=document.querySelector('.log-btn');
   if(btn)btn.disabled=true;
+  if(res)res.style.display='none';
   try{
-    var r=await sb.from('hella_sponsorships').upsert({
+    // Step 1: Find or create matching hella_events record
+    var yr=proj.event_date?parseInt(proj.event_date.slice(0,4)):new Date().getFullYear();
+    var evName=proj.event_name;
+    var existing=allEvents.find(function(e){
+      return e.event_year===yr&&e.event_name.toLowerCase()===evName.toLowerCase();
+    });
+    var hellaEventId;
+    if(existing){
+      hellaEventId=existing.id;
+    } else {
+      // Create the hella_events record
+      var ins=await sb.from('hella_events').insert({
+        tenant_id:currentTenantId,
+        event_name:evName,
+        event_year:yr,
+        notes:'Created from dashboard event: '+proj.event_project_id
+      }).select().single();
+      if(ins.error)throw ins.error;
+      hellaEventId=ins.data.hella_event_id;
+      // Add to local cache
+      allEvents.push({id:hellaEventId,event_name:evName,event_year:yr});
+      if(!YEARS.includes(yr))YEARS.push(yr);
+    }
+    // Step 2: Log the sponsorship
+    var spon=await sb.from('hella_sponsorships').upsert({
       tenant_id:currentTenantId,
       contact_id:cid,
-      event_id:eventId,
+      event_id:hellaEventId,
       status:'confirmed',
       logged_by:userEmail||'Staff',
       logged_at:new Date().toISOString()
     },{onConflict:'contact_id,event_id'});
-    if(r.error)throw r.error;
-    // Update local sponsorships cache
-    var existing=allSponsorships.find(function(s){return s.contact_id===cid&&s.event_id===eventId;});
-    if(existing){existing.status='confirmed';}
-    else{allSponsorships.push({contact_id:cid,event_id:eventId,status:'confirmed',event_year:ev.event_year});}
-    if(res){res.className='log-result ok';res.textContent='✓ Logged as confirmed sponsor for '+ev.event_name+' '+ev.event_year;}
-    // Refresh timeline if history is open
+    if(spon.error)throw spon.error;
+    // Update local cache
+    var exSpon=allSponsorships.find(function(s){return s.contact_id===cid&&s.event_id===hellaEventId;});
+    if(exSpon){exSpon.status='confirmed';}
+    else{allSponsorships.push({contact_id:cid,event_id:hellaEventId,status:'confirmed',event_year:yr});}
+    if(res){res.className='log-result ok';res.textContent='✓ Logged as confirmed sponsor for '+evName+' '+yr;}
+    // Refresh timeline
     var tl=document.getElementById('detTimeline');
     if(tl){
       var c=allContacts.find(function(x){return x.customer_id===cid;});
-      if(c){tl.innerHTML=YEARS.map(function(y){
-        var st=sponsorStatusForYear(c.customer_id,y);
-        return'<div class="spon-row'+(ev.event_year===y?' spon-highlight':'')+'"><span class="spon-yr">'+y+'</span><span class="spon-status s-'+st+'">'+slabel(st)+'</span></div>';
-      }).join('');}
+      if(c){
+        var displayYears=YEARS.slice().sort();
+        tl.innerHTML=displayYears.map(function(y){
+          var st=sponsorStatusForYear(c.customer_id,y);
+          return'<div class="spon-row'+(yr===y?' spon-highlight':'')+'">'+
+            '<span class="spon-yr">'+y+'</span>'+
+            '<span class="spon-status s-'+st+'">'+slabel(st)+'</span></div>';
+        }).join('');
+      }
     }
-    // Re-render card in list to update dot
     renderList();
   }catch(e){
     if(res){res.className='log-result err';res.textContent='Error: '+e.message;}
