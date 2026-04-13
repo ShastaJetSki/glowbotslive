@@ -625,42 +625,52 @@ function toggleVault(){showVault=!showVault;updateVaultBadge();renderAll();}
 var EVENT_COLORS=['#DC2626','#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c'];
 function eventColor(idx){return EVENT_COLORS[idx%EVENT_COLORS.length];}
 
+function evYear(p){return p.event_date?parseInt(p.event_date.slice(0,4)):(p.event_year||null);}
+
 function onEventSearch(){
   var q=(document.getElementById('eventSearchInput').value||'').toLowerCase().trim();
   var ac=document.getElementById('eventAc');
-  // Don't show dropdown if an event is already selected
   if(activeEventId){ac.classList.remove('open');return;}
-  var matches=allEvents.filter(function(e){
-    return (e.event_name+' '+e.event_year).toLowerCase().includes(q);
-  });
+  var src=allEventProjects.length?allEventProjects:allEvents.map(function(e){return{event_project_id:'h'+e.id,event_name:e.event_name,event_date:e.event_year+'-01-01',color_tag:null};});
+  var matches=src.filter(function(p){return !q||(p.event_name+(p.event_date||'')).toLowerCase().includes(q);});
   if(!matches.length){ac.classList.remove('open');return;}
-  ac.innerHTML=matches.map(function(e,i){
-    var col=eventColor(i);
-    return '<div class="event-ac-row" onmousedown="selectEvent("+e.id+")">'+
-      '<div class="event-ac-dot" style="background:'+col+'"></div>'+
-      e.event_name+' '+e.event_year+
-    '</div>';
+  ac.innerHTML=matches.map(function(p,i){
+    var col=p.color_tag||eventColor(i);
+    var yr=evYear(p);
+    var label=p.event_name+(yr?' '+yr:'');
+    var row=document.createElement('div');
+    row.className='event-ac-row';
+    row.dataset.pid=p.event_project_id;
+    row.innerHTML='<div class="event-ac-dot" style="background:'+col+';"></div>'+label;
+    row.addEventListener('mousedown',function(){selectEvent(this.dataset.pid);});
+    return row.outerHTML;
   }).join('');
   ac.classList.add('open');
 }
 
-function selectEvent(eid){
-  activeEventId=String(eid);
-  var ev=allEvents.find(function(e){return String(e.id)===activeEventId;});
+function selectEvent(pid){
+  activeEventId=String(pid);
+  // Look up in allEventProjects first, fall back to allEvents
+  var proj=allEventProjects.find(function(p){return p.event_project_id===pid;});
+  var ev=proj?{event_name:proj.event_name,event_year:evYear(proj),color_tag:proj.color_tag}:null;
+  if(!ev){
+    var he=allEvents.find(function(e){return String(e.id)===pid.replace('h','');});
+    if(he)ev={event_name:he.event_name,event_year:he.event_year,color_tag:null};
+  }
   if(!ev)return;
-  // Hide search input text, show chip
+  // Save to localStorage so it restores on next visit
+  localStorage.setItem('elp_last_event',pid);
+  localStorage.setItem('elp_last_event_name',ev.event_name+' '+ev.event_year);
   document.getElementById('eventSearchInput').value='';
   document.getElementById('eventSearchInput').placeholder='';
   document.getElementById('eventAc').classList.remove('open');
-  var idx=allEvents.indexOf(ev);
-  var col=eventColor(idx);
+  var col=ev.color_tag||eventColor(allEventProjects.indexOf(proj));
   document.getElementById('eventChipWrap').innerHTML=
     '<div class="event-chip">'+
       '<div class="event-chip-dot" style="background:'+col+'"></div>'+
-      ev.event_name+' '+ev.event_year+
+      ev.event_name+(ev.event_year?' '+ev.event_year:'')+
       '<button class="event-chip-x" onclick="clearEvent()" title="Clear filter">&times;</button>'+
     '</div>';
-  // Show stat strip for Hellapalooza events (sponsor data)
   var strip=document.getElementById('eventStrip');
   var yr=ev.event_year;
   var forYear=allSponsorships.filter(function(s){return s.event_year===yr;});
@@ -670,14 +680,14 @@ function selectEvent(eid){
     document.getElementById('sCheck').textContent=forYear.filter(function(s){return s.status==='needs_verification';}).length;
     document.getElementById('sPending').textContent=forYear.filter(function(s){return s.status==='pending';}).length;
     document.getElementById('sDeclined').textContent=forYear.filter(function(s){return s.status==='declined';}).length;
-  } else {
-    strip.classList.remove('show');
-  }
+  } else {strip.classList.remove('show');}
   renderAll();
 }
 
 function clearEvent(){
   activeEventId='';
+  localStorage.removeItem('elp_last_event');
+  localStorage.removeItem('elp_last_event_name');
   document.getElementById('eventChipWrap').innerHTML='';
   document.getElementById('eventSearchInput').placeholder='Search events...';
   document.getElementById('eventStrip').classList.remove('show');
@@ -739,8 +749,9 @@ function getFiltered(){
     if(teamId==='__none'){if(c.assigned_to)return false;}else if(teamId&&c.assigned_to!==teamId)return false;
     // Event year filter
     if(activeEventId){
-      var ev=allEvents.find(function(e){return String(e.id)===activeEventId;});
-      if(ev){var st=sponsorStatusForYear(c.customer_id,ev.event_year);if(st==='declined')return false;}
+      var _p=allEventProjects.find(function(p){return p.event_project_id===activeEventId;});
+      var _yr=_p?evYear(_p):null;
+      if(_yr){var _st=sponsorStatusForYear(c.customer_id,_yr);if(_st==='declined')return false;}
     }
     if(!q)return true;
     var n=((c.first_name||'')+' '+(c.last_name||'')+' '+(c.full_name||'')+' '+(c.organization_name||'')).toLowerCase();
@@ -781,7 +792,7 @@ function cardKpis(c){
 /* ===== RENDER LIST ===== */
 function renderList(){
   var list=getFiltered();
-  var ev=activeEventId?allEvents.find(function(e){return String(e.id)===activeEventId;}):null;
+  var ev=activeEventId?(function(){var _p=allEventProjects.find(function(p){return p.event_project_id===activeEventId;});return _p?{event_name:_p.event_name,event_year:evYear(_p)}:null;})():null;
   var label=showVault?'vault contact':'contact';
   var suffix=ev?' — '+ev.event_name+' '+ev.event_year:'';
   document.getElementById('rCount').textContent=list.length+' '+label+(list.length!==1?'s':'')+suffix;
@@ -863,7 +874,7 @@ function openDet(id){
   var name=(c.organization_name||((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown');
   var av=ini(name);
   var ec=empColor(c.assigned_to);
-  var ev=activeEventId?allEvents.find(function(e){return String(e.id)===activeEventId;}):null;
+  var ev=activeEventId?(function(){var _p=allEventProjects.find(function(p){return p.event_project_id===activeEventId;});return _p?{event_name:_p.event_name,event_year:evYear(_p)}:null;})():null;
   var hlYr=ev?ev.event_year:null;
 
   // Build sponsorship timeline
@@ -1274,6 +1285,11 @@ async function init(){
     allSponsorships=(spr.data||[]).map(function(s){return{contact_id:s.contact_id,event_id:s.event_id,status:s.status,event_year:s.hella_events?.event_year};});
   }catch(e){console.warn('Sponsor tables not found yet:',e.message);}
   populateEventSelect();
+  // Restore last viewed event from localStorage
+  var lastEv=localStorage.getItem('elp_last_event');
+  if(lastEv&&(allEventProjects.find(function(p){return p.event_project_id===lastEv;})||allEvents.find(function(e){return 'h'+e.id===lastEv;}))){
+    setTimeout(function(){selectEvent(lastEv);},0);
+  }
   updateVaultBadge();
   renderKpis();
   renderAlpha();
