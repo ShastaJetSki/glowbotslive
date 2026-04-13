@@ -427,10 +427,6 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
       <div class="sec">
         <div class="sec-title">Organization</div>
         <div class="fg"><label class="fl">Organization / Business Name <span class="req">*</span></label><input type="text" class="fi" id="nO" placeholder="e.g. Ramblers MC Nomads"></div>
-        <div class="fr">
-          <div class="fg" style="margin-bottom:0;"><label class="fl">Region</label><select class="fsel" id="nReg"><option value="">— None —</option><option value="Redding">Redding</option><option value="Humboldt">Humboldt</option><option value="Other">Other</option></select></div>
-          <div class="fg" style="margin-bottom:0;"><label class="fl">Club Affiliation</label><input type="text" class="fi" id="nClub" placeholder="e.g. 81"></div>
-        </div>
       </div>
       <div class="sec">
         <div class="sec-title">Contact Info</div>
@@ -440,8 +436,52 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
       <div class="sec">
         <div class="sec-title">Classification</div>
         <div class="fr">
-          <div class="fg" style="margin-bottom:0;"><label class="fl">Contact Type</label><select class="fsel" id="nT"><option value="">— Select —</option><option value="BUSINESS">Business</option><option value="MC">MC (Motorcycle Club)</option><option value="FRIEND">Friend</option><option value="Other">Other</option></select></div>
+          <div class="fg" style="margin-bottom:0;">
+            <label class="fl">Contact Type <span class="req">*</span></label>
+            <select class="fsel" id="nT" onchange="onAddTypeChange()">
+              <option value="">— Select type —</option>
+              <option value="Sponsor">Sponsor</option>
+              <option value="Vendor">Vendor</option>
+              <option value="Entertainment">Entertainment</option>
+              <option value="Venue">Venue</option>
+              <option value="Production">Production</option>
+              <option value="Media">Media</option>
+              <option value="Security">Security</option>
+              <option value="Medical">Medical</option>
+              <option value="Logistics">Logistics</option>
+              <option value="Government">Government</option>
+              <option value="Staff">Staff</option>
+              <option value="VIP">VIP / Guest</option>
+              <option value="MC Club">MC / Club</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
           <div class="fg" style="margin-bottom:0;"><label class="fl">Assign To</label><select class="fsel" id="nA"><option value="">— Unassigned —</option></select></div>
+        </div>
+        <!-- Sponsor sub-category — shown only when type = Sponsor -->
+        <div id="nSponsorCatWrap" style="display:none;margin-top:10px;">
+          <div class="fr">
+            <div class="fg" style="margin-bottom:0;">
+              <label class="fl">Sponsor Category</label>
+              <select class="fsel" id="nSponsorCat">
+                <option value="">— None —</option>
+                <option value="BUSINESS">Business</option>
+                <option value="MC">MC (Motorcycle Club)</option>
+                <option value="FRIEND">Friend / Personal</option>
+                <option value="Club">Club</option>
+                <option value="Individual">Individual</option>
+              </select>
+            </div>
+            <div class="fg" style="margin-bottom:0;">
+              <label class="fl">Region</label>
+              <select class="fsel" id="nReg2">
+                <option value="">— None —</option>
+                <option value="Redding">Redding</option>
+                <option value="Humboldt">Humboldt</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
       <div class="sec">
@@ -819,8 +859,12 @@ function openDet(id){
   var first=firstSponsored(c.customer_id);
   var last=lastSponsored(c.customer_id);
 
-  var ctO='<option value="">— Select —</option>';
-  ['BUSINESS','MC','FRIEND','Other'].forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
+  var TYPE_OPTS=['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','MC Club','Other'];
+  var ctO='<option value="">— Select type —</option>';
+  TYPE_OPTS.forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
+  var SCAT_OPTS=['','BUSINESS','MC','FRIEND','Club','Individual'];
+  var SCAT_LABELS={'':'— None —','BUSINESS':'Business','MC':'MC (Motorcycle Club)','FRIEND':'Friend / Personal','Club':'Club','Individual':'Individual'};
+  var scatO=SCAT_OPTS.map(function(v){return'<option value="'+v+'"'+(c.sponsor_category===v?' selected':'')+'>'+SCAT_LABELS[v]+'</option>';}).join('');
 
   document.getElementById('detBody').innerHTML=
     '<div class="det-head">'+
@@ -862,9 +906,19 @@ function openDet(id){
 
     '<div class="sec"><div class="sec-title">Classification</div>'+
       '<div class="fr">'+
-        '<div class="fg" style="margin-bottom:0;"><label class="fl">Contact Type</label><select class="fsel" id="eT">'+ctO+'</select></div>'+
+        '<div class="fg" style="margin-bottom:0;"><label class="fl">Contact Type</label><select class="fsel" id="eT" onchange="toggleDetSponsorFields()">'+ctO+'</select></div>'+
         '<div class="fg" style="margin-bottom:0;"><label class="fl">Assigned To</label>'+
           (isAdmin()||isManager()?'<select class="fsel" id="eA">'+buildAssignOpts(c.assigned_to)+'</select>':'<span style="font-size:13px;color:var(--text-secondary);">'+empName(c.assigned_to)+'</span><input type="hidden" id="eA" value="'+(c.assigned_to||'')+'">') +
+        '</div>'+
+      '</div>'+
+      '<div id="eSponsorWrap" style="'+(c.customer_type==='Sponsor'?'':'display:none;')+'">'+
+        '<div class="fr" style="margin-top:10px;">'+
+          '<div class="fg" style="margin-bottom:0;"><label class="fl">Sponsor Category</label><select class="fsel" id="eSponsorCat">'+scatO+'</select></div>'+
+          '<div class="fg" style="margin-bottom:0;"><label class="fl">Region</label><select class="fsel" id="eReg2"><option value="">— None —</option><option value="Redding"'+(c.region==='Redding'?' selected':'')+'>Redding</option><option value="Humboldt"'+(c.region==='Humboldt'?' selected':'')+'>Humboldt</option><option value="Other"'+(c.region==='Other'?' selected':'')+'>Other</option></select></div>'+
+        '</div>'+
+        '<div class="fr" style="margin-top:10px;">'+
+          '<div class="fg" style="margin-bottom:0;"><label class="fl">Club Affiliation</label><input type="text" class="fi" id="eClub2" value="'+(c.club_affiliation||'')+'"></div>'+
+          '<div class="fg" style="margin-bottom:0;"></div>'+
         '</div>'+
       '</div>'+
     '</div>'+
@@ -891,8 +945,9 @@ async function saveDet(){
     email:document.getElementById('eE').value.trim()||null,
     customer_type:document.getElementById('eT').value||'Other',
     assigned_to:document.getElementById('eA').value||null,
-    region:document.getElementById('eReg').value||null,
-    club_affiliation:document.getElementById('eClub').value.trim()||null,
+    region:document.getElementById('eReg2')?document.getElementById('eReg2').value||null:null,
+    club_affiliation:document.getElementById('eClub2')?document.getElementById('eClub2').value.trim()||null:null,
+    sponsor_category:document.getElementById('eSponsorCat')?document.getElementById('eSponsorCat').value||null:null,
     notes:document.getElementById('eN').value.trim()||null,
     updated_at:new Date().toISOString()
   };
@@ -918,13 +973,26 @@ async function removeDet(){
 
 /* ===== ADD MODAL ===== */
 function openAdd(){
-  ['nF','nL','nO','nP','nE','nN','nClub'].forEach(function(id){document.getElementById(id).value='';});
+  ['nF','nL','nO','nP','nE','nN'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('nT').value='';
-  document.getElementById('nReg').value='';
+  var nr2=document.getElementById('nReg2');if(nr2)nr2.value='';
+  var nsc=document.getElementById('nSponsorCat');if(nsc)nsc.value='';
+  document.getElementById('nSponsorCatWrap').style.display='none';
   document.getElementById('nA').innerHTML=buildAssignOpts(null);
   document.getElementById('addModal').classList.add('active');
 }
 function closeAdd(){document.getElementById('addModal').classList.remove('active');}
+
+function onAddTypeChange(){
+  var t=document.getElementById('nT').value;
+  document.getElementById('nSponsorCatWrap').style.display=(t==='Sponsor')?'block':'none';
+}
+
+function toggleDetSponsorFields(){
+  var t=document.getElementById('eT').value;
+  var w=document.getElementById('eSponsorWrap');
+  if(w)w.style.display=(t==='Sponsor')?'block':'none';
+}
 async function saveAdd(){
   var org=document.getElementById('nO').value.trim();
   var fn=document.getElementById('nF').value.trim()||org;
@@ -936,8 +1004,9 @@ async function saveAdd(){
     email:document.getElementById('nE').value.trim()||null,
     organization_name:org,
     customer_type:document.getElementById('nT').value||'Other',
-    region:document.getElementById('nReg').value||null,
-    club_affiliation:document.getElementById('nClub').value.trim()||null,
+    sponsor_category:document.getElementById('nSponsorCat')?document.getElementById('nSponsorCat').value||null:null,
+    region:document.getElementById('nReg2')?document.getElementById('nReg2').value||null:null,
+    club_affiliation:document.getElementById('nClub')?document.getElementById('nClub').value.trim()||null:null,
     notes:document.getElementById('nN').value.trim()||null,
     assigned_to:document.getElementById('nA').value||null,
     sponsor_is_active:true,
