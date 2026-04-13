@@ -451,7 +451,7 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
       </div>
       <div class="sec">
         <div class="sec-title">Contact Info</div>
-        <div class="fg"><label class="fl">Phone</label><input type="tel" class="fi" id="nP" placeholder="(555) 123-4567"></div>
+        <div class="fg"><label class="fl">Phone</label><input type="tel" class="fi" id="nP" placeholder="530-235-5632" oninput="formatPhone(this)" maxlength="12"></div>
         <div class="fg"><label class="fl">Email</label><input type="email" class="fi" id="nE" placeholder="email@example.com"></div>
       </div>
       <div class="sec">
@@ -538,7 +538,7 @@ var sb=window.supabase.createClient(SB_URL,SB_KEY);
 /* ===== STATE ===== */
 var currentUserId=null,currentTenantId=null,userEmail=null,currentUserRole=null,currentEmployeeId=null;
 var allContacts=[],allEmployees=[],myRemovals=[],allRemovalIds=[],vaultContacts=[];
-var allEvents=[],allSponsorships=[];  // sponsor tables
+var allEvents=[],allSponsorships=[],allEventProjects=[];  // sponsor tables
 var activeFilter='all',activeLetter='',showVault=false,activeEventId='';
 var currentEditId=null;
 var YEARS=[2022,2023,2024,2025,2026];
@@ -935,7 +935,7 @@ function openDet(id){
           '<div class="fg" style="margin-bottom:0;"><label class="fl">Region</label><select class="fsel" id="eReg2"><option value="">— None —</option><option value="Redding"'+(c.region==='Redding'?' selected':'')+'>Redding</option><option value="Humboldt"'+(c.region==='Humboldt'?' selected':'')+'>Humboldt</option><option value="Other"'+(c.region==='Other'?' selected':'')+'>Other</option></select></div>'+
         '</div>'+
         '<div class="fr" style="margin-top:10px;">'+
-          '<div class="fg" style="margin-bottom:0;"><label class="fl">Club Affiliation</label><input type="text" class="fi" id="eClub2" value="'+(c.club_affiliation||'')+'"></div>'+
+          '<div class="fg" style="margin-bottom:0;"><label class="fl">Assign to Event</label>'+buildEventProjectSelect('eEvProj',c.event_project_id)+'</div>'+
           '<div class="fg" style="margin-bottom:0;"></div>'+
         '</div>'+
       '</div>'+
@@ -951,6 +951,13 @@ function openDet(id){
   document.getElementById('detailModal').classList.add('active');
 }
 function closeDet(){document.getElementById('detailModal').classList.remove('active');currentEditId=null;mEvActiveId='';}
+
+function formatPhone(el){
+  var v=el.value.replace(/\D/g,'').slice(0,10);
+  if(v.length>=7)el.value=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
+  else if(v.length>=4)el.value=v.slice(0,3)+'-'+v.slice(3);
+  else el.value=v;
+}
 
 function toggleDetHistory(){
   var body=document.getElementById('histBody');
@@ -1037,7 +1044,7 @@ async function saveDet(){
     customer_type:document.getElementById('eT').value||'Other',
     assigned_to:document.getElementById('eA').value||null,
     region:(document.getElementById('eReg2')||document.getElementById('eReg')||{value:''}).value||null,
-    club_affiliation:document.getElementById('eClub2')?document.getElementById('eClub2').value.trim()||null:null,
+    event_project_id:document.getElementById('eEvProj')?document.getElementById('eEvProj').value||null:null,
     sponsor_category:document.getElementById('eSponsorCat')?document.getElementById('eSponsorCat').value||null:null,
     notes:document.getElementById('eN').value.trim()||null,
     updated_at:new Date().toISOString()
@@ -1069,10 +1076,22 @@ function openAdd(){
   var nr2=document.getElementById('nReg2');if(nr2)nr2.value='';
   var nsc=document.getElementById('nSponsorCat');if(nsc)nsc.value='';
   document.getElementById('nSponsorCatWrap').style.display='none';
+  var nep=document.getElementById('nEvProj');
+  if(nep){nep.innerHTML='<option value="">— None —</option>';allEventProjects.forEach(function(p){var lbl=p.event_name+(p.event_date?' ('+p.event_date.slice(0,4)+')':'');nep.innerHTML+='<option value="'+p.event_project_id+'">'+lbl+'</option>';});}
   document.getElementById('nA').innerHTML=buildAssignOpts(null);
   document.getElementById('addModal').classList.add('active');
 }
 function closeAdd(){document.getElementById('addModal').classList.remove('active');}
+
+function buildEventProjectSelect(id,selectedId){
+  var opts='<option value="">— None —</option>';
+  allEventProjects.forEach(function(p){
+    var label=p.event_name+(p.event_date?' ('+p.event_date.slice(0,4)+')':'');
+    var sel=(selectedId&&p.event_project_id===selectedId)?' selected':'';
+    opts+='<option value="'+p.event_project_id+'"'+sel+'>'+label+'</option>';
+  });
+  return'<select class="fsel" id="'+id+'">'+opts+'</select>';
+}
 
 function onAddTypeChange(){
   var t=document.getElementById('nT').value;
@@ -1097,7 +1116,7 @@ async function saveAdd(){
     customer_type:document.getElementById('nT').value||'Other',
     sponsor_category:document.getElementById('nSponsorCat')?document.getElementById('nSponsorCat').value||null:null,
     region:document.getElementById('nReg2')?document.getElementById('nReg2').value||null:null,
-    club_affiliation:document.getElementById('nClub')?document.getElementById('nClub').value.trim()||null:null,
+    event_project_id:document.getElementById('nEvProj')?document.getElementById('nEvProj').value||null:null,
     notes:document.getElementById('nN').value.trim()||null,
     assigned_to:document.getElementById('nA').value||null,
     sponsor_is_active:true,
@@ -1154,7 +1173,12 @@ async function init(){
   // every user sees every contact regardless of assignment or role.
   allContacts=allTenantContacts;
   vaultContacts=allTenantContacts.filter(function(c){return removedSet.has(c.customer_id);});
-  // Load events for dropdown
+  // Load event_projects (dashboard events) for Assign to Event dropdown
+  try{
+    var epr=await sb.from('event_projects').select('event_project_id,event_name,event_date,color_tag').eq('tenant_id',currentTenantId).order('event_date',{ascending:false});
+    allEventProjects=epr.data||[];
+  }catch(e){console.warn('event_projects:',e.message);}
+  // Load hella_events for sponsorship history
   try{
     var evr=await sb.from('hella_events').select('*').eq('tenant_id',currentTenantId).order('event_year');
     allEvents=(evr.data||[]).map(function(e){return{id:e.hella_event_id,event_name:e.event_name,event_year:e.event_year};});
