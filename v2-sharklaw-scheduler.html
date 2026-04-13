@@ -475,13 +475,20 @@ var MONTHS=['January','February','March','April','May','June','July','August','S
 var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 var DAYS_S=['M','T','W','T','F','S','S'];
 
+function extractSolidFromGradient(gradientStr){
+  var matches=gradientStr.match(/#[0-9a-fA-F]{3,6}/g);
+  if(matches&&matches.length)return matches[matches.length-1];
+  var rgb=gradientStr.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if(rgb){var r=parseInt(rgb[1]).toString(16).padStart(2,'0'),g=parseInt(rgb[2]).toString(16).padStart(2,'0'),b=parseInt(rgb[3]).toString(16).padStart(2,'0');return'#'+r+g+b;}
+  return null;
+}
 function getMemberColor(id){
   if(!id)return UNASSIGNED_COLOR;
   var m=allMembers.find(function(x){return x.member_id===id;});
   if(!m)return UNASSIGNED_COLOR;
-  if(m.color&&!m.color.includes('gradient'))return m.color;
-  var idx=allMembers.findIndex(function(x){return x.member_id===id;});
-  return DEFAULT_COLORS[idx%DEFAULT_COLORS.length];
+  if(!m.color){var idx=allMembers.findIndex(function(x){return x.member_id===id;});return DEFAULT_COLORS[idx%DEFAULT_COLORS.length];}
+  if(m.color.includes('gradient')){var solid=extractSolidFromGradient(m.color);if(solid)return solid;var idx2=allMembers.findIndex(function(x){return x.member_id===id;});return DEFAULT_COLORS[idx2%DEFAULT_COLORS.length];}
+  return m.color;
 }
 function getItemColor(it){if(it._empId)return getMemberColor(it._empId);return it._isEvent?EVENT_LAYER_COLOR:APPT_LAYER_COLOR;}
 function memberName(id){if(!id)return'';var m=allMembers.find(function(x){return x.member_id===id;});return m?((m.first_name||'')+' '+(m.last_name||'')).trim():'';}
@@ -633,12 +640,13 @@ function renderMemberFilters(){
   var lastRole=null;
   sorted.forEach(function(m){
     var on=visibleMemberIds.has(m.member_id);
-    var col=getMemberColor(m.member_id);
+    var avatarCol=m.color||getMemberColor(m.member_id); // full gradient for avatar
+    var solidCol=getMemberColor(m.member_id);            // solid hex for checkbox/filter
     var initials=((m.first_name||'')[0]||'')+((m.last_name||'')[0]||'');
     var roleName=m.role?m.role.replace(/_/g,' '):'';
 
     h+='<div class="emp-row" onclick="toggleMember(this.dataset.mid)" data-mid="'+m.member_id+'">';
-    h+='<div class="emp-avatar" style="background:'+col+'">'+initials.toUpperCase()+'</div>';
+    h+='<div class="emp-avatar" style="background:'+avatarCol+'">'+initials.toUpperCase()+'</div>';
     h+='<div class="emp-name">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</div>';
     h+='<div class="emp-chk'+(on?' on':'')+'"></div></div>';
   });
