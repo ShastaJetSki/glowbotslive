@@ -422,27 +422,79 @@ function renderTeam(){
     var ra=roleOrder[a.role]!==undefined?roleOrder[a.role]:99;
     var rb=roleOrder[b.role]!==undefined?roleOrder[b.role]:99;
     if(ra!==rb)return ra-rb;
-    // Same role — sort by hire date (created_at) oldest first
     var da=a.created_at?new Date(a.created_at):new Date(9999,0,1);
     var db=b.created_at?new Date(b.created_at):new Date(9999,0,1);
     return da-db;
   });
-  document.getElementById('teamBody').innerHTML=sorted.map(function(m){
+  var rows='';
+  sorted.forEach(function(m,idx){
     var name=((m.first_name||'')+' '+(m.last_name||'')).trim();
-    var givenByMember=allGiven.filter(function(g){return g.given_by===m.member_id&&g.contact_id;});
+    var givenByMember=allGiven.filter(function(g){return g.given_by===m.member_id&&g.contact_id;}).sort(function(a,b){return new Date(b.given_date)-new Date(a.given_date);});
     var givenQty=givenByMember.reduce(function(s,g){return s+(g.quantity||0);},0);
     var givenVal=givenByMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
-    var assignedToMember=allGiven.filter(function(g){return g.assigned_to===m.member_id;});
+    var assignedToMember=allGiven.filter(function(g){return g.assigned_to===m.member_id;}).sort(function(a,b){return new Date(b.given_date)-new Date(a.given_date);});
     var assignedQty=assignedToMember.reduce(function(s,g){return s+(g.quantity||0);},0);
     var assignedVal=assignedToMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
-    return '<tr>'
-      +'<td style="font-weight:600;">'+esc(name)+'</td>'
+    var rowId='td'+idx;
+    rows+='<tr style="cursor:pointer;" onclick="toggleTeamRow(\''+rowId+'\')">'
+      +'<td style="font-weight:600;"><span id="arr-'+rowId+'" style="display:inline-block;margin-right:8px;font-size:10px;color:var(--text-secondary);transition:transform .2s;">▶</span>'+esc(name)+'</td>'
       +'<td>'+givenQty+' item'+(givenQty!==1?'s':'')+'</td>'
       +'<td style="color:var(--accent-primary);font-weight:600;">'+fmtMoney(givenVal)+'</td>'
       +'<td>'+assignedQty+' item'+(assignedQty!==1?'s':'')+'</td>'
       +'<td style="color:var(--accent-primary);font-weight:600;">'+fmtMoney(assignedVal)+'</td>'
       +'</tr>';
-  }).join('');
+    var d='<td colspan="5" style="padding:0;background:var(--bg-secondary);"><div id="'+rowId+'" style="display:none;padding:10px 16px 14px 36px;">';
+    var hasAny=false;
+    if(givenByMember.length){
+      hasAny=true;
+      d+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-secondary);margin-bottom:6px;">Given to Clients</div>';
+      d+='<table style="width:100%;border-collapse:collapse;margin-bottom:12px;"><thead><tr>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Date</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Item</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Qty</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Value</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Contact</th>'
+        +'</tr></thead><tbody>';
+      givenByMember.forEach(function(g){
+        var contact=allContacts.find(function(c){return c.contact_id===g.contact_id;});
+        var cName=contact?((contact.first_name||'')+' '+(contact.last_name||'')).trim()||contact.organization_name||'—':'—';
+        var dt=g.given_date?new Date(g.given_date).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}):'—';
+        d+='<tr><td style="padding:5px 8px;font-size:12px;color:var(--text-secondary);">'+dt+'</td><td style="padding:5px 8px;font-size:12px;">'+esc(g.item_name||'—')+'</td><td style="padding:5px 8px;font-size:12px;">'+(g.quantity||1)+'</td><td style="padding:5px 8px;font-size:12px;color:var(--accent-primary);">'+fmtMoney(parseFloat(g.value)||0)+'</td><td style="padding:5px 8px;font-size:12px;color:var(--text-secondary);">'+esc(cName)+'</td></tr>';
+      });
+      d+='</tbody></table>';
+    }
+    if(assignedToMember.length){
+      hasAny=true;
+      d+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-secondary);margin-bottom:6px;">Assigned to This Member</div>';
+      d+='<table style="width:100%;border-collapse:collapse;"><thead><tr>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Date</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Item</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Qty</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Value</th>'
+        +'<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 8px;border-bottom:1px solid var(--border-default);">Assigned By</th>'
+        +'</tr></thead><tbody>';
+      assignedToMember.forEach(function(g){
+        var givenBy=allMembers.find(function(mb){return mb.member_id===g.given_by;});
+        var byName=givenBy?((givenBy.first_name||'')+' '+(givenBy.last_name||'')).trim():'—';
+        var dt=g.given_date?new Date(g.given_date).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}):'—';
+        d+='<tr><td style="padding:5px 8px;font-size:12px;color:var(--text-secondary);">'+dt+'</td><td style="padding:5px 8px;font-size:12px;">'+esc(g.item_name||'—')+'</td><td style="padding:5px 8px;font-size:12px;">'+(g.quantity||1)+'</td><td style="padding:5px 8px;font-size:12px;color:var(--accent-primary);">'+fmtMoney(parseFloat(g.value)||0)+'</td><td style="padding:5px 8px;font-size:12px;color:var(--text-secondary);">'+esc(byName)+'</td></tr>';
+      });
+      d+='</tbody></table>';
+    }
+    if(!hasAny)d+='<div style="font-size:12px;color:var(--text-secondary);">No swag records yet.</div>';
+    d+='</div></td>';
+    rows+='<tr>'+d+'</tr>';
+  });
+  document.getElementById('teamBody').innerHTML=rows;
+}
+
+function toggleTeamRow(id){
+  var el=document.getElementById(id);
+  var arr=document.getElementById('arr-'+id);
+  if(!el)return;
+  var open=el.style.display==='block';
+  el.style.display=open?'none':'block';
+  if(arr)arr.style.transform=open?'':'rotate(90deg)';
 }
 
 function updateFilters(){
