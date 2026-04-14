@@ -207,6 +207,25 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans
   .panel-contacts{display:none;}
   .panel-detail{display:none;}
   body{padding-bottom:100px;}
+
+  /* Mobile: full screen thread, back button to return to picker */
+  .panel-thread{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;background:var(--bg-primary);padding-bottom:100px;}
+  .panel-thread.mob-active{display:flex;}
+
+  /* Mobile contact picker sheet */
+  .mob-picker{display:flex;flex-direction:column;height:calc(100vh - 100px);background:var(--bg-primary);}
+  .mob-picker-header{padding:12px;background:var(--bg-secondary);border-bottom:1px solid var(--border-default);flex-shrink:0;}
+  .mob-picker-search{width:100%;padding:10px 14px 10px 36px;border-radius:10px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-family:inherit;}
+  .mob-picker-search:focus{outline:none;border-color:var(--accent-primary);}
+  .mob-picker-list{flex:1;overflow-y:auto;}
+  .mob-picker-row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid color-mix(in srgb,var(--border-default) 50%,transparent);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .mob-picker-row:active{background:var(--bg-hover);}
+  .mob-picker-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;}
+  .mob-picker-info{flex:1;min-width:0;}
+  .mob-picker-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mob-picker-sub{font-size:12px;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mob-picker-badge{background:var(--accent-primary);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;flex-shrink:0;}
+  .mob-back-btn{padding:8px 14px;border-radius:8px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;}
 }
 @media(min-width:769px){
   .mobile-top-header{display:none!important;}
@@ -218,8 +237,27 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans
 
 <!-- MOBILE HEADER -->
 <div class="mobile-top-header">
-  <div class="mob-bar">
-    <div class="mob-title">Communications</div>
+  <div class="mob-bar" id="mobPickerBar">
+    <div class="mob-title">Comms</div>
+    <button class="hdr-btn" onclick="openMobCompose()" style="font-size:20px;background:transparent;border:none;color:var(--text-secondary);cursor:pointer;">✏</button>
+  </div>
+  <div class="mob-bar" id="mobThreadBar" style="display:none;">
+    <button class="mob-back-btn" onclick="closeMobThread()">◀ Back</button>
+    <div style="flex:1;font-size:15px;font-weight:700;text-align:center;" id="mobThreadTitle"></div>
+    <div style="width:60px;"></div>
+  </div>
+</div>
+
+<!-- MOBILE CONTACT PICKER (shown on mobile when no contact selected) -->
+<div class="mob-picker" id="mobPicker">
+  <div class="mob-picker-header">
+    <div style="position:relative;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text-secondary);pointer-events:none;">🔍</span>
+      <input type="text" class="mob-picker-search" id="mobSearch" placeholder="Search contacts..." oninput="renderMobPicker()" autocomplete="off">
+    </div>
+  </div>
+  <div class="mob-picker-list" id="mobPickerList">
+    <div style="padding:30px;text-align:center;color:var(--text-secondary);">Loading...</div>
   </div>
 </div>
 
@@ -718,6 +756,70 @@ async function init(){
   await Promise.all([loadMembers(),loadContacts(),checkTable()]);
   await loadComms();
   renderContactList();
+  if(window.innerWidth<=768)renderMobPicker();
+}
+
+// ── MOBILE PICKER ──
+function renderMobPicker(){
+  var q=(document.getElementById('mobSearch')||{}).value||'';
+  q=q.trim().toLowerCase();
+  var list=allContacts.filter(function(c){
+    if(!q)return true;
+    var n=(contactName(c)+' '+(c.organization_name||'')+' '+(c.phone||'')).toLowerCase();
+    return n.includes(q);
+  });
+  // Sort: unread first, then by last comm date
+  list.sort(function(a,b){
+    var ua=getUnreadCount(a.contact_id),ub=getUnreadCount(b.contact_id);
+    if(ua!==ub)return ub-ua;
+    var la=getLastComm(a.contact_id),lb=getLastComm(b.contact_id);
+    if(la&&lb)return new Date(lb.sent_at)-new Date(la.sent_at);
+    if(la)return-1;if(lb)return 1;
+    return contactName(a).localeCompare(contactName(b));
+  });
+  var el=document.getElementById('mobPickerList');
+  if(!el)return;
+  if(!list.length){el.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-secondary);">No contacts found</div>';return;}
+  el.innerHTML=list.map(function(c){
+    var col=hashColor(c.contact_id);
+    var unread=getUnreadCount(c.contact_id);
+    var last=getLastComm(c.contact_id);
+    var sub=(c.phone?formatPhone(c.phone):'')+(c.organization_name?' · '+c.organization_name:'');
+    return '<div class="mob-picker-row" onclick="mobSelectContact(\''+c.contact_id+'\')">'
+      +'<div class="mob-picker-avatar" style="background:'+col+'">'+contactInitials(c)+'</div>'
+      +'<div class="mob-picker-info">'
+        +'<div class="mob-picker-name">'+esc(contactName(c))+'</div>'
+        +'<div class="mob-picker-sub">'+esc(sub||'No phone')+'</div>'
+      +'</div>'
+      +(unread?'<div class="mob-picker-badge">'+unread+'</div>':'<div style="font-size:11px;color:var(--text-secondary);">'+(last?relTime(last.sent_at):'')+'</div>')
+      +'</div>';
+  }).join('');
+}
+
+function mobSelectContact(cid){
+  selectContact(cid);
+  // Show thread, hide picker
+  document.getElementById('mobPicker').style.display='none';
+  document.getElementById('mobPickerBar').style.display='none';
+  document.getElementById('mobThreadBar').style.display='flex';
+  document.getElementById('threadPanel').classList.add('mob-active');
+  var c=allContacts.find(function(x){return x.contact_id===cid;});
+  document.getElementById('mobThreadTitle').textContent=c?contactName(c):'';
+}
+
+function closeMobThread(){
+  selectedContactId=null;
+  document.getElementById('threadPanel').classList.remove('mob-active');
+  document.getElementById('mobPicker').style.display='flex';
+  document.getElementById('mobPickerBar').style.display='flex';
+  document.getElementById('mobThreadBar').style.display='none';
+  renderMobPicker();
+}
+
+function openMobCompose(){
+  // On mobile, open picker if no contact selected
+  if(!selectedContactId){showToast('Select a contact first');return;}
+  openCompose('sms');
 }
 init();
 </script>
