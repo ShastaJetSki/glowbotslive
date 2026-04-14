@@ -158,6 +158,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" id="tabInv" onclick="setTab('inventory')">Inventory</button>
     <button class="tab-btn" id="tabGiven" onclick="setTab('given')">Given Log</button>
+    <button class="tab-btn" id="tabTeam" onclick="setTab('team')">Team</button>
   </div>
 
   <div id="invSection">
@@ -177,6 +178,22 @@
       <table class="given-table">
         <thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Value</th><th>Contact</th><th>Given By</th></tr></thead>
         <tbody id="givenBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="teamSection" style="display:none;">
+    <div style="overflow-x:auto;">
+      <table class="given-table">
+        <thead><tr>
+          <th>Team Member</th>
+          <th>Role</th>
+          <th>Items Given to Clients</th>
+          <th>Value Given</th>
+          <th>Items Assigned to Them</th>
+          <th>Value Assigned</th>
+        </tr></thead>
+        <tbody id="teamBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -230,13 +247,14 @@
         <div class="fg"><label class="fl">Quantity *</label><input type="number" class="fi" id="gQty" min="1" value="1"></div>
         <div class="fg"><label class="fl">Date</label><input type="date" class="fi" id="gDate"></div>
       </div>
-      <div class="fg"><label class="fl">Contact</label>
+      <div class="fg"><label class="fl">Contact (Given To)</label>
         <div style="position:relative;">
           <input type="text" class="fi" id="gContactSearch" placeholder="Type to search…" autocomplete="off" oninput="filterGiveContact(this.value)" onfocus="showMyGiveContacts()" style="width:100%;">
           <input type="hidden" id="gContact">
           <div class="contact-drop" id="gContactDrop"></div>
         </div>
       </div>
+      <div class="fg"><label class="fl">Assigned To (Team Member)</label><select class="fsel" id="gAssignedTo"><option value="">— None —</option></select></div>
       <div class="fg"><label class="fl">Given By</label><select class="fsel" id="gMember"><option value="">Select…</option></select></div>
       <div class="fg"><label class="fl">Notes</label><textarea class="fta" id="gNotes" placeholder="Event, occasion…"></textarea></div>
       <div id="giveModalMsg" style="font-size:13px;color:#ef4444;"></div>
@@ -280,8 +298,11 @@ function setTab(t){
   curTab=t;
   document.getElementById('tabInv').classList.toggle('active',t==='inventory');
   document.getElementById('tabGiven').classList.toggle('active',t==='given');
+  document.getElementById('tabTeam').classList.toggle('active',t==='team');
   document.getElementById('invSection').style.display=t==='inventory'?'':'none';
   document.getElementById('givenSection').style.display=t==='given'?'':'none';
+  document.getElementById('teamSection').style.display=t==='team'?'':'none';
+  if(t==='team')renderTeam();
 }
 
 // ── KPI math ───────────────────────────────────────────────────────────────
@@ -395,6 +416,30 @@ function renderGiven(){
   }).join('');
 }
 
+function renderTeam(){
+  if(!allMembers.length){document.getElementById('teamBody').innerHTML='<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">No team members found</td></tr>';return;}
+  document.getElementById('teamBody').innerHTML=allMembers.map(function(m){
+    var name=((m.first_name||'')+' '+(m.last_name||'')).trim();
+    var role=(m.role||'').replace(/_/g,' ');
+    // Items given TO clients BY this member
+    var givenByMember=allGiven.filter(function(g){return g.given_by===m.member_id&&g.contact_id;});
+    var givenQty=givenByMember.reduce(function(s,g){return s+(g.quantity||0);},0);
+    var givenVal=givenByMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
+    // Items assigned TO this team member (assigned_to field)
+    var assignedToMember=allGiven.filter(function(g){return g.assigned_to===m.member_id;});
+    var assignedQty=assignedToMember.reduce(function(s,g){return s+(g.quantity||0);},0);
+    var assignedVal=assignedToMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
+    return '<tr>'
+      +'<td style="font-weight:600;">'+esc(name)+'</td>'
+      +'<td style="color:var(--text-secondary);text-transform:capitalize;">'+esc(role)+'</td>'
+      +'<td>'+givenQty+' item'+(givenQty!==1?'s':'')+'</td>'
+      +'<td style="color:var(--accent-primary);font-weight:600;">'+fmtMoney(givenVal)+'</td>'
+      +'<td>'+assignedQty+' item'+(assignedQty!==1?'s':'')+'</td>'
+      +'<td style="color:var(--accent-primary);font-weight:600;">'+fmtMoney(assignedVal)+'</td>'
+      +'</tr>';
+  }).join('');
+}
+
 function updateFilters(){
   var iSel=document.getElementById('givenItemFilter');
   var cur=iSel.value;
@@ -469,6 +514,9 @@ function openGiveModal(itemId){
   var mSel=document.getElementById('gMember');
   mSel.innerHTML='<option value="">Select…</option>';
   allMembers.forEach(function(m){mSel.innerHTML+='<option value="'+m.member_id+'"'+(m.member_id===currentUserId?' selected':'')+'>'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
+  var aSel=document.getElementById('gAssignedTo');
+  aSel.innerHTML='<option value="">— None —</option>';
+  allMembers.forEach(function(m){aSel.innerHTML+='<option value="'+m.member_id+'">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
   document.getElementById('giveModal').classList.add('active');
 }
 function closeGiveModal(){document.getElementById('giveModal').classList.remove('active');giveItemId=null;}
@@ -517,8 +565,9 @@ async function saveGive(){
     tenant_id:TENANT,
     item_name:item.part_name,
     quantity:qty,
-    value:totalValue, // store unit_cost × qty
+    value:totalValue,
     contact_id:document.getElementById('gContact').value||null,
+    assigned_to:document.getElementById('gAssignedTo').value||null,
     given_by:document.getElementById('gMember').value||currentUserId,
     given_date:document.getElementById('gDate').value?new Date(document.getElementById('gDate').value).toISOString():new Date().toISOString()
   });
