@@ -251,7 +251,11 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans
 <!-- MOBILE CONTACT PICKER (shown on mobile when no contact selected) -->
 <div class="mob-picker" id="mobPicker">
   <div class="mob-picker-header">
-    <div style="position:relative;">
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border-default);margin-bottom:10px;">
+      <button id="mobTabUnread" onclick="setMobTab('unread')" style="flex:1;padding:10px;font-size:14px;font-weight:700;border:none;background:transparent;color:var(--accent-primary);border-bottom:2px solid var(--accent-primary);margin-bottom:-2px;cursor:pointer;">Unread</button>
+      <button id="mobTabAll" onclick="setMobTab('all')" style="flex:1;padding:10px;font-size:14px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;">All Contacts</button>
+    </div>
+    <div style="position:relative;" id="mobSearchWrap" style="display:none;">
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text-secondary);pointer-events:none;">🔍</span>
       <input type="text" class="mob-picker-search" id="mobSearch" placeholder="Search contacts..." oninput="renderMobPicker()" autocomplete="off">
     </div>
@@ -756,42 +760,66 @@ async function init(){
   await Promise.all([loadMembers(),loadContacts(),checkTable()]);
   await loadComms();
   renderContactList();
-  if(window.innerWidth<=768)renderMobPicker();
+  if(window.innerWidth<=768){setMobTab('unread');}
 }
 
 // ── MOBILE PICKER ──
+var mobTab='unread';
+
+function setMobTab(tab){
+  mobTab=tab;
+  var uBtn=document.getElementById('mobTabUnread');
+  var aBtn=document.getElementById('mobTabAll');
+  var searchWrap=document.getElementById('mobSearchWrap');
+  if(uBtn){uBtn.style.color=tab==='unread'?'var(--accent-primary)':'var(--text-secondary)';uBtn.style.borderBottomColor=tab==='unread'?'var(--accent-primary)':'transparent';}
+  if(aBtn){aBtn.style.color=tab==='all'?'var(--accent-primary)':'var(--text-secondary)';aBtn.style.borderBottomColor=tab==='all'?'var(--accent-primary)':'transparent';}
+  if(searchWrap)searchWrap.style.display=tab==='all'?'block':'none';
+  renderMobPicker();
+}
+
 function renderMobPicker(){
-  var q=(document.getElementById('mobSearch')||{}).value||'';
-  q=q.trim().toLowerCase();
-  var list=allContacts.filter(function(c){
-    if(!q)return true;
-    var n=(contactName(c)+' '+(c.organization_name||'')+' '+(c.phone||'')).toLowerCase();
-    return n.includes(q);
-  });
-  // Sort: unread first, then by last comm date
-  list.sort(function(a,b){
-    var ua=getUnreadCount(a.contact_id),ub=getUnreadCount(b.contact_id);
-    if(ua!==ub)return ub-ua;
-    var la=getLastComm(a.contact_id),lb=getLastComm(b.contact_id);
-    if(la&&lb)return new Date(lb.sent_at)-new Date(la.sent_at);
-    if(la)return-1;if(lb)return 1;
-    return contactName(a).localeCompare(contactName(b));
-  });
   var el=document.getElementById('mobPickerList');
   if(!el)return;
-  if(!list.length){el.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-secondary);">No contacts found</div>';return;}
+  var list;
+  if(mobTab==='unread'){
+    list=allContacts.filter(function(c){return getUnreadCount(c.contact_id)>0;});
+    list.sort(function(a,b){return getUnreadCount(b.contact_id)-getUnreadCount(a.contact_id);});
+    if(!list.length){
+      el.innerHTML='<div style="padding:60px 20px;text-align:center;"><div style="font-size:40px;opacity:.2;margin-bottom:10px;">✓</div><div style="color:var(--text-secondary);font-size:15px;font-weight:600;">All caught up</div><div style="color:var(--text-secondary);font-size:13px;margin-top:6px;">No unread messages</div></div>';
+      return;
+    }
+  }else{
+    var q=(document.getElementById('mobSearch')||{}).value||'';
+    q=q.trim().toLowerCase();
+    list=allContacts.filter(function(c){
+      if(!q)return true;
+      var n=(contactName(c)+' '+(c.organization_name||'')+' '+(c.phone||'')).toLowerCase();
+      return n.includes(q);
+    });
+    list.sort(function(a,b){
+      var la=getLastComm(a.contact_id),lb=getLastComm(b.contact_id);
+      if(la&&lb)return new Date(lb.sent_at)-new Date(la.sent_at);
+      if(la)return-1;if(lb)return 1;
+      return contactName(a).localeCompare(contactName(b));
+    });
+    if(!list.length){el.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-secondary);">No contacts found</div>';return;}
+  }
   el.innerHTML=list.map(function(c){
     var col=hashColor(c.contact_id);
     var unread=getUnreadCount(c.contact_id);
     var last=getLastComm(c.contact_id);
     var sub=(c.phone?formatPhone(c.phone):'')+(c.organization_name?' · '+c.organization_name:'');
+    var preview=last?(last.subject||last.body||'').slice(0,35):'';
     return '<div class="mob-picker-row" onclick="mobSelectContact(\''+c.contact_id+'\')">'
       +'<div class="mob-picker-avatar" style="background:'+col+'">'+contactInitials(c)+'</div>'
       +'<div class="mob-picker-info">'
         +'<div class="mob-picker-name">'+esc(contactName(c))+'</div>'
-        +'<div class="mob-picker-sub">'+esc(sub||'No phone')+'</div>'
+        +'<div class="mob-picker-sub">'+esc(preview||sub||'No messages yet')+'</div>'
       +'</div>'
-      +(unread?'<div class="mob-picker-badge">'+unread+'</div>':'<div style="font-size:11px;color:var(--text-secondary);">'+(last?relTime(last.sent_at):'')+'</div>')
+      +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
+        +(last?'<div style="font-size:11px;color:var(--text-secondary);">'+relTime(last.sent_at)+'</div>':'')
+        +(unread?'<div class="mob-picker-badge">'+unread+'</div>':'')
+      +'</div>'
       +'</div>';
   }).join('');
 }
