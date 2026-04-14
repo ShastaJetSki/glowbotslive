@@ -511,7 +511,7 @@ var allAppointments=[],allEvents=[],allMembers=[],allContacts=[];
 var visibleLayers={appointments:true,events:true};
 var visibleMemberIds=new Set(),allMembersVisible=true;
 var dv=localStorage.getItem('sched-default-view');
-var currentView=dv||(window.innerWidth<=768?'week':'day'),viewDate=new Date(),miniDate=new Date();
+var currentView=dv||'day',viewDate=new Date(),miniDate=new Date();
 var editingApptId=null,editingEventId=null;
 
 var DEFAULT_COLORS=['#3b82f6','#22c55e','#f97316','#8b5cf6','#ec4899','#14b8a6','#eab308','#ef4444','#6366f1','#84cc16'];
@@ -567,7 +567,7 @@ async function checkAuth(){
 }
 
 async function loadMembers(){
-  var r=await sb.from('team_members').select('member_id,first_name,last_name,color,role').eq('tenant_id',tenantId).eq('is_active',true).order('last_name');
+  var r=await sb.from('team_members').select('member_id,first_name,last_name,color,role').eq('tenant_id',tenantId).or('is_active.is.null,is_active.eq.true').order('last_name');
   allMembers=r.data||[];
   allMembers.forEach(function(m){visibleMemberIds.add(m.member_id);});
 }
@@ -677,7 +677,12 @@ function renderMemberFilters(){
   document.getElementById('empFilterList').innerHTML=h;
   var ml=document.getElementById('mEmpFilterList');if(ml)ml.innerHTML=h;
 }
-function toggleLayer(k){visibleLayers[k]=!visibleLayers[k];renderCalLayers();render();}
+function toggleLayer(k){
+  visibleLayers[k]=!visibleLayers[k];
+  // On mobile always keep both layers on — events must always show
+  if(window.innerWidth<=768){visibleLayers.appointments=true;visibleLayers.events=true;}
+  renderCalLayers();render();
+}
 function toggleMember(id){if(visibleMemberIds.has(id))visibleMemberIds.delete(id);else visibleMemberIds.add(id);allMembersVisible=allMembers.every(function(m){return visibleMemberIds.has(m.member_id);});renderMemberFilters();render();}
 function toggleAllMembers(){if(allMembersVisible){visibleMemberIds.clear();allMembersVisible=false;}else{allMembers.forEach(function(m){visibleMemberIds.add(m.member_id);});allMembersVisible=true;}renderMemberFilters();render();}
 
@@ -1425,6 +1430,12 @@ async function init(){
   if(!tenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data)tenantId=r2.data.tenant_id;}
   await loadUserThemeBank();
   await Promise.all([loadMembers(),loadContacts(),loadAppointments(),loadEvents()]);
+  // Always force both calendar layers on — prevents blank screen from layer state
+  visibleLayers={appointments:true,events:true};
+  // Set mobile default to list view if no explicit preference saved
+  if(!localStorage.getItem('sched-default-view')&&window.innerWidth<=768){
+    currentView='week';
+  }
   maybeShowMineAll();
   setView(currentView);renderMiniCal();renderCalLayers();renderMemberFilters();
 }
