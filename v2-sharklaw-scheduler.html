@@ -106,6 +106,7 @@
     .cal-header-day{text-align:center;font-size:13px;font-weight:600;color:var(--text-secondary);padding:10px 4px;text-transform:uppercase;border-bottom:1px solid var(--border-default);}
     .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(6,1fr);gap:1px;flex:1;min-height:0;align-items:stretch;}
     .cal-cell{background:var(--bg-card);border:1px solid var(--border-default);border-radius:4px;padding:5px 6px;cursor:pointer;transition:border-color .15s;overflow:hidden;display:flex;flex-direction:column;height:100%;min-height:0;}
+    .cal-cell.past{opacity:.65;}
     .cal-cell:hover{border-color:var(--accent-primary);}
     .cal-cell.today{border-color:var(--accent-primary);border-width:2px;}
     .cal-cell.other{opacity:.3;}
@@ -113,7 +114,8 @@
     .cal-cell.today .cal-day-num{background:var(--accent-primary);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;}
     .cal-events{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0;scrollbar-width:thin;scrollbar-color:#333 #111;}
     .cal-strip{display:flex;align-items:center;gap:6px;height:24px;min-height:24px;max-height:24px;font-size:11px;padding:0 7px 0 8px;border-radius:4px;white-space:nowrap;overflow:hidden;cursor:pointer;font-weight:500;flex-shrink:0;border-left-width:4px;border-left-style:solid;border-left-color:transparent;}
-    .cal-strip:hover{filter:brightness(1.15);}
+    .cal-strip.past-strip{opacity:.55;}
+    .cal-strip:hover{filter:brightness(1.15);opacity:1;}
     .cal-strip-time{font-weight:700;flex-shrink:0;font-size:11px;}
     .cal-strip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
 
@@ -791,11 +793,16 @@ function stripHTML(it,ds){
   }
   var r2s=100,g2s=100,b2s=200;if(col&&col[0]==='#'){var hxs=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2s=parseInt(hxs.slice(0,2),16)||100;g2s=parseInt(hxs.slice(2,4),16)||100;b2s=parseInt(hxs.slice(4,6),16)||200;}
   var style='background:'+hexToRgba(col,0.2)+';border-left-color:'+col+';color:var(--text-primary);'+br;
+  // Dim past items
+  var today=new Date();today.setHours(0,0,0,0);
+  var itemDate=new Date(ds+'T00:00:00');
+  var isPast=itemDate<today;
+  var pastCls=isPast?' past-strip':'';
   var stripLabel=it._isEvent?'EVT':'APT';
   var stripContent=it._date===ds||!isMulti?
     '<span class="cal-strip-time">'+timeStr+'</span><span class="cal-strip-name">'+esc(it._title)+'</span><span style="margin-left:auto;font-size:7px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:2px;color:#fff;flex-shrink:0;">'+stripLabel+'</span>':
     '<span class="cal-strip-name">'+esc(it._title)+'</span>';
-  return '<div class="cal-strip" style="'+style+'" onclick="event.stopPropagation();'+handler+'(\''+it._id+'\')" title="'+timeStr+' '+esc(it._title)+'">'+stripContent+'</div>';
+  return '<div class="cal-strip'+pastCls+'" style="'+style+'" onclick="event.stopPropagation();'+handler+'(\''+it._id+'\')" title="'+timeStr+' '+esc(it._title)+'">'+stripContent+'</div>';
 }
 
 function renderMonth(){
@@ -809,7 +816,7 @@ function renderMonth(){
     var dn,ds,cls='cal-cell';
     if(i<sd){dn=prev-sd+i+1;ds=dateStr(new Date(y,mo-1,dn));cls+=' other';}
     else if(i-sd>=dim){dn=i-sd-dim+1;ds=dateStr(new Date(y,mo+1,dn));cls+=' other';}
-    else{dn=i-sd+1;var cd=new Date(y,mo,dn);ds=dateStr(cd);if(isToday(cd))cls+=' today';}
+    else{dn=i-sd+1;var cd=new Date(y,mo,dn);ds=dateStr(cd);if(isToday(cd))cls+=' today';else{var td=new Date();td.setHours(0,0,0,0);if(cd<td)cls+=' past';}}
     if(isMobile&&cls.indexOf('other')>-1){h+='<div class="'+cls+'" style="opacity:.15;pointer-events:none;"><div class="cal-day-num">'+dn+'</div><div class="cal-events"></div></div>';}
     else{var items=getUnifiedItems(ds);h+='<div class="'+cls+'" onclick="clickDate(\''+ds+'\')">';h+='<div class="cal-day-num">'+dn+'</div><div class="cal-events">';items.forEach(function(it){h+=stripHTML(it,ds);});h+='</div></div>';}
   }
@@ -844,7 +851,8 @@ function renderWeek(){
       var items=getUnifiedItems(ds);
       items.sort(function(a,b){return(a._time||'').localeCompare(b._time||'');});
       var todayBg=isToday(dd)?'background:color-mix(in srgb,var(--accent-primary) 4%,transparent);':'';
-      h+='<div style="display:flex;flex-direction:column;gap:3px;padding:4px 3px;min-height:60px;border-right:1px solid var(--border-default);'+todayBg+'">';
+      var td2=new Date();td2.setHours(0,0,0,0);var isPastDay=dd<td2;
+      h+='<div style="display:flex;flex-direction:column;gap:3px;padding:4px 3px;min-height:60px;border-right:1px solid var(--border-default);'+todayBg+(isPastDay?'opacity:.65;':'')+'">'; 
       items.forEach(function(it){
         var col=getItemColor(it);
         var handler=it._isEvent?'openEditEvent':'openEditAppt';
