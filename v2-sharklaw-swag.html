@@ -157,8 +157,8 @@
 
   <div class="tab-bar">
     <button class="tab-btn active" id="tabInv" onclick="setTab('inventory')">Inventory</button>
-    <button class="tab-btn" id="tabGiven" onclick="setTab('given')">Given Log</button>
     <button class="tab-btn" id="tabTeam" onclick="setTab('team')">Team</button>
+    <button class="tab-btn" id="tabGiven" onclick="setTab('given')">Given Log</button>
   </div>
 
   <div id="invSection">
@@ -188,12 +188,13 @@
         <thead><tr>
           <th>Team Member</th>
           <th>Role</th>
+          <th>Hire Date</th>
           <th>Items Given to Clients</th>
           <th>Value Given</th>
           <th>Items Assigned to Them</th>
           <th>Value Assigned</th>
         </tr></thead>
-        <tbody id="teamBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">Loading…</td></tr></tbody>
+        <tbody id="teamBody"><tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary);">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -417,21 +418,31 @@ function renderGiven(){
 }
 
 function renderTeam(){
-  if(!allMembers.length){document.getElementById('teamBody').innerHTML='<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">No team members found</td></tr>';return;}
-  document.getElementById('teamBody').innerHTML=allMembers.map(function(m){
+  if(!allMembers.length){document.getElementById('teamBody').innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary);">No team members found</td></tr>';return;}
+  var roleOrder={owner:0,admin:1,manager:2,sr_associate:3,associate:4,jr_associate:5};
+  var sorted=allMembers.slice().sort(function(a,b){
+    var ra=roleOrder[a.role]!==undefined?roleOrder[a.role]:99;
+    var rb=roleOrder[b.role]!==undefined?roleOrder[b.role]:99;
+    if(ra!==rb)return ra-rb;
+    // Same role — sort by hire date (created_at) oldest first
+    var da=a.created_at?new Date(a.created_at):new Date(9999,0,1);
+    var db=b.created_at?new Date(b.created_at):new Date(9999,0,1);
+    return da-db;
+  });
+  document.getElementById('teamBody').innerHTML=sorted.map(function(m){
     var name=((m.first_name||'')+' '+(m.last_name||'')).trim();
     var role=(m.role||'').replace(/_/g,' ');
-    // Items given TO clients BY this member
+    var hireDate=m.created_at?new Date(m.created_at).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}):'—';
     var givenByMember=allGiven.filter(function(g){return g.given_by===m.member_id&&g.contact_id;});
     var givenQty=givenByMember.reduce(function(s,g){return s+(g.quantity||0);},0);
     var givenVal=givenByMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
-    // Items assigned TO this team member (assigned_to field)
     var assignedToMember=allGiven.filter(function(g){return g.assigned_to===m.member_id;});
     var assignedQty=assignedToMember.reduce(function(s,g){return s+(g.quantity||0);},0);
     var assignedVal=assignedToMember.reduce(function(s,g){return s+(parseFloat(g.value)||0);},0);
     return '<tr>'
       +'<td style="font-weight:600;">'+esc(name)+'</td>'
       +'<td style="color:var(--text-secondary);text-transform:capitalize;">'+esc(role)+'</td>'
+      +'<td style="color:var(--text-secondary);font-size:12px;">'+hireDate+'</td>'
       +'<td>'+givenQty+' item'+(givenQty!==1?'s':'')+'</td>'
       +'<td style="color:var(--accent-primary);font-weight:600;">'+fmtMoney(givenVal)+'</td>'
       +'<td>'+assignedQty+' item'+(assignedQty!==1?'s':'')+'</td>'
@@ -606,7 +617,7 @@ async function init(){
   currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName;
   document.getElementById('mUserName').textContent=currentUserName;
-  var mr=await sb.from('team_members').select('member_id,first_name,last_name,color').eq('tenant_id',TENANT).eq('is_active',true).order('last_name');
+  var mr=await sb.from('team_members').select('member_id,first_name,last_name,color,role,created_at').eq('tenant_id',TENANT).or('is_active.is.null,is_active.eq.true').order('last_name');
   allMembers=mr.data||[];
   await loadAll();
   document.getElementById('loadingScreen').style.display='none';
