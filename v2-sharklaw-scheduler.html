@@ -444,6 +444,36 @@
       <div class="form-group"><label class="form-label">Location</label><input type="text" class="form-input" id="emLocation" placeholder="Event location"></div>
       <div class="form-group"><label class="form-label">Assign To</label><select class="form-select" id="emAssign"><option value="">-- Unassigned --</option></select></div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="emNotes"></textarea></div>
+
+      <!-- FLYER UPLOAD -->
+      <div class="form-group">
+        <label class="form-label">Event Flyer</label>
+        <div id="flyerArea">
+          <!-- Thumbnail shown when flyer exists -->
+          <div id="flyerThumbWrap" style="display:none;margin-bottom:8px;">
+            <img id="flyerThumb" src="" alt="Event flyer"
+              onclick="openFlyerLightbox()"
+              style="max-width:100%;max-height:160px;border-radius:8px;object-fit:contain;cursor:zoom-in;border:1px solid var(--border-default);display:block;">
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <button type="button" onclick="openFlyerLightbox()" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--border-default);background:transparent;color:var(--text-secondary);font-size:11px;cursor:pointer;">🔍 View Full Size</button>
+              <button type="button" onclick="removeFlyerImage()" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:transparent;color:#ef4444;font-size:11px;cursor:pointer;">✕ Remove</button>
+            </div>
+          </div>
+          <!-- Upload zone -->
+          <div id="flyerUploadZone"
+            onclick="document.getElementById('flyerFileInput').click()"
+            ondragover="event.preventDefault();this.style.borderColor='var(--accent-primary)'"
+            ondragleave="this.style.borderColor='var(--border-default)'"
+            ondrop="handleFlyerDrop(event)"
+            style="border:2px dashed var(--border-default);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s;">
+            <div style="font-size:28px;margin-bottom:6px;">🖼️</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">Upload Flyer</div>
+            <div style="font-size:11px;color:var(--text-secondary);">Click or drag & drop · JPG, PNG, GIF, WebP</div>
+          </div>
+          <input type="file" id="flyerFileInput" accept="image/*" style="display:none;" onchange="handleFlyerFile(this.files[0])">
+          <div id="flyerUploadStatus" style="font-size:11px;color:var(--text-secondary);margin-top:5px;display:none;"></div>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-danger" id="emDeleteBtn" style="display:none;" onclick="deleteEvent()">Delete</button>
@@ -451,6 +481,13 @@
       <button class="btn-primary" onclick="saveEvent()">Save</button>
     </div>
   </div>
+</div>
+
+<!-- FLYER LIGHTBOX -->
+<div id="flyerLightbox" onclick="closeFlyerLightbox()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2000;align-items:center;justify-content:center;cursor:zoom-out;">
+  <button onclick="closeFlyerLightbox()" style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+  <img id="flyerLightboxImg" src="" alt="Event flyer" onclick="event.stopPropagation()" style="max-width:92vw;max-height:90vh;border-radius:8px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.6);">
+  <a id="flyerLightboxDownload" href="" download style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:13px;font-weight:600;text-decoration:none;">⬇ Download</a>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1063,6 +1100,7 @@ function openEventModal(ds,hr){
   document.getElementById('emEndTime').value='';document.getElementById('emType').value='';
   document.getElementById('emLocation').value='';document.getElementById('emAssign').value='';document.getElementById('emNotes').value='';
   document.getElementById('emDeleteBtn').style.display='none';
+  resetFlyerUI(null);
   document.getElementById('eventModal').classList.add('active');
 }
 
@@ -1080,6 +1118,7 @@ function openEditEvent(id){
   document.getElementById('emAssign').value=e.assigned_to||'';
   document.getElementById('emNotes').value=e.notes||'';
   document.getElementById('emDeleteBtn').style.display='block';
+  resetFlyerUI(e.flyer_url||null);
   document.getElementById('eventModal').classList.add('active');
 }
 function closeEventModal(){document.getElementById('eventModal').classList.remove('active');}
@@ -1090,13 +1129,16 @@ async function saveEvent(){
   if(!title||!dt){showToast('Title and date required');return;}
   var dtEnd=document.getElementById('emEndDate').value;
   var tEnd=document.getElementById('emEndTime').value;
-  var data={event_name:title,event_date:dt,event_time:document.getElementById('emTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:document.getElementById('emAssign').value||null,notes:document.getElementById('emNotes').value.trim()||null};
+  var data={event_name:title,event_date:dt,event_time:document.getElementById('emTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:document.getElementById('emAssign').value||null,notes:document.getElementById('emNotes').value.trim()||null,flyer_url:currentFlyerUrl||null};
   if(dtEnd&&dtEnd!==dt)data.event_end_date=dtEnd;
   if(tEnd)data.event_end_time=tEnd;
   try{
     if(editingEventId){
       var r=await sb.from('events').update(data).eq('event_id',editingEventId);
       if(r.error)throw r.error;
+      // Update local cache
+      var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
+      if(ev)Object.assign(ev,data);
       showToast('Updated');
     }else{
       data.tenant_id=tenantId;
@@ -1111,6 +1153,104 @@ async function saveEvent(){
     console.error('saveEvent error:',e);
   }
 }
+
+// ── FLYER UPLOAD ──
+var currentFlyerUrl=null;
+var pendingFlyerFile=null;
+
+function resetFlyerUI(existingUrl){
+  currentFlyerUrl=existingUrl||null;
+  pendingFlyerFile=null;
+  var fileInput=document.getElementById('flyerFileInput');
+  if(fileInput)fileInput.value='';
+  setFlyerStatus('');
+  if(existingUrl){
+    document.getElementById('flyerThumb').src=existingUrl;
+    document.getElementById('flyerThumbWrap').style.display='block';
+    document.getElementById('flyerUploadZone').style.display='none';
+  }else{
+    document.getElementById('flyerThumbWrap').style.display='none';
+    document.getElementById('flyerUploadZone').style.display='block';
+  }
+}
+
+function setFlyerStatus(msg){
+  var el=document.getElementById('flyerUploadStatus');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.display=msg?'block':'none';
+}
+
+function handleFlyerDrop(e){
+  e.preventDefault();
+  document.getElementById('flyerUploadZone').style.borderColor='var(--border-default)';
+  var file=e.dataTransfer.files[0];
+  if(file)handleFlyerFile(file);
+}
+
+async function handleFlyerFile(file){
+  if(!file)return;
+  if(!file.type.startsWith('image/')){showToast('Please select an image file');return;}
+  if(file.size>10*1024*1024){showToast('Image must be under 10MB');return;}
+  // Show local preview immediately
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    document.getElementById('flyerThumb').src=ev.target.result;
+    document.getElementById('flyerThumbWrap').style.display='block';
+    document.getElementById('flyerUploadZone').style.display='none';
+  };
+  reader.readAsDataURL(file);
+  // Upload to Supabase Storage
+  setFlyerStatus('Uploading flyer...');
+  try{
+    var ext=file.name.split('.').pop()||'jpg';
+    var path='event-flyers/'+(editingEventId||'new')+'-'+Date.now()+'.'+ext;
+    var r=await sb.storage.from('event-media').upload(path,file,{upsert:true,contentType:file.type});
+    if(r.error)throw r.error;
+    var pub=sb.storage.from('event-media').getPublicUrl(path);
+    currentFlyerUrl=pub.data.publicUrl;
+    // If editing an existing event, save immediately
+    if(editingEventId){
+      await sb.from('events').update({flyer_url:currentFlyerUrl}).eq('event_id',editingEventId);
+      var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
+      if(ev)ev.flyer_url=currentFlyerUrl;
+    }
+    setFlyerStatus('✓ Flyer uploaded');
+    setTimeout(function(){setFlyerStatus('');},2500);
+  }catch(e){
+    setFlyerStatus('Upload failed: '+e.message);
+    console.error('Flyer upload error:',e);
+  }
+}
+
+async function removeFlyerImage(){
+  if(!confirm('Remove this flyer?'))return;
+  currentFlyerUrl=null;
+  if(editingEventId){
+    await sb.from('events').update({flyer_url:null}).eq('event_id',editingEventId);
+    var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
+    if(ev)ev.flyer_url=null;
+    showToast('Flyer removed');
+  }
+  document.getElementById('flyerThumbWrap').style.display='none';
+  document.getElementById('flyerUploadZone').style.display='block';
+  var fi=document.getElementById('flyerFileInput');if(fi)fi.value='';
+}
+
+function openFlyerLightbox(){
+  var url=document.getElementById('flyerThumb').src;
+  if(!url)return;
+  var lb=document.getElementById('flyerLightbox');
+  document.getElementById('flyerLightboxImg').src=url;
+  document.getElementById('flyerLightboxDownload').href=url;
+  lb.style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function closeFlyerLightbox(){
+  document.getElementById('flyerLightbox').style.display='none';
+  document.body.style.overflow='';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeFlyerLightbox();});
 
 async function deleteEvent(){
   if(!editingEventId||!confirm('Delete this event?'))return;
