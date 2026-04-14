@@ -1215,8 +1215,8 @@ async function handleFlyerFile(file){
     var path='event-flyers/'+safeName;
     var r=await sb.storage.from('event-media').upload(path,file,{upsert:true,contentType:file.type});
     if(r.error){
-      // Storage bucket not set up yet — silently keep local preview, don't show message to users
-      console.warn('event-media bucket not found. Create it in Supabase Storage to persist flyers.');
+      // Storage bucket not set up yet — silently keep local preview
+      if(!editingEventId){setFlyerStatus('Flyer added — click Save to keep it.');}
       return;
     }
     var pub=sb.storage.from('event-media').getPublicUrl(path);
@@ -1226,12 +1226,14 @@ async function handleFlyerFile(file){
     // If editing an existing event, save immediately to DB
     if(editingEventId){
       var upd=await sb.from('events').update({flyer_url:currentFlyerUrl,updated_at:new Date().toISOString()}).eq('event_id',editingEventId);
-      if(upd.error){setFlyerStatus('⚠ Uploaded but could not save to event: '+upd.error.message);return;}
+      if(upd.error){setFlyerStatus('Uploaded but could not save: '+upd.error.message);return;}
       var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
       if(ev)ev.flyer_url=currentFlyerUrl;
+      setFlyerStatus('✓ Flyer saved');
+      setTimeout(function(){setFlyerStatus('');},2500);
+    }else{
+      setFlyerStatus('Flyer added — click Save to keep it.');
     }
-    setFlyerStatus('✓ Flyer uploaded successfully');
-    setTimeout(function(){setFlyerStatus('');},3000);
   }catch(e){
     setFlyerStatus('⚠ Upload error: '+e.message);
     console.error('Flyer upload error:',e);
