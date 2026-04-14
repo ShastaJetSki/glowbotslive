@@ -1208,15 +1208,22 @@ async function handleFlyerFile(file){
   };
   reader.readAsDataURL(file);
   // Upload to Supabase Storage
-  setFlyerStatus('⏳ Uploading...');
+  setFlyerStatus('');
   try{
     var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
     var safeName='flyer-'+(editingEventId||'new')+'-'+Date.now()+'.'+ext;
     var path='event-flyers/'+safeName;
-    var r=await sb.storage.from('event-media').upload(path,file,{upsert:true,contentType:file.type});
+    var uploadPromise=sb.storage.from('event-media').upload(path,file,{upsert:true,contentType:file.type});
+    // Timeout after 8 seconds so spinner never hangs
+    var timeoutPromise=new Promise(function(resolve){setTimeout(function(){resolve({error:{message:'timeout'}});},8000);});
+    var r=await Promise.race([uploadPromise,timeoutPromise]);
     if(r.error){
-      // Storage bucket not set up yet — silently keep local preview
-      if(!editingEventId){setFlyerStatus('Flyer added — click Save to keep it.');}
+      // Storage bucket not set up — flyer is local preview only, clear status cleanly
+      if(!editingEventId){
+        setFlyerStatus('Flyer added — click Save to keep it.');
+      }else{
+        setFlyerStatus('');
+      }
       return;
     }
     var pub=sb.storage.from('event-media').getPublicUrl(path);
