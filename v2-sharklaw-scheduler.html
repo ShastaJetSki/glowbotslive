@@ -1151,12 +1151,14 @@ function openEditEvent(id){
   resetFlyerUI(e.flyer_url||null);
   document.getElementById('eventModal').classList.add('active');
 }
-function closeEventModal(){document.getElementById('eventModal').classList.remove('active');}
+function closeEventModal(){document.getElementById('eventModal').classList.remove('active');flyerUploading=false;}
 
 async function saveEvent(){
   var title=document.getElementById('emName').value.trim();
   var dt=document.getElementById('emDate').value;
   if(!title||!dt){showToast('Title and date required');return;}
+  // Block save if flyer is still uploading
+  if(flyerUploading){showToast('Please wait — flyer is still uploading...');return;}
   var dtEnd=document.getElementById('emEndDate').value;
   var tEnd=document.getElementById('emEndTime').value;
   var data={event_name:title,event_date:dt,event_time:document.getElementById('emTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:document.getElementById('emAssign').value||null,notes:document.getElementById('emNotes').value.trim()||null,flyer_url:currentFlyerUrl||null};
@@ -1166,7 +1168,6 @@ async function saveEvent(){
     if(editingEventId){
       var r=await sb.from('events').update(data).eq('event_id',editingEventId);
       if(r.error)throw r.error;
-      // Update local cache
       var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
       if(ev)Object.assign(ev,data);
       showToast('Updated');
@@ -1187,6 +1188,17 @@ async function saveEvent(){
 // ── FLYER UPLOAD ──
 var currentFlyerUrl=null;
 var pendingFlyerFile=null;
+var flyerUploading=false;
+
+function setFlyerUploading(uploading){
+  flyerUploading=uploading;
+  var saveBtn=document.querySelector('#eventModal .btn-primary');
+  if(saveBtn){
+    saveBtn.disabled=uploading;
+    saveBtn.textContent=uploading?'Uploading flyer...':'Save';
+    saveBtn.style.opacity=uploading?'0.5':'';
+  }
+}
 
 function resetFlyerUI(existingUrl){
   currentFlyerUrl=existingUrl||null;
@@ -1220,56 +1232,86 @@ function handleFlyerDrop(e){
 
 async function handleFlyerFile(file){
   if(!file)return;
-  if(!file.type.startsWith('image/')){showToast('Please select an image file');return;}
+  if(!file.type.startsWith('image/')&&!file.name.match(/\.(heic|heif)$/i)){showToast('Please select an image file');return;}
   if(file.size>10*1024*1024){showToast('Image must be under 10MB');return;}
-  // Show local preview immediately so user sees something right away
+  // Show local preview immediately
   var reader=new FileReader();
   reader.onload=function(ev){
     document.getElementById('flyerThumb').src=ev.target.result;
     document.getElementById('flyerThumbWrap').style.display='block';
     document.getElementById('flyerUploadZone').style.display='none';
-    // Store as data URL fallback in case storage fails
-    currentFlyerUrl=ev.target.result;
+    currentFlyerUrl=ev.target.result; // local fallback
   };
   reader.readAsDataURL(file);
-  // Upload to Supabase Storage
-  setFlyerStatus('');
+  // Show progress UI and lock Save
+  setFlyerUploading(true);
+  setFlyerProgress(0);
   try{
     var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
     var safeName='flyer-'+(editingEventId||'new')+'-'+Date.now()+'.'+ext;
     var path='event-flyers/'+safeName;
-    var uploadPromise=sb.storage.from('event-media').upload(path,file,{upsert:true,contentType:file.type});
-    // Timeout after 8 seconds so spinner never hangs
-    var timeoutPromise=new Promise(function(resolve){setTimeout(function(){resolve({error:{message:'timeout'}});},8000);});
-    var r=await Promise.race([uploadPromise,timeoutPromise]);
-    if(r.error){
-      // Storage bucket not set up — flyer is local preview only, clear status cleanly
-      if(!editingEventId){
-        setFlyerStatus('Flyer added — click Save to keep it.');
-      }else{
-        setFlyerStatus('');
-      }
+    // Use XHR for real upload progress
+    var uploaded=await uploadWithProgress(file,path,function(pct){setFlyerProgress(pct);});
+    if(!uploaded.ok){
+      // Storage bucket not set up — keep local preview
+      setFlyerProgress(100);
+      setTimeout(function(){setFlyerStatus(editingEventId?'':'Flyer added — click Save to keep it.');setFlyerUploading(false);},400);
       return;
     }
     var pub=sb.storage.from('event-media').getPublicUrl(path);
     currentFlyerUrl=pub.data.publicUrl;
-    // Update thumb to public URL
     document.getElementById('flyerThumb').src=currentFlyerUrl;
-    // If editing an existing event, save immediately to DB
+    setFlyerProgress(100);
     if(editingEventId){
       var upd=await sb.from('events').update({flyer_url:currentFlyerUrl,updated_at:new Date().toISOString()}).eq('event_id',editingEventId);
-      if(upd.error){setFlyerStatus('Uploaded but could not save: '+upd.error.message);return;}
-      var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
-      if(ev)ev.flyer_url=currentFlyerUrl;
-      setFlyerStatus('✓ Flyer saved');
-      setTimeout(function(){setFlyerStatus('');},2500);
-    }else{
-      setFlyerStatus('Flyer added — click Save to keep it.');
+      if(!upd.error){var ev=allEvents.find(function(x){return x.event_id===editingEventId;});if(ev)ev.flyer_url=currentFlyerUrl;}
     }
+    setTimeout(function(){setFlyerStatus(editingEventId?'✓ Flyer saved':'Flyer added — click Save to keep it.');setFlyerUploading(false);setTimeout(function(){setFlyerStatus('');},3000);},300);
   }catch(e){
-    setFlyerStatus('⚠ Upload error: '+e.message);
-    console.error('Flyer upload error:',e);
+    setFlyerStatus('Upload error: '+e.message);
+    setFlyerUploading(false);
   }
+}
+
+function uploadWithProgress(file,path,onProgress){
+  return new Promise(function(resolve){
+    var session=sb.auth.session&&sb.auth.session()?sb.auth.session():null;
+    // Get the current session token
+    sb.auth.getSession().then(function(res){
+      var token=(res.data&&res.data.session)?res.data.session.access_token:SB_KEY;
+      var url=SB_URL+'/storage/v1/object/event-media/'+path;
+      var xhr=new XMLHttpRequest();
+      xhr.open('POST',url,true);
+      xhr.setRequestHeader('Authorization','Bearer '+token);
+      xhr.setRequestHeader('x-upsert','true');
+      xhr.upload.addEventListener('progress',function(e){
+        if(e.lengthComputable)onProgress(Math.round(e.loaded/e.total*100));
+      });
+      xhr.onload=function(){resolve({ok:xhr.status>=200&&xhr.status<300});};
+      xhr.onerror=function(){resolve({ok:false});};
+      xhr.ontimeout=function(){resolve({ok:false});};
+      xhr.timeout=30000;
+      var formData=new FormData();
+      formData.append('file',file);
+      // Send as raw binary for Supabase storage
+      xhr.setRequestHeader('Content-Type',file.type);
+      xhr.send(file);
+    }).catch(function(){resolve({ok:false});});
+  });
+}
+
+function setFlyerProgress(pct){
+  var el=document.getElementById('flyerUploadStatus');
+  if(!el)return;
+  el.style.display='block';
+  el.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">'+
+    '<span style="font-size:11px;color:var(--accent-light);">'+(pct<100?'⬆ Uploading flyer...':'✓ Upload complete')+'</span>'+
+    '<span style="font-size:11px;font-weight:700;color:var(--accent-light);">'+pct+'%</span>'+
+    '</div>'+
+    '<div style="height:4px;background:var(--border-default);border-radius:4px;overflow:hidden;">'+
+    '<div style="height:100%;width:'+pct+'%;background:var(--accent-primary);border-radius:4px;transition:width .2s;"></div>'+
+    '</div>';
 }
 
 async function removeFlyerImage(){
