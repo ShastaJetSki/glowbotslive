@@ -859,21 +859,67 @@ function renderBudget() {
 
 /* CONTACTS */
 function renderContacts() {
-  if (!allVendors.length) { document.getElementById('centerBody').innerHTML = emptyState('&#128101;','No contacts yet','Add vendors, sponsors, and key contacts for this event.','+ Add Contact','openModal(\'addVendorModal\')'); return; }
   var vColors = ['#DC2626','#EA580C','#D97706','#0284C7','#7C3AED','#16A34A','#DB2777','#0891B2'];
-  document.getElementById('centerBody').innerHTML = allVendors.map(function(v,i){
+  var list = contactsScope === 'all' ? allContactsGlobal : allVendors;
+
+  // Scope toggle header
+  var scopeBar = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">'
+    +'<div style="display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;">'
+    +'<button onclick="setContactsScope(\'event\')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;'+(contactsScope==='event'?'background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(0,0,0,.1);':'background:transparent;color:var(--t2);')+'">This Event</button>'
+    +'<button onclick="setContactsScope(\'all\')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;'+(contactsScope==='all'?'background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(0,0,0,.1);':'background:transparent;color:var(--t2);')+'">All Contacts</button>'
+    +'</div>'
+    +'<span style="font-size:12px;color:var(--t2);">'+list.length+' contact'+(list.length!==1?'s':'')+'</span>'
+    +'<button class="add-btn" style="margin-left:auto;" onclick="openModal(\'addVendorModal\')">+ Add Contact</button>'
+    +'</div>';
+
+  if (!list.length) {
+    var msg = contactsScope === 'all' ? 'No contacts across any events yet.' : 'No contacts added to this event yet.';
+    document.getElementById('centerBody').innerHTML = scopeBar + emptyState('&#128101;', contactsScope==='all'?'No contacts yet':'No event contacts yet', msg, '', '');
+    return;
+  }
+
+  var rows = list.map(function(v,i){
     var name = v.vendor_name || v.company_name || 'Contact';
-    return '<div class="vendor-row"><div class="vendor-avatar" style="background:'+vColors[i%vColors.length]+'">'+initials(name)+'</div>'
-      +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+esc(name)+'</div><div style="font-size:11px;color:var(--t2);">'+(v.contact_name?esc(v.contact_name)+' - ':'')+esc(v.phone||v.email||'-')+'</div></div>'
-      +'<div style="text-align:right;">'+(parseFloat(v.cost)>0?'<div style="font-size:13px;font-weight:700;color:var(--acc);">$'+fmt(v.cost)+'</div>':'')+'<span style="font-size:10px;padding:2px 7px;border-radius:7px;background:var(--bg2);color:var(--t2);">'+esc(v.vendor_type||'contact')+'</span></div></div>';
+    var eventLabel = '';
+    if (contactsScope === 'all') {
+      // Find which event this contact belongs to
+      var evName = v._event_name || '';
+      if (evName) eventLabel = '<span style="font-size:10px;padding:1px 6px;border-radius:5px;background:var(--glow);color:var(--ev-color);margin-left:4px;">'+esc(evName)+'</span>';
+    }
+    return '<div class="vendor-row">'
+      +'<div class="vendor-avatar" style="background:'+vColors[i%vColors.length]+'">'+initials(name)+'</div>'
+      +'<div style="flex:1;min-width:0;">'
+        +'<div style="font-size:13px;font-weight:600;">'+esc(name)+eventLabel+'</div>'
+        +'<div style="font-size:11px;color:var(--t2);">'+(v.contact_name?esc(v.contact_name)+' - ':'')+esc(v.phone||v.email||'-')+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;">'
+        +(parseFloat(v.cost)>0?'<div style="font-size:13px;font-weight:700;color:var(--acc);">$'+fmt(v.cost)+'</div>':'')
+        +'<span style="font-size:10px;padding:2px 7px;border-radius:7px;background:var(--bg2);color:var(--t2);">'+esc(v.vendor_type||'contact')+'</span>'
+      +'</div>'
+    +'</div>';
   }).join('');
+
+  document.getElementById('centerBody').innerHTML = scopeBar + rows;
+}
+
+async function setContactsScope(scope) {
+  contactsScope = scope;
+  if (scope === 'all' && !allContactsGlobal.length) {
+    // Load all vendors across the tenant
+    var r = await sb.from('event_vendors').select('*, event_projects(event_name)').eq('tenant_id', tenantId).order('vendor_name');
+    allContactsGlobal = (r.data || []).map(function(v) {
+      v._event_name = v.event_projects ? v.event_projects.event_name : '';
+      return v;
+    });
+  }
+  renderContacts();
 }
 async function saveVendor() {
   var name = document.getElementById('vNameInput').value.trim(); if (!name) { toast('Name required'); return; }
   var data = {tenant_id:tenantId,event_project_id:project.event_project_id,vendor_name:name,vendor_type:document.getElementById('vTypeInput').value,contact_name:document.getElementById('vContactInput').value.trim()||null,phone:document.getElementById('vPhoneInput').value.trim()||null,email:document.getElementById('vEmailInput').value.trim()||null,cost:parseFloat(document.getElementById('vCostInput').value)||0};
   var r = await sb.from('event_vendors').insert(data).select().single();
   if (r.error) { toast('Error: '+r.error.message); return; }
-  allVendors.push(r.data); closeModal('addVendorModal'); toast('Contact added'); renderHeader(); renderContacts();
+  allVendors.push(r.data); if (allContactsGlobal.length) allContactsGlobal.push(Object.assign({_event_name: project.event_name||''}, r.data)); closeModal('addVendorModal'); toast('Contact added'); renderHeader(); renderContacts();
 }
 
 /* SCHEDULE */
@@ -995,6 +1041,8 @@ function renderCalendarTab() {
 
 /* QUESTIONS TAB */
 var qFilter = 'all';
+var contactsScope = 'event'; // 'event' or 'all'
+var allContactsGlobal = [];
 var editingQId = null, redirectingQId = null, answeringQId = null, currentQColor = null;
 var Q_PALETTE = ['#0284c7','#7c3aed','#059669','#DC2626','#d97706','#db2777','#0891b2','#65a30d','#9333ea','#6b7280'];
 var Q_DEPT_COLORS = ['#0284c7','#059669','#7c3aed','#d97706','#DC2626','#db2777','#0891b2','#65a30d','#9333ea','#e11d48'];
