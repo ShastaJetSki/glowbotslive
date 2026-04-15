@@ -521,9 +521,16 @@ function renderHeader() {
   document.title = (project.event_name || 'Event') + ' — Event Logic Pro';
 
   // Right panel avatar
+  // Avatar — preserve flyer if already uploaded
   var av = document.getElementById('evAvatar');
-  av.textContent = initials(project.event_name || 'EV');
-  av.style.background = evColor;
+  var savedFlyer = project.event_project_id ? localStorage.getItem('elp_flyer_' + project.event_project_id) : null;
+  if (savedFlyer) {
+    av.innerHTML = '<img src="' + savedFlyer + '" alt="flyer">';
+    av.style.background = 'transparent';
+  } else {
+    av.textContent = initials(project.event_name || 'EV');
+    av.style.background = evColor;
+  }
   document.getElementById('evName').textContent = project.event_name || 'Untitled';
   document.getElementById('evSub').textContent = (project.venue ? '📍 ' + project.venue : '') || '—';
   var pill = document.getElementById('evStatusPill');
@@ -571,10 +578,22 @@ function renderHeader() {
 function renderDeptList(filter) {
   var dl = document.getElementById('deptList');
   var activeTasks = allTasks.filter(function(t){return !t.is_cancelled;});
-  var allCount = activeTasks.length;
-  document.getElementById('allCount').textContent = allCount;
+  var isBudget = currentTab === 'budget';
 
-  // Remove all items except the "All" row
+  // Update "All" row label
+  var allRow = dl.querySelector('[data-dept="all"]');
+  if (allRow) {
+    var allCountEl = allRow.querySelector('.dept-count');
+    if (isBudget) {
+      var totalBudget = allDepts.reduce(function(s,d){return s+(parseFloat(d.budget)||0);},0);
+      var totalSpent  = activeTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+      if (allCountEl) allCountEl.textContent = totalBudget > 0 ? '$'+fmt(totalSpent)+' / $'+fmt(totalBudget) : '$'+fmt(totalSpent);
+    } else {
+      if (allCountEl) allCountEl.textContent = activeTasks.length;
+    }
+  }
+
+  // Remove dept rows (keep All)
   var items = dl.querySelectorAll('[data-dept]:not([data-dept="all"])');
   items.forEach(function(el){el.remove();});
 
@@ -584,15 +603,34 @@ function renderDeptList(filter) {
     var dDone   = dTasks.filter(function(t){return t.is_complete;}).length;
     var pct     = dTasks.length ? Math.round(dDone/dTasks.length*100) : 0;
     var budget  = parseFloat(d.budget)||0;
+    var spent   = dTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
     var color   = deptColor(i);
     var div = document.createElement('div');
     div.className = 'dept-item' + (currentDept===d.event_department_id?' active':'');
     div.dataset.dept = d.event_department_id;
     div.onclick = function(){selectDept(d.event_department_id, div);};
-    div.innerHTML =
-      '<div class="dept-item-top"><div class="dept-dot" style="background:'+color+'"></div><div class="dept-name">'+esc(d.department_name)+'</div><div class="dept-count">'+dTasks.length+'</div></div>'+
-      '<div class="dept-progress-bar"><div class="dept-progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'+
-      (budget>0?'<div class="dept-budget-line">$'+fmt(budget)+' budget · '+pct+'% done</div>':'<div class="dept-budget-line">'+pct+'% complete</div>');
+
+    if (isBudget) {
+      var remaining = budget - spent;
+      var spentPct  = budget > 0 ? Math.min(100, Math.round(spent/budget*100)) : 0;
+      var remColor  = remaining >= 0 ? '#16a34a' : '#dc2626';
+      div.innerHTML =
+        '<div class="dept-item-top"><div class="dept-dot" style="background:'+color+'"></div>'+
+        '<div class="dept-name">'+esc(d.department_name)+'</div></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:5px;">'+
+          '<span style="color:var(--t2);">Spent: <strong style="color:var(--t1);">$'+fmt(spent)+'</strong></span>'+
+          '<span style="color:'+remColor+';">'+(remaining>=0?'$'+fmt(remaining)+' left':'$'+fmt(Math.abs(remaining))+' over')+'</span>'+
+        '</div>'+
+        (budget>0?'<div class="dept-progress-bar" style="margin-top:4px;"><div class="dept-progress-fill" style="width:'+spentPct+'%;background:'+color+'"></div></div>'+
+        '<div class="dept-budget-line">Budget: $'+fmt(budget)+'</div>':'<div class="dept-budget-line" style="color:var(--t2);">No budget set</div>');
+    } else {
+      div.innerHTML =
+        '<div class="dept-item-top"><div class="dept-dot" style="background:'+color+'"></div>'+
+        '<div class="dept-name">'+esc(d.department_name)+'</div>'+
+        '<div class="dept-count">'+dDone+'/'+dTasks.length+'</div></div>'+
+        '<div class="dept-progress-bar"><div class="dept-progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'+
+        '<div class="dept-budget-line">'+pct+'% complete</div>';
+    }
     dl.appendChild(div);
   });
 }
@@ -618,6 +656,7 @@ function switchTab(tab, btn) {
   var label = TAB_ADD_LABELS[tab]||'';
   addBtn.textContent = label;
   addBtn.style.display = label ? 'block' : 'none';
+  renderDeptList(); // refresh left panel for current tab mode
   renderCurrentTab();
 }
 
