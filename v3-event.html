@@ -162,7 +162,14 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 
 /* Event info card */
 .ev-info-card{text-align:center;padding:16px 12px 12px;border-bottom:1px solid var(--border);margin-bottom:14px;}
-.ev-avatar{width:60px;height:60px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;margin:0 auto 10px;background:var(--ev-color);}
+.ev-avatar-wrap{position:relative;width:80px;height:80px;margin:0 auto 10px;cursor:pointer;}
+.ev-avatar{width:80px;height:80px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;background:var(--ev-color);overflow:hidden;transition:filter .2s;}
+.ev-avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px;}
+.ev-avatar-overlay{position:absolute;inset:0;border-radius:16px;background:rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;opacity:0;transition:opacity .2s;}
+.ev-avatar-wrap:hover .ev-avatar{filter:brightness(.7);}
+.ev-avatar-wrap:hover .ev-avatar-overlay{opacity:1;}
+.ev-avatar-overlay svg{width:18px;height:18px;stroke:#fff;}
+.ev-avatar-overlay span{font-size:9px;font-weight:700;color:#fff;letter-spacing:.4px;text-transform:uppercase;}
 .ev-info-name{font-size:16px;font-weight:800;margin-bottom:4px;}
 .ev-info-sub{font-size:12px;color:var(--t2);}
 .ev-status-pill{display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:6px;}
@@ -315,9 +322,16 @@ body.dark .s-completed{background:#1e1b4b;color:#a5b4fc;}
   <!-- ── RIGHT PANEL ── -->
   <div class="right-col">
     <div class="right-scroll">
-      <!-- Event avatar & name -->
+      <!-- Event avatar / flyer upload -->
       <div class="ev-info-card">
-        <div class="ev-avatar" id="evAvatar">EV</div>
+        <div class="ev-avatar-wrap" onclick="document.getElementById('flyerInput').click()" title="Upload event flyer">
+          <div class="ev-avatar" id="evAvatar">EV</div>
+          <div class="ev-avatar-overlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>Upload flyer</span>
+          </div>
+        </div>
+        <input type="file" id="flyerInput" accept="image/*" style="display:none;" onchange="handleFlyerUpload(this)">
         <div class="ev-info-name" id="evName">—</div>
         <div class="ev-info-sub" id="evSub">—</div>
         <div class="ev-status-pill s-planning" id="evStatusPill">planning</div>
@@ -343,28 +357,6 @@ body.dark .s-completed{background:#1e1b4b;color:#a5b4fc;}
         <div class="r-kpi"><div class="r-kpi-val" id="rDepts">0</div><div class="r-kpi-lbl">Depts</div></div>
       </div>
 
-      <div class="r-divider"></div>
-
-      <!-- Quick actions -->
-      <div class="r-section-label">Quick Actions</div>
-      <div class="r-actions">
-        <button class="r-action-btn r-action-primary" onclick="switchTab('tasks',null);openAddTaskModal()">
-          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Add Task
-        </button>
-        <button class="r-action-btn r-action-secondary" onclick="switchTab('budget',null)">
-          <svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          View Budget
-        </button>
-        <button class="r-action-btn r-action-outline" onclick="switchTab('vendors',null);openAddVendorModal()">
-          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          Add Vendor
-        </button>
-        <button class="r-action-btn r-action-outline" onclick="switchTab('schedule',null);openAddSchedModal()">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v4M10 16h4"/></svg>
-          Add Schedule Item
-        </button>
-      </div>
 
       <div class="r-divider"></div>
 
@@ -961,6 +953,32 @@ async function saveDetails() {
 }
 
 /* ─── INIT ─── */
+/* ─── FLYER UPLOAD ─── */
+function handleFlyerUpload(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    // Store in localStorage keyed by event id
+    try { localStorage.setItem('elp_flyer_' + project.event_project_id, dataUrl); } catch(err) { toast('Image too large to store locally'); return; }
+    applyFlyer(dataUrl);
+    toast('Flyer uploaded');
+  };
+  reader.readAsDataURL(file);
+}
+
+function applyFlyer(dataUrl) {
+  var av = document.getElementById('evAvatar');
+  if (dataUrl) {
+    av.innerHTML = '<img src="' + dataUrl + '" alt="Event flyer">';
+    av.style.background = 'transparent';
+  } else {
+    av.innerHTML = initials(project.event_name || 'EV');
+    av.style.background = evColor;
+  }
+}
+
 async function init() {
   var session = await checkAuth();
   if (!session) return;
@@ -984,6 +1002,9 @@ async function init() {
   evColor = project.color_tag || '#DC2626';
   document.documentElement.style.setProperty('--ev-color', evColor);
   renderHeader();
+  // Restore flyer if previously uploaded
+  var savedFlyer = localStorage.getItem('elp_flyer_' + project.event_project_id);
+  if (savedFlyer) applyFlyer(savedFlyer);
   renderDeptList();
   renderTasks();
 }
