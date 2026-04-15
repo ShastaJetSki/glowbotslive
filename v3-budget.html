@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Budget — Event Logic Pro v3</title>
+<link rel="icon" href="favicon-eventlogic.ico">
+<meta name="theme-color" content="#DC2626">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{--bg:#f4f5f7;--bg2:#ebedf1;--card:#fff;--hover:#f0f0f3;--border:#e2e4e8;--t1:#1a1a1a;--t2:#6b7280;--acc:#DC2626;--acc2:#B91C1C;--glow:rgba(220,38,38,.10);--shadow:0 2px 12px rgba(0,0,0,.06);--inp:#fafafa;--overlay:rgba(0,0,0,.45);}
+body.dark{--bg:#111;--bg2:#1a1a1a;--card:#222;--hover:#2a2a2a;--border:#333;--t1:#f0f0f0;--t2:#999;--acc:#DC2626;--acc2:#EF4444;--glow:rgba(220,38,38,.15);--shadow:0 2px 12px rgba(0,0,0,.3);--inp:#1a1a1a;--overlay:rgba(0,0,0,.75);}
+html{scrollbar-gutter:stable;background:var(--bg);}html.dark{background:#111;}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--t1);overflow-x:hidden;padding-bottom:100px;min-height:100vh;}
+.dh{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.dh-top{padding:8px 24px;display:flex;justify-content:space-between;align-items:center;}
+.dh-left{display:flex;align-items:center;gap:16px;}
+.dh-logo{height:52px;object-fit:contain;}
+.dh-titles h1{font-size:22px;font-weight:700;}
+.dh-titles .sub{font-size:11px;color:var(--acc);font-weight:600;}
+.dh-right{display:flex;align-items:center;gap:10px;}
+.event-badge{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--glow);border:1px solid var(--acc);border-radius:20px;font-size:12px;color:var(--acc);font-weight:600;max-width:220px;}
+.event-badge span.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.event-badge-x{opacity:.6;cursor:pointer;font-size:14px;}
+.dark-toggle{background:none;border:none;cursor:pointer;padding:6px;color:var(--t2);display:flex;}
+.dark-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;}
+.logout-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--t2);cursor:pointer;}
+.nav-bar{display:flex;align-items:center;padding:0 24px;border-top:1px solid var(--border);}
+.nav-left{display:flex;gap:2px;}
+.nav-btn{padding:8px 14px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;border-radius:6px;transition:all .15s;}
+.nav-btn:hover{color:var(--t1);background:var(--hover);}
+.nav-btn.active{color:var(--acc);font-weight:600;}
+.mh{display:none;position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.mh-bar{display:flex;align-items:center;padding:10px 16px;gap:10px;}
+.mh-logo{height:36px;object-fit:contain;}
+.mh-title{font-size:17px;font-weight:700;flex:1;}
+.mh-badge{font-size:11px;color:var(--acc);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;}
+.mbn{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--card);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom);}
+.mbn-inner{display:grid;grid-template-columns:repeat(5,1fr);}
+.mbn-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:none;background:none;color:var(--t2);font-size:10px;cursor:pointer;text-decoration:none;}
+.mbn-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.mbn-btn.active{color:var(--acc);}
+.sheet-overlay{display:none;position:fixed;inset:0;z-index:300;background:var(--overlay);}
+.sheet-overlay.open{display:block;}
+.more-sheet{position:fixed;bottom:-100%;left:0;right:0;z-index:301;background:var(--card);border-radius:20px 20px 0 0;padding:12px 0 env(safe-area-inset-bottom);transition:bottom .3s cubic-bezier(.4,0,.2,1);}
+.more-sheet.open{bottom:0;}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 12px;}
+.sheet-item{display:flex;align-items:center;gap:12px;padding:14px 20px;font-size:15px;color:var(--t1);text-decoration:none;border:none;background:none;width:100%;text-align:left;cursor:pointer;}
+.sheet-item:hover{background:var(--hover);}
+.sheet-item svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;flex-shrink:0;}
+.sheet-item.danger{color:#DC2626;}
+.sheet-sep{height:1px;background:var(--border);margin:4px 0;}
+.event-bar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;}
+.event-select{max-width:320px;padding:8px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;font-size:14px;color:var(--t1);}
+.event-select:focus{outline:none;border-color:var(--acc);}
+.content{max-width:900px;margin:0 auto;padding:20px 24px;}
+.budget-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;}
+.bs-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;}
+.bs-label{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.bs-value{font-size:24px;font-weight:700;}
+.bs-sub{font-size:11px;color:var(--t2);margin-top:2px;}
+.bs-over{color:#DC2626;}
+.bs-ok{color:#22c55e;}
+.dept-budget-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:10px;}
+.dbc-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.dbc-name{font-size:14px;font-weight:700;}
+.dbc-amounts{display:flex;gap:16px;font-size:12px;}
+.dbc-amt{text-align:center;}
+.dbc-amt-val{font-size:16px;font-weight:700;}
+.dbc-amt-lbl{color:var(--t2);font-size:10px;}
+.dbc-bar{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;margin-bottom:8px;}
+.dbc-fill{height:100%;border-radius:3px;transition:width .3s;}
+.dbc-tasks{display:flex;flex-direction:column;gap:3px;}
+.dbc-task{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border);}
+.dbc-task:last-child{border-bottom:none;}
+.dbc-task-name{flex:1;color:var(--t1);}
+.dbc-task-cost{font-weight:600;min-width:60px;text-align:right;}
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.section-title{font-size:16px;font-weight:600;}
+.btn-primary{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-primary:hover{background:var(--acc2);}
+.empty-state{text-align:center;padding:40px;color:var(--t2);font-size:14px;}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--t1);color:var(--card);padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:999;}
+.toast.show{opacity:1;}
+@media(max-width:768px){.dh{display:none!important;}.mh{display:block!important;}.mbn{display:block!important;}.budget-summary{grid-template-columns:repeat(2,1fr);}.content{padding:14px 16px;}}
+@media(min-width:769px){.mh{display:none!important;}.mbn{display:none!important;}}'
+</style>
+</head>
+<body>
+<div class="dh">
+  <div class="dh-top">
+    <div class="dh-left">
+      <img id="dLogo" class="dh-logo" src="eventlogicpro-logo.png" alt="">
+      <div class="dh-titles"><h1>Budget</h1><div class="sub" id="dBiz">Event Logic Pro</div></div>
+    </div>
+    <div class="dh-right">
+      <div id="dEventBadge" class="event-badge" style="display:none;"><span class="name" id="dEventName"></span><span class="event-badge-x" onclick="clearCurrentEvent()">✕</span></div>
+      <button class="dark-toggle" onclick="toggleDark()"><svg id="dMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="dSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="nav-bar"><div class="nav-left">
+    <a href="v3-dashboard.html" class="nav-btn">Dashboard</a>
+    <a href="v3-calendar.html" class="nav-btn">Calendar</a>
+    <a href="v3-tasks.html" class="nav-btn">Tasks</a>
+    <a href="v3-budget.html" class="nav-btn active">Budget</a>
+    <a href="v3-packages.html" class="nav-btn">Packages</a>
+    <a href="v3-contacts.html" class="nav-btn">Contacts</a>
+    <a href="v3-sitemap.html" class="nav-btn">Site Maps</a>
+    <a href="v3-event-details.html" class="nav-btn">Event Details</a>
+    <a href="v3-settings.html" class="nav-btn">Settings</a>
+  </div></div>
+</div>
+<div class="mh"><div class="mh-bar">
+  <img id="mLogo" class="mh-logo" src="eventlogicpro-logo.png" alt="">
+  <div style="flex:1;min-width:0;"><div class="mh-title">Budget</div><div id="mEventBadge" class="mh-badge" style="display:none;"></div></div>
+  <button class="dark-toggle" onclick="toggleDark()"><svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+</div></div>
+<div class="event-bar">
+  <select class="event-select" id="eventSelect" onchange="switchEvent()"><option value="">— Select an event —</option></select>
+</div>
+<div class="content" id="mainContent"><div class="empty-state">Select an event to view the budget breakdown.</div></div>
+<div class="mbn"><div class="mbn-inner">
+  <a href="v3-dashboard.html" class="mbn-btn"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+  <a href="v3-tasks.html" class="mbn-btn"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks</a>
+  <a href="v3-calendar.html" class="mbn-btn"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendar</a>
+  <a href="v3-budget.html" class="mbn-btn active"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Budget</a>
+  <button class="mbn-btn" onclick="openMoreSheet()"><span style="font-size:20px;line-height:22px;">···</span>More</button>
+</div></div>
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeMoreSheet()"></div>
+<div class="more-sheet" id="moreSheet"><div class="sheet-handle"></div>
+  <a href="v3-packages.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Packages</a>
+  <a href="v3-contacts.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Contacts</a>
+  <a href="v3-sitemap.html" class="sheet-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Site Maps</a>
+  <a href="v3-event-details.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Event Details</a>
+  <div class="sheet-sep"></div>
+  <a href="v3-settings.html" class="sheet-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Settings</a>
+  <button class="sheet-item danger" onclick="doLogout()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+var isDark=localStorage.getItem('elp_dark_mode')==='true';
+if(isDark){document.body.classList.add('dark');document.documentElement.classList.add('dark');}
+function applyDarkIcons(){var d=document.body.classList.contains('dark');document.documentElement.classList.toggle('dark',d);['d','m'].forEach(function(p){var moon=document.getElementById(p+'Moon'),sun=document.getElementById(p+'Sun');if(moon)moon.style.display=d?'none':'block';if(sun)sun.style.display=d?'block':'none';});var logo=document.getElementById('dLogo');if(logo)logo.src=d?'eventlogicpro-logo-dark.png':'eventlogicpro-logo.png';}
+applyDarkIcons();
+function toggleDark(){document.body.classList.toggle('dark');isDark=document.body.classList.contains('dark');localStorage.setItem('elp_dark_mode',isDark);applyDarkIcons();}
+var SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+var tenantId=null,allProjects=[],allDepts=[],allTasks=[];
+var currentProjectId=null;
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2400);}
+async function doLogout(){await sb.auth.signOut();localStorage.removeItem('sb_access_token');localStorage.removeItem('sb_refresh_token');location.replace('/');}
+async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.replace('/');return null;}}return s;}
+function getCurrentEvent(){return localStorage.getItem('elp_current_event');}
+function setCurrentEvent(id,name,date){localStorage.setItem('elp_current_event',id||'');localStorage.setItem('elp_current_event_name',name||'');localStorage.setItem('elp_current_event_date',date||'');updateEventBadge();}
+function clearCurrentEvent(){localStorage.removeItem('elp_current_event');localStorage.removeItem('elp_current_event_name');localStorage.removeItem('elp_current_event_date');updateEventBadge();}
+function updateEventBadge(){var name=localStorage.getItem('elp_current_event_name')||'';var badge=document.getElementById('dEventBadge'),mBadge=document.getElementById('mEventBadge');if(name){if(badge){document.getElementById('dEventName').textContent=name;badge.style.display='flex';}if(mBadge){mBadge.textContent='📍 '+name;mBadge.style.display='block';}}else{if(badge)badge.style.display='none';if(mBadge)mBadge.style.display='none';}}
+function openMoreSheet(){document.getElementById('sheetOverlay').classList.add('open');document.getElementById('moreSheet').classList.add('open');}
+function closeMoreSheet(){document.getElementById('sheetOverlay').classList.remove('open');document.getElementById('moreSheet').classList.remove('open');}
+
+async function init(){
+  var session=await checkAuth();if(!session)return;
+  var email=session.user.email||'';
+  var ur=await sb.from('users').select('tenant_id').eq('email',email).maybeSingle();
+  if(ur.data)tenantId=ur.data.tenant_id;
+  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).maybeSingle();if(bs.data)tenantId=bs.data.tenant_id;}
+  if(!tenantId)return;
+  var biz=await sb.from('business_settings').select('business_name,display_name').eq('tenant_id',tenantId).maybeSingle();
+  if(biz.data){var bn=biz.data.display_name||biz.data.business_name||'Event Logic Pro';document.getElementById('dBiz').textContent=bn;}
+  updateEventBadge();
+  await loadProjects();
+  populateEventSelect();
+  var savedId=getCurrentEvent();
+  if(savedId&&allProjects.find(function(p){return p.event_project_id===savedId;})){currentProjectId=savedId;document.getElementById('eventSelect').value=savedId;await loadAndRender();}
+}
+async function loadProjects(){var r=await sb.from('event_projects').select('*').eq('tenant_id',tenantId);allProjects=r.data||[];allProjects.sort(function(a,b){if(!a.event_date)return 1;if(!b.event_date)return-1;return a.event_date.localeCompare(b.event_date);});}
+function populateEventSelect(){var sel=document.getElementById('eventSelect');sel.innerHTML='<option value="">— Select an event —</option>';allProjects.forEach(function(p){var o=document.createElement('option');o.value=p.event_project_id;o.textContent=p.event_name+(p.event_date?' ('+p.event_date+')':'');sel.appendChild(o);});}
+async function switchEvent(){var sel=document.getElementById('eventSelect');currentProjectId=sel.value||null;if(currentProjectId){var p=allProjects.find(function(x){return x.event_project_id===currentProjectId;});if(p)setCurrentEvent(p.event_project_id,p.event_name,p.event_date||'');await loadAndRender();}else{clearCurrentEvent();document.getElementById('mainContent').innerHTML='<div class="empty-state">Select an event to view the budget breakdown.</div>';}}
+async function loadAndRender(){
+  if(!currentProjectId)return;
+  var dr=await sb.from('event_departments').select('*').eq('event_project_id',currentProjectId).order('sort_order');allDepts=dr.data||[];
+  var tr=await sb.from('event_tasks').select('*').eq('event_project_id',currentProjectId).order('sort_order');allTasks=tr.data||[];
+  renderBudget();
+}
+function renderBudget(){
+  var proj=allProjects.find(function(p){return p.event_project_id===currentProjectId;});
+  var totalBudget=parseFloat(proj&&proj.total_budget)||0;
+  var totalCost=allTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+  var venueCost=parseFloat(proj&&proj.venue_cost)||0;
+  var grandTotal=totalCost+venueCost;
+  var html='';
+  html+='<div class="budget-summary">';
+  html+='<div class="bs-card"><div class="bs-label">Total Budget</div><div class="bs-value">$'+totalBudget.toLocaleString()+'</div><div class="bs-sub">Planned</div></div>';
+  html+='<div class="bs-card"><div class="bs-label">Total Spent</div><div class="bs-value '+(grandTotal>totalBudget?'bs-over':'bs-ok')+'">$'+grandTotal.toLocaleString()+'</div><div class="bs-sub">Task costs + venue</div></div>';
+  var remaining=totalBudget-grandTotal;
+  html+='<div class="bs-card"><div class="bs-label">Remaining</div><div class="bs-value '+(remaining<0?'bs-over':'bs-ok')+'">$'+(Math.abs(remaining)).toLocaleString()+'</div><div class="bs-sub">'+(remaining<0?'Over budget':'Available')+'</div></div>';
+  html+='</div>';
+  if(venueCost>0){html+='<div class="dept-budget-card"><div class="dbc-header"><div class="dbc-name">Venue: '+(proj&&proj.venue?esc(proj.venue):'')+'</div><div class="dbc-amounts"><div class="dbc-amt"><div class="dbc-amt-val">$'+venueCost.toLocaleString()+'</div><div class="dbc-amt-lbl">Cost</div></div></div></div></div>';}
+  if(!allDepts.length){html+='<div class="empty-state">No departments found. Add departments in Tasks to see a budget breakdown.</div>';document.getElementById('mainContent').innerHTML=html;return;}
+  allDepts.forEach(function(dept){
+    var deptTasks=allTasks.filter(function(t){return t.event_department_id===dept.event_department_id&&!t.is_cancelled;});
+    var deptCost=deptTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+    var deptBudget=parseFloat(dept.budget)||0;
+    var pct=deptBudget>0?Math.min(100,Math.round(deptCost/deptBudget*100)):0;
+    var barColor=deptCost>deptBudget&&deptBudget>0?'#EF4444':'var(--acc)';
+    html+='<div class="dept-budget-card">';
+    html+='<div class="dbc-header">';
+    html+='<div class="dbc-name">'+esc(dept.department_name)+'</div>';
+    html+='<div class="dbc-amounts">';
+    if(deptBudget>0)html+='<div class="dbc-amt"><div class="dbc-amt-val">$'+deptBudget.toLocaleString()+'</div><div class="dbc-amt-lbl">Budget</div></div>';
+    html+='<div class="dbc-amt"><div class="dbc-amt-val '+(deptCost>deptBudget&&deptBudget>0?'bs-over':'')+'">$'+deptCost.toLocaleString()+'</div><div class="dbc-amt-lbl">Spent</div></div>';
+    html+='</div></div>';
+    if(deptBudget>0)html+='<div class="dbc-bar"><div class="dbc-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>';
+    html+='<div class="dbc-tasks">';
+    deptTasks.forEach(function(t){
+      html+='<div class="dbc-task"><span class="dbc-task-name"'+(t.is_complete?' style="text-decoration:line-through;color:var(--t2)"':'')+'>'+esc(t.task_title||'')+'</span><span class="dbc-task-cost">'+(parseFloat(t.cost)>0?'$'+(parseFloat(t.cost)).toLocaleString():'—')+'</span></div>';
+    });
+    if(!deptTasks.length)html+='<div style="font-size:12px;color:var(--t2);padding:6px 0;">No tasks in this department</div>';
+    html+='</div></div>';
+  });
+  document.getElementById('mainContent').innerHTML=html;
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+init();
+</script>
+</body>
+</html>
