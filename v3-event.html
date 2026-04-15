@@ -827,7 +827,7 @@ async function loadAll() {
     sb.from('event_departments').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_tasks').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_type').order('company_name'),
-    Promise.resolve({data:[]}), // schedule loaded lazily via loadScheduleData()
+    sb.from('event_schedule_items').select('*').eq('event_project_id', project.event_project_id).order('item_date').order('start_time'),
     sb.from('sponsor_sheets').select('*').eq('tenant_id', tenantId).order('created_at',{ascending:false}),
     sb.from('site_maps').select('*').eq('tenant_id', tenantId).order('updated_at',{ascending:false}),
     sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('is_default',{ascending:false}).limit(1),
@@ -836,7 +836,7 @@ async function loadAll() {
   allDepts    = results[0].data || [];
   allTasks    = results[1].data || [];
   allVendors  = results[2].data || [];
-  // allSchedule handled by loadScheduleData()
+  allSchedule = results[3].data || [];
   allSheets   = results[4].data || [];
   allMaps     = results[5].data || [];
   calendarId  = (results[6].data && results[6].data[0]) ? results[6].data[0].calendar_id : null;
@@ -1020,6 +1020,158 @@ function renderSiteMaps() {
 function openSiteMap(mapId) {
   localStorage.setItem('elp-last-map', mapId);
   window.open('eventlogicpro-sitemap.html', '_blank');
+}
+
+/* ══════════════════════════════════════════
+   CALENDAR TAB — List + 30-Day views
+   ══════════════════════════════════════════ */
+var calView = 'month'; // 'month' | 'list'
+var calOffset = 0;     // months from today
+
+function renderCalendarTab() {
+  var evDate = project.event_date ? new Date(project.event_date + 'T00:00:00') : new Date();
+  var now    = new Date();
+  // default to event month on first open
+  if (calOffset === 0 && project.event_date) {
+    calOffset = (evDate.getFullYear() - now.getFullYear()) * 12 + (evDate.getMonth() - now.getMonth());
+  }
+
+  var viewDate = new Date(now.getFullYear(), now.getMonth() + calOffset, 1);
+  var MONTHS   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DAYS     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  var html = '';
+
+  // ── Toolbar ──
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">';
+  html += '<button class="btn-secondary" style="padding:5px 12px;" onclick="calChangeOffset(-1)">&#8249;</button>';
+  html += '<div style="font-size:15px;font-weight:700;flex:1;text-align:center;">'+MONTHS[viewDate.getMonth()]+' '+viewDate.getFullYear()+'</div>';
+  html += '<button class="btn-secondary" style="padding:5px 12px;" onclick="calChangeOffset(1)">&#8250;</button>';
+  html += '<button class="btn-secondary" style="padding:5px 10px;margin-left:8px;" onclick="calChangeOffset(0,true)">Today</button>';
+  html += '<div style="display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:2px;gap:2px;margin-left:4px;">';
+  html += '<button class="q-view-tab'+(calView==='month'?' active':'')+'" onclick="setCalView(\'month\')" style="padding:4px 10px;">Month</button>';
+  html += '<button class="q-view-tab'+(calView==='list'?' active':'')+'" onclick="setCalView(\'list\')" style="padding:4px 10px;">List</button>';
+  html += '</div>';
+  html += '<a href="v3-calendar.html" style="font-size:12px;font-weight:600;color:var(--ev-color);text-decoration:none;margin-left:8px;white-space:nowrap;">Full Calendar &#8599;</a>';
+  html += '</div>';
+
+  if (calView === 'list') {
+    html += renderCalList(viewDate, MONTHS);
+  } else {
+    html += renderCalMonth(viewDate, DAYS, MONTHS);
+  }
+
+  document.getElementById('centerBody').innerHTML = html;
+}
+
+function calChangeOffset(dir, reset) {
+  if (reset) { calOffset = 0; renderCalendarTab(); return; }
+  calOffset += dir;
+  renderCalendarTab();
+}
+function setCalView(v) { calView = v; renderCalendarTab(); }
+
+function renderCalMonth(viewDate, DAYS, MONTHS) {
+  var y = viewDate.getFullYear(), mo = viewDate.getMonth();
+  var firstDay = new Date(y, mo, 1).getDay();
+  var daysInMonth = new Date(y, mo + 1, 0).getDate();
+  var todayStr = new Date().toISOString().split('T')[0];
+  var evStart = project.event_date || '', evEnd = project.event_end_date || evStart;
+
+  var html = '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;">';
+
+  // Day headers
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border);">';
+  DAYS.forEach(function(d) { html += '<div style="text-align:center;font-size:11px;font-weight:700;color:var(--t2);padding:10px 0;">'+d+'</div>'; });
+  html += '</div>';
+
+  // Date grid
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);">';
+  // Empty cells before first day
+  for (var i = 0; i < firstDay; i++) html += '<div style="border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-height:80px;padding:6px;"></div>';
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    var ds = y + '-' + String(mo+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var isToday  = ds === todayStr;
+    var isEvDay  = evStart && ds >= evStart && ds <= evEnd;
+    var isEvStart= ds === evStart;
+    var isEvEnd  = ds === evEnd;
+
+    // Get schedule acts on this day (from event_schedule_acts don't have dates, use allSchedule from event_schedule_items)
+    var dayItems = allSchedule.filter(function(s){ return s.item_date === ds; });
+
+    var dotStyle = isToday ? 'background:var(--ev-color);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;margin:0 auto;' : '';
+    var cellBg   = isEvDay ? 'background:rgba(var(--ev-color-rgb,220,38,38),.08);' : '';
+    if (isEvStart || isEvEnd) cellBg = 'background:var(--glow);';
+
+    html += '<div style="border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-height:80px;padding:6px;'+cellBg+'">';
+    html += '<div style="'+dotStyle+'font-size:12px;font-weight:'+(isToday||isEvDay?'700':'500')+';color:'+(isToday?'#fff':isEvDay?'var(--ev-color)':'var(--t1)')+';text-align:center;margin-bottom:4px;">'+d+'</div>';
+    // Event day badge
+    if (isEvStart) html += '<div style="font-size:9px;font-weight:700;background:var(--ev-color);color:#fff;border-radius:3px;padding:1px 5px;margin-bottom:2px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(project.event_name||'Event')+'</div>';
+    // Schedule items
+    dayItems.slice(0,2).forEach(function(s) {
+      var catColor = {milestone:'var(--ev-color)',deadline:'#DC2626',meeting:'#0284C7',schedule:'#16A34A'}[s.category]||'var(--t2)';
+      html += '<div style="font-size:9px;font-weight:600;color:'+catColor+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0;">'+(s.start_time?s.start_time.slice(0,5)+' ':'')+esc(s.title||'')+'</div>';
+    });
+    if (dayItems.length > 2) html += '<div style="font-size:9px;color:var(--t2);">+' + (dayItems.length-2) + ' more</div>';
+    html += '</div>';
+  }
+
+  // Fill remaining cells
+  var cellsFilled = firstDay + daysInMonth;
+  var remainder = 7 - (cellsFilled % 7);
+  if (remainder < 7) for (var j = 0; j < remainder; j++) html += '<div style="border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-height:80px;"></div>';
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderCalList(viewDate, MONTHS) {
+  var y = viewDate.getFullYear(), mo = viewDate.getMonth();
+  var monthStr = y + '-' + String(mo+1).padStart(2,'0');
+
+  // All events this month: event day + schedule items
+  var items = [];
+
+  // Add the main event if it falls in this month
+  if (project.event_date && project.event_date.startsWith(monthStr)) {
+    items.push({ date: project.event_date, title: project.event_name || 'Event', type: 'event', color: evColor, allDay: true });
+  }
+  if (project.event_end_date && project.event_end_date !== project.event_date && project.event_end_date.startsWith(monthStr)) {
+    items.push({ date: project.event_end_date, title: (project.event_name||'Event') + ' (End)', type: 'event', color: evColor, allDay: true });
+  }
+
+  // Schedule items this month
+  allSchedule.filter(function(s){ return s.item_date && s.item_date.startsWith(monthStr); }).forEach(function(s) {
+    var catColor = {milestone:evColor,deadline:'#DC2626',meeting:'#0284C7',schedule:'#16A34A'}[s.category]||'#6b7280';
+    items.push({ date:s.item_date, time:s.start_time, endTime:s.end_time, title:s.title||'', type:s.category||'schedule', color:catColor, location:s.location });
+  });
+
+  items.sort(function(a,b){ return (a.date+(a.time||''))>(b.date+(b.time||''))?1:-1; });
+
+  if (!items.length) {
+    return '<div class="q-empty"><div class="q-empty-icon">&#128197;</div><div>No events or schedule items in '+MONTHS[mo]+' '+y+'</div></div>';
+  }
+
+  var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+  var lastDate = '';
+  items.forEach(function(item) {
+    if (item.date !== lastDate) {
+      lastDate = item.date;
+      var d = new Date(item.date + 'T00:00:00');
+      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-top:12px;padding-bottom:5px;border-bottom:1px solid var(--border);">'+d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</div>';
+    }
+    html += '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:9px;">';
+    html += '<div style="width:4px;min-height:40px;border-radius:2px;background:'+item.color+';flex-shrink:0;margin-top:2px;"></div>';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="font-size:13px;font-weight:600;">'+esc(item.title)+'</div>';
+    if (item.time) html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">'+item.time.slice(0,5)+(item.endTime?' - '+item.endTime.slice(0,5):'')+'</div>';
+    if (item.location) html += '<div style="font-size:11px;color:var(--t2);">&#128205; '+esc(item.location)+'</div>';
+    html += '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:4px;background:var(--bg2);color:var(--t2);text-transform:uppercase;letter-spacing:.4px;">'+esc(item.type)+'</span>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  return html;
 }
 
 function renderCurrentTab() {
@@ -1792,7 +1944,7 @@ async function loadAll() {
     sb.from('event_departments').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_tasks').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_type').order('company_name'),
-    Promise.resolve({data:[]}), // schedule loaded lazily via loadScheduleData()
+    sb.from('event_schedule_items').select('*').eq('event_project_id', project.event_project_id).order('item_date').order('start_time'),
     sb.from('sponsor_sheets').select('*').eq('tenant_id', tenantId).order('created_at',{ascending:false}),
     sb.from('site_maps').select('*').eq('tenant_id', tenantId).order('updated_at',{ascending:false}),
     sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('is_default',{ascending:false}).limit(1),
@@ -1801,7 +1953,7 @@ async function loadAll() {
   allDepts    = results[0].data || [];
   allTasks    = results[1].data || [];
   allVendors  = results[2].data || [];
-  // allSchedule handled by loadScheduleData()
+  allSchedule = results[3].data || [];
   allSheets   = results[4].data || [];
   allMaps     = results[5].data || [];
   calendarId  = (results[6].data && results[6].data[0]) ? results[6].data[0].calendar_id : null;
@@ -2792,6 +2944,7 @@ var GC_TYPES = [
   {key:'Government',label:'Govt'},{key:'Staff',label:'Staff'},{key:'Other',label:'Other'}
 ];
 var qFilter = 'all'; var qDept = 'all';
+var calView = 'month', calOffset = 0;
 var editingQId = null, redirectingQId = null, answeringQId = null, currentQColor = null;
 var Q_PALETTE = ['#0284c7','#7c3aed','#059669','#DC2626','#d97706','#db2777','#0891b2','#65a30d','#9333ea','#6b7280'];
 var Q_DEPT_COLORS = ['#0284c7','#059669','#7c3aed','#d97706','#DC2626','#db2777','#0891b2','#65a30d','#9333ea','#e11d48'];
