@@ -303,17 +303,16 @@ body.dark .s-completed{background:#1e1b4b;color:#a5b4fc;}
   <!-- ── CENTER ── -->
   <div class="center-col">
     <div class="tab-bar" id="tabBar">
-      <button class="tab-btn active" data-tab="tasks"     onclick="switchTab('tasks',this)">Tasks</button>
+      <button class="tab-btn active" data-tab="contacts"  onclick="switchTab('contacts',this)">Contacts</button>
+      <button class="tab-btn"        data-tab="tasks"     onclick="switchTab('tasks',this)">Tasks</button>
       <button class="tab-btn"        data-tab="budget"    onclick="switchTab('budget',this)">Budget</button>
-      <button class="tab-btn"        data-tab="schedule"  onclick="switchTab('schedule',this)">Schedule</button>
-      <button class="tab-btn"        data-tab="calendar"  onclick="switchTab('calendar',this)">Calendar</button>
       <button class="tab-btn"        data-tab="packages"  onclick="switchTab('packages',this)">Packages</button>
-      <button class="tab-btn"        data-tab="media"     onclick="switchTab('media',this)">Media</button>
-      <button class="tab-btn"        data-tab="documents" onclick="switchTab('documents',this)">Documents</button>
-      <button class="tab-btn"        data-tab="contacts"  onclick="switchTab('contacts',this)">Contacts</button>
+      <button class="tab-btn"        data-tab="documents" onclick="switchTab('documents',this)">Docs</button>
+      <button class="tab-btn"        data-tab="schedule"  onclick="switchTab('schedule',this)">Event Schedule</button>
+      <button class="tab-btn"        data-tab="sitemap"   onclick="switchTab('sitemap',this)">Site Map</button>
+      <button class="tab-btn"        data-tab="calendar"  onclick="switchTab('calendar',this)">Calendar</button>
+      <div style="width:1px;background:var(--border);margin:10px 8px;flex-shrink:0;"></div>
       <button class="tab-btn"        data-tab="questions" onclick="switchTab('questions',this)">Questions</button>
-      <button class="tab-btn"        data-tab="sitemap"   onclick="switchTab('sitemap',this)">Site Maps</button>
-      <button class="tab-btn"        data-tab="details"   onclick="switchTab('details',this)">Details</button>
       <div class="tab-bar-action" id="tabAction">
         <button class="add-btn" id="addTabBtn" onclick="tabAddAction()">+ Add Task</button>
       </div>
@@ -477,7 +476,7 @@ var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var tenantId = null, userId = null;
 var project = null, evColor = '#DC2626';
 var allDepts = [], allTasks = [], allVendors = [], allSchedule = [], allSheets = [], allMaps = [];
-var currentDept = 'all', currentTab = 'tasks';
+var currentDept = 'all', currentTab = 'contacts';
 var calendarId = null;
 
 /* ─── UTILS ─── */
@@ -508,10 +507,10 @@ async function loadAll() {
   var [dr, tr, vr, sr, shr, mr, calR] = await Promise.all([
     sb.from('event_departments').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_tasks').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
-    sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_name'),
+    sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('company_name'),
     sb.from('event_schedule_items').select('*').eq('event_project_id', project.event_project_id).order('item_date').order('start_time'),
     sb.from('sponsor_sheets').select('*').eq('event_project_id', project.event_project_id).order('created_at',{ascending:false}),
-    sb.from('site_maps').select('*').eq('event_project_id', project.event_project_id).order('created_at',{ascending:false}),
+    sb.from('site_maps').select('*').eq('tenant_id', tenantId).order('updated_at',{ascending:false}),
     sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('is_default',{ascending:false}).limit(1)
   ]);
   allDepts   = dr.data  || [];
@@ -663,7 +662,7 @@ function selectDept(deptId, el) {
 }
 
 /* ─── TABS ─── */
-var TAB_ADD_LABELS = { tasks:'+ Add Task', budget:'', schedule:'+ Add Item', calendar:'', packages:'', media:'+ Upload', documents:'+ Upload Doc', contacts:'+ Add Contact', questions:'+ Add Question', sitemap:'', details:'' };
+var TAB_ADD_LABELS = { contacts:'+ Add Contact', tasks:'+ Add Task', budget:'', packages:'', documents:'+ Upload Doc', schedule:'+ Add Item', sitemap:'', calendar:'', questions:'+ Add Question' };
 function switchTab(tab, btn) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
@@ -678,26 +677,23 @@ function switchTab(tab, btn) {
 }
 
 function tabAddAction() {
-  if (currentTab==='tasks')     openAddTaskModal();
-  if (currentTab==='schedule')  openAddSchedModal();
   if (currentTab==='contacts')  openAddVendorModal();
-  if (currentTab==='media')     document.getElementById('mediaInput').click();
+  if (currentTab==='tasks')     openAddTaskModal();
   if (currentTab==='documents') document.getElementById('docInput').click();
+  if (currentTab==='schedule')  openAddSchedModal();
   if (currentTab==='questions') openAddQuestionModal();
 }
 
 function renderCurrentTab() {
+  if (currentTab==='contacts')  renderContacts();
   if (currentTab==='tasks')     renderTasks();
   if (currentTab==='budget')    renderBudget();
-  if (currentTab==='schedule')  renderSchedule();
-  if (currentTab==='calendar')  renderCalendarTab();
   if (currentTab==='packages')  renderPackages();
-  if (currentTab==='media')     renderMedia();
   if (currentTab==='documents') renderDocuments();
-  if (currentTab==='contacts')  renderContacts();
-  if (currentTab==='questions') renderQuestions();
+  if (currentTab==='schedule')  renderSchedule();
   if (currentTab==='sitemap')   renderSiteMaps();
-  if (currentTab==='details')   renderDetails();
+  if (currentTab==='calendar')  renderCalendarTab();
+  if (currentTab==='questions') renderQuestions();
 }
 
 /* ─── TASKS TAB ─── */
@@ -939,7 +935,7 @@ function openAddVendorModal() {
 async function saveVendor() {
   var name = document.getElementById('vNameInput').value.trim();
   if (!name) { toast('Name required'); return; }
-  var data = { tenant_id: tenantId, event_project_id: project.event_project_id, vendor_name: name, vendor_type: document.getElementById('vTypeInput').value, contact_name: document.getElementById('vContactInput').value.trim()||null, phone: document.getElementById('vPhoneInput').value.trim()||null, email: document.getElementById('vEmailInput').value.trim()||null, cost: parseFloat(document.getElementById('vCostInput').value)||0 };
+  var data = { tenant_id: tenantId, event_project_id: project.event_project_id, company_name: name, vendor_type: document.getElementById('vTypeInput').value, contact_person: document.getElementById('vContactInput').value.trim()||null, phone: document.getElementById('vPhoneInput').value.trim()||null, email: document.getElementById('vEmailInput').value.trim()||null, cost: parseFloat(document.getElementById('vCostInput').value)||0 };
   var r = await sb.from('event_vendors').insert(data).select().single();
   if (r.error) { toast('Error: '+r.error.message); return; }
   allVendors.push(r.data); closeModal('addVendorModal'); toast('Vendor added');
@@ -1178,12 +1174,12 @@ function renderContacts() {
   }
   var vColors = ['#DC2626','#EA580C','#D97706','#0284C7','#7C3AED','#16A34A','#DB2777','#0891B2'];
   var html = allVendors.map(function(v, i) {
-    var name = v.vendor_name || v.company_name || 'Contact';
+    var name = v.company_name || v.vendor_name || 'Contact';
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;">'
       + '<div style="width:38px;height:38px;border-radius:10px;background:'+vColors[i%vColors.length]+';display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">'+initials(name)+'</div>'
       + '<div style="flex:1;min-width:0;">'
         + '<div style="font-size:13px;font-weight:600;">'+esc(name)+'</div>'
-        + '<div style="font-size:11px;color:var(--t2);">'+(v.contact_name?esc(v.contact_name)+' · ':'')+esc(v.phone||v.email||'—')+'</div>'
+        + '<div style="font-size:11px;color:var(--t2);">'+(v.contact_person?esc(v.contact_person)+' · ':'')+esc(v.phone||v.email||'—')+'</div>'
       + '</div>'
       + '<div style="text-align:right;">'
         + (parseFloat(v.cost)>0?'<div style="font-size:13px;font-weight:700;color:var(--acc);">$'+fmt(v.cost)+'</div>':'')
