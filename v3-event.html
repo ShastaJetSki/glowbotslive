@@ -2751,10 +2751,10 @@ async function loadAndRenderPkgSections() {
 }
 
 var PKG_SECS = [
-  { key:'sponsor', title:'Sponsor Levels',   icon:'&#127942;', table:'sponsor_levels',   itemTable:'sponsor_perks',         getPkgs:function(){return pkgLevels;},  setPkgs:function(v){pkgLevels=v;},  nameField:'level_name',   idField:'level_id',   itemIdField:'perk_id',  itemNameField:'perk_name',  getItems:function(p){return p.perks||[];} },
-  { key:'ticket',  title:'Ticket Packages',  icon:'&#127915;', table:'ticket_packages',  itemTable:'ticket_package_items',  getPkgs:function(){return pkgTickets;}, setPkgs:function(v){pkgTickets=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} },
-  { key:'vendor',  title:'Vendor Packages',  icon:'&#127978;', table:'vendor_packages',  itemTable:'vendor_package_items',  getPkgs:function(){return pkgVendors;}, setPkgs:function(v){pkgVendors=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} },
-  { key:'camping', title:'Camping Packages', icon:'&#9978;',   table:'camping_packages', itemTable:'camping_package_items', getPkgs:function(){return pkgCamping;}, setPkgs:function(v){pkgCamping=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} }
+  { key:'sponsor', title:'Sponsor Levels',   icon:'SPONSOR', table:'sponsor_levels',   itemTable:'sponsor_perks',         getPkgs:function(){return pkgLevels;},  setPkgs:function(v){pkgLevels=v;},  nameField:'level_name',   idField:'level_id',   itemIdField:'perk_id',  itemNameField:'perk_name',  getItems:function(p){return p.perks||[];} },
+  { key:'ticket',  title:'Ticket Packages',  icon:'TICKET', table:'ticket_packages',  itemTable:'ticket_package_items',  getPkgs:function(){return pkgTickets;}, setPkgs:function(v){pkgTickets=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} },
+  { key:'vendor',  title:'Vendor Packages',  icon:'VENDOR', table:'vendor_packages',  itemTable:'vendor_package_items',  getPkgs:function(){return pkgVendors;}, setPkgs:function(v){pkgVendors=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} },
+  { key:'camping', title:'Camping Packages', icon:'CAMPING',   table:'camping_packages', itemTable:'camping_package_items', getPkgs:function(){return pkgCamping;}, setPkgs:function(v){pkgCamping=v;}, nameField:'package_name', idField:'package_id', itemIdField:'item_id',  itemNameField:'item_name',  getItems:function(p){return p.items||[];} }
 ];
 
 function renderPkgSections() {
@@ -2777,7 +2777,10 @@ function renderPkgSections() {
 
     html += '<div class="pkg-section collapsed" id="pkgsec-'+si+'">';
     html += '<div class="pkg-sec-hdr" onclick="togglePkgSec('+si+')">';
-    html += '<div class="pkg-sec-title">'+sec.icon+' '+sec.title+'</div>';
+    var iconColors = {SPONSOR:'#f59e0b',TICKET:'#7c3aed',VENDOR:'#0284c7',CAMPING:'#16a34a'};
+    var iconColor = iconColors[sec.icon] || 'var(--t2)';
+    var iconBadge = '<span style="font-size:9px;font-weight:800;letter-spacing:.8px;background:'+iconColor+';color:#fff;padding:2px 6px;border-radius:3px;margin-right:6px;">'+sec.icon+'</span>';
+    html += '<div class="pkg-sec-title">'+iconBadge+sec.title+'</div>';
     html += '<button class="pkg-sec-add" onclick="event.stopPropagation();addPkg('+si+')">+ Add Package</button>';
     html += '<span class="pkg-sec-chev">&#9660;</span></div>';
     html += '<div class="pkg-sec-body">';
@@ -2834,11 +2837,87 @@ function renderPkgSections() {
     }
     html += '</div></div>';
   });
+  // ── REVENUE ESTIMATOR ──
+  html += '<div class="pkg-section collapsed" id="pkgsec-rev">';
+  html += '<div class="pkg-sec-hdr" onclick="togglePkgSec(\'rev\')">';
+  html += '<div class="pkg-sec-title"><span style="font-size:9px;font-weight:800;letter-spacing:.8px;background:#16a34a;color:#fff;padding:2px 6px;border-radius:3px;margin-right:6px;">REVENUE</span>Revenue Estimator</div>';
+  html += '<span class="pkg-sec-chev">&#9660;</span></div>';
+  html += '<div class="pkg-sec-body">';
+  html += '<div style="padding:16px;">';
+  html += '<div style="font-size:11px;color:var(--t2);margin-bottom:14px;">Enter estimated quantity sold per package to project revenue.</div>';
+
+  var grandTotal = 0, grandCost = 0;
+  var revKey = 'elp_rev_' + pkgSheetId;
+  var revData = {};
+  try { revData = JSON.parse(localStorage.getItem(revKey) || '{}'); } catch(e) {}
+
+  var revSections = [
+    { label:'Sponsor Levels', pkgs:pkgLevels, idField:'level_id', nameField:'level_name' },
+    { label:'Ticket Packages', pkgs:pkgTickets, idField:'package_id', nameField:'package_name' },
+    { label:'Vendor Packages', pkgs:pkgVendors, idField:'package_id', nameField:'package_name' },
+    { label:'Camping Packages', pkgs:pkgCamping, idField:'package_id', nameField:'package_name' }
+  ];
+
+  var sectionColors = ['#f59e0b','#7c3aed','#0284c7','#16a34a'];
+
+  revSections.forEach(function(rs, ri) {
+    if (!rs.pkgs.length) return;
+    var sectionRev = 0, sectionCost = 0;
+    html += '<div style="margin-bottom:16px;">';
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:'+sectionColors[ri]+';margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">'+rs.label+'</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 70px 80px 80px 80px;gap:0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--border);margin-bottom:4px;">';
+    html += '<span>Package</span><span style="text-align:center;">Price</span><span style="text-align:center;">Qty Sold</span><span style="text-align:right;">Revenue</span><span style="text-align:right;">Cost</span></div>';
+    rs.pkgs.forEach(function(pkg) {
+      var pkgId = pkg[rs.idField];
+      var qty = parseInt(revData[pkgId] || 0);
+      var price = parseFloat(pkg.price) || 0;
+      var items = pkg.perks || pkg.items || [];
+      var pkgCost = items.reduce(function(s,it){return s+(parseInt(it.quantity||0)||0)*(parseFloat(it.cost)||0);},0);
+      var lineRev = qty * price;
+      var lineCost = qty * pkgCost;
+      sectionRev += lineRev; sectionCost += lineCost;
+      html += '<div style="display:grid;grid-template-columns:1fr 70px 80px 80px 80px;gap:0;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">';
+      html += '<div style="font-size:12px;font-weight:600;">'+esc(pkg[rs.nameField]||'')+'</div>';
+      html += '<div style="text-align:center;font-size:12px;color:var(--t2);">$'+fmt(price)+'</div>';
+      html += '<div style="text-align:center;"><input type="number" min="0" step="1" value="'+qty+'" data-pkgid="'+pkgId+'" onchange="saveRevQty(this)" style="width:56px;text-align:center;padding:4px;border:1px solid var(--border);border-radius:5px;background:var(--inp);color:var(--t1);font-size:12px;"></div>';
+      html += '<div style="text-align:right;font-size:12px;font-weight:700;color:#16a34a;">$'+fmt(lineRev)+'</div>';
+      html += '<div style="text-align:right;font-size:12px;color:#DC2626;">$'+fmt(lineCost)+'</div>';
+      html += '</div>';
+    });
+    grandTotal += sectionRev; grandCost += sectionCost;
+    var sectionOffset = sectionRev - sectionCost;
+    html += '<div style="display:flex;justify-content:flex-end;gap:20px;padding:8px 0;font-size:12px;font-weight:700;">';
+    html += '<span style="color:#16a34a;">Revenue: $'+fmt(sectionRev)+'</span>';
+    html += '<span style="color:#DC2626;">Cost: $'+fmt(sectionCost)+'</span>';
+    html += '<span style="color:'+(sectionOffset>=0?'#16a34a':'#DC2626')+';">Offset: $'+fmt(sectionOffset)+'</span>';
+    html += '</div></div>';
+  });
+
+  // Grand total
+  var grandOffset = grandTotal - grandCost;
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;padding-top:14px;border-top:2px solid var(--border);">';
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#16a34a;">$'+fmt(grandTotal)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Total Revenue</div></div>';
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#DC2626;">$'+fmt(grandCost)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Total Cost</div></div>';
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:'+(grandOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(grandOffset)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Net Offset</div></div>';
+  html += '</div>';
+  html += '</div></div></div>'; // inner padding, sec-body, section
+
   el.innerHTML = html;
 }
 
-function togglePkgSec(i) {
-  var el = document.getElementById('pkgsec-'+i);
+function saveRevQty(inp) {
+  var pkgId = inp.dataset.pkgid;
+  var qty = parseInt(inp.value) || 0;
+  var revKey = 'elp_rev_' + pkgSheetId;
+  var revData = {};
+  try { revData = JSON.parse(localStorage.getItem(revKey) || '{}'); } catch(e) {}
+  revData[pkgId] = qty;
+  localStorage.setItem(revKey, JSON.stringify(revData));
+  renderPkgSections(); // re-render to update totals
+}
+
+function togglePkgSec(key) {
+  var el = document.getElementById('pkgsec-'+key);
   if (el) el.classList.toggle('collapsed');
 }
 function togglePkgCard(hdr) {
