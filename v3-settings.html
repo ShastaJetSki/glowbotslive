@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Settings — Event Logic Pro v3</title>
+<link rel="icon" href="favicon-eventlogic.ico">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{--bg:#f4f5f7;--bg2:#ebedf1;--card:#fff;--hover:#f0f0f3;--border:#e2e4e8;--t1:#1a1a1a;--t2:#6b7280;--acc:#DC2626;--acc2:#B91C1C;--glow:rgba(220,38,38,.10);--inp:#fafafa;--overlay:rgba(0,0,0,.45);}
+body.dark{--bg:#111;--bg2:#1a1a1a;--card:#222;--hover:#2a2a2a;--border:#333;--t1:#f0f0f0;--t2:#999;--acc:#DC2626;--acc2:#EF4444;--glow:rgba(220,38,38,.15);--inp:#1a1a1a;--overlay:rgba(0,0,0,.75);}
+html{background:var(--bg);}html.dark{background:#111;}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--t1);overflow-x:hidden;padding-bottom:100px;min-height:100vh;}
+.dh{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.dh-top{padding:8px 24px;display:flex;justify-content:space-between;align-items:center;}
+.dh-left{display:flex;align-items:center;gap:16px;}
+.dh-logo{height:52px;object-fit:contain;}
+.dh-titles h1{font-size:22px;font-weight:700;}
+.dh-titles .sub{font-size:11px;color:var(--acc);font-weight:600;}
+.dh-right{display:flex;align-items:center;gap:10px;}
+.dark-toggle{background:none;border:none;cursor:pointer;padding:6px;color:var(--t2);display:flex;}
+.dark-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;}
+.logout-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--t2);cursor:pointer;}
+.nav-bar{display:flex;align-items:center;padding:0 24px;border-top:1px solid var(--border);}
+.nav-left{display:flex;gap:2px;}
+.nav-btn{padding:8px 14px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;border-radius:6px;transition:all .15s;}
+.nav-btn:hover{color:var(--t1);background:var(--hover);}
+.nav-btn.active{color:var(--acc);font-weight:600;}
+.mh{display:none;position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.mh-bar{display:flex;align-items:center;padding:10px 16px;gap:10px;}
+.mh-logo{height:36px;object-fit:contain;}
+.mh-title{font-size:17px;font-weight:700;flex:1;}
+.mbn{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--card);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom);}
+.mbn-inner{display:grid;grid-template-columns:repeat(5,1fr);}
+.mbn-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:none;background:none;color:var(--t2);font-size:10px;cursor:pointer;text-decoration:none;}
+.mbn-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.mbn-btn.active{color:var(--acc);}
+.sheet-overlay{display:none;position:fixed;inset:0;z-index:300;background:var(--overlay);}
+.sheet-overlay.open{display:block;}
+.more-sheet{position:fixed;bottom:-100%;left:0;right:0;z-index:301;background:var(--card);border-radius:20px 20px 0 0;padding:12px 0 env(safe-area-inset-bottom);transition:bottom .3s cubic-bezier(.4,0,.2,1);}
+.more-sheet.open{bottom:0;}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 12px;}
+.sheet-item{display:flex;align-items:center;gap:12px;padding:14px 20px;font-size:15px;color:var(--t1);text-decoration:none;border:none;background:none;width:100%;text-align:left;cursor:pointer;}
+.sheet-item:hover{background:var(--hover);}
+.sheet-item svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;flex-shrink:0;}
+.sheet-item.danger{color:#DC2626;}
+.sheet-sep{height:1px;background:var(--border);margin:4px 0;}
+/* SETTINGS LAYOUT */
+.settings-layout{display:grid;grid-template-columns:220px 1fr;gap:0;max-width:1000px;margin:20px auto;padding:0 24px;}
+.settings-nav{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px;height:fit-content;}
+.settings-nav-item{display:block;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500;color:var(--t2);cursor:pointer;border:none;background:none;width:100%;text-align:left;}
+.settings-nav-item:hover{background:var(--hover);color:var(--t1);}
+.settings-nav-item.active{background:var(--glow);color:var(--acc);font-weight:600;}
+.settings-panel{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-left:16px;overflow:hidden;}
+.sec{display:none;padding:24px;}
+.sec.active{display:block;}
+.sec-title{font-size:17px;font-weight:700;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.form-group{margin-bottom:16px;}
+.form-label{font-size:12px;font-weight:600;color:var(--t2);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:.3px;}
+.form-input,.form-select{width:100%;padding:9px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;font-size:14px;color:var(--t1);}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--acc);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.btn-primary{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-primary:hover{background:var(--acc2);}
+.btn-secondary{background:var(--bg2);color:var(--t1);border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;}
+.btn-danger{background:#fee2e2;color:#991b1b;border:none;border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);}
+.toggle-row:last-child{border-bottom:none;}
+.toggle-label{font-size:14px;font-weight:500;}
+.toggle-desc{font-size:12px;color:var(--t2);margin-top:2px;}
+.toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:12px;transition:.3s;}
+.toggle-slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.3s;}
+.toggle input:checked+.toggle-slider{background:var(--acc);}
+.toggle input:checked+.toggle-slider:before{transform:translateX(20px);}
+/* TEAM TABLE */
+.team-table{width:100%;border-collapse:collapse;font-size:13px;}
+.team-table th{text-align:left;padding:8px 10px;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);}
+.team-table td{padding:10px;border-bottom:1px solid var(--border);}
+.team-table tr:last-child td{border-bottom:none;}
+.role-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--bg2);color:var(--t2);}
+.role-badge.admin{background:#fef3c7;color:#92400e;}
+.role-badge.owner{background:#dbeafe;color:#1e40af;}
+body.dark .role-badge.admin{background:#422006;color:#fde68a;}
+body.dark .role-badge.owner{background:#1e3a5f;color:#93c5fd;}
+/* TEMPLATE LIST */
+.tpl-item{padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;}
+.tpl-name{font-size:14px;font-weight:600;}
+.tpl-desc{font-size:12px;color:var(--t2);margin-top:2px;}
+.tpl-actions{display:flex;gap:6px;margin-top:8px;}
+.tpl-btn{font-size:11px;padding:4px 10px;border-radius:5px;border:none;cursor:pointer;}
+.tpl-btn-edit{background:var(--bg2);color:var(--t1);}
+.tpl-btn-del{background:#fee2e2;color:#991b1b;}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:500;background:var(--overlay);align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--card);border-radius:16px;width:90%;max-width:440px;max-height:90vh;overflow-y:auto;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 0;}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--t2);}
+.modal-body{padding:14px 20px;}
+.modal-footer{padding:0 20px 16px;display:flex;gap:8px;justify-content:flex-end;}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--t1);color:var(--card);padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:999;}
+.toast.show{opacity:1;}
+@media(max-width:768px){.dh{display:none!important;}.mh{display:block!important;}.mbn{display:block!important;}.settings-layout{grid-template-columns:1fr;padding:14px;}.settings-panel{margin-left:0;margin-top:12px;}.settings-nav{display:flex;flex-wrap:wrap;gap:4px;}.settings-nav-item{padding:7px 12px;font-size:12px;}.form-row{grid-template-columns:1fr;}.modal-overlay{align-items:flex-end;padding:0;}.modal-box{border-radius:20px 20px 0 0;width:100%;max-height:90vh;}}
+@media(min-width:769px){.mh{display:none!important;}.mbn{display:none!important;}}'
+</style>
+</head>
+<body>
+<div class="dh">
+  <div class="dh-top">
+    <div class="dh-left">
+      <img id="dLogo" class="dh-logo" src="eventlogicpro-logo.png" alt="">
+      <div class="dh-titles"><h1>Settings</h1><div class="sub" id="dBiz">Event Logic Pro</div></div>
+    </div>
+    <div class="dh-right">
+      <button class="dark-toggle" onclick="toggleDark()"><svg id="dMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="dSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="nav-bar"><div class="nav-left">
+    <a href="v3-dashboard.html" class="nav-btn">Dashboard</a>
+    <a href="v3-calendar.html" class="nav-btn">Calendar</a>
+    <a href="v3-tasks.html" class="nav-btn">Tasks</a>
+    <a href="v3-budget.html" class="nav-btn">Budget</a>
+    <a href="v3-packages.html" class="nav-btn">Packages</a>
+    <a href="v3-contacts.html" class="nav-btn">Contacts</a>
+    <a href="v3-sitemap.html" class="nav-btn">Site Maps</a>
+    <a href="v3-event-details.html" class="nav-btn">Event Details</a>
+    <a href="v3-settings.html" class="nav-btn active">Settings</a>
+  </div></div>
+</div>
+<div class="mh"><div class="mh-bar">
+  <img id="mLogo" class="mh-logo" src="eventlogicpro-logo.png" alt="">
+  <div style="flex:1;"><div class="mh-title">Settings</div></div>
+  <button class="dark-toggle" onclick="toggleDark()"><svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+</div></div>
+
+<div class="settings-layout">
+  <div class="settings-nav">
+    <button class="settings-nav-item active" onclick="showSec('profile',this)">Profile</button>
+    <button class="settings-nav-item" onclick="showSec('business',this)">Business</button>
+    <button class="settings-nav-item" onclick="showSec('team',this)">Team</button>
+    <button class="settings-nav-item" onclick="showSec('templates',this)">Templates</button>
+    <button class="settings-nav-item" onclick="showSec('preferences',this)">Preferences</button>
+    <button class="settings-nav-item" onclick="showSec('billing',this)">Billing</button>
+  </div>
+  <div class="settings-panel">
+    <!-- PROFILE -->
+    <div class="sec active" id="sec-profile">
+      <div class="sec-title">Profile</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">First Name</label><input type="text" class="form-input" id="profFirst" placeholder="First name"></div>
+        <div class="form-group"><label class="form-label">Last Name</label><input type="text" class="form-input" id="profLast" placeholder="Last name"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="profEmail" disabled style="opacity:.6;"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Phone</label><input type="tel" class="form-input" id="profPhone" placeholder="555-0100"></div>
+        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="profTitle" placeholder="Job title"></div>
+      </div>
+      <button class="btn-primary" onclick="saveProfile()">Save Profile</button>
+      <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border);">
+        <div class="sec-title" style="font-size:15px;">Change Password</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">New Password</label><input type="password" class="form-input" id="profNewPw" placeholder="Min 8 characters"></div>
+          <div class="form-group"><label class="form-label">Confirm Password</label><input type="password" class="form-input" id="profConfPw" placeholder="Repeat password"></div>
+        </div>
+        <button class="btn-secondary" onclick="changePassword()">Update Password</button>
+      </div>
+    </div>
+    <!-- BUSINESS -->
+    <div class="sec" id="sec-business">
+      <div class="sec-title">Business Info</div>
+      <div class="form-group"><label class="form-label">Business Name</label><input type="text" class="form-input" id="bizName" placeholder="Your company name"></div>
+      <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="bizDisplay" placeholder="Short display name"></div>
+      <div class="form-group"><label class="form-label">Business Email</label><input type="email" class="form-input" id="bizEmail" placeholder="contact@company.com"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Phone</label><input type="tel" class="form-input" id="bizPhone"></div>
+        <div class="form-group"><label class="form-label">Website</label><input type="url" class="form-input" id="bizWebsite" placeholder="https://"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Address</label><input type="text" class="form-input" id="bizAddress" placeholder="123 Main St, City, State"></div>
+      <button class="btn-primary" onclick="saveBusiness()">Save Business Info</button>
+    </div>
+    <!-- TEAM -->
+    <div class="sec" id="sec-team">
+      <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center;">Team Members<button class="btn-primary" style="font-size:12px;padding:7px 14px;" onclick="openInviteModal()">+ Add Member</button></div>
+      <table class="team-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody id="teamBody"><tr><td colspan="4" style="text-align:center;color:var(--t2);padding:20px;">Loading...</td></tr></tbody>
+      </table>
+    </div>
+    <!-- TEMPLATES -->
+    <div class="sec" id="sec-templates">
+      <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center;">Task Templates<button class="btn-primary" style="font-size:12px;padding:7px 14px;" onclick="openNewTemplateModal()">+ New Template</button></div>
+      <p style="font-size:13px;color:var(--t2);margin-bottom:16px;">Templates let you quickly populate a new event with standard departments and tasks.</p>
+      <div id="templateList"></div>
+    </div>
+    <!-- PREFERENCES -->
+    <div class="sec" id="sec-preferences">
+      <div class="sec-title">Preferences</div>
+      <div class="toggle-row">
+        <div><div class="toggle-label">Dark Mode</div><div class="toggle-desc">Use dark theme across all pages</div></div>
+        <label class="toggle"><input type="checkbox" id="prefDark" onchange="toggleDarkPref()"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div><div class="toggle-label">Landing Page</div><div class="toggle-desc">Where to go after login</div></div>
+        <select class="form-select" id="prefLanding" style="max-width:160px;" onchange="localStorage.setItem('elp_landing',this.value)">
+          <option value="v3-dashboard.html">Dashboard</option>
+          <option value="v3-tasks.html">Tasks</option>
+          <option value="v3-calendar.html">Calendar</option>
+        </select>
+      </div>
+    </div>
+    <!-- BILLING -->
+    <div class="sec" id="sec-billing">
+      <div class="sec-title">Billing & Plan</div>
+      <div style="background:var(--glow);border:1px solid var(--acc);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Current Plan</div>
+        <div style="font-size:20px;font-weight:700;" id="planName">Event Logic Pro</div>
+        <div style="font-size:13px;color:var(--t2);margin-top:4px;" id="planStatus">Trial</div>
+      </div>
+      <p style="font-size:13px;color:var(--t2);">To manage your subscription, upgrade, or download invoices, please contact support or visit your billing portal.</p>
+    </div>
+  </div>
+</div>
+
+<div class="mbn"><div class="mbn-inner">
+  <a href="v3-dashboard.html" class="mbn-btn"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+  <a href="v3-tasks.html" class="mbn-btn"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks</a>
+  <a href="v3-calendar.html" class="mbn-btn"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendar</a>
+  <a href="v3-budget.html" class="mbn-btn"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Budget</a>
+  <button class="mbn-btn" onclick="openMoreSheet()"><span style="font-size:20px;line-height:22px;">···</span>More</button>
+</div></div>
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeMoreSheet()"></div>
+<div class="more-sheet" id="moreSheet"><div class="sheet-handle"></div>
+  <a href="v3-packages.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Packages</a>
+  <a href="v3-contacts.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Contacts</a>
+  <a href="v3-sitemap.html" class="sheet-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Site Maps</a>
+  <a href="v3-event-details.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Event Details</a>
+  <div class="sheet-sep"></div>
+  <a href="v3-settings.html" class="sheet-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Settings</a>
+  <button class="sheet-item danger" onclick="doLogout()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-overlay" id="inviteModal">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title">Add Team Member</div><button class="modal-close" onclick="closeInviteModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">First Name</label><input type="text" class="form-input" id="invFirst" placeholder="First name"></div>
+        <div class="form-group"><label class="form-label">Last Name</label><input type="text" class="form-input" id="invLast" placeholder="Last name"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" id="invEmail" placeholder="email@example.com"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Role</label><select class="form-select" id="invRole"><option value="member">Member</option><option value="admin">Admin</option><option value="lead">Lead</option><option value="volunteer">Volunteer</option></select></div>
+        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="invTitle" placeholder="Job title"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeInviteModal()">Cancel</button><button class="btn-primary" onclick="sendInvite()">Add Member</button></div>
+  </div>
+</div>
+
+<!-- NEW TEMPLATE MODAL -->
+<div class="modal-overlay" id="newTplModal">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title">New Template</div><button class="modal-close" onclick="closeNewTemplateModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Template Name *</label><input type="text" class="form-input" id="tplName" placeholder="e.g. Music Festival"></div>
+      <div class="form-group"><label class="form-label">Description</label><input type="text" class="form-input" id="tplDesc" placeholder="Short description"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeNewTemplateModal()">Cancel</button><button class="btn-primary" onclick="createTemplate()">Create</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script>
+var isDark=localStorage.getItem('elp_dark_mode')==='true';
+if(isDark){document.body.classList.add('dark');document.documentElement.classList.add('dark');}
+function applyDarkIcons(){var d=document.body.classList.contains('dark');document.documentElement.classList.toggle('dark',d);['d','m'].forEach(function(p){var moon=document.getElementById(p+'Moon'),sun=document.getElementById(p+'Sun');if(moon)moon.style.display=d?'none':'block';if(sun)sun.style.display=d?'block':'none';});var logo=document.getElementById('dLogo');if(logo)logo.src=d?'eventlogicpro-logo-dark.png':'eventlogicpro-logo.png';}
+applyDarkIcons();
+function toggleDark(){document.body.classList.toggle('dark');isDark=document.body.classList.contains('dark');localStorage.setItem('elp_dark_mode',isDark);applyDarkIcons();}
+function toggleDarkPref(){toggleDark();}
+var SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+var tenantId=null,userId=null,userEmail=null;
+var allTeamMembers=[],allTemplates=[];
+
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2400);}
+async function doLogout(){await sb.auth.signOut();localStorage.removeItem('sb_access_token');localStorage.removeItem('sb_refresh_token');location.replace('/');}
+async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.replace('/');return null;}}return s;}
+function openMoreSheet(){document.getElementById('sheetOverlay').classList.add('open');document.getElementById('moreSheet').classList.add('open');}
+function closeMoreSheet(){document.getElementById('sheetOverlay').classList.remove('open');document.getElementById('moreSheet').classList.remove('open');}
+function showSec(id,btn){document.querySelectorAll('.sec').forEach(function(s){s.classList.remove('active');});document.querySelectorAll('.settings-nav-item').forEach(function(n){n.classList.remove('active');});document.getElementById('sec-'+id).classList.add('active');btn.classList.add('active');}
+
+async function init(){
+  var session=await checkAuth();if(!session)return;
+  userId=session.user.id;userEmail=session.user.email||'';
+  var ur=await sb.from('users').select('tenant_id,first_name').eq('email',userEmail).maybeSingle();
+  if(ur.data)tenantId=ur.data.tenant_id;
+  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).maybeSingle();if(bs.data)tenantId=bs.data.tenant_id;}
+  if(!tenantId){toast('Cannot determine tenant');return;}
+  var biz=await sb.from('business_settings').select('*').eq('tenant_id',tenantId).maybeSingle();
+  if(biz.data){
+    var bn=biz.data.display_name||biz.data.business_name||'Event Logic Pro';
+    document.getElementById('dBiz').textContent=bn;
+    document.getElementById('bizName').value=biz.data.business_name||'';
+    document.getElementById('bizDisplay').value=biz.data.display_name||'';
+    document.getElementById('bizEmail').value=biz.data.email||'';
+    document.getElementById('bizPhone').value=biz.data.phone||'';
+    document.getElementById('bizWebsite').value=biz.data.website||'';
+    document.getElementById('bizAddress').value=biz.data.address||'';
+  }
+  document.getElementById('profEmail').value=userEmail;
+  var mem=await sb.from('event_members').select('*').eq('tenant_id',tenantId).eq('email',userEmail).maybeSingle();
+  if(mem.data){document.getElementById('profFirst').value=mem.data.first_name||'';document.getElementById('profLast').value=mem.data.last_name||'';document.getElementById('profPhone').value=mem.data.phone||'';document.getElementById('profTitle').value=mem.data.title||'';}
+  document.getElementById('prefDark').checked=isDark;
+  document.getElementById('prefLanding').value=localStorage.getItem('elp_landing')||'v3-dashboard.html';
+  await Promise.all([loadTeam(),loadTemplates()]);
+  renderTeam();renderTemplates();
+}
+
+async function saveProfile(){var data={first_name:document.getElementById('profFirst').value.trim(),last_name:document.getElementById('profLast').value.trim(),phone:document.getElementById('profPhone').value.trim(),title:document.getElementById('profTitle').value.trim()};await sb.from('event_members').update(data).eq('tenant_id',tenantId).eq('email',userEmail);toast('Profile saved');}
+async function changePassword(){var pw=document.getElementById('profNewPw').value;var cpw=document.getElementById('profConfPw').value;if(!pw||pw.length<8){toast('Min 8 characters');return;}if(pw!==cpw){toast('Passwords do not match');return;}var r=await sb.auth.updateUser({password:pw});if(r.error){toast('Error: '+r.error.message);return;}document.getElementById('profNewPw').value='';document.getElementById('profConfPw').value='';toast('Password updated');}
+async function saveBusiness(){var data={business_name:document.getElementById('bizName').value.trim(),display_name:document.getElementById('bizDisplay').value.trim()||null,email:document.getElementById('bizEmail').value.trim()||null,phone:document.getElementById('bizPhone').value.trim()||null,website:document.getElementById('bizWebsite').value.trim()||null,address:document.getElementById('bizAddress').value.trim()||null,updated_at:new Date().toISOString()};await sb.from('business_settings').update(data).eq('tenant_id',tenantId);toast('Business info saved');document.getElementById('dBiz').textContent=data.display_name||data.business_name||'Event Logic Pro';}
+
+async function loadTeam(){var r=await sb.from('event_members').select('*').eq('tenant_id',tenantId).order('first_name');allTeamMembers=r.data||[];}
+function renderTeam(){var tb=document.getElementById('teamBody');if(!allTeamMembers.length){tb.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:20px;">No team members</td></tr>';return;}tb.innerHTML=allTeamMembers.map(function(m){var name=((m.first_name||'')+' '+(m.last_name||'')).trim()||m.email||'Member';var role=m.role||m.role_level||'member';var active=m.is_active!==false;return'<tr><td><strong>'+esc(name)+'</strong></td><td style="color:var(--t2);">'+esc(m.email||'—')+'</td><td><span class="role-badge '+role+'">'+role+'</span></td><td><span style="color:'+(active?'#16a34a':'#9ca3af')+';font-size:12px;font-weight:600;">'+(active?'Active':'Inactive')+'</span></td></tr>';}).join('');}
+function openInviteModal(){['invFirst','invLast','invEmail','invTitle'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('invRole').value='member';document.getElementById('inviteModal').classList.add('show');}
+function closeInviteModal(){document.getElementById('inviteModal').classList.remove('show');}
+async function sendInvite(){var email=document.getElementById('invEmail').value.trim();if(!email){toast('Email required');return;}var data={tenant_id:tenantId,first_name:document.getElementById('invFirst').value.trim()||null,last_name:document.getElementById('invLast').value.trim()||null,email:email,role:document.getElementById('invRole').value,role_level:document.getElementById('invRole').value,title:document.getElementById('invTitle').value.trim()||null,is_active:true};var r=await sb.from('event_members').insert(data);if(r.error){toast('Error: '+r.error.message);return;}closeInviteModal();toast('Member added');await loadTeam();renderTeam();}
+
+async function loadTemplates(){var r=await sb.from('event_template_groups').select('*').eq('tenant_id',tenantId).order('template_name');allTemplates=r.data||[];}
+function renderTemplates(){var el=document.getElementById('templateList');if(!allTemplates.length){el.innerHTML='<div style="text-align:center;padding:24px;color:var(--t2);font-size:13px;">No templates yet. Create a template to quickly populate new events with standard departments and tasks.</div>';return;}el.innerHTML=allTemplates.map(function(t){return'<div class="tpl-item"><div class="tpl-name">'+esc(t.template_name||'Untitled')+'</div><div class="tpl-desc">'+esc(t.description||'')+'</div><div class="tpl-actions"><button class="tpl-btn tpl-btn-del" onclick="deleteTemplate(\''+t.template_group_id+'\',\''+escQ(t.template_name||'')+'\')">Delete</button></div></div>';}).join('');}
+function openNewTemplateModal(){document.getElementById('tplName').value='';document.getElementById('tplDesc').value='';document.getElementById('newTplModal').classList.add('show');}
+function closeNewTemplateModal(){document.getElementById('newTplModal').classList.remove('show');}
+async function createTemplate(){var name=document.getElementById('tplName').value.trim();if(!name){toast('Name required');return;}await sb.from('event_template_groups').insert({tenant_id:tenantId,template_name:name,description:document.getElementById('tplDesc').value.trim()||null});closeNewTemplateModal();toast('Template created');await loadTemplates();renderTemplates();}
+async function deleteTemplate(id,name){if(!confirm('Delete template "'+name+'"?'))return;await sb.from('event_template_tasks').delete().in('template_dept_id',(await sb.from('event_template_departments').select('template_dept_id').eq('template_group_id',id)).data?.map(function(d){return d.template_dept_id;})||[]);await sb.from('event_template_departments').delete().eq('template_group_id',id);await sb.from('event_template_groups').delete().eq('template_group_id',id);toast('"'+name+'" deleted');await loadTemplates();renderTemplates();}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escQ(s){return String(s||'').replace(/'/g,"\\'");}
+init();
+</script>
+</body>
+</html>
