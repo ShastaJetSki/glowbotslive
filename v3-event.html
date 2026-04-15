@@ -495,6 +495,28 @@ body.dark .bli-due.post{background:#2e1065;}
 .cswatch{width:24px;height:24px;border-radius:5px;cursor:pointer;border:2px solid transparent;transition:all .15s;flex-shrink:0;}
 .cswatch:hover{transform:scale(1.12);}
 .cswatch.active{border-color:#fff;}
+
+/* REVENUE ESTIMATOR SLIDERS */
+.rev-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;}
+.rev-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.rev-pkg-name{font-size:13px;font-weight:700;}
+.rev-pkg-price{font-size:11px;color:var(--t2);}
+.rev-slider-wrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.rev-slider{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:var(--border);outline:none;cursor:pointer;}
+.rev-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--ev-color);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+.rev-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--ev-color);cursor:pointer;border:2px solid #fff;}
+.rev-qty-display{font-size:15px;font-weight:800;min-width:36px;text-align:center;}
+.rev-qty-inp{width:52px;padding:4px;text-align:center;border:1px solid var(--border);border-radius:6px;background:var(--inp);color:var(--t1);font-size:13px;font-weight:700;}
+.rev-qty-inp:focus{outline:none;border-color:var(--ev-color);}
+.rev-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.rev-metric{text-align:center;padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:7px;}
+.rev-metric-val{font-size:14px;font-weight:800;}
+.rev-metric-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+.rev-section-total{display:flex;gap:16px;justify-content:flex-end;font-size:12px;font-weight:700;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:4px;}
+.rev-grand{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;padding-top:16px;border-top:2px solid var(--border);}
+.rev-grand-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
+.rev-grand-val{font-size:22px;font-weight:900;line-height:1;}
+.rev-grand-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-top:4px;}
 </style>
 </head>
 <body>
@@ -2865,8 +2887,6 @@ function renderPkgSections() {
     var sectionRev = 0, sectionCost = 0;
     html += '<div style="margin-bottom:16px;">';
     html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:'+sectionColors[ri]+';margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">'+rs.label+'</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 70px 80px 80px 80px;gap:0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--border);margin-bottom:4px;">';
-    html += '<span>Package</span><span style="text-align:center;">Price</span><span style="text-align:center;">Qty Sold</span><span style="text-align:right;">Revenue</span><span style="text-align:right;">Cost</span></div>';
     rs.pkgs.forEach(function(pkg) {
       var pkgId = pkg[rs.idField];
       var qty = parseInt(revData[pkgId] || 0);
@@ -2875,13 +2895,31 @@ function renderPkgSections() {
       var pkgCost = items.reduce(function(s,it){return s+(parseInt(it.quantity||0)||0)*(parseFloat(it.cost)||0);},0);
       var lineRev = qty * price;
       var lineCost = qty * pkgCost;
+      var lineOffset = lineRev - lineCost;
+      var maxQty = Math.max(100, qty * 3 || 100);
       sectionRev += lineRev; sectionCost += lineCost;
-      html += '<div style="display:grid;grid-template-columns:1fr 70px 80px 80px 80px;gap:0;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">';
-      html += '<div style="font-size:12px;font-weight:600;">'+esc(pkg[rs.nameField]||'')+'</div>';
-      html += '<div style="text-align:center;font-size:12px;color:var(--t2);">$'+fmt(price)+'</div>';
-      html += '<div style="text-align:center;"><input type="number" min="0" step="1" value="'+qty+'" data-pkgid="'+pkgId+'" onchange="saveRevQty(this)" style="width:56px;text-align:center;padding:4px;border:1px solid var(--border);border-radius:5px;background:var(--inp);color:var(--t1);font-size:12px;"></div>';
-      html += '<div style="text-align:right;font-size:12px;font-weight:700;color:#16a34a;">$'+fmt(lineRev)+'</div>';
-      html += '<div style="text-align:right;font-size:12px;color:#DC2626;">$'+fmt(lineCost)+'</div>';
+      var color = sectionColors[ri];
+      var sid = 'rev-' + pkgId;
+      html += '<div class="rev-card">';
+      html += '<div class="rev-card-top"><div class="rev-pkg-name">'+esc(pkg[rs.nameField]||'')+'</div><div class="rev-pkg-price">$'+fmt(price)+' each</div></div>';
+      // Slider + qty input
+      html += '<div class="rev-slider-wrap">';
+      html += '<input type="range" class="rev-slider" id="sl-'+pkgId+'" min="0" max="'+maxQty+'" step="1" value="'+qty+'"'
+        +' style="accent-color:'+color+';" data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'"'
+        +' oninput="revSliderInput(this,this.dataset.pid,this.dataset.price,this.dataset.cost)"'
+        +' onchange="saveRevQtyById(this.dataset.pid,this.value)">';
+      html += '<input type="number" class="rev-qty-inp" id="qi-'+pkgId+'" min="0" step="1" value="'+qty+'"'
+        +' data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'"'
+        +' oninput="revNumInput(this,this.dataset.pid,this.dataset.price,this.dataset.cost)"'
+        +' onchange="saveRevQtyById(this.dataset.pid,this.value)">';
+      html += '<span style="font-size:10px;color:var(--t2);white-space:nowrap;">sold</span>';
+      html += '</div>';
+      // Metrics
+      html += '<div class="rev-metrics">';
+      html += '<div class="rev-metric"><div class="rev-metric-val" id="rv-'+pkgId+'" style="color:#16a34a;">$'+fmt(lineRev)+'</div><div class="rev-metric-lbl">Revenue</div></div>';
+      html += '<div class="rev-metric"><div class="rev-metric-val" id="rc-'+pkgId+'" style="color:#DC2626;">$'+fmt(lineCost)+'</div><div class="rev-metric-lbl">Cost</div></div>';
+      html += '<div class="rev-metric"><div class="rev-metric-val" id="ro-'+pkgId+'" style="color:'+(lineOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(lineOffset)+'</div><div class="rev-metric-lbl">Offset</div></div>';
+      html += '</div>';
       html += '</div>';
     });
     grandTotal += sectionRev; grandCost += sectionCost;
@@ -2905,15 +2943,56 @@ function renderPkgSections() {
   el.innerHTML = html;
 }
 
-function saveRevQty(inp) {
-  var pkgId = inp.dataset.pkgid;
+function revSliderInput(slider, pkgId, price, cost) {
+  var qty = parseInt(slider.value) || 0;
+  var inp = document.getElementById('qi-'+pkgId); if (inp) inp.value = qty;
+  revUpdateDisplay(pkgId, qty, price, cost);
+}
+function revNumInput(inp, pkgId, price, cost) {
   var qty = parseInt(inp.value) || 0;
+  var slider = document.getElementById('sl-'+pkgId); if (slider) { if (qty > parseInt(slider.max)) slider.max = qty + 50; slider.value = qty; }
+  revUpdateDisplay(pkgId, qty, price, cost);
+}
+function revUpdateDisplay(pkgId, qty, price, cost) {
+  var rev = qty * price, c2 = qty * cost, off = rev - c2;
+  var rvEl = document.getElementById('rv-'+pkgId); if (rvEl) rvEl.textContent = '$'+fmt(rev);
+  var rcEl = document.getElementById('rc-'+pkgId); if (rcEl) rcEl.textContent = '$'+fmt(c2);
+  var roEl = document.getElementById('ro-'+pkgId); if (roEl) { roEl.textContent = '$'+fmt(off); roEl.style.color = off>=0?'#16a34a':'#DC2626'; }
+  revRecalcTotals();
+}
+function revRecalcTotals() {
+  var revKey = 'elp_rev_' + pkgSheetId;
+  var revData = {};
+  try { revData = JSON.parse(localStorage.getItem(revKey) || '{}'); } catch(e) {}
+  // Collect current slider values
+  document.querySelectorAll('.rev-slider').forEach(function(sl) {
+    var id = sl.id.replace('sl-',''); revData[id] = parseInt(sl.value)||0;
+  });
+  // Recalculate grand totals from all package sliders
+  var grandRev = 0, grandCost = 0;
+  PKG_SECS.forEach(function(sec) {
+    sec.getPkgs().forEach(function(pkg) {
+      var pid = pkg[sec.idField];
+      var qty = parseInt((document.getElementById('qi-'+pid)||{value:0}).value) || 0;
+      var price = parseFloat(pkg.price) || 0;
+      var items = sec.getItems(pkg);
+      var pkgCost = items.reduce(function(s,it){return s+(parseInt(it.quantity||0)||0)*(parseFloat(it.cost)||0);},0);
+      grandRev  += qty * price;
+      grandCost += qty * pkgCost;
+    });
+  });
+  var grandOff = grandRev - grandCost;
+  var grEl = document.getElementById('rev-grand-rev'); if (grEl) grEl.textContent = '$'+fmt(grandRev);
+  var gcEl = document.getElementById('rev-grand-cost'); if (gcEl) gcEl.textContent = '$'+fmt(grandCost);
+  var goEl = document.getElementById('rev-grand-off'); if (goEl) { goEl.textContent = '$'+fmt(grandOff); goEl.style.color = grandOff>=0?'#16a34a':'#DC2626'; }
+}
+function saveRevQtyById(pkgId, val) {
+  var qty = parseInt(val) || 0;
   var revKey = 'elp_rev_' + pkgSheetId;
   var revData = {};
   try { revData = JSON.parse(localStorage.getItem(revKey) || '{}'); } catch(e) {}
   revData[pkgId] = qty;
   localStorage.setItem(revKey, JSON.stringify(revData));
-  renderPkgSections(); // re-render to update totals
 }
 
 function togglePkgSec(key) {
