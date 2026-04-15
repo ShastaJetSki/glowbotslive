@@ -309,6 +309,44 @@ body.dark .s-active{background:#14532d;color:#86efac;}
 .gc-type-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--bg2);color:var(--t2);display:inline-block;}
 .gc-meta{font-size:11px;color:var(--t2);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;}
 .gc-count-bar{font-size:12px;color:var(--t2);margin-bottom:10px;}
+
+/* BUDGET DEPT CARDS */
+.bdept{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;}
+.bdept-hdr{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;user-select:none;}
+.bdept-hdr:hover{background:var(--hover);}
+.bdept-drag{color:var(--t2);opacity:.4;font-size:16px;cursor:grab;flex-shrink:0;}
+.bdept-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+.bdept-info{flex:1;min-width:0;}
+.bdept-name{font-size:14px;font-weight:700;}
+.bdept-sub{font-size:11px;color:var(--t2);margin-top:1px;}
+.bdept-total{font-size:15px;font-weight:800;margin-right:8px;}
+.bdept-del{background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px;padding:0 4px;}
+.bdept-del:hover{color:#DC2626;}
+.bdept-chev{color:var(--t2);font-size:13px;transition:transform .2s;}
+.bdept.collapsed .bdept-chev{transform:rotate(-90deg);}
+.bdept-body{border-top:1px solid var(--border);}
+.bdept.collapsed .bdept-body{display:none;}
+.bli-hdr{display:grid;grid-template-columns:1fr 90px 100px 90px 32px;gap:0;padding:6px 14px;background:var(--bg2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--t2);}
+.bli-row{display:grid;grid-template-columns:1fr 90px 100px 90px 32px;gap:0;border-top:1px solid var(--border);align-items:center;}
+.bli-row:hover{background:var(--hover);}
+.bli-name{padding:9px 14px;font-size:13px;border:none;background:transparent;color:var(--t1);width:100%;outline:none;}
+.bli-name:focus{background:var(--inp);border-radius:4px;}
+.bli-due{padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--inp);color:var(--t1);margin:6px 4px;cursor:pointer;outline:none;}
+.bli-due:focus{border-color:var(--acc);}
+.bli-due.pre{color:#f59e0b;border-color:#f59e0b33;background:#fef9c366;}
+.bli-due.day{color:#3b82f6;border-color:#3b82f633;background:#dbeafe66;}
+.bli-due.post{color:#a78bfa;border-color:#a78bfa33;background:#ede9fe66;}
+body.dark .bli-due.pre{background:#422006;}
+body.dark .bli-due.day{background:#1e3a5f;}
+body.dark .bli-due.post{background:#2e1065;}
+.bli-est,.bli-act{padding:8px 10px;font-size:13px;border:none;background:transparent;color:var(--t1);width:100%;outline:none;text-align:right;}
+.bli-est:focus,.bli-act:focus{background:var(--inp);border-radius:4px;}
+.bli-del{background:none;border:none;color:var(--border);cursor:pointer;font-size:15px;padding:0 10px;}
+.bli-del:hover{color:#DC2626;}
+.bli-add-row{padding:8px 14px;border-top:1px dashed var(--border);}
+.bli-add-btn{background:none;border:none;color:var(--acc);font-size:12px;font-weight:600;cursor:pointer;padding:4px 0;}
+.bli-add-btn:hover{text-decoration:underline;}
+.bdept-footer{display:flex;justify-content:flex-end;padding:8px 16px;border-top:1px solid var(--border);background:var(--bg2);font-size:12px;color:var(--t2);}
 </style>
 </head>
 <body>
@@ -861,27 +899,129 @@ async function saveDept() {
 }
 
 /* BUDGET */
+var budgetCollapsed = {};
+
 function renderBudget() {
   var totalBudget = parseFloat(project.total_budget)||0;
-  var totalCost   = allTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+  var totalEst    = allTasks.filter(function(t){return !t.is_cancelled;}).reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
   var vendorCost  = allVendors.reduce(function(s,v){return s+(parseFloat(v.cost)||0);},0);
-  var totalSpent  = totalCost + vendorCost;
-  var remaining   = totalBudget - totalSpent;
-  var spentPct    = totalBudget > 0 ? Math.min(100,Math.round(totalSpent/totalBudget*100)) : 0;
-  var html = '<div class="budget-kpis">'
+  var grandEst    = totalEst + vendorCost;
+  var remaining   = totalBudget - grandEst;
+
+  // KPI bar
+  var html = '<div class="budget-kpis" style="margin-bottom:16px;">'
     +'<div class="bkpi"><div class="bkpi-val">$'+fmt(totalBudget)+'</div><div class="bkpi-lbl">Total Budget</div></div>'
-    +'<div class="bkpi"><div class="bkpi-val" style="color:#DC2626;">$'+fmt(totalSpent)+'</div><div class="bkpi-lbl">Est Cost</div></div>'
+    +'<div class="bkpi"><div class="bkpi-val" style="color:#DC2626;">$'+fmt(grandEst)+'</div><div class="bkpi-lbl">Est. Cost</div></div>'
     +'<div class="bkpi"><div class="bkpi-val" style="color:'+(remaining>=0?'#16a34a':'#dc2626')+';">$'+fmt(Math.abs(remaining))+'</div><div class="bkpi-lbl">'+(remaining>=0?'Remaining':'Over Budget')+'</div></div>'
     +'</div>';
-  html += '<div class="budget-dept-row"><div class="bdr-top"><div class="bdr-name">Overall</div><div class="bdr-amounts">$'+fmt(totalSpent)+' / $'+fmt(totalBudget)+' ('+spentPct+'%)</div></div><div class="bdr-bar"><div class="bdr-fill" style="width:'+spentPct+'%;background:'+evColor+'"></div></div></div>';
-  allDepts.forEach(function(d,i) {
-    var dBudget = parseFloat(d.budget)||0;
-    var dCost   = allTasks.filter(function(t){return t.event_department_id===d.event_department_id;}).reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
-    var dPct    = dBudget > 0 ? Math.min(100,Math.round(dCost/dBudget*100)) : 0;
-    html += '<div class="budget-dept-row"><div class="bdr-top"><div class="bdr-name">'+esc(d.department_name)+'</div><div class="bdr-amounts">$'+fmt(dCost)+(dBudget?' / $'+fmt(dBudget)+' ('+dPct+'%)':'')+'</div></div><div class="bdr-bar"><div class="bdr-fill" style="width:'+dPct+'%;background:'+deptColor(i)+'"></div></div></div>';
+
+  // Section header
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    +'<div style="font-size:14px;font-weight:700;">Expenses</div>'
+    +'<button class="add-btn" onclick="openAddDeptModal()">+ Add Expense Dept</button>'
+    +'</div>';
+
+  if (!allDepts.length) {
+    html += emptyState('&#128202;','No departments yet','Add departments to organize your budget.','+ Add Dept','openAddDeptModal()');
+    document.getElementById('centerBody').innerHTML = html; return;
+  }
+
+  // Dept accordion cards
+  allDepts.forEach(function(d, i) {
+    var color  = deptColor(i);
+    var dTasks = allTasks.filter(function(t){return t.event_department_id===d.event_department_id && !t.is_cancelled;});
+    var dEst   = dTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+    var filled = dTasks.filter(function(t){return (parseFloat(t.cost)||0) > 0;}).length;
+    var isCollapsed = budgetCollapsed[d.event_department_id];
+
+    html += '<div class="bdept'+(isCollapsed?' collapsed':'')+'" id="bdept-'+d.event_department_id+'">';
+    // Header
+    html += '<div class="bdept-hdr" onclick="toggleBdept(\''+d.event_department_id+'\')">';
+    html += '<span class="bdept-drag">&#9783;</span>';
+    html += '<div class="bdept-dot" style="background:'+color+'"></div>';
+    html += '<div class="bdept-info"><div class="bdept-name">'+esc(d.department_name)+'</div>';
+    html += '<div class="bdept-sub">'+filled+' of '+dTasks.length+' items budgeted</div></div>';
+    html += '<div class="bdept-total" style="color:'+color+';">$'+fmt(dEst)+'</div>';
+    html += '<button class="bdept-del" onclick="event.stopPropagation();" title="Remove dept" style="visibility:hidden;">&#215;</button>';
+    html += '<span class="bdept-chev">&#9660;</span>';
+    html += '</div>';
+    // Body
+    html += '<div class="bdept-body">';
+    html += '<div class="bli-hdr"><span>Item</span><span>Due</span><span style="text-align:right;">Estimated</span><span style="text-align:right;">Actual</span><span></span></div>';
+    dTasks.forEach(function(t) {
+      var dv = t.timing || 'pre';
+      var dc = dv==='day'?'day':dv==='post'?'post':'pre';
+      html += '<div class="bli-row">';
+      html += '<input class="bli-name" value="'+esc(t.task_title||'')+'" onblur="saveBliName(\''+t.event_task_id+'\',this.value)" placeholder="Line item name">';
+      html += '<select class="bli-due '+dc+'" onchange="saveBliDue(\''+t.event_task_id+'\',this.value,this)">'
+        +'<option value="pre"'+(dv==='pre'?' selected':'')+'>Pre</option>'
+        +'<option value="day"'+(dv==='day'?' selected':'')+'>Day Of</option>'
+        +'<option value="post"'+(dv==='post'?' selected':'')+'>Post</option>'
+        +'</select>';
+      html += '<input class="bli-est" type="number" value="'+(parseFloat(t.cost)||0)+'" step="100" onblur="saveBliEst(\''+t.event_task_id+'\',this.value)" placeholder="0">';
+      html += '<input class="bli-act" type="number" value="'+(parseFloat(t.actual_cost)||0)+'" step="100" onblur="saveBliAct(\''+t.event_task_id+'\',this.value)" placeholder="0">';
+      html += '<button class="bli-del" onclick="deleteBli(\''+t.event_task_id+'\',\''+d.event_department_id+'\')">&#215;</button>';
+      html += '</div>';
+    });
+    html += '<div class="bli-add-row"><button class="bli-add-btn" onclick="addBli(\''+d.event_department_id+'\')">+ Add line item</button></div>';
+    if (vendorCost > 0 && i === allDepts.length - 1) {
+      html += '<div class="bdept-footer">Vendor costs: $'+fmt(vendorCost)+' not included above</div>';
+    }
+    html += '</div></div>';
   });
-  if (vendorCost > 0) html += '<div class="budget-dept-row"><div class="bdr-top"><div class="bdr-name">Vendors / Contacts</div><div class="bdr-amounts">$'+fmt(vendorCost)+'</div></div><div class="bdr-bar"><div class="bdr-fill" style="width:100%;background:#7c3aed"></div></div></div>';
+
   document.getElementById('centerBody').innerHTML = html;
+}
+
+function toggleBdept(deptId) {
+  budgetCollapsed[deptId] = !budgetCollapsed[deptId];
+  var el = document.getElementById('bdept-'+deptId);
+  if (el) el.classList.toggle('collapsed', !!budgetCollapsed[deptId]);
+}
+
+async function saveBliName(taskId, val) {
+  await sb.from('event_tasks').update({task_title: val.trim()}).eq('event_task_id', taskId);
+  var t = allTasks.find(function(x){return x.event_task_id===taskId;}); if(t) t.task_title = val.trim();
+  renderDeptList();
+}
+async function saveBliDue(taskId, val, sel) {
+  var dc = val==='day'?'day':val==='post'?'post':'pre';
+  sel.className = 'bli-due ' + dc;
+  await sb.from('event_tasks').update({timing: val}).eq('event_task_id', taskId);
+  var t = allTasks.find(function(x){return x.event_task_id===taskId;}); if(t) t.timing = val;
+}
+async function saveBliEst(taskId, val) {
+  var cost = parseFloat(val) || 0;
+  await sb.from('event_tasks').update({cost: cost}).eq('event_task_id', taskId);
+  var t = allTasks.find(function(x){return x.event_task_id===taskId;}); if(t) t.cost = cost;
+  renderDeptList(); renderHeader();
+  // Update just the dept total without full re-render
+  var dept = allDepts.find(function(d){return allTasks.find(function(t){return t.event_task_id===taskId && t.event_department_id===d.event_department_id;});});
+  if (dept) {
+    var i = allDepts.indexOf(dept);
+    var dTasks = allTasks.filter(function(t){return t.event_department_id===dept.event_department_id&&!t.is_cancelled;});
+    var dEst   = dTasks.reduce(function(s,t){return s+(parseFloat(t.cost)||0);},0);
+    var totEl  = document.querySelector('#bdept-'+dept.event_department_id+' .bdept-total');
+    if (totEl) totEl.textContent = '$' + fmt(dEst);
+  }
+}
+async function saveBliAct(taskId, val) {
+  var actual = parseFloat(val) || 0;
+  await sb.from('event_tasks').update({actual_cost: actual}).eq('event_task_id', taskId);
+  var t = allTasks.find(function(x){return x.event_task_id===taskId;}); if(t) t.actual_cost = actual;
+}
+async function addBli(deptId) {
+  var data = {tenant_id:tenantId, event_project_id:project.event_project_id, event_department_id:deptId, task_title:'New line item', cost:0, timing:'pre', sort_order:allTasks.length, created_by:userId};
+  var r = await sb.from('event_tasks').insert(data).select().single();
+  if (r.error) { toast('Error: '+r.error.message); return; }
+  allTasks.push(r.data);
+  budgetCollapsed[deptId] = false; // ensure expanded
+  renderBudget(); renderDeptList();
+}
+async function deleteBli(taskId, deptId) {
+  await sb.from('event_tasks').delete().eq('event_task_id', taskId);
+  allTasks = allTasks.filter(function(t){return t.event_task_id!==taskId;});
+  renderBudget(); renderDeptList(); renderHeader();
 }
 
 /* CONTACTS */
