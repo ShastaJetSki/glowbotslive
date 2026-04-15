@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dashboard — Event Logic Pro v3</title>
+<link rel="icon" href="favicon-eventlogic.ico">
+<meta name="theme-color" content="#DC2626">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#f4f5f7;--bg2:#ebedf1;--card:#fff;--hover:#f0f0f3;--border:#e2e4e8;
+  --t1:#1a1a1a;--t2:#6b7280;--acc:#DC2626;--acc2:#B91C1C;--acc3:#EF4444;
+  --glow:rgba(220,38,38,.10);--shadow:0 2px 12px rgba(0,0,0,.06);--inp:#fafafa;--overlay:rgba(0,0,0,.45);
+}
+body.dark{
+  --bg:#111;--bg2:#1a1a1a;--card:#222;--hover:#2a2a2a;--border:#333;
+  --t1:#f0f0f0;--t2:#999;--acc:#DC2626;--acc2:#EF4444;--acc3:#EF4444;
+  --glow:rgba(220,38,38,.15);--shadow:0 2px 12px rgba(0,0,0,.3);--inp:#1a1a1a;--overlay:rgba(0,0,0,.75);
+}
+html{scrollbar-gutter:stable;background:var(--bg);}
+html.dark{background:#111;}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--t1);overflow-x:hidden;padding-bottom:100px;min-height:100vh;}
+
+/* DESKTOP HEADER */
+.dh{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.dh-top{padding:8px 24px;display:flex;justify-content:space-between;align-items:center;}
+.dh-left{display:flex;align-items:center;gap:16px;}
+.dh-logo{height:52px;object-fit:contain;}
+.dh-titles h1{font-size:22px;font-weight:700;letter-spacing:-.3px;}
+.dh-titles .sub{font-size:11px;color:var(--acc);font-weight:600;letter-spacing:.3px;}
+.dh-right{display:flex;align-items:center;gap:10px;}
+.event-badge{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--glow);border:1px solid var(--acc);border-radius:20px;cursor:pointer;font-size:12px;color:var(--acc);font-weight:600;max-width:220px;}
+.event-badge span.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.event-badge-x{opacity:.6;cursor:pointer;font-size:14px;flex-shrink:0;}
+.event-badge-x:hover{opacity:1;}
+.dark-toggle{background:none;border:none;cursor:pointer;padding:6px;color:var(--t2);display:flex;align-items:center;}
+.dark-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;}
+.logout-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--t2);cursor:pointer;}
+.logout-btn:hover{color:var(--t1);border-color:var(--t2);}
+.nav-bar{display:flex;justify-content:space-between;align-items:center;padding:0 24px;border-top:1px solid var(--border);}
+.nav-left{display:flex;gap:2px;}
+.nav-btn{padding:8px 14px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;border-radius:6px;transition:all .15s;}
+.nav-btn:hover{color:var(--t1);background:var(--hover);}
+.nav-btn.active{color:var(--acc);font-weight:600;}
+
+/* MOBILE HEADER */
+.mh{display:none;position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.mh-bar{display:flex;align-items:center;padding:10px 16px;gap:10px;}
+.mh-logo{height:36px;object-fit:contain;}
+.mh-title{font-size:17px;font-weight:700;flex:1;}
+.mh-badge{font-size:11px;color:var(--acc);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;}
+.mh-right{display:flex;gap:6px;}
+
+/* MOBILE BOTTOM NAV */
+.mbn{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--card);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom);}
+.mbn-inner{display:grid;grid-template-columns:repeat(5,1fr);gap:0;}
+.mbn-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:none;background:none;color:var(--t2);font-size:10px;font-weight:500;cursor:pointer;text-decoration:none;}
+.mbn-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.mbn-btn.active{color:var(--acc);}
+.mbn-more-icon{font-size:20px;line-height:22px;}
+
+/* MORE SHEET */
+.sheet-overlay{display:none;position:fixed;inset:0;z-index:300;background:var(--overlay);}
+.sheet-overlay.open{display:block;}
+.more-sheet{position:fixed;bottom:-100%;left:0;right:0;z-index:301;background:var(--card);border-radius:20px 20px 0 0;padding:12px 0 env(safe-area-inset-bottom);transition:bottom .3s cubic-bezier(.4,0,.2,1);}
+.more-sheet.open{bottom:0;}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 12px;}
+.sheet-item{display:flex;align-items:center;gap:12px;padding:14px 20px;font-size:15px;color:var(--t1);text-decoration:none;border:none;background:none;width:100%;text-align:left;cursor:pointer;}
+.sheet-item:hover{background:var(--hover);}
+.sheet-item svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;flex-shrink:0;}
+.sheet-item.danger{color:#DC2626;}
+.sheet-sep{height:1px;background:var(--border);margin:4px 0;}
+
+/* CONTENT */
+.content{max-width:1100px;margin:0 auto;padding:20px 24px;}
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.section-title{font-size:16px;font-weight:600;}
+.btn-primary{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;}
+.btn-primary:hover{background:var(--acc2);}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn-secondary{background:var(--bg2);color:var(--t1);border:1px solid var(--border);border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;}
+
+/* KPIs */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;}
+.kpi-label{font-size:11px;font-weight:600;color:var(--t2);letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px;}
+.kpi-value{font-size:26px;font-weight:700;letter-spacing:-.5px;}
+.kpi-sub{font-size:11px;color:var(--t2);margin-top:2px;}
+
+/* EVENTS GRID */
+.events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+.event-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;}
+.event-card:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
+.ec-color{height:4px;}
+.ec-body{padding:14px 16px;}
+.ec-name{font-size:15px;font-weight:600;margin-bottom:4px;}
+.ec-date{font-size:12px;color:var(--t2);margin-bottom:10px;}
+.ec-progress{height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;margin-bottom:6px;}
+.ec-bar{height:100%;border-radius:2px;transition:width .3s;}
+.ec-stats{display:flex;justify-content:space-between;font-size:11px;color:var(--t2);}
+.ec-status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+.s-planning{background:#fef9c3;color:#854d0e;}
+.s-active{background:#dcfce7;color:#166534;}
+.s-completed{background:#e0e7ff;color:#3730a3;}
+.s-cancelled{background:#fee2e2;color:#991b1b;}
+body.dark .s-planning{background:#422006;color:#fde68a;}
+body.dark .s-active{background:#14532d;color:#86efac;}
+body.dark .s-completed{background:#1e1b4b;color:#a5b4fc;}
+body.dark .s-cancelled{background:#450a0a;color:#fca5a5;}
+.ec-footer{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.ec-link{font-size:11px;color:var(--acc);font-weight:600;text-decoration:none;padding:4px 8px;border-radius:5px;background:var(--glow);}
+.ec-link:hover{background:var(--acc);color:#fff;}
+.ec-delete{margin-left:auto;background:none;border:none;color:var(--t2);font-size:11px;cursor:pointer;padding:4px 6px;border-radius:5px;}
+.ec-delete:hover{color:#DC2626;background:#fee2e2;}
+
+/* PAST section */
+.past-label{font-size:13px;font-weight:600;color:var(--t2);margin:28px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+
+/* EMPTY STATE */
+.empty{text-align:center;padding:48px 24px;}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-title{font-size:18px;font-weight:600;margin-bottom:6px;}
+.empty-desc{font-size:14px;color:var(--t2);margin-bottom:20px;}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:500;background:var(--overlay);align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--card);border-radius:16px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 0;}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--t2);line-height:1;}
+.modal-body{padding:16px 20px;}
+.modal-footer{padding:0 20px 18px;display:flex;gap:8px;justify-content:flex-end;}
+.form-group{margin-bottom:14px;}
+.form-label{font-size:12px;font-weight:600;color:var(--t2);margin-bottom:5px;display:block;}
+.form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;font-size:14px;color:var(--t1);}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--acc);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-textarea{resize:vertical;min-height:80px;}
+.color-picks{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+.cpick{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s;}
+.cpick:hover,.cpick.sel{transform:scale(1.2);border-color:#fff;outline:2px solid var(--t2);}
+
+/* TOAST */
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--t1);color:var(--card);padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:999;white-space:nowrap;}
+.toast.show{opacity:1;}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .dh{display:none!important;}
+  .mh{display:block!important;}
+  .mbn{display:block!important;}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .content{padding:16px;}
+  .modal-overlay{align-items:flex-end;padding:0;}
+  .modal-box{border-radius:20px 20px 0 0;max-height:90vh;width:100%;}
+}
+@media(min-width:769px){.mh{display:none!important;}.mbn{display:none!important;}}
+</style>
+</head>
+<body>
+
+<!-- DESKTOP HEADER -->
+<div class="dh">
+  <div class="dh-top">
+    <div class="dh-left">
+      <img id="dLogo" class="dh-logo" src="eventlogicpro-logo.png" alt="Event Logic Pro">
+      <div class="dh-titles">
+        <h1>Dashboard</h1>
+        <div class="sub" id="dBiz">Event Logic Pro</div>
+      </div>
+    </div>
+    <div class="dh-right">
+      <div id="dEventBadge" class="event-badge" style="display:none;">
+        <span class="name" id="dEventName"></span>
+        <span class="event-badge-x" onclick="clearCurrentEvent()" title="Clear event">✕</span>
+      </div>
+      <button class="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
+        <svg id="dMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="dSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="nav-bar">
+    <div class="nav-left">
+      <a href="v3-dashboard.html" class="nav-btn active">Dashboard</a>
+      <a href="v3-calendar.html" class="nav-btn">Calendar</a>
+      <a href="v3-tasks.html" class="nav-btn">Tasks</a>
+      <a href="v3-budget.html" class="nav-btn">Budget</a>
+      <a href="v3-packages.html" class="nav-btn">Packages</a>
+      <a href="v3-contacts.html" class="nav-btn">Contacts</a>
+      <a href="v3-sitemap.html" class="nav-btn">Site Maps</a>
+      <a href="v3-event-details.html" class="nav-btn">Event Details</a>
+      <a href="v3-settings.html" class="nav-btn">Settings</a>
+    </div>
+  </div>
+</div>
+
+<!-- MOBILE HEADER -->
+<div class="mh">
+  <div class="mh-bar">
+    <img id="mLogo" class="mh-logo" src="eventlogicpro-logo.png" alt="">
+    <div style="flex:1;min-width:0;">
+      <div class="mh-title">Dashboard</div>
+      <div id="mEventBadge" class="mh-badge" style="display:none;"></div>
+    </div>
+    <div class="mh-right">
+      <button class="dark-toggle" onclick="toggleDark()">
+        <svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+  <div class="section-header">
+    <div class="section-title">My Events</div>
+    <button class="btn-primary" onclick="openNewEventModal()">+ New Event</button>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Upcoming</div><div class="kpi-value" id="kpiEvents">—</div><div class="kpi-sub">events</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Budget</div><div class="kpi-value" id="kpiBudget">—</div><div class="kpi-sub">upcoming</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tasks Done</div><div class="kpi-value" id="kpiTasks">—</div><div class="kpi-sub">completed</div></div>
+    <div class="kpi-card"><div class="kpi-label">Due Soon</div><div class="kpi-value" id="kpiDeadlines">—</div><div class="kpi-sub">next 7 days</div></div>
+  </div>
+  <div id="eventsContainer"></div>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<div class="mbn">
+  <div class="mbn-inner">
+    <a href="v3-dashboard.html" class="mbn-btn active">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </a>
+    <a href="v3-tasks.html" class="mbn-btn">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Tasks
+    </a>
+    <a href="v3-calendar.html" class="mbn-btn">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Calendar
+    </a>
+    <a href="v3-budget.html" class="mbn-btn">
+      <svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Budget
+    </a>
+    <button class="mbn-btn" onclick="openMoreSheet()">
+      <span class="mbn-more-icon">···</span>
+      More
+    </button>
+  </div>
+</div>
+
+<!-- MORE SHEET -->
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeMoreSheet()"></div>
+<div class="more-sheet" id="moreSheet">
+  <div class="sheet-handle"></div>
+  <a href="v3-packages.html" class="sheet-item">
+    <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    Packages
+  </a>
+  <a href="v3-contacts.html" class="sheet-item">
+    <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Contacts
+  </a>
+  <a href="v3-sitemap.html" class="sheet-item">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Site Maps
+  </a>
+  <a href="v3-event-details.html" class="sheet-item">
+    <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    Event Details
+  </a>
+  <div class="sheet-sep"></div>
+  <a href="v3-settings.html" class="sheet-item">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </a>
+  <button class="sheet-item danger" onclick="doLogout()">
+    <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    Logout
+  </button>
+</div>
+
+<!-- NEW EVENT MODAL -->
+<div class="modal-overlay" id="newEventModal">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title">New Event</div><button class="modal-close" onclick="closeNewEventModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Event Name *</label><input type="text" class="form-input" id="evName" placeholder="e.g. Summer Music Festival"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-input" id="evDate"></div>
+        <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-input" id="evEndDate"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Budget ($)</label><input type="number" class="form-input" id="evBudget" step="0.01" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">Venue</label><input type="text" class="form-input" id="evVenue" placeholder="Venue name"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="evDesc" placeholder="Event notes..."></textarea></div>
+      <div class="form-group"><label class="form-label">Color</label>
+        <div class="color-picks" id="colorPicks"></div>
+        <input type="hidden" id="evColor" value="#DC2626">
+      </div>
+      <div class="form-group"><label class="form-label">Template</label>
+        <select class="form-select" id="evTemplate"><option value="">— No template (blank event) —</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeNewEventModal()">Cancel</button>
+      <button class="btn-primary" onclick="createNewEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* DARK MODE */
+var isDark = localStorage.getItem('elp_dark_mode') === 'true';
+if (isDark) { document.body.classList.add('dark'); document.documentElement.classList.add('dark'); }
+function applyDarkIcons() {
+  var d = document.body.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', d);
+  ['d','m'].forEach(function(p) {
+    var moon = document.getElementById(p+'Moon'), sun = document.getElementById(p+'Sun');
+    if (moon) moon.style.display = d ? 'none' : 'block';
+    if (sun)  sun.style.display  = d ? 'block' : 'none';
+  });
+  var logo = document.getElementById('dLogo');
+  if (logo) logo.src = d ? 'eventlogicpro-logo-dark.png' : 'eventlogicpro-logo.png';
+  var mLogo = document.getElementById('mLogo');
+  if (mLogo) mLogo.src = d ? 'eventlogicpro-logo-dark.png' : 'eventlogicpro-logo.png';
+}
+applyDarkIcons();
+function toggleDark() {
+  document.body.classList.toggle('dark'); isDark = document.body.classList.contains('dark');
+  localStorage.setItem('elp_dark_mode', isDark); applyDarkIcons();
+}
+
+/* SUPABASE */
+var SUPABASE_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var tenantId = null, userId = null, teamId = null;
+var allProjects = [], allTasks = [], allTemplates = [], allEstimates = [], allSheets = [], allSiteMaps = [];
+
+/* TOAST */
+function toast(m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(function() { t.classList.remove('show'); }, 2400); }
+
+/* AUTH */
+async function doLogout() { await sb.auth.signOut(); localStorage.removeItem('sb_access_token'); localStorage.removeItem('sb_refresh_token'); location.replace('/'); }
+async function checkAuth() {
+  var r = await sb.auth.getSession(); var s = r.data.session;
+  if (!s) { var t = localStorage.getItem('sb_access_token'), rf = localStorage.getItem('sb_refresh_token'); if (t && rf) { var sr = await sb.auth.setSession({ access_token: t, refresh_token: rf }); s = sr.data?.session; } if (!s) { location.replace('/'); return null; } }
+  return s;
+}
+
+/* GLOBAL EVENT CONTEXT */
+function getCurrentEvent() { return localStorage.getItem('elp_current_event'); }
+function setCurrentEvent(id, name, date) {
+  localStorage.setItem('elp_current_event', id || '');
+  localStorage.setItem('elp_current_event_name', name || '');
+  localStorage.setItem('elp_current_event_date', date || '');
+  updateEventBadge();
+}
+function clearCurrentEvent() { localStorage.removeItem('elp_current_event'); localStorage.removeItem('elp_current_event_name'); localStorage.removeItem('elp_current_event_date'); updateEventBadge(); }
+function updateEventBadge() {
+  var name = localStorage.getItem('elp_current_event_name') || '';
+  var badge = document.getElementById('dEventBadge'), mBadge = document.getElementById('mEventBadge');
+  if (name) {
+    if (badge) { document.getElementById('dEventName').textContent = name; badge.style.display = 'flex'; }
+    if (mBadge) { mBadge.textContent = '📍 ' + name; mBadge.style.display = 'block'; }
+  } else {
+    if (badge) badge.style.display = 'none';
+    if (mBadge) mBadge.style.display = 'none';
+  }
+}
+
+/* MORE SHEET */
+function openMoreSheet() { document.getElementById('sheetOverlay').classList.add('open'); document.getElementById('moreSheet').classList.add('open'); }
+function closeMoreSheet() { document.getElementById('sheetOverlay').classList.remove('open'); document.getElementById('moreSheet').classList.remove('open'); }
+
+/* COLOR CHIPS */
+var COLORS = ['#DC2626','#EA580C','#D97706','#16A34A','#0284C7','#7C3AED','#DB2777','#64748B'];
+function initColorPicks() {
+  var container = document.getElementById('colorPicks');
+  container.innerHTML = '';
+  COLORS.forEach(function(c) {
+    var el = document.createElement('div');
+    el.className = 'cpick' + (c === '#DC2626' ? ' sel' : '');
+    el.style.background = c; el.dataset.color = c;
+    el.onclick = function() { document.querySelectorAll('.cpick').forEach(function(x) { x.classList.remove('sel'); }); el.classList.add('sel'); document.getElementById('evColor').value = c; };
+    container.appendChild(el);
+  });
+}
+
+/* INIT */
+async function init() {
+  var session = await checkAuth(); if (!session) return;
+  userId = session.user.id;
+  var email = session.user.email || '';
+  var ur = await sb.from('users').select('tenant_id, first_name').eq('email', email).maybeSingle();
+  if (ur.data) {
+    tenantId = ur.data.tenant_id;
+    var fn = ur.data.first_name || email;
+  }
+  if (!tenantId) { var bs = await sb.from('business_settings').select('tenant_id,business_name').limit(1).maybeSingle(); if (bs.data) tenantId = bs.data.tenant_id; }
+  if (!tenantId) { toast('Cannot determine tenant'); return; }
+
+  var biz = await sb.from('business_settings').select('business_name,display_name').eq('tenant_id', tenantId).maybeSingle();
+  if (biz.data) {
+    var bizName = biz.data.display_name || biz.data.business_name || 'Event Logic Pro';
+    document.getElementById('dBiz').textContent = bizName;
+  }
+
+  updateEventBadge();
+  await loadProjects();
+  await Promise.all([loadTasks(), loadTemplates(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+  renderKPIs();
+  renderEvents();
+  initColorPicks();
+}
+
+/* DATA */
+async function loadProjects() {
+  var r = await sb.from('event_projects').select('*').eq('tenant_id', tenantId);
+  allProjects = r.data || [];
+  allProjects.sort(function(a, b) {
+    if (!a.event_date && !b.event_date) return (a.event_name || '').localeCompare(b.event_name || '');
+    if (!a.event_date) return 1; if (!b.event_date) return -1;
+    return a.event_date.localeCompare(b.event_date);
+  });
+}
+async function loadTasks() {
+  var ids = allProjects.map(function(p) { return p.event_project_id; });
+  if (!ids.length) { allTasks = []; return; }
+  var r = await sb.from('event_tasks').select('event_task_id,event_project_id,is_complete,is_cancelled,deadline').in('event_project_id', ids);
+  allTasks = r.data || [];
+}
+async function loadTemplates() { var r = await sb.from('event_template_groups').select('template_group_id,template_name,description').eq('tenant_id', tenantId).order('template_name'); allTemplates = r.data || []; }
+async function loadEstimates() { try { var r = await sb.from('event_estimates').select('*').eq('tenant_id', tenantId); allEstimates = r.data || []; } catch(e) { allEstimates = []; } }
+async function loadSheets() { try { var r = await sb.from('sponsor_sheets').select('*').eq('tenant_id', tenantId); allSheets = r.data || []; } catch(e) { allSheets = []; } }
+async function loadSiteMaps() { try { var r = await sb.from('site_maps').select('*').eq('tenant_id', tenantId); allSiteMaps = r.data || []; } catch(e) { allSiteMaps = []; } }
+
+/* KPIs */
+function renderKPIs() {
+  var today = new Date().toISOString().split('T')[0];
+  var upcoming = allProjects.filter(function(p) { if (p.status === 'completed' || p.status === 'cancelled') return false; if (!p.event_date) return true; return (p.event_end_date || p.event_date) >= today; });
+  var totalBudget = upcoming.reduce(function(s, p) { return s + (parseFloat(p.total_budget) || 0); }, 0);
+  var upIds = {}; upcoming.forEach(function(p) { upIds[p.event_project_id] = true; });
+  var upTasks = allTasks.filter(function(t) { return upIds[t.event_project_id]; });
+  var done = upTasks.filter(function(t) { return t.is_complete && !t.is_cancelled; }).length;
+  var total = upTasks.filter(function(t) { return !t.is_cancelled; }).length;
+  var now = new Date(), week = new Date(now.getTime() + 7*86400000);
+  var deadlines = upTasks.filter(function(t) { if (t.is_complete || t.is_cancelled || !t.deadline) return false; var d = new Date(t.deadline); return d >= now && d <= week; }).length;
+  document.getElementById('kpiEvents').textContent = upcoming.length;
+  document.getElementById('kpiBudget').textContent = totalBudget >= 1000 ? '$'+(totalBudget/1000).toFixed(1)+'k' : '$'+totalBudget.toLocaleString();
+  document.getElementById('kpiTasks').textContent = done+'/'+total;
+  document.getElementById('kpiDeadlines').textContent = deadlines;
+}
+
+/* FORMAT */
+function fmtDate(str) { if (!str) return ''; var d = new Date(str+'T00:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+
+/* RENDER EVENTS */
+function renderEvents() {
+  var container = document.getElementById('eventsContainer');
+  var today = new Date().toISOString().split('T')[0];
+  if (!allProjects.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🎪</div><div class="empty-title">No events yet</div><div class="empty-desc">Create your first event to start planning.</div><button class="btn-primary" onclick="openNewEventModal()">+ Create First Event</button></div>';
+    return;
+  }
+  var upcoming = allProjects.filter(function(p) { if (p.status === 'completed' || p.status === 'cancelled') return false; if (!p.event_date) return true; return (p.event_end_date || p.event_date) >= today; });
+  var past = allProjects.filter(function(p) { if (!p.event_date) return false; var end = p.event_end_date || p.event_date; return end < today || p.status === 'completed' || p.status === 'cancelled'; });
+  var html = '';
+  if (upcoming.length) html += renderGrid(upcoming);
+  if (past.length) html += '<div class="past-label">Past Events</div>' + renderGrid(past);
+  container.innerHTML = html;
+}
+
+function renderGrid(projects) {
+  var html = '<div class="events-grid">';
+  projects.forEach(function(p) {
+    var color = p.color_tag || '#DC2626';
+    var status = p.status || 'planning';
+    var dateStr = p.event_date ? fmtDate(p.event_date) : 'Date TBD';
+    if (p.event_end_date) dateStr += ' – ' + fmtDate(p.event_end_date);
+    var eTasks = allTasks.filter(function(t) { return t.event_project_id === p.event_project_id; });
+    var eTotal = eTasks.filter(function(t) { return !t.is_cancelled; }).length;
+    var eDone  = eTasks.filter(function(t) { return t.is_complete; }).length;
+    var pct = eTotal > 0 ? Math.round(eDone/eTotal*100) : 0;
+    html += '<div class="event-card" onclick="selectEvent(\''+p.event_project_id+'\',\''+escQ(p.event_name)+'\',\''+escQ(dateStr)+'\')">'
+      + '<div class="ec-color" style="background:'+color+'"></div>'
+      + '<div class="ec-body">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">'
+          + '<div class="ec-name">'+esc(p.event_name||'Untitled')+'</div>'
+          + '<span class="ec-status s-'+status+'">'+status+'</span>'
+        + '</div>'
+        + '<div class="ec-date">'+dateStr+(p.venue ? ' · '+esc(p.venue) : '')+'</div>'
+        + '<div class="ec-progress"><div class="ec-bar" style="width:'+pct+'%;background:'+color+'"></div></div>'
+        + '<div class="ec-stats"><span>'+eDone+'/'+eTotal+' tasks</span><span>'+pct+'%</span></div>'
+      + '</div>'
+      + '<div class="ec-footer">'
+        + '<a href="v3-tasks.html" class="ec-link" onclick="setCurrentEvent(\''+p.event_project_id+'\',\''+escQ(p.event_name)+'\',\''+escQ(dateStr)+'\');event.stopPropagation();">Tasks</a>'
+        + '<a href="v3-budget.html" class="ec-link" onclick="setCurrentEvent(\''+p.event_project_id+'\',\''+escQ(p.event_name)+'\',\''+escQ(dateStr)+'\');event.stopPropagation();">Budget</a>'
+        + '<a href="v3-event-details.html" class="ec-link" onclick="setCurrentEvent(\''+p.event_project_id+'\',\''+escQ(p.event_name)+'\',\''+escQ(dateStr)+'\');event.stopPropagation();">Details</a>'
+        + '<button class="ec-delete" onclick="deleteEvent(\''+p.event_project_id+'\',\''+escQ(p.event_name)+'\');event.stopPropagation();" title="Delete event">🗑</button>'
+      + '</div>'
+    + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function selectEvent(id, name, date) {
+  setCurrentEvent(id, name, date);
+  location.href = 'v3-tasks.html';
+}
+function setCurrentEvent(id, name, date) {
+  localStorage.setItem('elp_current_event', id || '');
+  localStorage.setItem('elp_current_event_name', name || '');
+  localStorage.setItem('elp_current_event_date', date || '');
+  updateEventBadge();
+}
+
+/* DELETE */
+async function deleteEvent(projectId, projectName) {
+  if (!confirm('Delete "' + projectName + '"? This cannot be undone.')) return;
+  try {
+    await sb.from('event_schedule_items').delete().eq('event_project_id', projectId);
+    var taskR = await sb.from('event_tasks').select('event_task_id').eq('event_project_id', projectId);
+    var ids = (taskR.data || []).map(function(t) { return t.event_task_id; });
+    for (var i = 0; i < ids.length; i++) await sb.from('event_task_line_items').delete().eq('event_task_id', ids[i]);
+    await sb.from('event_tasks').delete().eq('event_project_id', projectId);
+    await sb.from('event_departments').delete().eq('event_project_id', projectId);
+    await sb.from('event_vendors').delete().eq('event_project_id', projectId);
+    await sb.from('event_projects').delete().eq('event_project_id', projectId);
+    if (getCurrentEvent() === projectId) clearCurrentEvent();
+    toast('"' + projectName + '" deleted');
+    await loadProjects(); await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+    renderKPIs(); renderEvents();
+  } catch(e) { toast('Delete failed: ' + e.message); }
+}
+
+/* NEW EVENT MODAL */
+function openNewEventModal() {
+  ['evName','evDate','evEndDate','evVenue','evDesc'].forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('evBudget').value = '';
+  document.getElementById('evColor').value = '#DC2626';
+  initColorPicks();
+  var sel = document.getElementById('evTemplate');
+  sel.innerHTML = '<option value="">— No template (blank event) —</option>';
+  allTemplates.forEach(function(t) { var o = document.createElement('option'); o.value = t.template_group_id; o.textContent = t.template_name; sel.appendChild(o); });
+  document.getElementById('newEventModal').classList.add('show');
+}
+function closeNewEventModal() { document.getElementById('newEventModal').classList.remove('show'); }
+
+async function createNewEvent() {
+  var name = document.getElementById('evName').value.trim();
+  if (!name) { toast('Event name is required'); return; }
+  var data = { tenant_id: tenantId, event_name: name, event_date: document.getElementById('evDate').value || null, event_end_date: document.getElementById('evEndDate').value || null, total_budget: parseFloat(document.getElementById('evBudget').value) || 0, venue: document.getElementById('evVenue').value.trim() || null, description: document.getElementById('evDesc').value.trim() || null, color_tag: document.getElementById('evColor').value || '#DC2626', status: 'planning', created_by: userId };
+  var r = await sb.from('event_projects').insert(data).select().single();
+  if (r.error) { toast('Error: ' + r.error.message); return; }
+  var newProj = r.data;
+  var templateId = document.getElementById('evTemplate').value;
+  if (templateId) await loadTemplateIntoEvent(newProj.event_project_id, templateId);
+  try {
+    var calR = await sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('sort_order').limit(1).maybeSingle();
+    if (calR.data && newProj.event_date) await sb.from('event_schedule_items').insert({ tenant_id: tenantId, calendar_id: calR.data.calendar_id, event_project_id: newProj.event_project_id, title: newProj.event_name, item_date: newProj.event_date, start_time: '08:00', end_time: '23:00', category: 'milestone' });
+  } catch(e) {}
+  closeNewEventModal();
+  toast('Event "'+name+'" created!');
+  setCurrentEvent(newProj.event_project_id, newProj.event_name, newProj.event_date || '');
+  await loadProjects(); await Promise.all([loadTasks(), loadEstimates(), loadSheets(), loadSiteMaps()]);
+  renderKPIs(); renderEvents();
+}
+
+async function loadTemplateIntoEvent(projectId, templateGroupId) {
+  var deptR = await sb.from('event_template_departments').select('*').eq('template_group_id', templateGroupId).order('sort_order');
+  var tDepts = deptR.data || []; if (!tDepts.length) return;
+  for (var i = 0; i < tDepts.length; i++) {
+    var td = tDepts[i];
+    var dr = await sb.from('event_departments').insert({ tenant_id: tenantId, event_project_id: projectId, department_name: td.department_name, sort_order: td.sort_order, budget: td.budget || 0 }).select().single();
+    if (!dr.data) continue;
+    var taskR = await sb.from('event_template_tasks').select('*').eq('template_dept_id', td.template_dept_id).order('sort_order');
+    var tTasks = taskR.data || [];
+    if (tTasks.length) await sb.from('event_tasks').insert(tTasks.map(function(t) { return { tenant_id: tenantId, event_project_id: projectId, event_department_id: dr.data.event_department_id, task_title: t.task_title, cost: t.cost || 0, timing: t.timing || null, notes: t.notes || null, sort_order: t.sort_order }; }));
+  }
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escQ(s) { return String(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+init();
+</script>
+</body>
+</html>
