@@ -612,10 +612,10 @@ async function loadAll() {
   var results = await Promise.all([
     sb.from('event_departments').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_tasks').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
-    sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_name'),
+    sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_type').order('company_name'),
     sb.from('event_schedule_items').select('*').eq('event_project_id', project.event_project_id).order('item_date').order('start_time'),
     sb.from('sponsor_sheets').select('*').eq('event_project_id', project.event_project_id).order('created_at',{ascending:false}),
-    sb.from('site_maps').select('*').eq('event_project_id', project.event_project_id).order('created_at',{ascending:false}),
+    sb.from('site_maps').select('*').eq('tenant_id', tenantId).order('updated_at',{ascending:false}),
     sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('is_default',{ascending:false}).limit(1),
     sb.from('event_questions').select('*').eq('event_project_id', project.event_project_id).order('sort_order',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false})
   ]);
@@ -913,11 +913,11 @@ function renderEventContacts() {
   }
   html += '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">'+allVendors.length+' contact'+(allVendors.length!==1?'s':'')+' for this event</div>';
   html += allVendors.map(function(v,i){
-    var name = v.vendor_name || v.company_name || 'Contact';
+    var name = v.company_name || v.vendor_name || 'Contact';
     return '<div class="vendor-row">'
       +'<div class="vendor-avatar" style="background:'+vColors[i%vColors.length]+'">'+initials(name)+'</div>'
       +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+esc(name)+'</div>'
-      +'<div style="font-size:11px;color:var(--t2);">'+(v.contact_name?esc(v.contact_name)+' - ':'')+esc(v.phone||v.email||'-')+'</div></div>'
+      +'<div style="font-size:11px;color:var(--t2);">'+(v.contact_person||v.contact_name?esc(v.contact_person||v.contact_name)+' - ':'')+esc(v.phone||v.email||'-')+'</div></div>'
       +'<div style="text-align:right;">'+(parseFloat(v.cost)>0?'<div style="font-size:13px;font-weight:700;color:var(--acc);">$'+fmt(v.cost)+'</div>':'')
       +'<span style="font-size:10px;padding:2px 7px;border-radius:7px;background:var(--bg2);color:var(--t2);">'+esc(v.vendor_type||'contact')+'</span></div></div>';
   }).join('');
@@ -1009,7 +1009,7 @@ async function setContactsScope(scope) {
 }
 async function saveVendor() {
   var name = document.getElementById('vNameInput').value.trim(); if (!name) { toast('Name required'); return; }
-  var data = {tenant_id:tenantId,event_project_id:project.event_project_id,vendor_name:name,vendor_type:document.getElementById('vTypeInput').value,contact_name:document.getElementById('vContactInput').value.trim()||null,phone:document.getElementById('vPhoneInput').value.trim()||null,email:document.getElementById('vEmailInput').value.trim()||null,cost:parseFloat(document.getElementById('vCostInput').value)||0};
+  var data = {tenant_id:tenantId,event_project_id:project.event_project_id,company_name:name,vendor_type:document.getElementById('vTypeInput').value,contact_person:document.getElementById('vContactInput').value.trim()||null,phone:document.getElementById('vPhoneInput').value.trim()||null,email:document.getElementById('vEmailInput').value.trim()||null,cost:parseFloat(document.getElementById('vCostInput').value)||0};
   var r = await sb.from('event_vendors').insert(data).select().single();
   if (r.error) { toast('Error: '+r.error.message); return; }
   allVendors.push(r.data); if (allContactsGlobal.length) allContactsGlobal.push(Object.assign({_event_name: project.event_name||''}, r.data)); closeModal('addVendorModal'); toast('Contact added'); renderHeader(); renderContacts();
