@@ -496,21 +496,29 @@ body.dark .bli-due.post{background:#2e1065;}
 .cswatch:hover{transform:scale(1.12);}
 .cswatch.active{border-color:#fff;}
 
-/* REVENUE ESTIMATOR SLIDERS — compact row */
-.rev-card{display:grid;grid-template-columns:160px 1fr 48px 72px 72px 72px;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);}
-.rev-card:last-of-type{border-bottom:none;}
-.rev-pkg-name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.rev-slider{width:100%;-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:var(--border);outline:none;cursor:pointer;}
-.rev-slider::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--ev-color);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);}
-.rev-slider::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--ev-color);cursor:pointer;border:2px solid #fff;}
-.rev-qty-inp{width:44px;padding:3px 5px;text-align:center;border:1px solid var(--border);border-radius:5px;background:var(--inp);color:var(--t1);font-size:12px;font-weight:700;}
-.rev-qty-inp:focus{outline:none;border-color:var(--ev-color);}
-.rev-metric-val{font-size:12px;font-weight:800;text-align:right;white-space:nowrap;}
-.rev-metric-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;text-align:right;}
+/* REVENUE ESTIMATOR — section cards */
+.rev-section-card{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden;}
+.rev-section-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);}
+.rev-section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;}
+.rev-section-totals{display:flex;gap:14px;font-size:11px;font-weight:700;}
+.rev-col-hdr{display:grid;grid-template-columns:1fr 180px 52px 70px 70px 70px;gap:6px;padding:5px 14px;background:var(--bg2);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);}
+.rev-row{display:grid;grid-template-columns:1fr 180px 52px 70px 70px 70px;gap:6px;align-items:center;padding:8px 14px;border-top:1px solid var(--border);}
+.rev-row:hover{background:var(--hover);}
+.rev-pkg-name{font-size:13px;font-weight:600;line-height:1.3;}
+.rev-pkg-price{font-size:10px;color:var(--t2);margin-top:1px;}
+.rev-slider-col{display:flex;align-items:center;gap:6px;}
+.rev-slider{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:var(--border);outline:none;cursor:pointer;}
+.rev-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);}
+.rev-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;cursor:pointer;border:2px solid #fff;}
+.rev-qty-inp{width:48px;padding:4px 6px;text-align:center;border:1px solid var(--border);border-radius:6px;background:var(--inp);color:var(--t1);font-size:13px;font-weight:700;outline:none;}
+.rev-qty-inp:focus{border-color:var(--ev-color);}
+.rev-cell{text-align:right;}
+.rev-cell-val{font-size:13px;font-weight:800;white-space:nowrap;}
+.rev-cell-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.3px;margin-top:1px;}
 .rev-grand{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;padding-top:14px;border-top:2px solid var(--border);}
-.rev-grand-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
-.rev-grand-val{font-size:20px;font-weight:900;line-height:1;}
-.rev-grand-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-top:3px;}
+.rev-grand-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
+.rev-grand-val{font-size:22px;font-weight:900;line-height:1;}
+.rev-grand-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-top:4px;}
 </style>
 </head>
 <body>
@@ -2878,9 +2886,47 @@ function renderPkgSections() {
 
   revSections.forEach(function(rs, ri) {
     if (!rs.pkgs.length) return;
+    var color = sectionColors[ri];
     var sectionRev = 0, sectionCost = 0;
-    html += '<div style="margin-bottom:16px;">';
-    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:'+sectionColors[ri]+';margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">'+rs.label+'</div>';
+
+    // Calculate section totals first (for header)
+    rs.pkgs.forEach(function(pkg) {
+      var pkgId = pkg[rs.idField];
+      var qty = parseInt(revData[pkgId] || 0);
+      var price = parseFloat(pkg.price) || 0;
+      var items = pkg.perks || pkg.items || [];
+      var pkgCost = items.reduce(function(s,it){return s+(parseInt(it.quantity||0)||0)*(parseFloat(it.cost)||0);},0);
+      sectionRev  += qty * price;
+      sectionCost += qty * pkgCost;
+    });
+    var sectionOffset = sectionRev - sectionCost;
+    grandTotal += sectionRev; grandCost += sectionCost;
+
+    // Section card
+    html += '<div class="rev-section-card">';
+
+    // Section header with live totals
+    html += '<div class="rev-section-hdr" style="border-left:4px solid '+color+';">';
+    html += '<div class="rev-section-title" style="color:'+color+';">'+rs.label+'</div>';
+    html += '<div class="rev-section-totals">'
+      +'<span style="color:#16a34a;" id="st-rev-'+ri+'">$'+fmt(sectionRev)+' rev</span>'
+      +'<span style="color:#DC2626;" id="st-cost-'+ri+'">$'+fmt(sectionCost)+' cost</span>'
+      +'<span style="color:'+(sectionOffset>=0?'#16a34a':'#DC2626')+'" id="st-off-'+ri+'">'
+      +(sectionOffset>=0?'+':'')+' $'+fmt(sectionOffset)+' offset</span>'
+      +'</div>';
+    html += '</div>';
+
+    // Column headers
+    html += '<div class="rev-col-hdr">'
+      +'<span>Package</span>'
+      +'<span>Qty Slider</span>'
+      +'<span style="text-align:center;">Sold</span>'
+      +'<span style="text-align:right;">Revenue</span>'
+      +'<span style="text-align:right;">Cost</span>'
+      +'<span style="text-align:right;">Offset</span>'
+      +'</div>';
+
+    // Package rows
     rs.pkgs.forEach(function(pkg) {
       var pkgId = pkg[rs.idField];
       var qty = parseInt(revData[pkgId] || 0);
@@ -2890,49 +2936,45 @@ function renderPkgSections() {
       var lineRev = qty * price;
       var lineCost = qty * pkgCost;
       var lineOffset = lineRev - lineCost;
-      var maxQty = Math.max(100, qty * 3 || 100);
-      sectionRev += lineRev; sectionCost += lineCost;
-      var color = sectionColors[ri];
-      var sid = 'rev-' + pkgId;
-      // Compact single-row card: name | slider | qty | rev | cost | offset
-      html += '<div class="rev-card">';
+      var maxQty = Math.max(100, qty ? qty * 3 : 100);
+
+      html += '<div class="rev-row">';
+
       // Col 1: name + price
-      html += '<div><div class="rev-pkg-name" title="'+esc(pkg[rs.nameField]||'')+'">'+esc(pkg[rs.nameField]||'')+'</div>'
-        +'<div style="font-size:10px;color:var(--t2);">$'+fmt(price)+' ea</div></div>';
+      html += '<div><div class="rev-pkg-name">'+esc(pkg[rs.nameField]||'')+'</div>'
+        +'<div class="rev-pkg-price">$'+fmt(price)+' each</div></div>';
+
       // Col 2: slider
-      html += '<input type="range" class="rev-slider" id="sl-'+pkgId+'" min="0" max="'+maxQty+'" step="1" value="'+qty+'"'
-        +' style="accent-color:'+color+';" data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'"'
+      html += '<div class="rev-slider-col">'
+        +'<input type="range" class="rev-slider" id="sl-'+pkgId+'" min="0" max="'+maxQty+'" step="1" value="'+qty+'"'
+        +' style="-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:linear-gradient(to right,'+color+' '+Math.round(qty/maxQty*100)+'%,var(--border) '+Math.round(qty/maxQty*100)+'%);accent-color:'+color+';" data-color="'+color+'"'
+        +' data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'" data-si="'+ri+'"'
         +' oninput="revSliderInput(this,this.dataset.pid,this.dataset.price,this.dataset.cost)"'
-        +' onchange="saveRevQtyById(this.dataset.pid,this.value)">';
-      // Col 3: qty number
+        +' onchange="saveRevQtyById(this.dataset.pid,this.value)">'
+        +'</div>';
+
+      // Col 3: qty input
       html += '<input type="number" class="rev-qty-inp" id="qi-'+pkgId+'" min="0" step="1" value="'+qty+'"'
-        +' data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'"'
+        +' data-pid="'+pkgId+'" data-price="'+price+'" data-cost="'+pkgCost+'" data-si="'+ri+'"'
         +' oninput="revNumInput(this,this.dataset.pid,this.dataset.price,this.dataset.cost)"'
         +' onchange="saveRevQtyById(this.dataset.pid,this.value)">';
-      // Col 4: Revenue
-      html += '<div><div class="rev-metric-val" id="rv-'+pkgId+'" style="color:#16a34a;">$'+fmt(lineRev)+'</div><div class="rev-metric-lbl">Rev</div></div>';
-      // Col 5: Cost
-      html += '<div><div class="rev-metric-val" id="rc-'+pkgId+'" style="color:#DC2626;">$'+fmt(lineCost)+'</div><div class="rev-metric-lbl">Cost</div></div>';
-      // Col 6: Offset
-      html += '<div><div class="rev-metric-val" id="ro-'+pkgId+'" style="color:'+(lineOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(lineOffset)+'</div><div class="rev-metric-lbl">Offset</div></div>';
-      html += '</div>';
+
+      // Col 4-6: metrics
+      html += '<div class="rev-cell"><div class="rev-cell-val" id="rv-'+pkgId+'" style="color:#16a34a;">$'+fmt(lineRev)+'</div><div class="rev-cell-lbl">Rev</div></div>';
+      html += '<div class="rev-cell"><div class="rev-cell-val" id="rc-'+pkgId+'" style="color:#DC2626;">$'+fmt(lineCost)+'</div><div class="rev-cell-lbl">Cost</div></div>';
+      html += '<div class="rev-cell"><div class="rev-cell-val" id="ro-'+pkgId+'" style="color:'+(lineOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(lineOffset)+'</div><div class="rev-cell-lbl">Offset</div></div>';
+      html += '</div>'; // rev-row
     });
-    grandTotal += sectionRev; grandCost += sectionCost;
-    var sectionOffset = sectionRev - sectionCost;
-    html += '</div>'; // close card container
-    html += '<div style="display:flex;justify-content:flex-end;gap:16px;padding:5px 4px 10px;font-size:11px;font-weight:700;">';
-    html += '<span style="color:#16a34a;">Rev: $'+fmt(sectionRev)+'</span>';
-    html += '<span style="color:#DC2626;">Cost: $'+fmt(sectionCost)+'</span>';
-    html += '<span style="color:'+(sectionOffset>=0?'#16a34a':'#DC2626')+';">Offset: $'+fmt(sectionOffset)+'</span>';
-    html += '</div></div>';
+
+    html += '</div>'; // rev-section-card
   });
 
   // Grand total
   var grandOffset = grandTotal - grandCost;
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;padding-top:14px;border-top:2px solid var(--border);">';
-  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#16a34a;">$'+fmt(grandTotal)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Total Revenue</div></div>';
-  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#DC2626;">$'+fmt(grandCost)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Total Cost</div></div>';
-  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;"><div style="font-size:20px;font-weight:800;color:'+(grandOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(grandOffset)+'</div><div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--t2);margin-top:3px;">Net Offset</div></div>';
+  html += '<div class="rev-grand">';
+  html += '<div class="rev-grand-card"><div class="rev-grand-val" id="rev-grand-rev" style="color:#16a34a;">$'+fmt(grandTotal)+'</div><div class="rev-grand-lbl">Total Revenue</div></div>';
+  html += '<div class="rev-grand-card"><div class="rev-grand-val" id="rev-grand-cost" style="color:#DC2626;">$'+fmt(grandCost)+'</div><div class="rev-grand-lbl">Total Cost</div></div>';
+  html += '<div class="rev-grand-card"><div class="rev-grand-val" id="rev-grand-off" style="color:'+(grandOffset>=0?'#16a34a':'#DC2626')+';">$'+fmt(grandOffset)+'</div><div class="rev-grand-lbl">Net Offset</div></div>';
   html += '</div>';
   html += '</div></div></div>'; // inner padding, sec-body, section
 
@@ -2942,18 +2984,48 @@ function renderPkgSections() {
 function revSliderInput(slider, pkgId, price, cost) {
   var qty = parseInt(slider.value) || 0;
   var inp = document.getElementById('qi-'+pkgId); if (inp) inp.value = qty;
-  revUpdateDisplay(pkgId, qty, price, cost);
+  // Update track fill
+  var pct = Math.round(qty / parseInt(slider.max) * 100);
+  var col = slider.dataset.color || 'var(--ev-color)';
+  slider.style.background = 'linear-gradient(to right,'+col+' '+pct+'%,var(--border) '+pct+'%)';
+  revUpdateDisplay(pkgId, parseFloat(price), parseFloat(cost), qty);
+  revUpdateSectionTotal(slider.dataset.si);
 }
 function revNumInput(inp, pkgId, price, cost) {
   var qty = parseInt(inp.value) || 0;
-  var slider = document.getElementById('sl-'+pkgId); if (slider) { if (qty > parseInt(slider.max)) slider.max = qty + 50; slider.value = qty; }
-  revUpdateDisplay(pkgId, qty, price, cost);
+  var slider = document.getElementById('sl-'+pkgId);
+  if (slider) {
+    if (qty > parseInt(slider.max)) { slider.max = qty + 50; }
+    slider.value = qty;
+    var pct = Math.round(qty / parseInt(slider.max) * 100);
+    var col = slider.dataset.color || 'var(--ev-color)';
+    slider.style.background = 'linear-gradient(to right,'+col+' '+pct+'%,var(--border) '+pct+'%)';
+  }
+  revUpdateDisplay(pkgId, parseFloat(price), parseFloat(cost), qty);
+  revUpdateSectionTotal(inp.dataset.si);
 }
-function revUpdateDisplay(pkgId, qty, price, cost) {
+function revUpdateDisplay(pkgId, price, cost, qty) {
   var rev = qty * price, c2 = qty * cost, off = rev - c2;
   var rvEl = document.getElementById('rv-'+pkgId); if (rvEl) rvEl.textContent = '$'+fmt(rev);
   var rcEl = document.getElementById('rc-'+pkgId); if (rcEl) rcEl.textContent = '$'+fmt(c2);
   var roEl = document.getElementById('ro-'+pkgId); if (roEl) { roEl.textContent = '$'+fmt(off); roEl.style.color = off>=0?'#16a34a':'#DC2626'; }
+  revRecalcTotals();
+}
+function revUpdateSectionTotal(si) {
+  if (si === undefined || si === null) return;
+  // Sum all sliders in this section index
+  var sRev = 0, sCost = 0;
+  document.querySelectorAll('.rev-slider[data-si="'+si+'"]').forEach(function(sl) {
+    var qty = parseInt(sl.value) || 0;
+    var price = parseFloat(sl.dataset.price) || 0;
+    var cost  = parseFloat(sl.dataset.cost)  || 0;
+    sRev  += qty * price;
+    sCost += qty * cost;
+  });
+  var sOff = sRev - sCost;
+  var revEl  = document.getElementById('st-rev-'+si);  if(revEl)  revEl.textContent  = '$'+fmt(sRev)+' rev';
+  var costEl = document.getElementById('st-cost-'+si); if(costEl) costEl.textContent = '$'+fmt(sCost)+' cost';
+  var offEl  = document.getElementById('st-off-'+si);  if(offEl)  { offEl.textContent = (sOff>=0?'+':'')+' $'+fmt(sOff)+' offset'; offEl.style.color = sOff>=0?'#16a34a':'#DC2626'; }
   revRecalcTotals();
 }
 function revRecalcTotals() {
