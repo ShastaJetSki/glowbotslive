@@ -424,6 +424,31 @@ body.dark .bli-due.post{background:#2e1065;}
 .doc-btn:hover{background:var(--hover);}
 .doc-btn.danger{color:#DC2626;border-color:rgba(220,38,38,.3);}
 .doc-btn.danger:hover{background:rgba(220,38,38,.08);}
+
+/* MEDIA LIBRARY TAB */
+.media-chip{padding:4px 12px;border-radius:14px;border:1px solid var(--border);background:var(--bg2);color:var(--t2);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s;white-space:nowrap;}
+.media-chip:hover{border-color:var(--acc);color:var(--acc);}
+.media-chip.active{border-color:var(--acc);background:var(--glow);color:var(--acc);}
+.media-upload-btn{padding:6px 14px;background:var(--acc);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;}
+.media-drop-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;border:2px dashed rgba(255,255,255,.15);border-radius:10px;background:#1a1a20;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:14px;transition:all .15s;}
+.media-drop-zone:hover,.media-drop-zone.dragover{border-color:var(--acc);background:#1f1115;}
+.media-grid-inner{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;}
+.media-card{cursor:pointer;position:relative;}
+.media-hover-btns{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;opacity:0;transition:opacity .15s;}
+.media-card:hover .media-hover-btns{opacity:1;}
+.media-hover-btns button{width:26px;height:26px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.6);color:rgba(255,255,255,.75);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.media-hover-btns button:hover{background:rgba(255,255,255,.18);color:#fff;}
+.media-hover-btns button.shared{background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.4);color:#4ade80;}
+.media-hover-btns button.del:hover{background:rgba(220,38,38,.3);border-color:rgba(220,38,38,.4);color:#f87171;}
+.media-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:600;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px);}
+.media-lightbox.show{display:flex;}
+.lb-close{position:fixed;top:20px;right:24px;width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;}
+.lb-img{max-width:90vw;max-height:75vh;object-fit:contain;border-radius:8px;box-shadow:0 24px 80px rgba(0,0,0,.8);}
+.lb-label{color:rgba(255,255,255,.85);font-size:15px;font-weight:600;margin-top:12px;text-align:center;}
+.lb-info{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;}
+.lb-chip{font-size:10px;font-weight:700;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);}
+.lb-nav{position:fixed;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;}
+.lb-nav:hover{background:rgba(255,255,255,.18);}
 </style>
 </head>
 <body>
@@ -878,6 +903,16 @@ function tabAddAction() {
   if (currentTab==='schedule')  openAddSchedModal();
   if (currentTab==='questions') openAddQuestionModal();
 }
+
+function renderDocuments() { _renderDocumentsAsync(); }
+async function _renderDocumentsAsync() {
+  document.getElementById('centerBody').innerHTML = '<div style="text-align:center;padding:32px;color:var(--t2);">Loading media...</div>';
+  // Load from event_media table
+  var r = await sb.from('event_media').select('*').eq('event_project_id', project.event_project_id).order('created_at', {ascending:false});
+  allMedia = r.data || [];
+  renderDocsTab();
+}
+
 function renderCurrentTab() {
   if (currentTab==='contacts')  renderContacts();
   else if (currentTab==='tasks')     renderTasks();
@@ -1270,6 +1305,248 @@ async function saveSched() {
 }
 
 /* PACKAGES */
+
+/* ══════════════════════════════════════════
+   DOCS TAB — Media Library + Documents
+   ══════════════════════════════════════════ */
+var allMedia = [];
+var mediaFilter = 'all', lightboxIdx = 0;
+var pendingUploadFile = null;
+var MEDIA_BUCKET = 'event-media';
+var CAT_ORDER = ['flyer','flyer-b','poster','sign','social','banner','logo','other'];
+var CAT_LABELS = {'flyer':'Flyer A','flyer-b':'Flyer B','poster':'Poster','sign':'Sign','banner':'Banner','social':'Social','logo':'Logo','other':'Other'};
+
+function renderDocsTab() {
+  var html = '';
+
+  // Hidden inputs
+  html += '<input type="file" id="mediaDropInput" multiple accept="image/*,.pdf,.ai,.psd,.eps,.svg" style="display:none" onchange="handleMediaDropInput(this)">';
+
+  // Category filter chips
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap;">';
+  var cats = [{k:'all',l:'All '+allMedia.length},{k:'flyer',l:'Flyers'},{k:'poster',l:'Posters'},{k:'sign',l:'Signs'},{k:'social',l:'Socials'},{k:'banner',l:'Banners'},{k:'logo',l:'Logos'},{k:'other',l:'Other'}];
+  cats.forEach(function(cat){
+    html += '<button class="media-chip'+(mediaFilter===cat.k?' active':'')+'" onclick="setMediaFilter(\''+cat.k+'\')">'+cat.l+'</button>';
+  });
+  html += '<button class="media-upload-btn" style="margin-left:auto;" onclick="openMediaUploadModal()">+ Upload</button>';
+  html += '</div>';
+
+  // Drop zone
+  html += '<div class="media-drop-zone" id="mediaDropZone" onclick="document.getElementById(\'mediaDropInput\').click()">';
+  html += '<div style="font-size:24px;margin-bottom:6px;">&#8853;</div>';
+  html += '<div style="font-size:13px;font-weight:600;">Drop files here or click to browse</div>';
+  html += '<div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:4px;">JPG &middot; PNG &middot; PDF &middot; AI &middot; PSD &middot; SVG</div>';
+  html += '</div>';
+
+  // Media grid
+  var items = getFilteredMedia();
+  if (!items.length) {
+    html += '<div style="grid-column:1/-1;text-align:center;padding:40px 24px;color:var(--t2);">';
+    html += '<div style="font-size:36px;margin-bottom:10px;opacity:.3;">&#128247;</div>';
+    html += '<div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:6px;">No '+( mediaFilter==='all'?'':''+mediaFilter+' ')+'media yet</div>';
+    html += '<div style="font-size:12px;">Drop files above or click Upload to add artwork</div></div>';
+  } else {
+    html += '<div class="media-grid-inner" id="mediaGridInner">';
+    items.forEach(function(m, i) { html += renderMediaCard(m, i); });
+    html += '</div>';
+  }
+
+  document.getElementById('centerBody').innerHTML = html;
+
+  // Wire up drop zone drag events
+  var dz = document.getElementById('mediaDropZone');
+  if (dz) {
+    dz.addEventListener('dragover', function(e){e.preventDefault();dz.classList.add('dragover');});
+    dz.addEventListener('dragleave', function(){dz.classList.remove('dragover');});
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.classList.remove('dragover');
+      var files = e.dataTransfer.files; if (!files.length) return;
+      pendingUploadFile = files[0];
+      openMediaUploadModal();
+    });
+  }
+}
+
+function getFilteredMedia() {
+  var items = mediaFilter === 'all' ? allMedia.slice()
+    : allMedia.filter(function(m){
+        var cat = (m.category||'other').toLowerCase();
+        if (mediaFilter==='flyer') return cat==='flyer'||cat==='flyer-b';
+        return cat === mediaFilter;
+      });
+  items.sort(function(a,b){
+    var ai = CAT_ORDER.indexOf((a.category||'other').toLowerCase()); if(ai<0)ai=99;
+    var bi = CAT_ORDER.indexOf((b.category||'other').toLowerCase()); if(bi<0)bi=99;
+    return ai - bi;
+  });
+  return items;
+}
+
+function setMediaFilter(f) { mediaFilter = f; renderDocsTab(); }
+
+function fmtFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes+'B';
+  if (bytes < 1048576) return Math.round(bytes/1024)+'KB';
+  return (bytes/1048576).toFixed(1)+'MB';
+}
+
+function renderMediaCard(m, idx) {
+  var cat   = m.category || 'other';
+  var label = m.label || m.file_name || 'Untitled';
+  var ext   = (m.file_type||'').split('/').pop().toUpperCase().replace('JPEG','JPG').replace('VND.ADOBE.PHOTOSHOP','PSD');
+  var sz    = fmtFileSize(m.file_size);
+  var catLabel = (CAT_LABELS[cat] || cat || 'Other').toUpperCase();
+  var catColor = {flyer:'#DC2626','flyer-b':'#EA580C',poster:'#7C3AED',sign:'#0284C7',social:'#DB2777',banner:'#D97706',logo:'#059669',other:'#6B7280'}[cat]||'#6B7280';
+
+  var thumb = m.preview_url
+    ? '<img src="'+m.preview_url+'" alt="'+esc(label)+'" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:8px;">'
+    : '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;"><div style="font-size:32px;opacity:.3;">&#128247;</div><div style="font-size:11px;color:rgba(255,255,255,.3);font-weight:700;">'+ext+'</div></div>';
+
+  return '<div class="media-card" onclick="openMediaLightbox('+idx+')">'
+    +'<div style="position:relative;width:100%;padding-top:100%;overflow:hidden;border-radius:8px;background:#1a1a20;">'
+    +thumb
+    +'<div style="position:absolute;top:7px;left:7px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:'+catColor+';color:#fff;letter-spacing:.5px;">'+catLabel+'</div>'
+    +(m.shared?'<div style="position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.3);"></div>':'')
+    +'<div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.8));padding:8px;border-radius:0 0 8px 8px;">'
+    +'<div style="font-size:11px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(label)+'</div>'
+    +(ext||sz?'<div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;">'+(ext?'<span style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:2px;margin-right:4px;">'+ext+'</span>':'')+(sz?sz:'')+'</div>':'')
+    +'</div>'
+    +'<div class="media-hover-btns">'
+    +'<button onclick="event.stopPropagation();downloadMediaItem(\''+m.media_id+'\')" title="Download">&#8595;</button>'
+    +'<button onclick="event.stopPropagation();toggleMediaShare(\''+m.media_id+'\')" title="Share" class="'+(m.shared?'shared':'')+'">&#8679;</button>'
+    +'<button onclick="event.stopPropagation();deleteMediaItem(\''+m.media_id+'\')" title="Delete" class="del">&#10005;</button>'
+    +'</div>'
+    +'</div></div>';
+}
+
+/* Upload modal */
+function openMediaUploadModal() {
+  document.getElementById('mupLabel').value = '';
+  document.getElementById('mupCategory').value = 'flyer';
+  document.getElementById('mupShared').checked = false;
+  document.getElementById('mupPreviewWrap').style.display = 'none';
+  document.getElementById('mupFilePicker').style.display = '';
+  document.getElementById('mediaUploadModal').classList.add('show');
+  if (pendingUploadFile) previewMediaFile(pendingUploadFile);
+}
+function closeMediaUploadModal() {
+  document.getElementById('mediaUploadModal').classList.remove('show');
+  pendingUploadFile = null;
+}
+function onMupFileChange(input) {
+  var file = input.files && input.files[0]; if (!file) return;
+  pendingUploadFile = file; previewMediaFile(file);
+}
+function previewMediaFile(file) {
+  var label = document.getElementById('mupLabel');
+  if (!label.value) label.value = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
+  // Auto-detect category
+  var fname = file.name.toLowerCase();
+  var sel = document.getElementById('mupCategory');
+  if (fname.indexOf('poster')>=0) sel.value='poster';
+  else if (fname.indexOf('flyer')>=0) sel.value = (fname.indexOf('back')>=0||fname.indexOf('-b')>=0)?'flyer-b':'flyer';
+  else if (fname.indexOf('sign')>=0) sel.value='sign';
+  else if (fname.indexOf('logo')>=0) sel.value='logo';
+  else if (fname.indexOf('banner')>=0) sel.value='banner';
+  else if (fname.indexOf('social')>=0||fname.indexOf('ig_')>=0) sel.value='social';
+  if (file.type.startsWith('image/')) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = document.getElementById('mupPreviewImg');
+      img.src = e.target.result; img.style.display = 'block';
+      document.getElementById('mupPreviewWrap').style.display = '';
+      document.getElementById('mupFilePicker').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    document.getElementById('mupPreviewWrap').style.display = '';
+    document.getElementById('mupFilePicker').style.display = 'none';
+  }
+}
+function clearMupFile() {
+  pendingUploadFile = null;
+  document.getElementById('mupFileInput').value = '';
+  document.getElementById('mupPreviewWrap').style.display = 'none';
+  document.getElementById('mupFilePicker').style.display = '';
+}
+function handleMediaDropInput(input) {
+  var file = input.files && input.files[0]; if (!file) return;
+  pendingUploadFile = file; openMediaUploadModal();
+}
+
+async function saveMediaUpload() {
+  var file = pendingUploadFile || (document.getElementById('mupFileInput').files[0]);
+  if (!file) { toast('Choose a file first'); return; }
+  var label    = document.getElementById('mupLabel').value.trim() || file.name;
+  var category = document.getElementById('mupCategory').value;
+  var shared   = document.getElementById('mupShared').checked;
+  toast('Uploading...');
+  var width=null, height=null, preview_url=null, storage_path=null;
+  try {
+    if (file.type.startsWith('image/')) {
+      var dataUrl = await new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.onerror=rej;r.readAsDataURL(file);});
+      await new Promise(function(res){var i=new Image();i.onload=function(){width=i.width;height=i.height;res();};i.src=dataUrl;});
+      var path = tenantId+'/'+project.event_project_id+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
+      var up = await sb.storage.from(MEDIA_BUCKET).upload(path, file, {upsert:true});
+      if (!up.error) { storage_path=path; preview_url=sb.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl; }
+      else { preview_url = dataUrl; }
+    } else {
+      var p2 = tenantId+'/'+project.event_project_id+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
+      var u2 = await sb.storage.from(MEDIA_BUCKET).upload(p2, file, {upsert:true});
+      if (!u2.error) { storage_path=p2; preview_url=sb.storage.from(MEDIA_BUCKET).getPublicUrl(p2).data.publicUrl; }
+    }
+    var row = {tenant_id:tenantId, event_project_id:project.event_project_id, file_name:file.name, label:label, category:category, file_type:file.type, file_size:file.size, width:width, height:height, storage_path:storage_path, preview_url:preview_url, shared:shared, uploaded_by:userId};
+    var r = await sb.from('event_media').insert(row).select().single();
+    if (r.error) { toast('Error: '+r.error.message); return; }
+    allMedia.unshift(r.data);
+    closeMediaUploadModal(); renderDocsTab(); toast('Uploaded: '+label);
+  } catch(e) { toast('Upload failed: '+e.message); }
+}
+
+/* Actions */
+async function toggleMediaShare(mediaId) {
+  var m = allMedia.find(function(x){return x.media_id===mediaId;}); if(!m) return;
+  var newVal = !m.shared;
+  await sb.from('event_media').update({shared:newVal}).eq('media_id',mediaId);
+  m.shared = newVal; renderDocsTab(); toast(newVal?'Shared with team':'Unshared');
+}
+async function deleteMediaItem(mediaId) {
+  var m = allMedia.find(function(x){return x.media_id===mediaId;}); if(!m) return;
+  if (!confirm('Delete "'+( m.label||m.file_name)+'"?')) return;
+  if (m.storage_path) await sb.storage.from(MEDIA_BUCKET).remove([m.storage_path]);
+  await sb.from('event_media').delete().eq('media_id', mediaId);
+  allMedia = allMedia.filter(function(x){return x.media_id!==mediaId;}); renderDocsTab(); toast('Deleted');
+}
+function downloadMediaItem(mediaId) {
+  var m = allMedia.find(function(x){return x.media_id===mediaId;}); if(!m||!m.preview_url) return;
+  var a=document.createElement('a'); a.href=m.preview_url; a.download=m.file_name||m.label; a.target='_blank'; a.click();
+}
+
+/* Lightbox */
+function openMediaLightbox(idx) {
+  var items = getFilteredMedia(); lightboxIdx = idx;
+  var m = items[idx]; if (!m) return;
+  var lb = document.getElementById('mediaLightbox');
+  var img = document.getElementById('lbImg');
+  if (m.preview_url && m.file_type && m.file_type.startsWith('image/')) { img.src=m.preview_url; img.style.display='block'; }
+  else { img.style.display='none'; }
+  document.getElementById('lbLabel').textContent = m.label||m.file_name||'';
+  var chips='', ext=(m.file_type||'').split('/').pop().toUpperCase().replace('JPEG','JPG');
+  if(ext)chips+='<span class="lb-chip">'+ext+'</span>';
+  if(m.width&&m.height)chips+='<span class="lb-chip">'+m.width+' x '+m.height+'</span>';
+  if(m.file_size)chips+='<span class="lb-chip">'+fmtFileSize(m.file_size)+'</span>';
+  if(m.shared)chips+='<span class="lb-chip" style="background:rgba(34,197,94,.15);color:#4ade80;">SHARED</span>';
+  document.getElementById('lbInfo').innerHTML = chips;
+  lb.classList.add('show');
+}
+function closeMediaLightbox() { document.getElementById('mediaLightbox').classList.remove('show'); }
+function lbNav(dir) {
+  var items = getFilteredMedia();
+  lightboxIdx = (lightboxIdx + dir + items.length) % items.length;
+  openMediaLightbox(lightboxIdx);
+}
+
 function renderPackages() {
   var html = '<div class="pkg-toolbar">';
   if (allSheets.length > 1) {
@@ -1744,6 +2021,7 @@ async function init() {
   renderContacts();
 }
 init();
+document.addEventListener('keydown',function(e){var lb=document.getElementById('mediaLightbox');if(!lb||!lb.classList.contains('show'))return;if(e.key==='ArrowRight')lbNav(1);if(e.key==='ArrowLeft')lbNav(-1);if(e.key==='Escape')closeMediaLightbox();});
 </script>
 </body>
 </html>
