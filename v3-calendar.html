@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Calendar — Event Logic Pro v3</title>
+<link rel="icon" href="favicon-eventlogic.ico">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{--bg:#f4f5f7;--bg2:#ebedf1;--card:#fff;--hover:#f0f0f3;--border:#e2e4e8;--t1:#1a1a1a;--t2:#6b7280;--acc:#DC2626;--acc2:#B91C1C;--glow:rgba(220,38,38,.10);--inp:#fafafa;--overlay:rgba(0,0,0,.45);}
+body.dark{--bg:#111;--bg2:#1a1a1a;--card:#222;--hover:#2a2a2a;--border:#333;--t1:#f0f0f0;--t2:#999;--acc:#DC2626;--acc2:#EF4444;--glow:rgba(220,38,38,.15);--inp:#1a1a1a;--overlay:rgba(0,0,0,.75);}
+html{background:var(--bg);}html.dark{background:#111;}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--t1);overflow-x:hidden;padding-bottom:80px;min-height:100vh;}
+.dh{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.dh-top{padding:8px 24px;display:flex;justify-content:space-between;align-items:center;}
+.dh-left{display:flex;align-items:center;gap:16px;}
+.dh-logo{height:52px;object-fit:contain;}
+.dh-titles h1{font-size:22px;font-weight:700;}
+.dh-titles .sub{font-size:11px;color:var(--acc);font-weight:600;}
+.dh-right{display:flex;align-items:center;gap:10px;}
+.event-badge{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--glow);border:1px solid var(--acc);border-radius:20px;font-size:12px;color:var(--acc);font-weight:600;max-width:200px;}
+.event-badge span.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.event-badge-x{opacity:.6;cursor:pointer;font-size:14px;}
+.dark-toggle{background:none;border:none;cursor:pointer;padding:6px;color:var(--t2);display:flex;}
+.dark-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;}
+.logout-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--t2);cursor:pointer;}
+.nav-bar{display:flex;align-items:center;padding:0 24px;border-top:1px solid var(--border);}
+.nav-left{display:flex;gap:2px;}
+.nav-btn{padding:8px 14px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;border-radius:6px;transition:all .15s;}
+.nav-btn:hover{color:var(--t1);background:var(--hover);}
+.nav-btn.active{color:var(--acc);font-weight:600;}
+.mh{display:none;position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);}
+.mh-bar{display:flex;align-items:center;padding:10px 16px;gap:10px;}
+.mh-logo{height:36px;object-fit:contain;}
+.mh-title{font-size:17px;font-weight:700;flex:1;}
+.mh-badge{font-size:11px;color:var(--acc);font-weight:600;}
+.mbn{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--card);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom);}
+.mbn-inner{display:grid;grid-template-columns:repeat(5,1fr);}
+.mbn-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:none;background:none;color:var(--t2);font-size:10px;cursor:pointer;text-decoration:none;}
+.mbn-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.mbn-btn.active{color:var(--acc);}
+.sheet-overlay{display:none;position:fixed;inset:0;z-index:300;background:var(--overlay);}
+.sheet-overlay.open{display:block;}
+.more-sheet{position:fixed;bottom:-100%;left:0;right:0;z-index:301;background:var(--card);border-radius:20px 20px 0 0;padding:12px 0 env(safe-area-inset-bottom);transition:bottom .3s cubic-bezier(.4,0,.2,1);}
+.more-sheet.open{bottom:0;}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 12px;}
+.sheet-item{display:flex;align-items:center;gap:12px;padding:14px 20px;font-size:15px;color:var(--t1);text-decoration:none;border:none;background:none;width:100%;text-align:left;cursor:pointer;}
+.sheet-item:hover{background:var(--hover);}
+.sheet-item svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;flex-shrink:0;}
+.sheet-item.danger{color:#DC2626;}
+.sheet-sep{height:1px;background:var(--border);margin:4px 0;}
+/* TOOLBAR */
+.cal-toolbar{display:flex;align-items:center;gap:8px;padding:10px 24px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.cal-nav{display:flex;align-items:center;gap:4px;}
+.cal-nav-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;color:var(--t1);}
+.cal-nav-btn:hover{background:var(--hover);}
+.cal-title{font-size:15px;font-weight:700;min-width:180px;text-align:center;}
+.view-tabs{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-left:auto;}
+.vtab{padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;background:none;border:none;color:var(--t2);}
+.vtab.active{background:var(--acc);color:#fff;}
+.btn-primary{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-secondary{background:var(--bg2);color:var(--t1);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;}
+/* MONTH GRID */
+.cal-wrap{overflow:auto;}
+.cal-header{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border);}
+.cal-header-day{padding:8px;text-align:center;font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+.cal-cell{min-height:100px;padding:4px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;}
+.cal-cell:hover{background:var(--hover);}
+.cal-cell.other{opacity:.4;}
+.cal-cell.today .cal-day-num{background:var(--acc);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
+.cal-day-num{font-size:12px;font-weight:600;padding:2px 4px;margin-bottom:2px;display:inline-block;}
+.cal-events{display:flex;flex-direction:column;gap:2px;}
+.cal-strip{padding:2px 5px;border-radius:3px;font-size:11px;border-left:3px solid;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cal-strip:hover{opacity:.8;}
+/* WEEK */
+.week-header{display:grid;grid-template-columns:50px repeat(7,1fr);border-bottom:1px solid var(--border);}
+.week-header-day{padding:8px 4px;text-align:center;font-size:12px;font-weight:600;color:var(--t2);}
+.week-header-day.today{color:var(--acc);}
+.wh-num{display:block;font-size:18px;font-weight:700;color:var(--t1);}
+.week-scroll{max-height:calc(100vh - 300px);overflow-y:auto;}
+.week-grid{display:grid;grid-template-columns:50px repeat(7,1fr);}
+.week-time{padding:6px 8px;font-size:10px;color:var(--t2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:right;}
+.week-cell{min-height:48px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:2px;cursor:pointer;}
+.week-cell:hover{background:var(--hover);}
+.week-cell.today-col{background:rgba(220,38,38,.03);}
+.week-ev{padding:2px 4px;border-radius:3px;font-size:11px;border-left:3px solid;cursor:pointer;margin-bottom:1px;}
+/* DAY */
+.day-scroll{max-height:calc(100vh - 280px);overflow-y:auto;}
+.day-hour{display:grid;grid-template-columns:60px 1fr;border-bottom:1px solid var(--border);}
+.day-hour-label{padding:8px;font-size:11px;color:var(--t2);border-right:1px solid var(--border);text-align:right;}
+.day-hour-content{min-height:52px;padding:4px;cursor:pointer;}
+.day-hour-content:hover{background:var(--hover);}
+.day-ev{padding:4px 8px;border-radius:4px;font-size:12px;border-left:3px solid;cursor:pointer;margin-bottom:2px;}
+/* SIDEBAR */
+.cal-layout{display:grid;grid-template-columns:200px 1fr;gap:0;}
+.cal-sidebar{border-right:1px solid var(--border);padding:16px;}
+.mini-cal{margin-bottom:16px;}
+.mini-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.mini-title{font-size:12px;font-weight:700;}
+.mini-nav{background:none;border:none;cursor:pointer;color:var(--t2);font-size:16px;padding:2px 6px;}
+.mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+.mini-day-header{font-size:9px;text-align:center;color:var(--t2);font-weight:700;padding:2px 0;}
+.mini-day{font-size:11px;text-align:center;padding:3px 2px;border-radius:3px;cursor:pointer;}
+.mini-day:hover{background:var(--hover);}
+.mini-day.today{background:var(--acc);color:#fff;border-radius:50%;}
+.mini-day.other{color:var(--t2);}
+.mini-day.selected{outline:2px solid var(--acc);}
+.cal-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--t2);margin:12px 0 6px;}
+.cal-filter{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer;}
+.cal-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:500;background:var(--overlay);align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--card);border-radius:16px;width:90%;max-width:440px;max-height:90vh;overflow-y:auto;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 0;}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--t2);}
+.modal-body{padding:14px 20px;}
+.modal-footer{padding:0 20px 16px;display:flex;gap:8px;justify-content:flex-end;}
+.form-group{margin-bottom:12px;}
+.form-label{font-size:12px;font-weight:600;color:var(--t2);margin-bottom:4px;display:block;}
+.form-input,.form-select,.form-textarea{width:100%;padding:8px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;font-size:14px;color:var(--t1);}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--acc);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--t1);color:var(--card);padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:999;}
+.toast.show{opacity:1;}
+@media(max-width:768px){.dh{display:none!important;}.mh{display:block!important;}.mbn{display:block!important;}.cal-layout{grid-template-columns:1fr;}.cal-sidebar{display:none;}.cal-toolbar{padding:8px 16px;}.modal-overlay{align-items:flex-end;padding:0;}.modal-box{border-radius:20px 20px 0 0;width:100%;max-height:90vh;}}
+@media(min-width:769px){.mh{display:none!important;}.mbn{display:none!important;}}'
+</style>
+</head>
+<body>
+<div class="dh">
+  <div class="dh-top">
+    <div class="dh-left">
+      <img id="dLogo" class="dh-logo" src="eventlogicpro-logo.png" alt="">
+      <div class="dh-titles"><h1>Calendar</h1><div class="sub" id="dBiz">Event Logic Pro</div></div>
+    </div>
+    <div class="dh-right">
+      <div id="dEventBadge" class="event-badge" style="display:none;"><span class="name" id="dEventName"></span><span class="event-badge-x" onclick="clearCurrentEvent()">✕</span></div>
+      <button class="dark-toggle" onclick="toggleDark()"><svg id="dMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="dSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="nav-bar"><div class="nav-left">
+    <a href="v3-dashboard.html" class="nav-btn">Dashboard</a>
+    <a href="v3-calendar.html" class="nav-btn active">Calendar</a>
+    <a href="v3-tasks.html" class="nav-btn">Tasks</a>
+    <a href="v3-budget.html" class="nav-btn">Budget</a>
+    <a href="v3-packages.html" class="nav-btn">Packages</a>
+    <a href="v3-contacts.html" class="nav-btn">Contacts</a>
+    <a href="v3-sitemap.html" class="nav-btn">Site Maps</a>
+    <a href="v3-event-details.html" class="nav-btn">Event Details</a>
+    <a href="v3-settings.html" class="nav-btn">Settings</a>
+  </div></div>
+</div>
+<div class="mh"><div class="mh-bar">
+  <img id="mLogo" class="mh-logo" src="eventlogicpro-logo.png" alt="">
+  <div style="flex:1;min-width:0;"><div class="mh-title">Calendar</div><div id="mEventBadge" class="mh-badge" style="display:none;"></div></div>
+  <button class="dark-toggle" onclick="toggleDark()"><svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
+</div></div>
+
+<div class="cal-toolbar">
+  <div class="cal-nav">
+    <button class="cal-nav-btn" onclick="navPrev()">‹</button>
+    <button class="cal-nav-btn" onclick="goToday()">Today</button>
+    <button class="cal-nav-btn" onclick="navNext()">›</button>
+  </div>
+  <div class="cal-title" id="schedTitle">—</div>
+  <div class="view-tabs">
+    <button class="vtab active" id="vtM" onclick="setView('month')">Month</button>
+    <button class="vtab" id="vtW" onclick="setView('week')">Week</button>
+    <button class="vtab" id="vtD" onclick="setView('day')">Day</button>
+  </div>
+  <button class="btn-primary" onclick="openAddModal(null,null)">+ Add</button>
+</div>
+
+<div class="cal-layout">
+  <div class="cal-sidebar" id="calSidebar">
+    <div class="mini-cal">
+      <div class="mini-header">
+        <button class="mini-nav" onclick="miniPrev()">‹</button>
+        <div class="mini-title" id="miniTitle"></div>
+        <button class="mini-nav" onclick="miniNext()">›</button>
+      </div>
+      <div class="mini-grid" id="miniGrid"></div>
+    </div>
+    <div class="cal-section">Calendars</div>
+    <div id="calFilters"></div>
+    <div class="cal-section" style="margin-top:8px;">Events</div>
+    <div id="eventFilters"></div>
+  </div>
+  <div>
+    <div id="monthView"></div>
+    <div id="weekView" style="display:none;"></div>
+    <div id="dayView" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="mbn"><div class="mbn-inner">
+  <a href="v3-dashboard.html" class="mbn-btn"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+  <a href="v3-tasks.html" class="mbn-btn"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks</a>
+  <a href="v3-calendar.html" class="mbn-btn active"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendar</a>
+  <a href="v3-budget.html" class="mbn-btn"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Budget</a>
+  <button class="mbn-btn" onclick="openMoreSheet()"><span style="font-size:20px;line-height:22px;">···</span>More</button>
+</div></div>
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeMoreSheet()"></div>
+<div class="more-sheet" id="moreSheet"><div class="sheet-handle"></div>
+  <a href="v3-packages.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Packages</a>
+  <a href="v3-contacts.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Contacts</a>
+  <a href="v3-sitemap.html" class="sheet-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Site Maps</a>
+  <a href="v3-event-details.html" class="sheet-item"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Event Details</a>
+  <div class="sheet-sep"></div>
+  <a href="v3-settings.html" class="sheet-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Settings</a>
+  <button class="sheet-item danger" onclick="doLogout()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="itemModal">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title" id="itemModalTitle">Add Schedule Item</div><button class="modal-close" onclick="closeItemModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Title *</label><input type="text" class="form-input" id="itTitle" placeholder="Item title"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="itDate"></div>
+        <div class="form-group"><label class="form-label">Category</label><select class="form-select" id="itCategory"><option value="schedule">Schedule</option><option value="milestone">Milestone</option><option value="deadline">Deadline</option><option value="meeting">Meeting</option><option value="other">Other</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Time</label><input type="time" class="form-input" id="itStart"></div>
+        <div class="form-group"><label class="form-label">End Time</label><input type="time" class="form-input" id="itEnd"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Calendar</label><select class="form-select" id="itCal"></select></div>
+      <div class="form-group"><label class="form-label">Event</label><select class="form-select" id="itEvent"><option value="">— No event link —</option></select></div>
+      <div class="form-group"><label class="form-label">Location</label><input type="text" class="form-input" id="itLoc" placeholder="Location"></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="itNotes" placeholder="Additional notes..."></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="itDeleteBtn" style="display:none;" onclick="deleteItem()">Delete</button>
+      <button class="btn-secondary" onclick="closeItemModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveItem()">Save</button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+var isDark=localStorage.getItem('elp_dark_mode')==='true';
+if(isDark){document.body.classList.add('dark');document.documentElement.classList.add('dark');}
+function applyDarkIcons(){var d=document.body.classList.contains('dark');document.documentElement.classList.toggle('dark',d);['d','m'].forEach(function(p){var moon=document.getElementById(p+'Moon'),sun=document.getElementById(p+'Sun');if(moon)moon.style.display=d?'none':'block';if(sun)sun.style.display=d?'block':'none';});var logo=document.getElementById('dLogo');if(logo)logo.src=d?'eventlogicpro-logo-dark.png':'eventlogicpro-logo.png';}
+applyDarkIcons();
+function toggleDark(){document.body.classList.toggle('dark');isDark=document.body.classList.contains('dark');localStorage.setItem('elp_dark_mode',isDark);applyDarkIcons();}
+var SUPABASE_URL='https://kxqkwpkmtgvmthpafoqx.supabase.co';
+var SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+var tenantId=null,userId=null;
+var allCals=[],allItems=[],allProjects=[];
+var hiddenCals={},hiddenProjects={};
+var currentView='month',viewDate=new Date(),miniDate=new Date();
+var editingItemId=null;
+var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2400);}
+async function doLogout(){await sb.auth.signOut();localStorage.removeItem('sb_access_token');localStorage.removeItem('sb_refresh_token');location.replace('/');}
+async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.replace('/');return null;}}return s;}
+function getCurrentEvent(){return localStorage.getItem('elp_current_event');}
+function clearCurrentEvent(){localStorage.removeItem('elp_current_event');localStorage.removeItem('elp_current_event_name');localStorage.removeItem('elp_current_event_date');updateEventBadge();}
+function updateEventBadge(){var name=localStorage.getItem('elp_current_event_name')||'';var badge=document.getElementById('dEventBadge'),mBadge=document.getElementById('mEventBadge');if(name){if(badge){document.getElementById('dEventName').textContent=name;badge.style.display='flex';}if(mBadge){mBadge.textContent='📍 '+name;mBadge.style.display='block';}}else{if(badge)badge.style.display='none';if(mBadge)mBadge.style.display='none';}}
+function openMoreSheet(){document.getElementById('sheetOverlay').classList.add('open');document.getElementById('moreSheet').classList.add('open');}
+function closeMoreSheet(){document.getElementById('sheetOverlay').classList.remove('open');document.getElementById('moreSheet').classList.remove('open');}
+
+async function init(){
+  var session=await checkAuth();if(!session)return;
+  userId=session.user.id;
+  var email=session.user.email||'';
+  var ur=await sb.from('users').select('tenant_id').eq('email',email).maybeSingle();
+  if(ur.data)tenantId=ur.data.tenant_id;
+  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).maybeSingle();if(bs.data)tenantId=bs.data.tenant_id;}
+  if(!tenantId)return;
+  var biz=await sb.from('business_settings').select('business_name,display_name').eq('tenant_id',tenantId).maybeSingle();
+  if(biz.data){document.getElementById('dBiz').textContent=biz.data.display_name||biz.data.business_name||'Event Logic Pro';}
+  updateEventBadge();
+  await Promise.all([loadCals(),loadItems(),loadProjects()]);
+  renderSidebar();render();renderMiniCal();
+  // If a current event is set, jump to it
+  var savedEventId=getCurrentEvent();
+  if(savedEventId){var proj=allProjects.find(function(p){return p.event_project_id===savedEventId;});if(proj&&proj.event_date){viewDate=new Date(proj.event_date+'T00:00:00');render();renderMiniCal();}}
+}
+async function loadCals(){var r=await sb.from('event_calendars').select('*').eq('tenant_id',tenantId).order('sort_order');allCals=r.data||[];if(!allCals.length){var nc=await sb.from('event_calendars').insert({tenant_id:tenantId,calendar_name:'Events',color:'#DC2626',is_default:true,sort_order:0,created_by:userId}).select().single();if(nc.data)allCals=[nc.data];}}
+async function loadItems(){var r=await sb.from('event_schedule_items').select('*').eq('tenant_id',tenantId).order('item_date').order('start_time');allItems=r.data||[];}
+async function loadProjects(){var r=await sb.from('event_projects').select('event_project_id,event_name,event_date,event_end_date,color_tag').eq('tenant_id',tenantId).order('event_date');allProjects=r.data||[];}
+
+function getCalColor(calId){var c=allCals.find(function(x){return x.calendar_id===calId;});return c?c.color:'#DC2626';}
+function dateStr(d){var y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+day;}
+function isToday(d){var t=new Date();return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate();}
+function getWeekStart(d){var c=new Date(d);c.setDate(c.getDate()-c.getDay());return c;}
+
+function getVisibleItems(ds){
+  var res=allItems.filter(function(it){return it.item_date===ds&&!hiddenCals[it.calendar_id]&&(!it.event_project_id||!hiddenProjects[it.event_project_id]);});
+  return res;
+}
+
+function setView(v){currentView=v;['vtM','vtW','vtD'].forEach(function(id){document.getElementById(id).classList.remove('active');});document.getElementById(v==='month'?'vtM':v==='week'?'vtW':'vtD').classList.add('active');['monthView','weekView','dayView'].forEach(function(id){document.getElementById(id).style.display='none';});document.getElementById(v==='month'?'monthView':v==='week'?'weekView':'dayView').style.display='block';render();}
+function navPrev(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()-1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()-7);else viewDate.setDate(viewDate.getDate()-1);miniDate=new Date(viewDate);render();renderMiniCal();}
+function navNext(){if(currentView==='month')viewDate.setMonth(viewDate.getMonth()+1);else if(currentView==='week')viewDate.setDate(viewDate.getDate()+7);else viewDate.setDate(viewDate.getDate()+1);miniDate=new Date(viewDate);render();renderMiniCal();}
+function goToday(){viewDate=new Date();miniDate=new Date();render();renderMiniCal();}
+
+function render(){var title='';if(currentView==='month'){title=MONTHS[viewDate.getMonth()]+' '+viewDate.getFullYear();renderMonth();}else if(currentView==='week'){var ws=getWeekStart(viewDate),we=new Date(ws);we.setDate(we.getDate()+6);title=MONTHS[ws.getMonth()].substr(0,3)+' '+ws.getDate()+' – '+MONTHS[we.getMonth()].substr(0,3)+' '+we.getDate()+', '+we.getFullYear();renderWeek();}else{title=DAYS[viewDate.getDay()]+', '+MONTHS[viewDate.getMonth()]+' '+viewDate.getDate()+' '+viewDate.getFullYear();renderDay();}document.getElementById('schedTitle').textContent=title;}
+
+function strip(it){var col=getCalColor(it.calendar_id);return '<div class="cal-strip" style="border-left-color:'+col+';background:'+col+'22;" onclick="event.stopPropagation();openEditModal(\''+it.schedule_item_id+'\')" title="'+esc(it.title)+(it.start_time?' · '+it.start_time.substring(0,5):'')+'">'+esc(it.title)+'</div>';}
+
+function renderMonth(){var el=document.getElementById('monthView');var y=viewDate.getFullYear(),mo=viewDate.getMonth();var first=new Date(y,mo,1),sd=first.getDay(),dim=new Date(y,mo+1,0).getDate(),prev=new Date(y,mo,0).getDate();var h='<div class="cal-header">';DAYS.forEach(function(d){h+='<div class="cal-header-day">'+d+'</div>';});h+='</div><div class="cal-grid">';for(var i=0;i<42;i++){var dn,ds,cls='cal-cell';if(i<sd){dn=prev-sd+i+1;ds=dateStr(new Date(y,mo-1,dn));cls+=' other';}else if(i-sd>=dim){dn=i-sd-dim+1;ds=dateStr(new Date(y,mo+1,dn));cls+=' other';}else{dn=i-sd+1;var cd=new Date(y,mo,dn);ds=dateStr(cd);if(isToday(cd))cls+=' today';}var items=getVisibleItems(ds);h+='<div class="'+cls+'" onclick="clickDate(\''+ds+'\')">';h+='<div class="cal-day-num">'+dn+'</div><div class="cal-events">';var shown=items.slice(0,3);shown.forEach(function(it){h+=strip(it);});if(items.length>3)h+='<div style="font-size:10px;color:var(--t2);padding:1px 4px;">+'+(items.length-3)+' more</div>';h+='</div></div>';}h+='</div>';el.innerHTML=h;}
+
+function renderWeek(){var el=document.getElementById('weekView');var ws=getWeekStart(viewDate);var h='<div class="week-header"><div class="week-header-day"></div>';for(var d=0;d<7;d++){var dd=new Date(ws);dd.setDate(dd.getDate()+d);h+='<div class="week-header-day'+(isToday(dd)?' today':'')+'"><span class="wh-num">'+dd.getDate()+'</span>'+DAYS[d]+'</div>';}h+='</div><div class="week-scroll"><div class="week-grid">';for(var hr=6;hr<23;hr++){var lb=hr<12?(hr+'am'):hr===12?'12pm':(hr-12)+'pm';h+='<div class="week-time">'+lb+'</div>';for(var d=0;d<7;d++){var dd2=new Date(ws);dd2.setDate(dd2.getDate()+d);var ds=dateStr(dd2);var items=getVisibleItems(ds).filter(function(it){return it.start_time?parseInt(it.start_time.split(':')[0])===hr:hr===8;});h+='<div class="week-cell'+(isToday(dd2)?' today-col':'')+'" onclick="clickDate(\''+ds+'\','+hr+')">';items.forEach(function(it){var col=getCalColor(it.calendar_id);h+='<div class="week-ev" style="border-left-color:'+col+';background:'+col+'22;" onclick="event.stopPropagation();openEditModal(\''+it.schedule_item_id+'\')">'+esc(it.title)+'</div>';});h+='</div>';}}h+='</div></div>';el.innerHTML=h;}
+
+function renderDay(){var el=document.getElementById('dayView');var ds=dateStr(viewDate);var h='<div class="day-scroll">';for(var hr=6;hr<23;hr++){var lb=hr===0?'12 AM':hr<12?hr+' AM':hr===12?'12 PM':(hr-12)+' PM';var items=getVisibleItems(ds).filter(function(it){return it.start_time?parseInt(it.start_time.split(':')[0])===hr:hr===8;});h+='<div class="day-hour"><div class="day-hour-label">'+lb+'</div><div class="day-hour-content" onclick="clickDate(\''+ds+'\','+hr+')">';items.forEach(function(it){var col=getCalColor(it.calendar_id);var ts=it.start_time?(it.start_time.substring(0,5)+(it.end_time?' – '+it.end_time.substring(0,5):'')):'';h+='<div class="day-ev" style="border-left-color:'+col+';background:'+col+'22;" onclick="event.stopPropagation();openEditModal(\''+it.schedule_item_id+'\')"><strong>'+esc(it.title)+'</strong>'+(ts?'<br><small>'+ts+'</small>':'')+(it.location?'<br><small>📍 '+esc(it.location)+'</small>':'')+'</div>';});h+='</div></div>';}h+='</div>';el.innerHTML=h;}
+
+function renderMiniCal(){var y=miniDate.getFullYear(),mo=miniDate.getMonth();var first=new Date(y,mo,1),sd=first.getDay(),dim=new Date(y,mo+1,0).getDate();document.getElementById('miniTitle').textContent=MONTHS[mo].substr(0,3)+' '+y;var h='';DAYS.forEach(function(d){h+='<div class="mini-day-header">'+d[0]+'</div>';});for(var i=0;i<sd;i++)h+='<div></div>';for(var d=1;d<=dim;d++){var cd=new Date(y,mo,d),ds=dateStr(cd);var cls='mini-day';if(isToday(cd))cls+=' today';else if(dateStr(viewDate)===ds)cls+=' selected';h+='<div class="'+cls+'" onclick="selectMiniDay(\''+ds+'\')">'+d+'</div>';}document.getElementById('miniGrid').innerHTML=h;}
+function miniPrev(){miniDate.setMonth(miniDate.getMonth()-1);renderMiniCal();}
+function miniNext(){miniDate.setMonth(miniDate.getMonth()+1);renderMiniCal();}
+function selectMiniDay(ds){viewDate=new Date(ds+'T00:00:00');if(currentView==='month'){viewDate=new Date(ds+'T00:00:00');}render();renderMiniCal();}
+
+function renderSidebar(){
+  var cf=document.getElementById('calFilters');cf.innerHTML='';
+  allCals.forEach(function(c){var div=document.createElement('div');div.className='cal-filter';div.innerHTML='<div class="cal-dot" style="background:'+c.color+'"></div><span>'+esc(c.calendar_name)+'</span>';div.onclick=function(){hiddenCals[c.calendar_id]=!hiddenCals[c.calendar_id];div.style.opacity=hiddenCals[c.calendar_id]?.4:1;render();};cf.appendChild(div);});
+  var ef=document.getElementById('eventFilters');ef.innerHTML='';
+  allProjects.slice(0,10).forEach(function(p){var div=document.createElement('div');div.className='cal-filter';var col=p.color_tag||'#DC2626';div.innerHTML='<div class="cal-dot" style="background:'+col+'"></div><span style="font-size:11px;">'+esc(p.event_name)+'</span>';div.onclick=function(){hiddenProjects[p.event_project_id]=!hiddenProjects[p.event_project_id];div.style.opacity=hiddenProjects[p.event_project_id]?.4:1;render();};ef.appendChild(div);});
+}
+
+function clickDate(ds,hr){openAddModal(ds,hr||null);}
+function openAddModal(ds,hr){editingItemId=null;document.getElementById('itemModalTitle').textContent='Add Schedule Item';document.getElementById('itTitle').value='';document.getElementById('itDate').value=ds||dateStr(viewDate);document.getElementById('itStart').value=hr!=null?String(hr).padStart(2,'0')+':00':'';document.getElementById('itEnd').value=hr!=null?String(hr+1).padStart(2,'0')+':00':'';document.getElementById('itLoc').value='';document.getElementById('itNotes').value='';document.getElementById('itCategory').value='schedule';document.getElementById('itDeleteBtn').style.display='none';var calSel=document.getElementById('itCal');calSel.innerHTML='';allCals.forEach(function(c){var o=document.createElement('option');o.value=c.calendar_id;o.textContent=c.calendar_name;calSel.appendChild(o);});var evSel=document.getElementById('itEvent');evSel.innerHTML='<option value="">— No event link —</option>';allProjects.forEach(function(p){var o=document.createElement('option');o.value=p.event_project_id;o.textContent=p.event_name;evSel.appendChild(o);});var savedEv=getCurrentEvent();if(savedEv)evSel.value=savedEv;document.getElementById('itemModal').classList.add('show');}
+function openEditModal(itemId){var it=allItems.find(function(x){return x.schedule_item_id===itemId;});if(!it)return;editingItemId=itemId;document.getElementById('itemModalTitle').textContent='Edit Item';document.getElementById('itTitle').value=it.title||'';document.getElementById('itDate').value=it.item_date||'';document.getElementById('itStart').value=it.start_time||'';document.getElementById('itEnd').value=it.end_time||'';document.getElementById('itLoc').value=it.location||'';document.getElementById('itNotes').value=it.notes||'';document.getElementById('itCategory').value=it.category||'schedule';document.getElementById('itDeleteBtn').style.display='block';var calSel=document.getElementById('itCal');calSel.innerHTML='';allCals.forEach(function(c){var o=document.createElement('option');o.value=c.calendar_id;o.textContent=c.calendar_name;if(it.calendar_id===c.calendar_id)o.selected=true;calSel.appendChild(o);});var evSel=document.getElementById('itEvent');evSel.innerHTML='<option value="">— No event link —</option>';allProjects.forEach(function(p){var o=document.createElement('option');o.value=p.event_project_id;o.textContent=p.event_name;if(it.event_project_id===p.event_project_id)o.selected=true;evSel.appendChild(o);});document.getElementById('itemModal').classList.add('show');}
+function closeItemModal(){document.getElementById('itemModal').classList.remove('show');}
+async function saveItem(){var title=document.getElementById('itTitle').value.trim();if(!title){toast('Title required');return;}var data={title:title,item_date:document.getElementById('itDate').value,start_time:document.getElementById('itStart').value||null,end_time:document.getElementById('itEnd').value||null,location:document.getElementById('itLoc').value.trim()||null,notes:document.getElementById('itNotes').value.trim()||null,category:document.getElementById('itCategory').value,calendar_id:document.getElementById('itCal').value,event_project_id:document.getElementById('itEvent').value||null};if(editingItemId){await sb.from('event_schedule_items').update(data).eq('schedule_item_id',editingItemId);}else{data.tenant_id=tenantId;data.created_by=userId;await sb.from('event_schedule_items').insert(data);}closeItemModal();toast(editingItemId?'Item updated':'Item added');await loadItems();render();}
+async function deleteItem(){if(!editingItemId||!confirm('Delete this item?'))return;await sb.from('event_schedule_items').delete().eq('schedule_item_id',editingItemId);closeItemModal();toast('Item deleted');await loadItems();render();}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+init();
+</script>
+</body>
+</html>
