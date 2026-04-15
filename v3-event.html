@@ -347,6 +347,30 @@ body.dark .bli-due.post{background:#2e1065;}
 .bli-add-btn{background:none;border:none;color:var(--acc);font-size:12px;font-weight:600;cursor:pointer;padding:4px 0;}
 .bli-add-btn:hover{text-decoration:underline;}
 .bdept-footer{display:flex;justify-content:flex-end;padding:8px 16px;border-top:1px solid var(--border);background:var(--bg2);font-size:12px;color:var(--t2);}
+
+/* PACKAGES TAB */
+.pkg-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.pkg-sheet-sel{flex:1;max-width:300px;padding:8px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--t1);}
+.pkg-sheet-sel:focus{outline:none;border-color:var(--acc);}
+.pkg-open-btn{padding:8px 16px;background:var(--acc);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;}
+.pkg-open-btn:hover{opacity:.88;}
+.pkg-section{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;}
+.pkg-sec-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;}
+.pkg-sec-hdr:hover{background:var(--hover);}
+.pkg-sec-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--t2);display:flex;align-items:center;gap:10px;}
+.pkg-sec-chev{color:var(--t2);font-size:12px;transition:transform .2s;}
+.pkg-section.collapsed .pkg-sec-chev{transform:rotate(-90deg);}
+.pkg-section.collapsed .pkg-sec-body{display:none;}
+.pkg-sec-body{border-top:1px solid var(--border);}
+.pkg-card{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;}
+.pkg-card:last-child{border-bottom:none;}
+.pkg-card-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;}
+.pkg-card-info{flex:1;min-width:0;}
+.pkg-card-name{font-size:13px;font-weight:700;}
+.pkg-card-sub{font-size:11px;color:var(--t2);margin-top:3px;}
+.pkg-card-price{font-size:14px;font-weight:800;white-space:nowrap;}
+.pkg-item-row{font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px;margin-top:2px;}
+.pkg-empty{padding:20px;text-align:center;color:var(--t2);font-size:13px;}
 </style>
 </head>
 <body>
@@ -592,6 +616,9 @@ var project = null, evColor = '#DC2626';
 var allDepts = [], allTasks = [], allVendors = [], allSchedule = [], allSheets = [], allMaps = [], allQuestions = [];
 var currentDept = 'all', currentTab = 'contacts';
 var calendarId = null;
+var pkgSheetId = null;
+var pkgLevels=[], pkgTickets=[], pkgVendors=[], pkgCamping=[];
+var pkgLoading = false, pkgLoaded = false;
 
 /* DARK MODE */
 var isDark = localStorage.getItem('elp_dark_mode') === 'true';
@@ -652,7 +679,7 @@ async function loadAll() {
     sb.from('event_tasks').select('*').eq('event_project_id', project.event_project_id).order('sort_order'),
     sb.from('event_vendors').select('*').eq('event_project_id', project.event_project_id).order('vendor_type').order('company_name'),
     sb.from('event_schedule_items').select('*').eq('event_project_id', project.event_project_id).order('item_date').order('start_time'),
-    sb.from('sponsor_sheets').select('*').eq('event_project_id', project.event_project_id).order('created_at',{ascending:false}),
+    sb.from('sponsor_sheets').select('*').eq('tenant_id', tenantId).order('created_at',{ascending:false}),
     sb.from('site_maps').select('*').eq('tenant_id', tenantId).order('updated_at',{ascending:false}),
     sb.from('event_calendars').select('calendar_id').eq('tenant_id', tenantId).order('is_default',{ascending:false}).limit(1),
     sb.from('event_questions').select('*').eq('event_project_id', project.event_project_id).order('sort_order',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false})
@@ -1191,8 +1218,104 @@ async function saveSched() {
 
 /* PACKAGES */
 function renderPackages() {
-  if (!allSheets.length) { document.getElementById('centerBody').innerHTML = emptyState('&#128230;','No package sheets yet','','Open Packages','window.open(\'v3-packages.html\',\'_self\')'); return; }
-  document.getElementById('centerBody').innerHTML = '<div class="thumb-grid">'+allSheets.map(function(s){return '<div class="thumb-card" onclick="window.open(\'v3-packages.html\',\'_self\')"><div class="thumb-preview">&#128230;</div><div class="thumb-body"><div class="thumb-name">'+esc(s.sheet_name||'Untitled')+'</div><div class="thumb-meta">'+esc(s.status||'draft')+'</div></div></div>';}).join('')+'</div>';
+  var html = '<div class="pkg-toolbar">';
+  if (allSheets.length > 1) {
+    html += '<select class="pkg-sheet-sel" id="pkgSheetSel" onchange="onPkgSheetChange(this.value)">';
+    html += allSheets.map(function(s){
+      return '<option value="'+s.sheet_id+'"'+(s.sheet_id===pkgSheetId?' selected':'')+'>'+esc(s.sheet_name||'Untitled')+'</option>';
+    }).join('');
+    html += '</select>';
+  } else if (allSheets.length === 1 && !pkgSheetId) {
+    pkgSheetId = allSheets[0].sheet_id;
+  }
+  html += '<a class="pkg-open-btn" href="eventlogicpro-packages.html" target="_blank">Open Full Editor &#8599;</a>';
+  if (!allSheets.length) {
+    html += '</div>';
+    html += emptyState('&#128230;','No package sheets yet','Create a package sheet to manage sponsor levels, tickets, vendor and camping packages.','Open Packages',"window.open('eventlogicpro-packages.html','_blank')");
+    document.getElementById('centerBody').innerHTML = html; return;
+  }
+  html += '</div>';
+  if (!pkgSheetId && allSheets.length) pkgSheetId = allSheets[0].sheet_id;
+  html += '<div id="pkgSections"><div style="text-align:center;padding:32px;color:var(--t2);">Loading...</div></div>';
+  document.getElementById('centerBody').innerHTML = html;
+  loadAndRenderPkgSections();
+}
+
+async function onPkgSheetChange(id) {
+  pkgSheetId = id; pkgLoaded = false;
+  pkgLevels=[]; pkgTickets=[]; pkgVendors=[]; pkgCamping=[];
+  loadAndRenderPkgSections();
+}
+
+async function loadAndRenderPkgSections() {
+  if (!pkgSheetId || pkgLoading) return;
+  pkgLoading = true;
+  var el = document.getElementById('pkgSections');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--t2);">Loading packages...</div>';
+
+  // Load all 4 package types in parallel
+  var [lr, tr, vr, cr] = await Promise.all([
+    sb.from('sponsor_levels').select('*, sponsor_perks(*)').eq('sheet_id', pkgSheetId).order('sort_order'),
+    sb.from('ticket_packages').select('*, ticket_package_items(*)').eq('sheet_id', pkgSheetId).order('sort_order'),
+    sb.from('vendor_packages').select('*, vendor_package_items(*)').eq('sheet_id', pkgSheetId).order('sort_order'),
+    sb.from('camping_packages').select('*, camping_package_items(*)').eq('sheet_id', pkgSheetId).order('sort_order')
+  ]);
+  pkgLevels  = (lr.data||[]).map(function(l){return Object.assign(l,{perks:l.sponsor_perks||[]});});
+  pkgTickets = (tr.data||[]).map(function(p){return Object.assign(p,{items:p.ticket_package_items||[]});});
+  pkgVendors = (vr.data||[]).map(function(p){return Object.assign(p,{items:p.vendor_package_items||[]});});
+  pkgCamping = (cr.data||[]).map(function(p){return Object.assign(p,{items:p.camping_package_items||[]});});
+  pkgLoading = false; pkgLoaded = true;
+  renderPkgSections();
+}
+
+function renderPkgSections() {
+  var el = document.getElementById('pkgSections'); if (!el) return;
+  var sections = [
+    { title:'Sponsor Levels',    icon:'&#127942;', data: pkgLevels,  nameField:'level_name',   itemsField:'perks',  itemNameField:'perk_name' },
+    { title:'Ticket Packages',   icon:'&#127915;', data: pkgTickets, nameField:'package_name', itemsField:'items',  itemNameField:'item_name'  },
+    { title:'Vendor Packages',   icon:'&#127978;', data: pkgVendors, nameField:'package_name', itemsField:'items',  itemNameField:'item_name'  },
+    { title:'Camping Packages',  icon:'&#9978;',   data: pkgCamping, nameField:'package_name', itemsField:'items',  itemNameField:'item_name'  }
+  ];
+  var html = '';
+  sections.forEach(function(sec, si) {
+    var isOpen = si === 0; // first section open by default
+    html += '<div class="pkg-section'+(isOpen?'':' collapsed')+'" id="pkgsec-'+si+'">';
+    html += '<div class="pkg-sec-hdr" onclick="togglePkgSec('+si+')">';
+    html += '<div class="pkg-sec-title">'+sec.icon+' '+sec.title+'<span style="font-size:10px;color:var(--t2);font-weight:400;margin-left:4px;">('+sec.data.length+')</span></div>';
+    html += '<span class="pkg-sec-chev">&#9660;</span></div>';
+    html += '<div class="pkg-sec-body">';
+    if (!sec.data.length) {
+      html += '<div class="pkg-empty">No '+sec.title.toLowerCase()+' yet. <a href="eventlogicpro-packages.html" target="_blank" style="color:var(--acc);font-weight:600;">Add in editor &#8599;</a></div>';
+    } else {
+      sec.data.forEach(function(pkg) {
+        var color   = pkg.color || '#DC2626';
+        var price   = parseFloat(pkg.price)||0;
+        var items   = pkg[sec.itemsField] || [];
+        var filledItems = items.filter(function(it){return (parseInt(it.quantity||it.qty)||0) > 0;});
+        html += '<div class="pkg-card">';
+        html += '<div class="pkg-card-dot" style="background:'+color+'"></div>';
+        html += '<div class="pkg-card-info"><div class="pkg-card-name" style="color:'+color+';">'+esc(pkg[sec.nameField]||'Untitled')+'</div>';
+        html += '<div class="pkg-card-sub">'+filledItems.length+' of '+items.length+' inclusions</div>';
+        // Show up to 4 items
+        filledItems.slice(0,4).forEach(function(it){
+          var qty = parseInt(it.quantity||it.qty)||0;
+          var name = it[sec.itemNameField] || it.perk_name || it.item_name || '';
+          if (qty > 0 && name) html += '<div class="pkg-item-row"><span style="font-weight:700;color:var(--t1);">'+qty+'×</span> '+esc(name)+'</div>';
+        });
+        if (filledItems.length > 4) html += '<div class="pkg-item-row" style="color:var(--t2);">+ '+(filledItems.length-4)+' more...</div>';
+        html += '</div>';
+        html += '<div class="pkg-card-price" style="color:'+color+';">$'+fmt(price)+'</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function togglePkgSec(i) {
+  var el = document.getElementById('pkgsec-'+i);
+  if (el) el.classList.toggle('collapsed');
 }
 
 /* DOCUMENTS */
