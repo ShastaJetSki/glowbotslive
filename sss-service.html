@@ -1623,7 +1623,7 @@ async function loadWorkOrdersAndRefs(){
   const vids=[...new Set(workOrders.map(w=>w.vehicle_id).filter(Boolean))];
   const [cRes,vRes,eRes]=await Promise.all([
     cids.length?sb.from('customers').select('customer_id,first_name,last_name,full_name,phone').in('customer_id',cids):{data:[]},
-    vids.length?sb.from('vehicles').select('vehicle_id,year,make,model,license_plate,vin').in('vehicle_id',vids):{data:[]},
+    vids.length?sb.from('vehicles').select('vehicle_id,year,make,model,plate_or_cf,vin_or_hin,color,vehicle_type,mileage_hours,current_mileage,engine_size').in('vehicle_id',vids):{data:[]},
     sb.from('employees').select('*').eq('tenant_id',tenantId).eq('is_active',true)
   ]);
   customers=cRes.data||[];vehicles=vRes.data||[];employees=eRes.data||[];
@@ -1642,9 +1642,9 @@ function renderKPIs(){
   setMetric('rosOpen',fmt(openWOs.length));
   setMetric('rosOpenSub',`${fmt(openWOs.filter(w=>w.vehicle_arrived_at).length)} in shop`);
 
-  // Hours billed today (sum labor_hours on closed-today)
+  // Hours billed today (sum actual_hours on closed-today)
   const closedToday=workOrders.filter(w=>['completed','closed'].includes(w.status) && (isToday(w.completed_at)||isToday(w.closed_at)||isToday(w.updated_at)));
-  const hrsBilled=closedToday.reduce((s,w)=>s+(+w.labor_hours||0),0);
+  const hrsBilled=closedToday.reduce((s,w)=>s+(+w.actual_hours||+w.labor_hours||0),0);
   setMetric('hrsBilled',hrsBilled.toFixed(1));
   // Hours available (techs * 8)
   const hrsAvail=techs.length*8;
@@ -1653,8 +1653,8 @@ function renderKPIs(){
 
   // Effective Labor Rate (revenue MTD / hours MTD)
   const mtdClosed=workOrders.filter(w=>['completed','closed'].includes(w.status) && new Date(w.updated_at||w.scheduled_start||w.created_at)>=monthStart);
-  const revMTD=mtdClosed.reduce((s,w)=>s+(+w.total_amount||0),0);
-  const hrsMTD=mtdClosed.reduce((s,w)=>s+(+w.labor_hours||0),0);
+  const revMTD=mtdClosed.reduce((s,w)=>s+(+w.total_amount||+w.grand_total||0),0);
+  const hrsMTD=mtdClosed.reduce((s,w)=>s+(+w.actual_hours||+w.labor_hours||0),0);
   const elr=hrsMTD>0?revMTD/hrsMTD:0;
   setMetric('elr',fmt$(elr));
 
@@ -1715,8 +1715,8 @@ function getTechMTDStats(techId){
   const today=workOrders.filter(w=>w.assigned_employee_id===techId && ['completed','closed'].includes(w.status) && (isToday(w.completed_at)||isToday(w.closed_at)||isToday(w.updated_at)));
   return {
     countMTD:closed.length,
-    hoursToday: today.reduce((s,w)=>s+(+w.labor_hours||0),0),
-    revMTD: closed.reduce((s,w)=>s+(+w.total_amount||0),0)
+    hoursToday: today.reduce((s,w)=>s+(+w.actual_hours||+w.labor_hours||0),0),
+    revMTD: closed.reduce((s,w)=>s+(+w.total_amount||+w.grand_total||0),0)
   };
 }
 function buildTechCard(tech){
@@ -2054,7 +2054,7 @@ function buildLbList(mode){
     if(d<monthStart)return;
     const k=w.assigned_employee_id;
     if(!byTech[k])byTech[k]={count:0,rev:0,hrs:0};
-    byTech[k].count++;byTech[k].rev+=(+w.total_amount||0);byTech[k].hrs+=(+w.labor_hours||0);
+    byTech[k].count++;byTech[k].rev+=(+w.total_amount||+w.grand_total||0);byTech[k].hrs+=(+w.actual_hours||+w.labor_hours||0);
   });
   let ranked=Object.entries(byTech).map(([id,v])=>{
     const e=employees.find(x=>x.employee_id===id);return {e,...v};
@@ -2143,7 +2143,7 @@ function buildRecentWOCard(w,mode){
   const veh=vehicles.find(v=>v.vehicle_id===w.vehicle_id);
   const tech=employees.find(e=>e.employee_id===w.assigned_employee_id);
   const cn=cust?(cust.full_name||`${cust.first_name||''} ${cust.last_name||''}`.trim()):'Customer';
-  const vn=veh?`${veh.year||''} ${veh.make||''} ${veh.model||''}`.trim()+(veh.license_plate?` · ${veh.license_plate}`:''):'—';
+  const vn=veh?`${veh.year||''} ${veh.make||''} ${veh.model||''}`.trim()+(veh.plate_or_cf?` · ${veh.plate_or_cf}`:''):'—';
   const tn=tech?`${tech.first_name||''} ${(tech.last_name||'')[0]||''}.`:'Unassigned';
   const ti=tech?initials(tech.first_name,tech.last_name):'—';
   const woNum=w.wo_number||String(w.work_order_id||'').slice(0,6);
@@ -2282,34 +2282,58 @@ function renderDetail(){
   const cn=cust?(cust.full_name||`${cust.first_name||''} ${cust.last_name||''}`.trim()):'No customer';
   const cphone=cust?.phone||'';
   const vn=veh?`${veh.year||''} ${veh.make||''} ${veh.model||''}`.trim():'No vehicle';
-  const plate=veh?.license_plate||'';
-  const vin=veh?.vin||'';
+  const plate=veh?.plate_or_cf||'';
+  const vin=veh?.vin_or_hin||'';
   const tn=tech?`${tech.first_name||''} ${tech.last_name||''}`.trim():'Unassigned';
   const trole=tech?(tech.role||'').replace(/_/g,' '):'';
   const ti=tech?initials(tech.first_name,tech.last_name):'?';
   const woNum=w.wo_number||String(w.work_order_id||'').slice(0,6);
+  const roNum=w.ro_number||'';
   const c=STATUS_COLOR_MAP[w.status]||'var(--text-mute)';
   const st=(w.status||'open').replace(/_/g,' ');
   const created=w.created_at?new Date(w.created_at).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—';
   const sched=w.scheduled_start?new Date(w.scheduled_start).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not scheduled';
   const arrived=w.vehicle_arrived_at?new Date(w.vehicle_arrived_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not arrived';
-  const total=w.total_amount?'$'+(+w.total_amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'$0.00';
-  const labor=(+w.labor_hours||0).toFixed(1);
-  const odo=w.odometer?fmt(w.odometer):'—';
-  const priority=(w.priority||'medium');
-  const pColor={low:'var(--text-mute)',medium:'var(--blue)',high:'var(--red)'}[priority];
+  const promised=w.promised_time?new Date(w.promised_time).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const totalAmt=(+w.grand_total||+w.total_amount||0);
+  const total='$'+totalAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const labor=(+w.actual_hours||+w.labor_hours||0).toFixed(1);
+  const estLabor=(+w.estimated_hours||0).toFixed(1);
+  const odo=w.mileage_in?fmt(w.mileage_in):(veh?.current_mileage?fmt(veh.current_mileage)+(veh.vehicle_type==='jetski'?'h':' mi'):'—');
+  const priority=(w.priority||'normal');
+  const PRI_COLOR={low:'var(--text-mute)',normal:'var(--blue)',high:'var(--amber)',urgent:'var(--red)',waiter:'var(--pink)',promised:'var(--purple)',scheduled:'var(--teal)'};
+  const pColor=PRI_COLOR[priority]||'var(--blue)';
+  const PRI_LABEL={waiter:'WAITER ON-SITE',promised:'PROMISED TIME',urgent:'URGENT',high:'HIGH',normal:'NORMAL',low:'LOW',scheduled:'SCHEDULED'};
+  const pLabel=PRI_LABEL[priority]||priority.toUpperCase();
+  const labRate=(+w.labor_rate||0);
+  const svcType=(w.service_type||'').replace(/_/g,' ');
+  // Parse next service recommendations
+  let recsHtml='';
+  if(w.next_service_recommendations && Array.isArray(w.next_service_recommendations) && w.next_service_recommendations.length){
+    recsHtml=w.next_service_recommendations.map(r=>{
+      const declined=r.customer_response==='declined';
+      const cc=declined?'var(--red)':(r.priority==='high'?'var(--amber)':'var(--text-dim)');
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-1);border:1px solid var(--border-soft);border-left:3px solid ${cc};border-radius:8px;margin-bottom:6px">
+        <div style="flex:1"><div style="font-weight:600;font-size:12.5px">${esc(r.item||'Recommended service')}</div><div style="font-size:10.5px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-top:2px">${esc(r.priority||'normal')} priority${declined?' · DECLINED':''}</div></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:${cc}">${esc(r.est||'')}</div>
+      </div>`;
+    }).join('');
+  }
 
   container.innerHTML=`<div class="detail-card" style="--dh-c:${c};--dh-c2:${c}">
     <div class="detail-header">
       <div class="detail-eyebrow">
-        <span class="dh-num">WO #${esc(woNum)}</span> · ${esc(created)}
+        <span class="dh-num">WO #${esc(woNum)}</span>${roNum?` · <span style="color:var(--text-dim)">${esc(roNum)}</span>`:''} · ${esc(created)}
       </div>
       <div class="detail-title">${esc(cn)}</div>
-      <div class="detail-sub">${esc(vn)}${plate?' · '+esc(plate):''}${vin?' · VIN '+esc(vin):''}</div>
+      <div class="detail-sub">${esc(vn)}${plate?' · '+esc(plate):''}${vin?' · '+(veh?.vehicle_type==='jetski'?'HIN':'VIN')+' '+esc(vin):''}</div>
       <div class="detail-meta">
         <span class="detail-pill status">${esc(st)}</span>
-        <span class="detail-pill"><strong>${esc(priority.toUpperCase())}</strong> priority</span>
-        <span class="detail-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Sched: <strong>${esc(sched)}</strong></span>
+        <span class="detail-pill" style="border-color:${pColor};color:${pColor};background:color-mix(in srgb, ${pColor} 12%, transparent);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:10.5px">${esc(pLabel)}</span>
+        ${svcType?`<span class="detail-pill"><strong>${esc(svcType)}</strong></span>`:''}
+        ${w.customer_wait?`<span class="detail-pill" style="border-color:var(--pink);color:var(--pink);background:color-mix(in srgb, var(--pink) 12%, transparent);font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Waiting in lounge</span>`:''}
+        ${promised?`<span class="detail-pill" style="border-color:var(--purple);color:var(--purple);background:color-mix(in srgb, var(--purple) 12%, transparent);font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Promised <strong>${esc(promised)}</strong></span>`:''}
+        <span class="detail-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Sched: <strong>${esc(sched)}</strong></span>
         <span class="detail-pill"><strong>${total}</strong></span>
       </div>
     </div>
@@ -2338,12 +2362,25 @@ function renderDetail(){
     </div>
 
     <div class="detail-body">
+      ${w.summary?`<div class="detail-section">
+        <div class="detail-section-title">Summary</div>
+        <div class="detail-notes" style="font-weight:600;color:var(--text);font-size:14px">${esc(w.summary)}</div>
+      </div>`:''}
+
+      ${w.details?`<div class="detail-section">
+        <div class="detail-section-title">Service Plan</div>
+        <div class="detail-notes">${esc(w.details)}</div>
+      </div>`:''}
+
       <div class="detail-section">
         <div class="detail-section-title">Vehicle</div>
         <div class="detail-grid-3">
           <div class="detail-field"><div class="detail-field-label">Vehicle</div><div class="detail-field-value">${esc(vn)}</div></div>
-          <div class="detail-field"><div class="detail-field-label">Plate</div><div class="detail-field-value mono">${plate?esc(plate):'<span class="muted">—</span>'}</div></div>
-          <div class="detail-field"><div class="detail-field-label">Odometer</div><div class="detail-field-value mono">${odo}</div></div>
+          <div class="detail-field"><div class="detail-field-label">${veh?.vehicle_type==='jetski'?'CF Number':'Plate'}</div><div class="detail-field-value mono">${plate?esc(plate):'<span class="muted">—</span>'}</div></div>
+          <div class="detail-field"><div class="detail-field-label">${veh?.vehicle_type==='jetski'?'Hours In':'Mileage In'}</div><div class="detail-field-value mono">${odo}</div></div>
+          ${veh?.color?`<div class="detail-field"><div class="detail-field-label">Color</div><div class="detail-field-value">${esc(veh.color)}</div></div>`:''}
+          ${veh?.engine_size?`<div class="detail-field"><div class="detail-field-label">Engine</div><div class="detail-field-value">${esc(veh.engine_size)}</div></div>`:''}
+          ${w.fuel_level_in?`<div class="detail-field"><div class="detail-field-label">Fuel Level In</div><div class="detail-field-value">${esc(w.fuel_level_in.replace(/_/g,' '))}</div></div>`:''}
         </div>
       </div>
 
@@ -2353,6 +2390,9 @@ function renderDetail(){
           <div class="detail-field"><div class="detail-field-label">Created</div><div class="detail-field-value">${esc(created)}</div></div>
           <div class="detail-field"><div class="detail-field-label">Scheduled</div><div class="detail-field-value">${esc(sched)}</div></div>
           <div class="detail-field"><div class="detail-field-label">Vehicle Arrived</div><div class="detail-field-value">${esc(arrived)}</div></div>
+          ${promised?`<div class="detail-field"><div class="detail-field-label">Promised</div><div class="detail-field-value" style="color:var(--purple)">${esc(promised)}</div></div>`:''}
+          ${w.started_at?`<div class="detail-field"><div class="detail-field-label">Work Started</div><div class="detail-field-value">${esc(new Date(w.started_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</div></div>`:''}
+          ${w.completed_at?`<div class="detail-field"><div class="detail-field-label">Completed</div><div class="detail-field-value">${esc(new Date(w.completed_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</div></div>`:''}
         </div>
       </div>
 
@@ -2364,26 +2404,34 @@ function renderDetail(){
             <div class="detail-tech-name">${esc(tn)}</div>
             <div class="detail-tech-role">${esc(trole||'unassigned')}</div>
           </div>
-          <div class="detail-tech-stat">${labor}h logged</div>
+          <div class="detail-tech-stat">${labor}h${estLabor>0?` / ${estLabor}h est`:''}</div>
         </div>
       </div>
 
-      <div class="detail-section">
+      ${w.customer_notes?`<div class="detail-section">
         <div class="detail-section-title">Customer Concern</div>
-        <div class="detail-notes">${esc(w.customer_notes||'')}</div>
-      </div>
+        <div class="detail-notes">${esc(w.customer_notes)}</div>
+      </div>`:''}
 
-      <div class="detail-section">
+      ${w.internal_notes?`<div class="detail-section">
         <div class="detail-section-title">Internal Notes</div>
-        <div class="detail-notes">${esc(w.internal_notes||'')}</div>
-      </div>
+        <div class="detail-notes">${esc(w.internal_notes)}</div>
+      </div>`:''}
+
+      ${recsHtml?`<div class="detail-section">
+        <div class="detail-section-title">Recommended Services</div>
+        ${recsHtml}
+      </div>`:''}
 
       <div class="detail-section">
         <div class="detail-section-title">Financials</div>
         <div class="detail-grid-3">
-          <div class="detail-field"><div class="detail-field-label">Labor Hours</div><div class="detail-field-value mono">${labor}</div></div>
-          <div class="detail-field"><div class="detail-field-label">Total</div><div class="detail-field-value mono">${total}</div></div>
-          <div class="detail-field"><div class="detail-field-label">Reference</div><div class="detail-field-value mono">${w.reference?esc(w.reference):'<span class="muted">—</span>'}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Labor</div><div class="detail-field-value mono">$${(+w.labor_total||0).toFixed(2)}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Parts</div><div class="detail-field-value mono">$${(+w.parts_total||0).toFixed(2)}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Tax</div><div class="detail-field-value mono">$${(+w.tax_total||0).toFixed(2)}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Grand Total</div><div class="detail-field-value mono" style="color:var(--brand)">${total}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Labor Rate</div><div class="detail-field-value mono">${labRate>0?'$'+labRate.toFixed(2)+'/hr':'<span class="muted">—</span>'}</div></div>
+          <div class="detail-field"><div class="detail-field-label">Payment Status</div><div class="detail-field-value">${esc((w.payment_status||'pending').replace(/_/g,' '))}</div></div>
         </div>
       </div>
     </div>
