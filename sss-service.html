@@ -1214,24 +1214,13 @@
   </div>
 
   <div class="pill-toggle" id="viewToggle">
-    <button data-view="simple" title="Base — essentials only">
+    <button data-view="base" class="active" title="Base — full single-page dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Base
     </button>
-    <button data-view="pro" class="active" title="Pro — full service control">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="10" y="3" width="5" height="5" rx="1"/><rect x="17" y="3" width="4" height="5" rx="1"/><rect x="3" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/><rect x="17" y="10" width="4" height="5" rx="1"/><rect x="3" y="17" width="5" height="4" rx="1"/><rect x="10" y="17" width="5" height="4" rx="1"/><rect x="17" y="17" width="4" height="4" rx="1"/></svg>
-      Pro
-    </button>
-  </div>
-
-  <div class="pill-toggle" id="layoutToggle" title="Layout">
-    <button data-layout="single" class="active" title="Single panel — full width, scroll vertically">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-      Single
-    </button>
-    <button data-layout="triple" title="Triple panel — three columns side-by-side">
+    <button data-view="pro" title="Pro — triple-panel manager workspace">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="4" height="18" rx="1"/><rect x="16" y="3" width="5" height="18" rx="1"/></svg>
-      Triple
+      Pro
     </button>
   </div>
 
@@ -1787,35 +1776,34 @@ function buildThemePicker(){
 $('themeBtn').addEventListener('click',e=>{e.stopPropagation();$('themePop').classList.toggle('open')});
 document.addEventListener('click',e=>{if(!e.target.closest('.theme-picker'))$('themePop').classList.remove('open')});
 
-/* ===== View toggle (Simple / Pro) — these select the pro/simple block stack ===== */
+/* ===== View toggle (Base / Pro)
+   "Base" = full single-page dashboard (internally: pro + single)
+   "Pro"  = triple-panel workspace   (internally: pro + triple)
+   ===== */
 function setView(view){
-  currentView=view;
+  // view is 'base' or 'pro'
+  currentView='pro';   // always 'pro' internally — simple view is retired
+  currentLayout=(view==='pro')?'triple':'single';
   localStorage.setItem(LS_VIEW,view);
-  // If user picks Simple/Pro, force single layout (triple is for the rich Pro experience)
-  if(currentLayout==='triple' && view==='simple'){
-    setLayout('single');
-  }
+  localStorage.setItem(LS_LAYOUT,currentLayout);
   applyVisibleView();
   $$('#viewToggle button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   initSortableForView(activeViewKey());
   setTimeout(()=>{ if(revChart) revChart.resize(); if(tripleRevChart) tripleRevChart.resize() }, 50);
   updateSubtitle();
+  if(currentLayout==='triple' && workOrders.length){renderTripleRevChart()}
 }
 $('viewToggle').addEventListener('click',e=>{const btn=e.target.closest('button[data-view]');if(btn)setView(btn.dataset.view)});
 
-/* ===== Layout toggle (Single / Triple) ===== */
+/* setLayout retained as internal helper but no longer exposed via a UI toggle */
 function setLayout(layout){
   currentLayout=layout;
   localStorage.setItem(LS_LAYOUT,layout);
   applyVisibleView();
-  $$('#layoutToggle button').forEach(b=>b.classList.toggle('active', b.dataset.layout===layout));
   initSortableForView(activeViewKey());
   setTimeout(()=>{ if(revChart) revChart.resize(); if(tripleRevChart) tripleRevChart.resize() }, 50);
-  updateSubtitle();
-  // Render triple chart on first show
   if(layout==='triple' && currentView==='pro' && workOrders.length){renderTripleRevChart()}
 }
-$('layoutToggle').addEventListener('click',e=>{const btn=e.target.closest('button[data-layout]');if(btn)setLayout(btn.dataset.layout)});
 
 function activeViewKey(){
   if(currentView==='simple')return 'simple';
@@ -3859,10 +3847,15 @@ function phSearchPick(customerId){
   buildThemePicker();
   applyTheme(localStorage.getItem(LS_THEME)||'midnight-chrome');
   // Restore both view and layout independently
-  currentView=localStorage.getItem(LS_VIEW)||'pro';
-  currentLayout=localStorage.getItem(LS_LAYOUT)||'single';
-  $$('#viewToggle button').forEach(b=>b.classList.toggle('active', b.dataset.view===currentView));
-  $$('#layoutToggle button').forEach(b=>b.classList.toggle('active', b.dataset.layout===currentLayout));
+  // Read persisted view pref; 'base' or 'pro'. Also handle legacy values.
+  const savedView=localStorage.getItem(LS_VIEW);
+  let initialView='base';
+  if(savedView==='pro')initialView='pro';
+  else if(savedView==='base')initialView='base';
+  else if(savedView==='simple')initialView='base'; // legacy simple -> base
+  currentView='pro';
+  currentLayout=(initialView==='pro')?'triple':'single';
+  $$('#viewToggle button').forEach(b=>b.classList.toggle('active', b.dataset.view===initialView));
   applyVisibleView();
   updateSubtitle();
   initSortableForView(activeViewKey());
