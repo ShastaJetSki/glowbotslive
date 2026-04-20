@@ -617,6 +617,45 @@
   .alert-sub{font-size:11.5px;color:var(--text-dim)}
   .alert-time{font-size:10px;color:var(--text-mute);white-space:nowrap}
 
+  /* Tech dropdown in nav filter */
+  .nav-tech-select{
+    width:100%;padding:6px 10px;
+    background:var(--bg-2);border:1px solid var(--border);border-radius:6px;
+    color:var(--text);font-size:11px;font-weight:600;font-family:inherit;
+    cursor:pointer;outline:none;transition:border-color .15s, box-shadow .15s;
+    appearance:none;-webkit-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364718a' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center;background-size:11px;
+    padding-right:26px;
+  }
+  .nav-tech-select:focus,.nav-tech-select:hover{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-glow)}
+
+  /* Quick Links left rail */
+  .ql-section{padding:10px 10px 6px;border-bottom:1px solid var(--border-soft)}
+  .ql-section:last-child{border-bottom:0}
+  .ql-section-title{
+    font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text-mute);padding:4px 8px 6px;
+  }
+  .ql-link{
+    display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+    padding:7px 10px;border-radius:7px;
+    background:transparent;border:1px solid transparent;
+    color:var(--text);font-weight:600;font-size:12px;
+    transition:all .15s;cursor:pointer;margin-bottom:2px;
+  }
+  .ql-link:hover{background:var(--bg-1);border-color:color-mix(in srgb, var(--ql-c,var(--brand)) 30%, transparent)}
+  .ql-link .ico{
+    width:22px;height:22px;border-radius:6px;flex-shrink:0;
+    background:color-mix(in srgb, var(--ql-c,var(--brand)) 15%, transparent);
+    color:var(--ql-c,var(--brand));display:flex;align-items:center;justify-content:center;
+  }
+  .ql-link .ico svg{width:12px;height:12px}
+  .ql-link .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Quick Links rail panel: override the rail-list gradient + remove flex:1 stretching since quick links have fixed height */
+  .triple-col.left-rail .rail-panel:has(.ql-section){flex:none}
+
   /* ============ TRIPLE-PANEL COMMAND CENTER ============ */
   .triple-grid{display:grid;grid-template-columns:300px 1fr 280px;gap:16px;align-items:start}
   .triple-col{display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -1122,25 +1161,31 @@
   <div class="view active" id="proView">
     <div class="triple-grid" id="tripleLayout">
 
-      <!-- LEFT RAIL: Active Work Orders across departments -->
+      <!-- LEFT RAIL: Recent Work Orders navigator (global, all departments) -->
       <div class="triple-col left-rail sticky" data-id="d-nav">
         <div class="rail-panel">
           <div class="rail-head">
             <div class="rail-head-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              Active Orders
+              Recent Work Orders
             </div>
             <span class="count-pill" id="dashRailCount">0</span>
           </div>
           <div class="rail-tabs">
-            <button class="rail-tab active" data-dash-nav-tab="all">All</button>
-            <button class="rail-tab" data-dash-nav-tab="service">Service</button>
-            <button class="rail-tab" data-dash-nav-tab="sales">Sales</button>
+            <button class="rail-tab active" data-dash-nav-tab="recent">Recent</button>
+            <button class="rail-tab" data-dash-nav-tab="today">Today</button>
+            <button class="rail-tab" data-dash-nav-tab="tomorrow">Tomorrow</button>
           </div>
-          <div class="rail-filter">
-            <button class="active" data-dash-nav-status="all">All</button>
-            <button data-dash-nav-status="today">Today</button>
-            <button data-dash-nav-status="urgent">Urgent</button>
+          <div class="rail-filter" style="flex-direction:column;align-items:stretch;gap:6px">
+            <select id="dashNavTechSelect" class="nav-tech-select" onchange="dashNavTechFilter=this.value;renderDashNavList()">
+              <option value="all">All Employees</option>
+            </select>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+              <button class="active" data-dash-nav-status="all">All</button>
+              <button data-dash-nav-status="in_progress">In Progress</button>
+              <button data-dash-nav-status="awaiting_parts">Awaiting</button>
+              <button data-dash-nav-status="ready_for_pickup">Ready</button>
+            </div>
           </div>
           <div class="rail-list" id="dashRailList"><div class="empty-state" style="padding:30px 14px">Loading…</div></div>
         </div>
@@ -2145,8 +2190,8 @@ $('globalSearch')?.addEventListener('keydown',e=>{
    ======================================================================= */
 let dashSelectedWoId=null;
 let dashActiveTool=null;
-let dashNavTab='all';        // all | service | sales
-let dashNavStatus='all';     // all | today | urgent
+let dashNavTab='recent';     // recent | today | tomorrow
+let dashNavStatus='all';     // all | in_progress | awaiting_parts | ready_for_pickup
 let dashCustomersCache=[];   // for page-head search
 
 const DASH_STATUS_COLOR={
@@ -2215,21 +2260,50 @@ function phSearchPick(customerId){
   go(`sss-service.html?customer=${customerId}`);
 }
 
-/* ----- Left rail: Active Orders navigator ----- */
+/* ----- Left rail: Recent Work Orders navigator (global) ----- */
+let dashNavTechFilter='all';
+
+function populateDashNavTechSelect(){
+  const sel=$('dashNavTechSelect');if(!sel)return;
+  const current=sel.value||dashNavTechFilter||'all';
+  const EMP=window.employees||[];
+  let html='<option value="all">All Employees</option><option value="unassigned">— Unassigned —</option>';
+  EMP.forEach(e=>{
+    const name=`${e.first_name||''} ${e.last_name||''}`.trim()||'Employee';
+    const dept=e.department?` (${e.department})`:'';
+    html+=`<option value="${e.employee_id}">${esc(name)}${esc(dept)}</option>`;
+  });
+  sel.innerHTML=html;
+  if([...sel.options].some(o=>o.value===current))sel.value=current;
+}
+
 function renderDashNavList(){
   const el=$('dashRailList');if(!el)return;
   const WOs=(window.workOrders||[]);
-  let list=[...WOs].filter(w=>!['completed','closed'].includes(w.status));
-  // Tab filter
-  if(dashNavTab==='service')list=list.filter(w=>!w.deal_id);
-  else if(dashNavTab==='sales')list=list.filter(w=>!!w.deal_id); // placeholder — swap to deals if you ingest them
+  let list=[...WOs];
+  const today=new Date().toISOString().slice(0,10);
+  const tom=new Date();tom.setDate(tom.getDate()+1);
+  const tomorrow=tom.toISOString().slice(0,10);
+
+  if(dashNavTab==='today'){
+    list=list.filter(w=>String(w.scheduled_start||w.created_at||'').slice(0,10)===today);
+  }else if(dashNavTab==='tomorrow'){
+    list=list.filter(w=>String(w.scheduled_start||'').slice(0,10)===tomorrow);
+  }
+  // Tech filter
+  if(dashNavTechFilter==='unassigned'){
+    list=list.filter(w=>!w.assigned_employee_id);
+  }else if(dashNavTechFilter!=='all'){
+    list=list.filter(w=>w.assigned_employee_id===dashNavTechFilter);
+  }
   // Status filter
-  if(dashNavStatus==='today')list=list.filter(w=>isTodayDate(w.scheduled_start||w.created_at));
-  else if(dashNavStatus==='urgent')list=list.filter(w=>['urgent','high','waiter'].includes(w.priority));
+  if(dashNavStatus!=='all'){
+    list=list.filter(w=>w.status===dashNavStatus);
+  }
   list.sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||'')));
 
   const countEl=$('dashRailCount');if(countEl)countEl.textContent=list.length;
-  if(!list.length){el.innerHTML='<div class="empty-state" style="padding:30px 14px">No active orders</div>';return}
+  if(!list.length){el.innerHTML='<div class="empty-state" style="padding:30px 14px">No work orders match.</div>';return}
 
   el.innerHTML=list.slice(0,50).map(w=>{
     const cust=(window.customers||[]).find(c=>c.customer_id===w.customer_id);
@@ -2261,7 +2335,7 @@ function timeAgo(ts){
   const days=Math.floor(hrs/24);return days+'d';
 }
 
-/* Nav tab/filter wiring (event delegation) */
+/* Nav tab + status filter click handlers */
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-dash-nav-tab]');
   if(t){
@@ -2605,6 +2679,7 @@ function updateDashToolBadges(){
 function refreshDashTriple(){
   dashCustomersCache=window.customers||[];
   renderDashNavList();
+  populateDashNavTechSelect();
   updateDashToolBadges();
   if(currentView==='pro'){
     if(dashActiveTool)dashOpenTool(dashActiveTool);
