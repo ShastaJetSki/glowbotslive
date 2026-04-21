@@ -59,7 +59,7 @@
     <img src="sharklawlogo.png" alt="Shark Law" style="max-width:260px;height:auto;margin-bottom:8px;">
     <div class="brand-tagline">Motorcycle Law</div>
   </div>
-  <div class="card">
+  <div class="card" id="loginCard">
     <div class="card-title">Welcome back</div>
     <div class="card-sub">Sign in to your SharkLaw account</div>
     <div class="msg msg-error" id="errorMsg"></div>
@@ -79,6 +79,27 @@
       <div class="forgot"><a href="#" onclick="handleForgot(event)">Forgot password?</a></div>
     </div>
     <button class="btn-login" id="loginBtn">Sign In</button>
+  </div>
+
+  <div class="card" id="setPwCard" style="display:none;">
+    <div class="card-title" id="setPwTitle">Set Your Password</div>
+    <div class="card-sub" id="setPwSub">Welcome! Create a password to finish setting up your account.</div>
+    <div class="msg msg-error" id="setPwError"></div>
+    <div class="msg msg-success" id="setPwSuccess"></div>
+    <div class="form-group">
+      <label class="form-label">New Password</label>
+      <div class="pw-wrap">
+        <input type="password" class="form-input" id="newPassword" placeholder="At least 6 characters"
+          autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <button type="button" class="pw-toggle" id="newPwToggle" tabindex="-1">&#128065;</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirm Password</label>
+      <input type="password" class="form-input" id="confirmPassword" placeholder="Re-enter password"
+        autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false">
+    </div>
+    <button class="btn-login" id="setPwBtn">Set Password &amp; Sign In</button>
   </div>
   <div class="footer">
     <div class="footer-powered">
@@ -109,6 +130,17 @@
   var errEl=document.getElementById('errorMsg');
   var okEl=document.getElementById('successMsg');
 
+  var loginCard=document.getElementById('loginCard');
+  var setPwCard=document.getElementById('setPwCard');
+  var setPwTitle=document.getElementById('setPwTitle');
+  var setPwSub=document.getElementById('setPwSub');
+  var newPwEl=document.getElementById('newPassword');
+  var confirmPwEl=document.getElementById('confirmPassword');
+  var setPwBtn=document.getElementById('setPwBtn');
+  var setPwErr=document.getElementById('setPwError');
+  var setPwOk=document.getElementById('setPwSuccess');
+  var newPwToggle=document.getElementById('newPwToggle');
+
   // Safe localStorage — Safari private mode throws on access
   function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
@@ -132,6 +164,84 @@
     pwEl.type=pw?'text':'password';
     pwToggle.innerHTML=pw?'&#128584;':'&#128065;';
   });
+
+  // ── Detect invite / password-recovery links ──────────────────────────────
+  // Supabase sends the user here with a hash like:
+  //   #access_token=...&refresh_token=...&type=invite&expires_in=3600
+  // or type=recovery for password resets. We must NOT auto-redirect to the
+  // dashboard in those cases — the user needs to set a password first.
+  var _hashParams=new URLSearchParams((location.hash||'').replace(/^#/,''));
+  var _authType=_hashParams.get('type');
+  var isInviteFlow=(_authType==='invite'||_authType==='signup');
+  var isRecoveryFlow=(_authType==='recovery');
+  var authError=_hashParams.get('error_description')||_hashParams.get('error');
+
+  function showSetPwErr(m){setPwErr.textContent=m;setPwErr.classList.add('show');setPwOk.classList.remove('show');}
+  function showSetPwOk(m){setPwOk.textContent=m;setPwOk.classList.add('show');setPwErr.classList.remove('show');}
+
+  function showSetPasswordUI(mode){
+    loginCard.style.display='none';
+    setPwCard.style.display='block';
+    if(mode==='recovery'){
+      setPwTitle.textContent='Reset Your Password';
+      setPwSub.textContent='Enter a new password for your account.';
+    } else {
+      setPwTitle.textContent='Set Your Password';
+      setPwSub.textContent='Welcome to Shark Law! Create a password to finish setting up your account.';
+    }
+  }
+
+  // If the URL has an auth error (expired link, etc.), show it on the login form
+  if(authError){
+    showErr(decodeURIComponent(authError.replace(/\+/g,' ')));
+    history.replaceState(null,'',location.pathname+location.search);
+  }
+
+  // Password toggle for the new-password field
+  newPwToggle.addEventListener('click',function(){
+    var pw=newPwEl.type==='password';
+    newPwEl.type=pw?'text':'password';
+    newPwToggle.innerHTML=pw?'&#128584;':'&#128065;';
+  });
+
+  // Submit handler for setting a new password (invite or recovery)
+  async function setPassword(){
+    setPwErr.classList.remove('show');setPwOk.classList.remove('show');
+    var p1=(newPwEl.value||'').trim();
+    var p2=(confirmPwEl.value||'').trim();
+    if(p1.length<6){showSetPwErr('Password must be at least 6 characters.');return;}
+    if(p1!==p2){showSetPwErr('Passwords do not match.');return;}
+    setPwBtn.disabled=true;setPwBtn.textContent='Saving...';
+    try{
+      // supabase-js auto-consumed the hash and created a session. Update password using that session.
+      var sess=await sb.auth.getSession();
+      if(!sess.data||!sess.data.session){
+        throw new Error('Your invite link may have expired. Please request a new one.');
+      }
+      var r=await sb.auth.updateUser({password:p1});
+      if(r.error)throw r.error;
+      // Save tokens for the dashboard
+      var s2=await sb.auth.getSession();
+      if(s2.data&&s2.data.session){
+        lsSet('sb_access_token',s2.data.session.access_token);
+        lsSet('sb_refresh_token',s2.data.session.refresh_token);
+      }
+      showSetPwOk('Password set! Redirecting...');
+      // Clear the hash and go to dashboard
+      history.replaceState(null,'',location.pathname);
+      setTimeout(function(){location.replace(DASHBOARD);},800);
+    }catch(err){
+      showSetPwErr((err&&err.message)||'Could not set password. Try again.');
+      setPwBtn.disabled=false;setPwBtn.textContent='Set Password & Sign In';
+    }
+  }
+  setPwBtn.addEventListener('click',setPassword);
+  confirmPwEl.addEventListener('keydown',function(e){if(e.key==='Enter')setPassword();});
+
+  // If we detected an invite/recovery flow, show that UI immediately and skip auto-login
+  if(isInviteFlow||isRecoveryFlow){
+    showSetPasswordUI(isRecoveryFlow?'recovery':'invite');
+  }
 
   // ── Verify the authenticated user belongs to SharkLaw team ──────────────
   // Returns true and redirects if valid. Returns false and shows error if not.
@@ -179,6 +289,9 @@
   // Uses maybeSingle so it never throws if user isn't found.
   // Only redirects on a clean confirmed SharkLaw session.
   (async function checkSession(){
+    // Don't auto-redirect if user arrived via invite or password-recovery link —
+    // they need to set a password first via the set-password UI.
+    if(isInviteFlow||isRecoveryFlow)return;
     try{
       var r=await sb.auth.getSession();
       if(r.data&&r.data.session){
@@ -270,7 +383,7 @@
     if(!email){showErr('Enter your email address first.');return;}
     btn.disabled=true;
     try{
-      var r=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+'/v2-login.html'});
+      var r=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
       if(r.error)throw r.error;
       showOk('Password reset email sent. Check your inbox.');
     }catch(err){showErr((err&&err.message)||'Could not send reset email.');}
