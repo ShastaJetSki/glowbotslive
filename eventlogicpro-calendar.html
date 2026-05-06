@@ -242,8 +242,8 @@ body.dark .toast{background:#f1f5f9;color:#1e293b;}
 /* === Header polish (added) === */
 .header-right{display:flex;align-items:center;gap:14px;}
 .tenant-logo{max-height:56px;max-width:140px;object-fit:contain;border-radius:6px;}
-.sub-name{font-size:13px;color:var(--accent);font-weight:600;letter-spacing:.3px;line-height:1.2;}
-.sub-email{font-size:11px;color:var(--text-secondary);font-weight:500;line-height:1.3;margin-top:2px;}
+.header-titles .sub-name{font-size:13px;color:var(--accent);font-weight:600;letter-spacing:.3px;line-height:1.2;}
+.header-titles .sub-email{font-size:11px;color:var(--text-secondary);font-weight:500;line-height:1.3;margin-top:2px;}
 
 /* === Help button + modal === */
 .help-btn{width:26px;height:26px;border-radius:50%;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-secondary);font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;font-family:inherit;margin-right:6px;}
@@ -290,8 +290,8 @@ body.dark .toast{background:#f1f5f9;color:#1e293b;}
     <div class="header-left">
       <div class="header-titles">
         <h1>Calendar</h1>
-        <div class="sub sub-name" id="headerName"></div>
-        <div class="sub sub-email" id="headerEmail"></div>
+        <div class="sub-name" id="headerName"></div>
+        <div class="sub-email" id="headerEmail"></div>
       </div>
     </div>
     <div class="header-right">
@@ -1019,38 +1019,37 @@ document.addEventListener('keydown',function(e){
 
 /* ===== INIT ===== */
 async function init() {
-  var s = await checkAuth(); if (!s) return;
-  userId = s.user.id;
-  var email = s.user.email || '';
-  if (email) {
-    var ur = await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email', email).single();
-    if (ur.data) {
-      tenantId = ur.data.tenant_id;
-      userId   = ur.data.user_id;
-      var biz  = ur.data.display_name || ur.data.first_name || (email.indexOf('@')>=0?email.split('@')[0]:email);
-      document.getElementById('dBiz').textContent = biz;
-      document.getElementById('mBiz').textContent = biz;
+  try {
+    var s = await checkAuth(); if (!s) return;
+    userId = s.user.id;
+    var email = s.user.email || '';
+    if (email) {
+      try {
+        var ur = await sb.from('users').select('tenant_id,user_id').eq('email', email).single();
+        if (ur.data) { tenantId = ur.data.tenant_id; userId = ur.data.user_id; }
+      } catch(e) { console.warn('users lookup:', e); }
     }
-  }
-  if (!tenantId) {
-    var bs = await sb.from('business_settings').select('tenant_id,business_name').limit(1).single();
-    if (bs.data) {
-      tenantId = bs.data.tenant_id;
-      if (bs.data.business_name) {
-        document.getElementById('dBiz').textContent = bs.data.business_name;
-        document.getElementById('mBiz').textContent = bs.data.business_name;
-      }
+    if (!tenantId) {
+      try {
+        var bs = await sb.from('business_settings').select('tenant_id').limit(1).single();
+        if (bs.data) tenantId = bs.data.tenant_id;
+      } catch(e) { console.warn('business_settings fallback:', e); }
     }
+    if (!tenantId) { showToast('Could not determine tenant'); render(); return; }
+
+    try { await loadCalendars(); } catch(e) { console.warn('loadCalendars:', e); }
+    try { await loadProjects();  } catch(e) { console.warn('loadProjects:',  e); }
+    try { await loadMembers();   } catch(e) { console.warn('loadMembers:',   e); }
+    try { await loadItems();     } catch(e) { console.warn('loadItems:',     e); }
+    try { renderMiniCal();       } catch(e) { console.warn('renderMiniCal:', e); }
+    try { renderCalLayers();     } catch(e) { console.warn('renderCalLayers:', e); }
+    try { populateSelects();     } catch(e) { console.warn('populateSelects:', e); }
+  } catch(e) {
+    console.error('init() top-level error:', e);
+  } finally {
+    // ALWAYS render the calendar, even if data loading failed
+    try { render(); } catch(e) { console.error('render() failed:', e); }
   }
-  if (!tenantId) { showToast('Could not determine tenant'); return; }
-  await loadCalendars();
-  await loadProjects();
-  await loadMembers();
-  await loadItems();
-  renderMiniCal();
-  renderCalLayers();
-  populateSelects();
-  render();
 }
 init();
 </script>
