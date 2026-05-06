@@ -374,25 +374,6 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
     <button class="m-menu-btn" onclick="document.getElementById('mMenu').classList.toggle('expanded')">&#9776;</button>
     <div class="m-center"><div class="m-title">Packages</div><div class="m-biz" id="mBiz">Event Logic Pro</div>
 
-<!-- SEARCH BAR (added) -->
-<div class="proj-bar">
-  <div class="proj-search-wrap">
-    <svg class="proj-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input type="text" class="proj-search-input" id="projSearchInput" placeholder="Search events..." autocomplete="off" oninput="projSearch(this.value)" onfocus="projSearch(this.value)" onkeydown="projSearchKey(event)">
-    <div class="proj-autocomplete" id="projAutocomplete"></div>
-  </div>
-  <div id="projPillWrap" style="display:none;">
-    <div class="proj-pill" id="projPill">
-      <div class="proj-pill-dot" id="projPillDot"></div>
-      <span class="proj-pill-name" id="projPillName"></span>
-      <button class="proj-pill-clear" onclick="clearProject()" title="Clear">&times;</button>
-    </div>
-  </div>
-  <div class="autosave-indicator" id="autosaveIndicator">
-    <div class="autosave-dot" id="autosaveDot"></div>
-    <span id="autosaveText">All changes saved</span>
-  </div>
-</div>
 </div>
     <div class="m-right"><button class="dark-toggle" onclick="toggleDark()"><svg id="mMoon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="mSun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
   </div>
@@ -453,7 +434,28 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
       <a class="logout-link" onclick="logout()">Logout</a>
     </div>
   </div>
-  <div class="hdr-bar" style="padding:8px 24px;">
+  
+<!-- SEARCH BAR (added) -->
+<div class="proj-bar">
+  <div class="proj-search-wrap">
+    <svg class="proj-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="proj-search-input" id="projSearchInput" placeholder="Search events..." autocomplete="off" oninput="projSearch(this.value)" onfocus="projSearch(this.value)" onkeydown="projSearchKey(event)">
+    <div class="proj-autocomplete" id="projAutocomplete"></div>
+  </div>
+  <div id="projPillWrap" style="display:none;">
+    <div class="proj-pill" id="projPill">
+      <div class="proj-pill-dot" id="projPillDot"></div>
+      <span class="proj-pill-name" id="projPillName"></span>
+      <button class="proj-pill-clear" onclick="clearProject()" title="Clear">&times;</button>
+    </div>
+  </div>
+  <div class="autosave-indicator" id="autosaveIndicator">
+    <div class="autosave-dot" id="autosaveDot"></div>
+    <span id="autosaveText">All changes saved</span>
+  </div>
+</div>
+
+<div class="hdr-bar" style="padding:8px 24px;">
     <select class="hdr-sel" id="deskSheetSel" onchange="syncSel(this.value)"></select>
     <button class="hdr-btn primary" onclick="createSheet()">+ New Sheet</button>
     <button class="hdr-btn" onclick="saveToDb()">Save</button>
@@ -752,9 +754,27 @@ document.addEventListener('keydown', function(e) {
 </script>
 
 
-<!-- Header branding loader (added) -->
+<!-- Header branding loader (per-event) -->
 <script>
 (function loadBranding() {
+  function setHeaderLogo(url) {
+    ['tenantLogo','mTenantLogo'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (url) { el.src = url; el.style.display = ''; }
+      else     { el.src = '';  el.style.display = 'none'; }
+    });
+  }
+
+  async function loadEventLogo(eventId) {
+    if (!eventId) { setHeaderLogo(null); return; }
+    if (typeof sb === 'undefined') return;
+    try {
+      var r = await sb.from('event_projects').select('event_logo_url').eq('event_project_id', eventId).maybeSingle();
+      setHeaderLogo(r.data && r.data.event_logo_url ? r.data.event_logo_url : null);
+    } catch(e) { console.warn('event logo lookup:', e); }
+  }
+
   var tries = 0;
   var interval = setInterval(async function() {
     tries++;
@@ -769,22 +789,25 @@ document.addEventListener('keydown', function(e) {
       if (!session) return;
       var email = session.user.email;
       var u = await sb.from('users').select('first_name, tenant_id').eq('email', email).maybeSingle();
-      if (!u.data) return;
-      var firstName = u.data.first_name || email.split('@')[0];
-      var tenantId  = u.data.tenant_id;
-      // Populate name + email
-      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
-      ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
-      // Load tenant logo
-      var bs = await sb.from('business_settings').select('tenant_logo_url').eq('tenant_id', tenantId).maybeSingle();
-      if (bs.data && bs.data.tenant_logo_url) {
-        ['tenantLogo','mTenantLogo'].forEach(function(id){
-          var el = document.getElementById(id);
-          if (el) { el.src = bs.data.tenant_logo_url; el.style.display = ''; }
-        });
+      if (u.data) {
+        var firstName = u.data.first_name || email.split('@')[0];
+        ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
+        ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
       }
+      // Load logo for currently-selected event (from URL ?event= or localStorage)
+      var url = new URLSearchParams(window.location.search);
+      var eid = url.get('event') || localStorage.getItem('elp-selected-event');
+      await loadEventLogo(eid);
     } catch(e) { console.warn('Branding loader:', e); }
   }, 200);
+
+  // Live updates when an event is selected/cleared via the search bar
+  document.addEventListener('projbar:select', function(e){
+    var p = e.detail && e.detail.project;
+    if (p && p.event_logo_url) setHeaderLogo(p.event_logo_url);
+    else if (p) loadEventLogo(p.event_project_id);
+  });
+  document.addEventListener('projbar:clear', function(){ setHeaderLogo(null); });
 })();
 </script>
 
