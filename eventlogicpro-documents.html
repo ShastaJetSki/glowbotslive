@@ -222,6 +222,20 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .help-modal-content li{font-size:13px;line-height:1.55;color:var(--text-secondary,#444);margin-bottom:3px;}
 .help-modal-content b{color:var(--text-primary,#111);}
 
+
+/* === Page-wide drop zone (added) === */
+.content{position:relative;}
+.content.dragover::before{
+  content:'';position:absolute;inset:0;border:3px dashed var(--accent);border-radius:14px;
+  background:rgba(220,38,38,.08);pointer-events:none;z-index:50;
+}
+.content.dragover::after{
+  content:'Drop files anywhere to upload';position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);background:var(--accent);color:#fff;
+  padding:14px 28px;border-radius:10px;font-weight:700;font-size:15px;
+  pointer-events:none;z-index:51;letter-spacing:.5px;
+}
+
 </style>
 </head>
 <body data-page="documents">
@@ -510,22 +524,27 @@ async function toggleShareAll(){if(!currentProjectId||!allDocs.length)return;var
 async function deleteDoc(docId){var doc=allDocs.find(function(d){return d.doc_id===docId;});if(!doc||!confirm('Delete "'+doc.title+'"?'))return;if(doc.storage_path)await sb.storage.from(BUCKET).remove([doc.storage_path]);await sb.from('event_documents').delete().eq('doc_id',docId);allDocs=allDocs.filter(function(d){return d.doc_id!==docId;});document.getElementById('badgeAll').textContent=allDocs.length;renderGrid();toast('Deleted');}
 
 /* UPLOAD */
-function openUploadModal(skipReset){
+function openUploadModal(prefillFile){
   if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}
-  if(!skipReset){
-    pendingFile=null;
-    document.getElementById('uploadTitle').value='';
-    document.getElementById('uploadStatus').value='';
-    document.getElementById('uploadExpiry').value='';
-    document.getElementById('uploadShared').checked=false;
-    document.getElementById('uploadPreviewWrap').style.display='none';
-    document.getElementById('filePickerRow').style.display='';
-    var fi=document.getElementById('uploadFile'); if(fi) fi.value='';
-    var di=document.getElementById('dropInput');  if(di) di.value='';
-    var pi=document.getElementById('uploadPreviewImg'); if(pi){pi.src=''; pi.style.display='none';}
-    var fIcon=document.getElementById('uploadFileIcon'); if(fIcon){fIcon.textContent=''; fIcon.style.display='none';}
-  }
+  // Always reset state when opening
+  pendingFile=null;
+  document.getElementById('uploadTitle').value='';
+  document.getElementById('uploadStatus').value='';
+  document.getElementById('uploadExpiry').value='';
+  document.getElementById('uploadShared').checked=false;
+  document.getElementById('uploadPreviewWrap').style.display='none';
+  document.getElementById('filePickerRow').style.display='';
+  var fi=document.getElementById('uploadFile'); if(fi) fi.value='';
+  var di=document.getElementById('dropInput');  if(di) di.value='';
+  var pi=document.getElementById('uploadPreviewImg'); if(pi){pi.src=''; pi.style.display='none';}
+  var fIcon=document.getElementById('uploadFileIcon'); if(fIcon){fIcon.textContent=''; fIcon.style.display='none';}
   document.getElementById('uploadModal').classList.add('show');
+  // If a file was passed in, prefill it now
+  if (prefillFile && prefillFile instanceof File) {
+    pendingFile = prefillFile;
+    autoDetectCategory(prefillFile.name);
+    showFilePreview(prefillFile);
+  }
 }
 function closeUploadModal(){document.getElementById('uploadModal').classList.remove('show');pendingFile=null;}
 
@@ -560,14 +579,47 @@ function handleDropInput(e){
     e.target.value = '';
     return;
   }
-  openUploadModal();
-  pendingFile = files[0];
-  autoDetectCategory(files[0].name);
-  showFilePreview(files[0]);
-  e.target.value = '';   // clear so picking same file twice still fires change
+  openUploadModal(files[0]);    // pass file directly — modal handles prefill
+  e.target.value = '';           // clear so picking same file twice still fires change
 }
 
-function showFilePreview(file){var title=document.getElementById('uploadTitle');if(!title.value)title.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});var ext=getExt(file.name);var info=getIconInfo(ext);var wrap=document.getElementById('uploadPreviewWrap');var picker=document.getElementById('filePickerRow');var meta=document.getElementById('uploadFileMeta');meta.textContent=fmtSize(file.size)+' · '+ext;if(file.type.startsWith('image/')){var reader=new FileReader();reader.onload=function(ev){var img=document.getElementById('uploadPreviewImg');img.src=ev.target.result;img.style.display='block';document.getElementById('uploadFileIcon').style.display='none';wrap.style.display='block';if(picker)picker.style.display='none';var i=new Image();i.onload=function(){meta.textContent=i.width+'×'+i.height+' · '+fmtSize(file.size)+' · '+ext;};i.src=ev.target.result;};reader.readAsDataURL(file);}else{document.getElementById('uploadPreviewImg').style.display='none';var iconEl=document.getElementById('uploadFileIcon');iconEl.textContent=info.icon+'\n'+ext;iconEl.style.display='block';wrap.style.display='block';if(picker)picker.style.display='none';}}
+function showFilePreview(file){
+  // Title — synchronous
+  var title = document.getElementById('uploadTitle');
+  if (!title.value) {
+    title.value = file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
+  }
+  var ext = getExt(file.name);
+  var info = getIconInfo(ext);
+  var wrap = document.getElementById('uploadPreviewWrap');
+  var picker = document.getElementById('filePickerRow');
+  var meta = document.getElementById('uploadFileMeta');
+  meta.textContent = fmtSize(file.size) + ' · ' + ext;
+  // SYNCHRONOUSLY swap picker → preview (so user can't click stale picker)
+  if (picker) picker.style.display = 'none';
+  if (wrap) wrap.style.display = 'block';
+  var img = document.getElementById('uploadPreviewImg');
+  var iconEl = document.getElementById('uploadFileIcon');
+  if (file.type.startsWith('image/')) {
+    if (iconEl) iconEl.style.display = 'none';
+    if (img) img.style.display = 'block';
+    // Async-set image src
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      if (img) img.src = ev.target.result;
+      var i = new Image();
+      i.onload = function(){ meta.textContent = i.width+'×'+i.height+' · '+fmtSize(file.size)+' · '+ext; };
+      i.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    if (img) img.style.display = 'none';
+    if (iconEl) {
+      iconEl.textContent = info.icon + '\n' + ext;
+      iconEl.style.display = 'block';
+    }
+  }
+}
 
 function clearUploadFile(){pendingFile=null;document.getElementById('uploadFile').value='';document.getElementById('uploadPreviewWrap').style.display='none';document.getElementById('filePickerRow').style.display='';}
 
@@ -600,20 +652,49 @@ async function saveDocument(){
   }catch(e){toast('Upload failed: '+e.message);if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';}
 }
 
-/* DROP ZONE */
-var dz=document.getElementById('dropZone');
-dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('dragover');});
-dz.addEventListener('dragleave',function(){dz.classList.remove('dragover');});
-dz.addEventListener('drop',function(e){
-  e.preventDefault(); dz.classList.remove('dragover');
-  var files = e.dataTransfer.files;
-  if (!files.length) return;
+/* DROP ZONE — whole content area + the small drop-zone bar */
+var dz = document.getElementById('dropZone');
+var contentEl = document.querySelector('.content');
+var dragCounter = 0; // tracks nested dragenter/leave so flicker doesn't break it
+
+function handleDroppedFile(file) {
+  if (!file) return;
   if (!currentProjectId) { toast('Select an event first'); return; }
-  openUploadModal();          // reset state + show modal
-  pendingFile = files[0];     // set AFTER reset so it sticks
-  autoDetectCategory(files[0].name);
-  showFilePreview(files[0]);
-});
+  openUploadModal(file);   // pass file so modal pre-fills it
+}
+
+// Whole content area
+if (contentEl) {
+  contentEl.addEventListener('dragenter', function(e){
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') < 0) return;
+    e.preventDefault();
+    dragCounter++;
+    contentEl.classList.add('dragover');
+  });
+  contentEl.addEventListener('dragover', function(e){
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') < 0) return;
+    e.preventDefault();
+  });
+  contentEl.addEventListener('dragleave', function(e){
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; contentEl.classList.remove('dragover'); }
+  });
+  contentEl.addEventListener('drop', function(e){
+    e.preventDefault();
+    dragCounter = 0;
+    contentEl.classList.remove('dragover');
+    if (dz) dz.classList.remove('dragover');
+    var files = e.dataTransfer.files;
+    if (!files.length) return;
+    handleDroppedFile(files[0]);
+  });
+}
+
+// The small drop-zone bar still works as a click-to-browse target
+if (dz) {
+  dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', function(){ dz.classList.remove('dragover'); });
+}
 
 /* INIT */
 async function init(){var s=await checkAuth();if(!s)return;var email=s.user.email||'';var ur=await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email',email).single();if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;var n=ur.data.display_name||ur.data.first_name||email;(document.getElementById('dBiz')||{}).textContent=n;(document.getElementById('mBiz')||{}).textContent=n;}if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}if(!tenantId)return;await loadProjects();var lastProj=new URLSearchParams(window.location.search).get('event')||localStorage.getItem('elp-last-project');if(lastProj&&allProjects.find(function(p){return p.event_project_id===lastProj;}))await selectProject(lastProj);}
