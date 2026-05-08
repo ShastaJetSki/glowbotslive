@@ -278,6 +278,12 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .help-modal-content li{font-size:13px;line-height:1.55;color:var(--text-secondary,#444);margin-bottom:3px;}
 .help-modal-content b{color:var(--text-primary,#111);}
 
+
+/* === Button click feedback (added) === */
+.btn-primary[disabled]{opacity:.7;cursor:not-allowed;pointer-events:none;}
+.btn-primary .btn-spinner{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:btnSpin .7s linear infinite;margin-right:7px;vertical-align:-1px;}
+@keyframes btnSpin{to{transform:rotate(360deg);}}
+
 </style>
 </head>
 <body data-page="tasks">
@@ -514,7 +520,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <button class="btn-danger" id="tmDeleteBtn" onclick="deleteTask()" style="display:none;">Delete</button>
       <div style="display:flex;gap:10px;">
         <button class="btn-secondary" onclick="closeTaskModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveTask()">Save Task</button>
+        <button class="btn-primary" id="saveTaskBtn" onclick="saveTask()">Save Task</button>
       </div>
     </div>
   </div>
@@ -535,7 +541,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="document.getElementById('deptLeadModal').classList.remove('show')">Cancel</button>
-      <button class="btn-primary" onclick="saveDeptLead()">Save</button>
+      <button class="btn-primary" id="saveDeptLeadBtn" onclick="saveDeptLead()">Save</button>
     </div>
   </div>
 </div>
@@ -937,6 +943,15 @@ function closeTaskModal(){document.getElementById('taskModal').classList.remove(
 async function saveTask(){
   var title=document.getElementById('tmTitle').value.trim();
   if(!title){toast('Task title is required');return;}
+  var btn=document.getElementById('saveTaskBtn');
+  if(btn){
+    btn.disabled=true;
+    btn.dataset.origText=btn.dataset.origText||btn.textContent;
+    btn.innerHTML='<span class="btn-spinner"></span>Saving...';
+  }
+  function unlockBtn(){
+    if(btn){btn.disabled=false;btn.textContent=btn.dataset.origText||'Save Task';}
+  }
   var data={
     task_title:title,
     projected_start:document.getElementById('tmStart').value||null,
@@ -949,8 +964,9 @@ async function saveTask(){
   };
   if(editingTaskId){
     var r=await sb.from('event_tasks').update(data).eq('event_task_id',editingTaskId);
-    if(r.error){toast('Error: '+r.error.message);return;}
+    if(r.error){toast('Error: '+r.error.message);unlockBtn();return;}
     var t=allTasks.find(function(x){return x.event_task_id===editingTaskId;});if(t)Object.assign(t,data);
+    unlockBtn();
   } else {
     data.tenant_id=tenantId;data.event_project_id=currentProjectId;data.event_department_id=editingTaskDeptId;data.is_complete=false;data.is_cancelled=false;data.created_by=userId;
     console.log('[Tasks] Inserting task with data:', JSON.stringify(data, null, 2));
@@ -962,11 +978,13 @@ async function saveTask(){
       console.error('[Tasks] Error hint:', r2.error.hint);
       console.error('[Tasks] Error code:', r2.error.code);
       toast('Error: '+r2.error.message);
+      unlockBtn();
       return;
     }
     allTasks.push(r2.data);
     // Sync cost to budget category
     syncTaskCostToBudget(editingTaskDeptId, data.cost);
+  unlockBtn();
   }
   closeTaskModal();renderAll();showSaved();toast(editingTaskId?'Task updated':'Task added');
 }
