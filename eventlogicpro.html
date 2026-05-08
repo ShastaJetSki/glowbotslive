@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#DC2626">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Event Logic Pro">
 <title>Tasks — Event Logic Pro</title>
 <link rel="icon" href="favicon-eventlogic.ico">
@@ -259,8 +260,8 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 /* === Header polish (added) === */
 .header-right{display:flex;align-items:center;gap:14px;}
 .tenant-logo{max-height:56px;max-width:140px;object-fit:contain;border-radius:6px;}
-.sub-name{font-size:13px;color:var(--accent);font-weight:600;letter-spacing:.3px;line-height:1.2;}
-.sub-email{font-size:11px;color:var(--text-secondary);font-weight:500;line-height:1.3;margin-top:2px;}
+.header-titles .sub-name{font-size:13px;color:var(--accent);font-weight:600;letter-spacing:.3px;line-height:1.2;}
+.header-titles .sub-email{font-size:11px;color:var(--text-secondary);font-weight:500;line-height:1.3;margin-top:2px;}
 
 /* === Help button + modal === */
 .help-btn{width:26px;height:26px;border-radius:50%;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-secondary);font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;font-family:inherit;margin-right:6px;}
@@ -314,8 +315,8 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     <div class="header-left">
       <div class="header-titles">
         <h1>Tasks</h1>
-        <div class="sub sub-name" id="headerName"></div>
-        <div class="sub sub-email" id="headerEmail"></div>
+        <div class="sub-name" id="headerName"></div>
+        <div class="sub-email" id="headerEmail"></div>
       </div>
     </div>
     <div class="header-right">
@@ -599,7 +600,8 @@ async function loadProjects(){
   allProjects=(r.data||[]).filter(function(p){return p.status!=='cancelled';});
 }
 async function loadProjectData(){
-  if(!currentProjectId)return;
+  if(!currentProjectId){console.log('[Tasks] loadProjectData: no currentProjectId, skipping');return;}
+  console.log('[Tasks] loadProjectData for project:', currentProjectId);
 
   // Load departments
   var dr=await sb.from('event_departments').select('*').eq('event_project_id',currentProjectId).order('sort_order');
@@ -607,6 +609,7 @@ async function loadProjectData(){
 
   // Load tasks
   var tr=await sb.from('event_tasks').select('*').eq('event_project_id',currentProjectId).order('sort_order');
+  if (tr.error) console.error('[Tasks] event_tasks query error:', tr.error);
   allTasks=tr.data||[];
 
   await loadEstimateBudgets();
@@ -917,7 +920,7 @@ function openEditTask(taskId){
   editingTaskId=taskId;editingTaskDeptId=task.event_department_id;
   document.getElementById('taskModalTitle').textContent='Edit Task';
   document.getElementById('tmTitle').value=task.task_title||'';
-  document.getElementById('tmStart').value=task.start_date||'';
+  document.getElementById('tmStart').value=task.projected_start||'';
   document.getElementById('tmDeadline').value=task.deadline||'';
   document.getElementById('tmCost').value=task.cost||'';
   document.getElementById('tmTiming').value=task.timing||'pre';
@@ -936,7 +939,7 @@ async function saveTask(){
   if(!title){toast('Task title is required');return;}
   var data={
     task_title:title,
-    start_date:document.getElementById('tmStart').value||null,
+    projected_start:document.getElementById('tmStart').value||null,
     deadline:document.getElementById('tmDeadline').value||null,
     cost:parseFloat(document.getElementById('tmCost').value)||0,
     timing:document.getElementById('tmTiming').value||'pre',
@@ -950,8 +953,17 @@ async function saveTask(){
     var t=allTasks.find(function(x){return x.event_task_id===editingTaskId;});if(t)Object.assign(t,data);
   } else {
     data.tenant_id=tenantId;data.event_project_id=currentProjectId;data.event_department_id=editingTaskDeptId;data.is_complete=false;data.is_cancelled=false;data.created_by=userId;
+    console.log('[Tasks] Inserting task with data:', JSON.stringify(data, null, 2));
     var r2=await sb.from('event_tasks').insert(data).select().single();
-    if(r2.error){toast('Error: '+r2.error.message);return;}
+    if(r2.error){
+      console.error('[Tasks] Insert error full object:', r2.error);
+      console.error('[Tasks] Error message:', r2.error.message);
+      console.error('[Tasks] Error details:', r2.error.details);
+      console.error('[Tasks] Error hint:', r2.error.hint);
+      console.error('[Tasks] Error code:', r2.error.code);
+      toast('Error: '+r2.error.message);
+      return;
+    }
     allTasks.push(r2.data);
     // Sync cost to budget category
     syncTaskCostToBudget(editingTaskDeptId, data.cost);
@@ -1056,7 +1068,7 @@ function openDetailPanel(taskId){
   var fields=[
     {label:'Status',val:task.is_cancelled?'Cancelled':task.is_complete?'Complete':'To Do'},
     {label:'Timing',val:task.timing==='day'?'Day Of':task.timing==='post'?'Post-Event':'Pre-Event'},
-    {label:'Start Date',val:task.start_date||'—'},
+    {label:'Start Date',val:task.projected_start||'—'},
     {label:'Due Date',val:task.deadline||(task.is_cancelled?'—':'—')},
     {label:'Assigned To',val:empName(task.assigned_to)||'—'},
     {label:'Lead',val:empName(task.lead_employee_id)||'—'},
@@ -1194,18 +1206,19 @@ function showNoProject() {
 async function init(){
   var s=await checkAuth();if(!s)return;
   var email=s.user.email||'';
-  var ur=await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email',email).single();
+  var ur=await sb.from('users').select('tenant_id,user_id,first_name').eq('email',email).maybeSingle();
+  if (ur.error) console.warn('[Tasks] users lookup error:', ur.error);
   if(ur.data){
     tenantId=ur.data.tenant_id;userId=ur.data.user_id;
-    var name=ur.data.display_name||ur.data.first_name||email;
+    var name=ur.data.first_name||email;
     (document.getElementById('dBiz')||{}).textContent=name;
     (document.getElementById('mBiz')||{}).textContent=name;
   }
-  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}
+  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).maybeSingle();if(bs.data)tenantId=bs.data.tenant_id;}
   if(!tenantId){toast('Could not determine tenant');return;}
 
   // Find current member id
-  var mr=await sb.from('event_members').select('member_id').eq('tenant_id',tenantId).eq('email',email).single();
+  var mr=await sb.from('event_members').select('member_id').eq('tenant_id',tenantId).eq('email',email).maybeSingle();
   if(mr.data)currentMemberId=mr.data.member_id;
 
   await Promise.all([loadProjects(), loadMembers()]);
@@ -1245,9 +1258,27 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close
 </script>
 
 
-<!-- Header branding loader (added) -->
+<!-- Header branding loader (per-event) -->
 <script>
 (function loadBranding() {
+  function setHeaderLogo(url) {
+    ['tenantLogo','mTenantLogo'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (url) { el.src = url; el.style.display = ''; }
+      else     { el.src = '';  el.style.display = 'none'; }
+    });
+  }
+
+  async function loadEventLogo(eventId) {
+    if (!eventId) { setHeaderLogo(null); return; }
+    if (typeof sb === 'undefined') return;
+    try {
+      var r = await sb.from('event_projects').select('event_logo_url').eq('event_project_id', eventId).maybeSingle();
+      setHeaderLogo(r.data && r.data.event_logo_url ? r.data.event_logo_url : null);
+    } catch(e) { console.warn('event logo lookup:', e); }
+  }
+
   var tries = 0;
   var interval = setInterval(async function() {
     tries++;
@@ -1262,20 +1293,25 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close
       if (!session) return;
       var email = session.user.email;
       var u = await sb.from('users').select('first_name, tenant_id').eq('email', email).maybeSingle();
-      if (!u.data) return;
-      var firstName = u.data.first_name || email.split('@')[0];
-      var tenantId  = u.data.tenant_id;
-      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
-      ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
-      var bs = await sb.from('business_settings').select('tenant_logo_url').eq('tenant_id', tenantId).maybeSingle();
-      if (bs.data && bs.data.tenant_logo_url) {
-        ['tenantLogo','mTenantLogo'].forEach(function(id){
-          var el = document.getElementById(id);
-          if (el) { el.src = bs.data.tenant_logo_url; el.style.display = ''; }
-        });
+      if (u.data) {
+        var firstName = u.data.first_name || email.split('@')[0];
+        ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
+        ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
       }
+      // Load logo for currently-selected event (from URL ?event= or localStorage)
+      var url = new URLSearchParams(window.location.search);
+      var eid = url.get('event') || localStorage.getItem('elp-selected-event');
+      await loadEventLogo(eid);
     } catch(e) { console.warn('Branding loader:', e); }
   }, 200);
+
+  // Live updates when an event is selected/cleared via the search bar
+  document.addEventListener('projbar:select', function(e){
+    var p = e.detail && e.detail.project;
+    if (p && p.event_logo_url) setHeaderLogo(p.event_logo_url);
+    else if (p) loadEventLogo(p.event_project_id);
+  });
+  document.addEventListener('projbar:clear', function(){ setHeaderLogo(null); });
 })();
 </script>
 
