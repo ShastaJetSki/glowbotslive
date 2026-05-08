@@ -82,7 +82,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 /* DROP ZONE */
 .drop-zone{border:1px dashed rgba(255,255,255,.12);border-radius:10px;padding:18px 24px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:all .2s;margin-bottom:24px;position:relative;background:rgba(255,255,255,.02);}
 .drop-zone:hover,.drop-zone.dragover{border-color:rgba(220,38,38,.5);background:rgba(220,38,38,.04);}
-.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+/* drop-zone input is now display:none, click-trigger via onclick */
 .drop-zone-icon{font-size:22px;opacity:.4;flex-shrink:0;}
 .drop-zone-text{font-size:12px;color:rgba(255,255,255,.35);line-height:1.5;}
 .drop-zone-text strong{color:rgba(255,255,255,.65);font-weight:600;}
@@ -311,12 +311,12 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     </div>
 
     <!-- DROP ZONE -->
-    <div class="drop-zone" id="dropZone">
-      <input type="file" id="dropInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.csv" onchange="handleDropInput(event)">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('dropInput').click()">
       <div class="drop-zone-icon">📄</div>
       <div class="drop-zone-text"><strong>Drop documents here</strong> or click to browse</div>
       <div class="drop-zone-hint">PDF&nbsp;·&nbsp;DOCX&nbsp;·&nbsp;XLSX&nbsp;·&nbsp;PNG&nbsp;·&nbsp;ZIP</div>
     </div>
+    <input type="file" id="dropInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.csv" onchange="handleDropInput(event)" style="display:none;">
 
     <!-- DOC GRID -->
     <div class="doc-grid" id="docGrid">
@@ -353,6 +353,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <div class="form-group">
         <label class="form-label">Category</label>
         <select class="form-select" id="uploadCategory">
+          <option value="logo">Logo / Branding</option>
           <option value="contract">Contract</option>
           <option value="venue">Venue Agreement</option>
           <option value="talent">Talent / Artist Contract</option>
@@ -509,11 +510,62 @@ async function toggleShareAll(){if(!currentProjectId||!allDocs.length)return;var
 async function deleteDoc(docId){var doc=allDocs.find(function(d){return d.doc_id===docId;});if(!doc||!confirm('Delete "'+doc.title+'"?'))return;if(doc.storage_path)await sb.storage.from(BUCKET).remove([doc.storage_path]);await sb.from('event_documents').delete().eq('doc_id',docId);allDocs=allDocs.filter(function(d){return d.doc_id!==docId;});document.getElementById('badgeAll').textContent=allDocs.length;renderGrid();toast('Deleted');}
 
 /* UPLOAD */
-function openUploadModal(){if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}pendingFile=null;document.getElementById('uploadTitle').value='';document.getElementById('uploadStatus').value='';document.getElementById('uploadExpiry').value='';document.getElementById('uploadShared').checked=false;document.getElementById('uploadPreviewWrap').style.display='none';document.getElementById('filePickerRow').style.display='';document.getElementById('uploadModal').classList.add('show');}
+function openUploadModal(skipReset){
+  if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}
+  if(!skipReset){
+    pendingFile=null;
+    document.getElementById('uploadTitle').value='';
+    document.getElementById('uploadStatus').value='';
+    document.getElementById('uploadExpiry').value='';
+    document.getElementById('uploadShared').checked=false;
+    document.getElementById('uploadPreviewWrap').style.display='none';
+    document.getElementById('filePickerRow').style.display='';
+    var fi=document.getElementById('uploadFile'); if(fi) fi.value='';
+    var di=document.getElementById('dropInput');  if(di) di.value='';
+    var pi=document.getElementById('uploadPreviewImg'); if(pi){pi.src=''; pi.style.display='none';}
+    var fIcon=document.getElementById('uploadFileIcon'); if(fIcon){fIcon.textContent=''; fIcon.style.display='none';}
+  }
+  document.getElementById('uploadModal').classList.add('show');
+}
 function closeUploadModal(){document.getElementById('uploadModal').classList.remove('show');pendingFile=null;}
 
-function previewUpload(e){var file=e.target.files&&e.target.files[0];if(!file)return;pendingFile=file;showFilePreview(file);}
-function handleDropInput(e){var files=e.target.files;if(!files||!files.length)return;if(!currentProjectId){toast('Select an event first');document.getElementById('projSearchInput').focus();return;}pendingFile=files[0];var fname=files[0].name.toLowerCase();var sel=document.getElementById('uploadCategory');if(fname.indexOf('contract')>=0)sel.value='contract';else if(fname.indexOf('venue')>=0||fname.indexOf('hall')>=0||fname.indexOf('arena')>=0)sel.value='venue';else if(fname.indexOf('talent')>=0||fname.indexOf('artist')>=0||fname.indexOf('band')>=0)sel.value='talent';else if(fname.indexOf('insurance')>=0||fname.indexOf('cert')>=0)sel.value='insurance';else if(fname.indexOf('permit')>=0||fname.indexOf('license')>=0)sel.value='permit';else if(fname.indexOf('rider')>=0)sel.value='rider';else if(fname.indexOf('invoice')>=0||fname.indexOf('receipt')>=0)sel.value='invoice';else if(fname.indexOf('nda')>=0)sel.value='nda';else if(fname.indexOf('safety')>=0||fname.indexOf('emergency')>=0)sel.value='safety';openUploadModal();}
+function previewUpload(e){
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+  pendingFile = file;
+  autoDetectCategory(file.name);
+  showFilePreview(file);
+}
+function autoDetectCategory(filename){
+  var fname = (filename||'').toLowerCase();
+  var sel = document.getElementById('uploadCategory');
+  if (!sel) return;
+  if (fname.indexOf('logo')>=0) sel.value='logo';
+  else if (fname.indexOf('contract')>=0) sel.value='contract';
+  else if (fname.indexOf('venue')>=0||fname.indexOf('hall')>=0||fname.indexOf('arena')>=0) sel.value='venue';
+  else if (fname.indexOf('talent')>=0||fname.indexOf('artist')>=0||fname.indexOf('band')>=0) sel.value='talent';
+  else if (fname.indexOf('insurance')>=0||fname.indexOf('cert')>=0) sel.value='insurance';
+  else if (fname.indexOf('permit')>=0||fname.indexOf('license')>=0) sel.value='permit';
+  else if (fname.indexOf('rider')>=0) sel.value='rider';
+  else if (fname.indexOf('invoice')>=0||fname.indexOf('receipt')>=0) sel.value='invoice';
+  else if (fname.indexOf('nda')>=0) sel.value='nda';
+  else if (fname.indexOf('safety')>=0||fname.indexOf('emergency')>=0) sel.value='safety';
+}
+function handleDropInput(e){
+  var files = e.target.files;
+  if (!files || !files.length) return;
+  if (!currentProjectId) {
+    toast('Select an event first');
+    document.getElementById('projSearchInput').focus();
+    e.target.value = '';
+    return;
+  }
+  openUploadModal();
+  pendingFile = files[0];
+  autoDetectCategory(files[0].name);
+  showFilePreview(files[0]);
+  e.target.value = '';   // clear so picking same file twice still fires change
+}
 
 function showFilePreview(file){var title=document.getElementById('uploadTitle');if(!title.value)title.value=file.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});var ext=getExt(file.name);var info=getIconInfo(ext);var wrap=document.getElementById('uploadPreviewWrap');var picker=document.getElementById('filePickerRow');var meta=document.getElementById('uploadFileMeta');meta.textContent=fmtSize(file.size)+' · '+ext;if(file.type.startsWith('image/')){var reader=new FileReader();reader.onload=function(ev){var img=document.getElementById('uploadPreviewImg');img.src=ev.target.result;img.style.display='block';document.getElementById('uploadFileIcon').style.display='none';wrap.style.display='block';if(picker)picker.style.display='none';var i=new Image();i.onload=function(){meta.textContent=i.width+'×'+i.height+' · '+fmtSize(file.size)+' · '+ext;};i.src=ev.target.result;};reader.readAsDataURL(file);}else{document.getElementById('uploadPreviewImg').style.display='none';var iconEl=document.getElementById('uploadFileIcon');iconEl.textContent=info.icon+'\n'+ext;iconEl.style.display='block';wrap.style.display='block';if(picker)picker.style.display='none';}}
 
@@ -552,7 +604,16 @@ async function saveDocument(){
 var dz=document.getElementById('dropZone');
 dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('dragover');});
 dz.addEventListener('dragleave',function(){dz.classList.remove('dragover');});
-dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('dragover');var files=e.dataTransfer.files;if(!files.length)return;if(!currentProjectId){toast('Select an event first');return;}pendingFile=files[0];showFilePreview(files[0]);openUploadModal();});
+dz.addEventListener('drop',function(e){
+  e.preventDefault(); dz.classList.remove('dragover');
+  var files = e.dataTransfer.files;
+  if (!files.length) return;
+  if (!currentProjectId) { toast('Select an event first'); return; }
+  openUploadModal();          // reset state + show modal
+  pendingFile = files[0];     // set AFTER reset so it sticks
+  autoDetectCategory(files[0].name);
+  showFilePreview(files[0]);
+});
 
 /* INIT */
 async function init(){var s=await checkAuth();if(!s)return;var email=s.user.email||'';var ur=await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email',email).single();if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;var n=ur.data.display_name||ur.data.first_name||email;(document.getElementById('dBiz')||{}).textContent=n;(document.getElementById('mBiz')||{}).textContent=n;}if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}if(!tenantId)return;await loadProjects();var lastProj=new URLSearchParams(window.location.search).get('event')||localStorage.getItem('elp-last-project');if(lastProj&&allProjects.find(function(p){return p.event_project_id===lastProj;}))await selectProject(lastProj);}
@@ -582,9 +643,27 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close
 </script>
 
 
-<!-- Header branding loader (added) -->
+<!-- Header branding loader (per-event) -->
 <script>
 (function loadBranding() {
+  function setHeaderLogo(url) {
+    ['tenantLogo','mTenantLogo'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (url) { el.src = url; el.style.display = ''; }
+      else     { el.src = '';  el.style.display = 'none'; }
+    });
+  }
+
+  async function loadEventLogo(eventId) {
+    if (!eventId) { setHeaderLogo(null); return; }
+    if (typeof sb === 'undefined') return;
+    try {
+      var r = await sb.from('event_projects').select('event_logo_url').eq('event_project_id', eventId).maybeSingle();
+      setHeaderLogo(r.data && r.data.event_logo_url ? r.data.event_logo_url : null);
+    } catch(e) { console.warn('event logo lookup:', e); }
+  }
+
   var tries = 0;
   var interval = setInterval(async function() {
     tries++;
@@ -599,20 +678,25 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close
       if (!session) return;
       var email = session.user.email;
       var u = await sb.from('users').select('first_name, tenant_id').eq('email', email).maybeSingle();
-      if (!u.data) return;
-      var firstName = u.data.first_name || email.split('@')[0];
-      var tenantId  = u.data.tenant_id;
-      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
-      ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
-      var bs = await sb.from('business_settings').select('tenant_logo_url').eq('tenant_id', tenantId).maybeSingle();
-      if (bs.data && bs.data.tenant_logo_url) {
-        ['tenantLogo','mTenantLogo'].forEach(function(id){
-          var el = document.getElementById(id);
-          if (el) { el.src = bs.data.tenant_logo_url; el.style.display = ''; }
-        });
+      if (u.data) {
+        var firstName = u.data.first_name || email.split('@')[0];
+        ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
+        ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
       }
+      // Load logo for currently-selected event (from URL ?event= or localStorage)
+      var url = new URLSearchParams(window.location.search);
+      var eid = url.get('event') || localStorage.getItem('elp-selected-event');
+      await loadEventLogo(eid);
     } catch(e) { console.warn('Branding loader:', e); }
   }, 200);
+
+  // Live updates when an event is selected/cleared via the search bar
+  document.addEventListener('projbar:select', function(e){
+    var p = e.detail && e.detail.project;
+    if (p && p.event_logo_url) setHeaderLogo(p.event_logo_url);
+    else if (p) loadEventLogo(p.event_project_id);
+  });
+  document.addEventListener('projbar:clear', function(){ setHeaderLogo(null); });
 })();
 </script>
 
