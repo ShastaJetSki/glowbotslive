@@ -236,6 +236,31 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
   pointer-events:none;z-index:51;letter-spacing:.5px;
 }
 
+
+/* === Upload progress bar (added) === */
+.upload-progress-wrap{padding:0 20px 8px;display:none;}
+.upload-progress-wrap.show{display:block;}
+.upload-progress-track{height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;position:relative;}
+.upload-progress-fill{
+  position:absolute;top:0;left:0;bottom:0;
+  background:linear-gradient(90deg,var(--accent),var(--accent-light,#ef4444));
+  border-radius:6px;width:0%;transition:width .25s ease-out;
+}
+.upload-progress-fill.indeterminate{
+  width:30% !important;
+  animation:uploadSlide 1.4s ease-in-out infinite;
+}
+@keyframes uploadSlide{
+  0%{transform:translateX(-100%);}
+  100%{transform:translateX(400%);}
+}
+.upload-progress-label{font-size:11px;color:var(--text-secondary);margin-top:6px;display:flex;justify-content:space-between;font-family:'Space Mono',monospace;letter-spacing:.5px;}
+.upload-progress-label .label-text{display:flex;align-items:center;gap:6px;}
+.upload-progress-spinner{display:inline-block;width:10px;height:10px;border:2px solid rgba(220,38,38,.3);border-top-color:var(--accent);border-radius:50%;animation:uploadSpin .7s linear infinite;}
+@keyframes uploadSpin{to{transform:rotate(360deg);}}
+.btn-primary[disabled]{opacity:.7;cursor:not-allowed;pointer-events:none;}
+.btn-primary .btn-spinner{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:uploadSpin .7s linear infinite;margin-right:7px;vertical-align:-1px;}
+
 </style>
 </head>
 <body data-page="documents">
@@ -418,9 +443,20 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
         </label>
       </div>
     </div>
+  <!-- Upload progress (added) -->
+    <div class="upload-progress-wrap" id="uploadProgressWrap">
+      <div class="upload-progress-track">
+        <div class="upload-progress-fill indeterminate" id="uploadProgressFill"></div>
+      </div>
+      <div class="upload-progress-label">
+        <span class="label-text"><span class="upload-progress-spinner"></span><span id="uploadProgressText">Uploading…</span></span>
+        <span id="uploadProgressPct"></span>
+      </div>
+    </div>
+    
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveDocument()">Upload</button>
+      <button class="btn-primary" id="uploadBtn" onclick="saveDocument()">Upload</button>
     </div>
   </div>
 </div>
@@ -624,32 +660,92 @@ function showFilePreview(file){
 function clearUploadFile(){pendingFile=null;document.getElementById('uploadFile').value='';document.getElementById('uploadPreviewWrap').style.display='none';document.getElementById('filePickerRow').style.display='';}
 
 async function saveDocument(){
-  var file=pendingFile||(document.getElementById('uploadFile').files[0]);
-  if(!file){toast('Choose a file first');return;}
-  var title=document.getElementById('uploadTitle').value.trim()||file.name;
-  var category=document.getElementById('uploadCategory').value;
-  var status=document.getElementById('uploadStatus').value||null;
-  var expiry=document.getElementById('uploadExpiry').value||null;
-  var shared=document.getElementById('uploadShared').checked;
-  var dotEl=document.getElementById('autosaveDot'),statusEl=document.getElementById('autosaveText');
-  if(dotEl)dotEl.className='autosave-dot saving';if(statusEl)statusEl.textContent='Uploading...';
-  try{
-    var storage_path=null,file_url=null,preview_url=null;
-    try{
-      var path=tenantId+'/'+currentProjectId+'/'+Date.now()+'-'+file.name.replace(/\s/g,'_');
-      var up=await sb.storage.from(BUCKET).upload(path,file,{upsert:true});
-      if(!up.error){storage_path=path;file_url=sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;if(file.type.startsWith('image/'))preview_url=file_url;}
-    }catch(se){}
-    // fallback preview for images
-    if(file.type.startsWith('image/')&&!preview_url){var dataUrl=await new Promise(function(res){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(file);});preview_url=dataUrl;if(!file_url)file_url=dataUrl;}
-    var row={tenant_id:tenantId,event_project_id:currentProjectId,file_name:file.name,title:title,category:category,file_type:file.type,file_size:file.size,storage_path:storage_path,file_url:file_url,preview_url:preview_url,shared:shared,doc_status:status,expiry_date:expiry,uploaded_by:userId};
-    var r=await sb.from('event_documents').insert(row).select().single();
-    if(r.error){toast('DB error: '+r.error.message);if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';return;}
-    allDocs.unshift(r.data);document.getElementById('badgeAll').textContent=allDocs.length;
-    closeUploadModal();renderGrid();
-    if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Saved just now';
-    toast('✓ '+title+' uploaded');
-  }catch(e){toast('Upload failed: '+e.message);if(dotEl)dotEl.className='autosave-dot';if(statusEl)statusEl.textContent='Ready';}
+  var file = pendingFile || (document.getElementById('uploadFile').files[0]);
+  if (!file) { toast('Choose a file first'); return; }
+  var title    = document.getElementById('uploadTitle').value.trim() || file.name;
+  var category = document.getElementById('uploadCategory').value;
+  var status   = document.getElementById('uploadStatus').value || null;
+  var expiry   = document.getElementById('uploadExpiry').value || null;
+  var shared   = document.getElementById('uploadShared').checked;
+  var dotEl    = document.getElementById('autosaveDot');
+  var statusEl = document.getElementById('autosaveText');
+  var btn      = document.getElementById('uploadBtn');
+  var progWrap = document.getElementById('uploadProgressWrap');
+  var progPct  = document.getElementById('uploadProgressPct');
+  var progText = document.getElementById('uploadProgressText');
+
+  // === Lock UI: disable button, show spinner, show progress bar ===
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.origText = btn.dataset.origText || btn.textContent;
+    btn.innerHTML = '<span class="btn-spinner"></span>Uploading...';
+  }
+  if (progWrap) progWrap.classList.add('show');
+  if (progPct)  progPct.textContent = '';
+  if (progText) progText.textContent = 'Uploading ' + file.name + '...';
+  if (dotEl)    dotEl.className = 'autosave-dot saving';
+  if (statusEl) statusEl.textContent = 'Uploading...';
+
+  function unlockUI(savedOk) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.origText || 'Upload';
+    }
+    if (progWrap) progWrap.classList.remove('show');
+    if (dotEl)    dotEl.className = 'autosave-dot';
+    if (statusEl) statusEl.textContent = savedOk ? 'Saved just now' : 'Ready';
+  }
+
+  try {
+    var storage_path = null, file_url = null, preview_url = null;
+    try {
+      var path = tenantId + '/' + currentProjectId + '/' + Date.now() + '-' + file.name.replace(/\s/g, '_');
+      if (progText) progText.textContent = 'Uploading to storage...';
+      var up = await sb.storage.from(BUCKET).upload(path, file, { upsert: true });
+      if (!up.error) {
+        storage_path = path;
+        file_url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        if (file.type.startsWith('image/')) preview_url = file_url;
+      }
+    } catch (se) { console.warn('storage upload error:', se); }
+
+    // Fallback preview for images
+    if (file.type.startsWith('image/') && !preview_url) {
+      if (progText) progText.textContent = 'Generating preview...';
+      var dataUrl = await new Promise(function(res){
+        var r = new FileReader();
+        r.onload = function(e){ res(e.target.result); };
+        r.readAsDataURL(file);
+      });
+      preview_url = dataUrl;
+      if (!file_url) file_url = dataUrl;
+    }
+
+    if (progText) progText.textContent = 'Saving record...';
+    var row = {
+      tenant_id: tenantId, event_project_id: currentProjectId,
+      file_name: file.name, title: title, category: category,
+      file_type: file.type, file_size: file.size,
+      storage_path: storage_path, file_url: file_url, preview_url: preview_url,
+      shared: shared, doc_status: status, expiry_date: expiry, uploaded_by: userId
+    };
+    var r = await sb.from('event_documents').insert(row).select().single();
+    if (r.error) {
+      toast('DB error: ' + r.error.message);
+      unlockUI(false);
+      return;
+    }
+    allDocs.unshift(r.data);
+    var badge = document.getElementById('badgeAll');
+    if (badge) badge.textContent = allDocs.length;
+    unlockUI(true);
+    closeUploadModal();
+    renderGrid();
+    toast('✓ ' + title + ' uploaded');
+  } catch (e) {
+    toast('Upload failed: ' + (e.message || e));
+    unlockUI(false);
+  }
 }
 
 /* DROP ZONE — whole content area + the small drop-zone bar */
