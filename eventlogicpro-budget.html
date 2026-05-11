@@ -1038,8 +1038,14 @@ function render() {
 
 function renderCat(c, idx, type) {
   var items  = c.items || [];
-  var tot    = items.reduce(function(s,i){return s+(parseFloat(i.est)||0);},0);
-  var filled = items.filter(function(i){return(parseFloat(i.est)||0)>0;}).length;
+  var tot    = items.reduce(function(s,i){
+    var act = parseFloat(i.act) || 0;
+    var est = parseFloat(i.est) || 0;
+    return s + (act > 0 ? act : est);
+  }, 0);
+  var filled = items.filter(function(i){
+    return (parseFloat(i.est)||0) > 0 || (parseFloat(i.act)||0) > 0;
+  }).length;
   var h = '<div class="csec" id="sec-'+c.id+'" data-idx="'+idx+'" data-type="'+type+'">';
   h += '<div class="chdr"><div class="cleft"><div class="cdrag" draggable="true" title="Drag to reorder">&#9783;</div>';
   h += '<div class="cdot" style="background:'+c.color+';"></div>';
@@ -1070,8 +1076,10 @@ function calcTotals() {
   expCats.forEach(function(c){
     c.items.forEach(function(i){
       cnt++;
-      if ((parseFloat(i.est)||0) > 0) filled++;
-      exp += (parseFloat(i.est)||0);
+      var est = parseFloat(i.est) || 0;
+      var act = parseFloat(i.act) || 0;
+      if (est > 0 || act > 0) filled++;
+      exp += (act > 0 ? act : est);
     });
   });
   var depts = expCats.length;
@@ -1101,7 +1109,29 @@ function calcTotals() {
 /* ===== INTERACTIONS ===== */
 function updName(type,ci,li,val){(type==='expense'?expCats:revCats)[ci].items[li].name=val;markDirty();calcTotals();}
 function updDue(type,ci,li,val,sel){(type==='expense'?expCats:revCats)[ci].items[li].due=val;sel.className='ldue '+(val==='pre'?'pre':val==='day'?'day':'post');markDirty();}
-function updVal(type,ci,li,field,val){(type==='expense'?expCats:revCats)[ci].items[li][field]=parseFloat(val)||0;markDirty();calcTotals();}
+function updVal(type,ci,li,field,val){
+  var arr = type==='expense' ? expCats : revCats;
+  var cat = arr[ci];
+  cat.items[li][field] = parseFloat(val) || 0;
+  markDirty();
+  calcTotals();
+  // Live update the section header total + filled count
+  var sec = document.getElementById('sec-' + cat.id);
+  if (sec) {
+    var tot = cat.items.reduce(function(s,i){
+      var act = parseFloat(i.act) || 0;
+      var est = parseFloat(i.est) || 0;
+      return s + (act > 0 ? act : est);
+    }, 0);
+    var filled = cat.items.filter(function(i){
+      return (parseFloat(i.est)||0) > 0 || (parseFloat(i.act)||0) > 0;
+    }).length;
+    var ctot = sec.querySelector('.ctot');
+    if (ctot) ctot.textContent = '$' + fmt(tot);
+    var ccnt = sec.querySelector('.ccnt');
+    if (ccnt) ccnt.textContent = filled + ' of ' + cat.items.length + ' items budgeted';
+  }
+}
 function rmItem(type,ci,li){(type==='expense'?expCats:revCats)[ci].items.splice(li,1);render();markDirty();}
 function addItem(type,ci){(type==='expense'?expCats:revCats)[ci].items.push({name:'',est:0,act:0,due:'pre'});render();markDirty();}
 function deleteCat(type,ci){
