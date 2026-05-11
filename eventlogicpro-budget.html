@@ -425,7 +425,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <div class="view-tab" onclick="setViewMode('official')">Official</div>
     </div>
     <div class="tabs-action-btns">
-      <button class="hdr-btn primary" onclick="createNew()">+ New Budget</button>
+      <button class="hdr-btn primary" onclick="createNew()" title="Create another budget version (V2, V3...) for this event">+ New Version</button>
       <button class="hdr-btn" onclick="saveToDb()">Save</button>
       <button class="print-btn" onclick="window.print()">Print</button>
       <button class="hdr-btn success" id="deskSubmitBtn" onclick="submitForReview()" style="display:none;">Submit for Review</button>
@@ -734,7 +734,7 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function selectProject(projectId) {
+async function selectProject(projectId) {
   var p = allProjects.find(function(x){return x.event_project_id === projectId;});
   if (!p) return;
   currentProjectId = projectId;
@@ -755,13 +755,61 @@ function selectProject(projectId) {
   renderBudgetPills();
   loadPackagesRevenue(projectId);
 
-  // Auto-load the official budget, else the first one
+  // Find existing budgets for this event
   var projectBudgets = allEstimates.filter(function(e){return e.event_project_id===projectId;});
+
+  if (projectBudgets.length === 0) {
+    // No budgets yet — auto-create Version 1 with the event's name/date
+    await autoCreateBudgetV1(p);
+    return;
+  }
+
+  // Auto-load the published one, else the first
   var official = projectBudgets.find(function(e){return e.status==='published';});
-  var first    = projectBudgets[0];
-  var toLoad   = official || first;
-  if (toLoad) syncSel(toLoad.estimate_id);
-  else { currentEstId = null; clearForm(); updateActionButtons(); }
+  var toLoad = official || projectBudgets[0];
+  syncSel(toLoad.estimate_id);
+}
+
+async function autoCreateBudgetV1(project) {
+  if (!tenantId) return;
+  var name = (project.event_name || 'Budget') + ' — Version 1';
+  var ins = await sb.from('event_estimates').insert({
+    tenant_id: tenantId,
+    created_by: userId,
+    event_name: project.event_name || '',
+    event_date: project.event_date || null,
+    event_project_id: project.event_project_id,
+    is_shared: false,
+    status: 'draft'
+  }).select().single();
+  if (ins.error) {
+    console.error('[Budget] autoCreateBudgetV1 error:', ins.error);
+    toast('Could not create budget: ' + ins.error.message);
+    return;
+  }
+  var estId = ins.data.estimate_id;
+  // Seed default categories + line items
+  var d = makeDefaults();
+  var catRows = [], lineRows = [], lo = 0;
+  d.exp.forEach(function(c, i){
+    catRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'expense',title:c.title,color:c.color,sort_order:i});
+    c.items.forEach(function(it){
+      lineRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'expense',item_name:it.name,estimated_cost:0,actual_cost:0,due_timing:'pre',sort_order:lo++});
+    });
+  });
+  d.rev.forEach(function(c, i){
+    catRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',title:c.title,color:c.color,sort_order:i+100});
+    c.items.forEach(function(it){
+      lineRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',item_name:it.name,estimated_cost:0,actual_cost:0,due_timing:'day',sort_order:lo++});
+    });
+  });
+  await sb.from('estimate_categories').insert(catRows);
+  if (lineRows.length) await sb.from('estimate_line_items').insert(lineRows);
+  currentEstId = estId;
+  localStorage.setItem('elp-last-est', estId);
+  await loadEstimates();
+  syncSel(estId);
+  toast('Created Version 1 budget for ' + (project.event_name || 'event'));
 }
 
 function clearProject() {
@@ -1139,9 +1187,10 @@ async function createNew() {
     return;
   }
   var project = allProjects.find(function(p){return p.event_project_id===currentProjectId;});
-  var defaultName = (project ? project.event_name : 'Budget') + ' — Draft ' + (allEstimates.filter(function(e){return e.event_project_id===currentProjectId;}).length + 1);
+  var versionNum = allEstimates.filter(function(e){return e.event_project_id===currentProjectId;}).length + 1;
+  var defaultName = (project ? project.event_name : 'Budget') + ' — Version ' + versionNum;
   var name = prompt('Budget name:', defaultName); if(!name||!name.trim()) return;
-  var ins = await sb.from('event_estimates').insert({tenant_id:tenantId,created_by:userId,event_name:name.trim(),event_project_id:currentProjectId,is_shared:false,status:'draft'}).select().single();
+  var ins = await sb.from('event_estimates').insert({tenant_id:tenantId,created_by:userId,event_name:(project && project.event_name)||name.trim(),event_date:(project && project.event_date)||null,event_project_id:currentProjectId,is_shared:false,status:'draft'}).select().single();
   if(ins.error){toast('Error: '+ins.error.message);return;}
   var estId = ins.data.estimate_id;
   var d = makeDefaults();
