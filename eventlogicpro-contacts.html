@@ -179,6 +179,25 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .cc-check input{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin:0;}
 .cc-selected{box-shadow:0 0 0 2px var(--accent);background:var(--accent-glow);}
 
+/* New three-row card layout */
+.cc-row{display:flex;align-items:center;gap:8px;}
+.cc-row-1{margin-bottom:4px;}
+.cc-row-2,.cc-row-3{justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-top:4px;}
+.cc-row-2 .cc-org{font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;}
+.cc-types{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;align-items:center;flex-shrink:0;max-width:55%;}
+.cc-row .cc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cc-row .cc-email{color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;text-align:right;font-family:'Space Mono',monospace;font-size:11px;text-decoration:none;}
+.cc-row .cc-email:hover{color:var(--accent);}
+.cc-row .cc-phone{font-family:'Space Mono',monospace;font-size:11px;color:var(--text-primary);text-decoration:none;}
+.cc-muted{color:var(--text-secondary);font-style:italic;font-size:11px;}
+
+/* Multi-type chip picker (New Contact modal) */
+.multi-type-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.mt-chip{padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;font-weight:600;cursor:pointer;user-select:none;transition:all .12s;}
+.mt-chip:hover{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);}
+.mt-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 6px rgba(220,38,38,.25);}
+
+
 /* Bulk action bar */
 .bulk-bar{display:none;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;margin:4px 0 10px;background:var(--accent);color:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(220,38,38,.25);flex-wrap:wrap;}
 .bulk-bar.show{display:flex;}
@@ -648,14 +667,13 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
         <div class="sec-title">Classification</div>
         <div class="fr">
           <div class="fg" style="margin-bottom:0;">
-            <label class="fl">Contact Type <span class="req">*</span></label>
-            <div class="type-row">
-              <select class="fsel" id="nT" onchange="onAddTypeChange()">
-                <option value="">— Select type —</option>
-              </select>
-              <button type="button" class="type-btn" onclick="addCustomContactType()" title="Add a new contact type">+</button>
-              <button type="button" class="type-btn danger" onclick="deleteCustomContactType()" title="Delete the selected custom type">&times;</button>
+            <label class="fl">Contact Type(s) <span class="req">*</span> <span style="font-weight:400;color:var(--text-secondary);font-size:11px;">— click to toggle (multiple allowed)</span></label>
+            <input type="hidden" id="nT" value="">
+            <div class="type-row" style="margin-bottom:8px;">
+              <button type="button" class="type-btn" onclick="addCustomContactType()" title="Add a new contact type">+ Type</button>
+              <button type="button" class="type-btn danger" onclick="deleteCustomContactType()" title="Delete a custom type">× Type</button>
             </div>
+            <div class="multi-type-chips" id="nTypeChips"></div>
           </div>
           <div class="fg" style="margin-bottom:0;"><label class="fl">Assign To</label><select class="fsel" id="nA"><option value="">— Unassigned —</option></select></div>
         </div>
@@ -906,7 +924,7 @@ function renderKpis(){
     if(ev){visible=visible.filter(function(c){var st=sponsorStatusForYear(c.customer_id,ev.event_year);return st!=='declined';});}
   }
   document.getElementById('kpiBar').innerHTML=ALL_TYPES.map(function(t){
-    var n=t.key==='all'?visible.length:visible.filter(function(c){return(c.customer_type||'')===t.key;}).length;
+    var n=t.key==='all'?visible.length:visible.filter(function(c){return hasType(c, t.key);}).length;
     return'<div class="kpi-pill'+(activeFilter===t.key?' on':'')+'" onclick="setFilter(\''+t.key+'\')"><div class="kpi-val">'+n+'</div><div class="kpi-lbl">'+t.label+'</div></div>';
   }).join('');
 }
@@ -949,7 +967,7 @@ function getFiltered(){
   var removedIds=isAdmin()?allRemovalIds:myRemovals.map(function(r){return r.customer_id;});
   var list=source.filter(function(c){
     if(!showVault&&removedIds.includes(c.customer_id))return false;
-    if(activeFilter!=='all'&&(c.customer_type||'')!==activeFilter)return false;
+    if(activeFilter!=='all' && !hasType(c, activeFilter))return false;
     /* activeLetter filter removed */
     if(teamId==='__none'){if(c.assigned_to)return false;}else if(teamId&&c.assigned_to!==teamId)return false;
     // Event year filter
@@ -1041,6 +1059,23 @@ function cardKpis(c){
 
 /* ===== HTML-escape helper (for sponsor card markup) ===== */
 function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+/* ===== MULTI-TYPE HELPERS ===== */
+function getTypes(c){
+  if (!c || !c.customer_type) return [];
+  return String(c.customer_type).split(',').map(function(s){return s.trim();}).filter(Boolean);
+}
+function hasType(c, t){
+  if (!t || t === 'all') return true;
+  return getTypes(c).indexOf(t) >= 0;
+}
+function typesBadgesHtml(c){
+  var ts = getTypes(c);
+  if (!ts.length) return '<span class="type-badge type-Other">Other</span>';
+  return ts.map(function(t){
+    return '<span class="type-badge type-'+ t.replace(/ /g,'-') +'">'+ _esc(t) +'</span>';
+  }).join('');
+}
+
 
 
 /* ===== SORT + EVENT FILTER (merged dropdown) ===== */
@@ -1262,28 +1297,39 @@ function renderList(){
     var isInactive=c.sponsor_is_active===false;
     var borderColor=showVault?'#ef4444':ec;
     var isSelected = (typeof selectedCards !== 'undefined' && selectedCards.has) ? selectedCards.has(c.customer_id) : false;
+    // Person vs. org: row1=person (if any), row2=org. If no person, row1=org, row2 blank.
+    var personName = ((c.first_name||'')+' '+(c.last_name||'')).trim();
+    var orgName = c.organization_name || '';
+    var row1Name = personName || orgName || 'Unknown';
+    var row2Org  = (personName && orgName) ? orgName : '';
+    var emailHtml = c.email ? '<a class="cc-email" href="mailto:'+_esc(c.email)+'" onclick="event.stopPropagation()">'+_esc(c.email)+'</a>' : '<span class="cc-muted">No email</span>';
+    var phoneHtml = c.phone ? '<a class="cc-phone" href="tel:'+_esc(c.phone)+'" onclick="event.stopPropagation()">'+_esc(c.phone)+'</a>' : '<span class="cc-muted">No phone</span>';
     return'<div class="cc'+(isSelected?' cc-selected':'')+'" data-id="'+c.customer_id+'" style="border-left-color:'+borderColor+';" onclick="handleCcClick(event,this,\''+c.customer_id+'\')">'  +
-      '<div class="cc-header">'+
+      // ROW 1: checkbox + Name | Type badges
+      '<div class="cc-row cc-row-1">'+
         '<label class="cc-check" onclick="event.stopPropagation()" title="Select for bulk actions">'+
           '<input type="checkbox" '+(isSelected?'checked':'')+' onchange="toggleCardSelected(\''+c.customer_id+'\',this.checked)">'+
         '</label>'+
-        '<div class="cc-name'+(isInactive?' cc-name-inactive':'')+'">'+ name+(isInactive?'<span class="closed-chip">closed</span>':'')+'</div>'+
-        '<span class="type-badge type-'+((c.customer_type||'Other').replace(/ /g,'-'))+'">'+((c.customer_type)||'Other')+'</span>'+
+        '<div class="cc-name'+(isInactive?' cc-name-inactive':'')+'">'+ _esc(row1Name) +(isInactive?'<span class="closed-chip">closed</span>':'')+'</div>'+
+        '<div class="cc-types">'+ typesBadgesHtml(c) +'</div>'+
       '</div>'+
-      '<div class="cc-info-row">'+
-        (c.phone?'<a class="cc-phone" href="tel:'+c.phone+'" onclick="event.stopPropagation()">'+c.phone+'</a>':'<span style="font-size:12px;color:var(--text-secondary);">No phone</span>')+
-        '<span class="cc-assigned"><span class="cc-dot-emp" style="background:'+ec+'"></span>'+en+'</span>'+
+      // ROW 2: Organization | Assigned
+      '<div class="cc-row cc-row-2">'+
+        '<span class="cc-org">'+ (row2Org ? _esc(row2Org) : '<span class="cc-muted">\u2014</span>') +'</span>'+
+        '<span class="cc-assigned"><span class="cc-dot-emp" style="background:'+ec+'"></span>'+ _esc(en) +'</span>'+
       '</div>'+
-      '<div class="cc-info-row">'+
-        '<span class="cc-region">'+(c.region||'\u2014')+(c.club_affiliation?' \u00b7 #'+c.club_affiliation:'')+'</span>'+
-        '<span class="yr-badge">'+cnt+' yr'+(cnt!==1?'s':'')+'</span>'+
+      // ROW 3: Phone | Email
+      '<div class="cc-row cc-row-3">'+
+        phoneHtml +
+        emailHtml +
       '</div>'+
+      // EXPANDED: notes + sponsor action + years
       '<div class="cc-expand">'+
         '<div class="cc-divider"></div>'+
-        (c.notes?'<div class="cc-notes-txt">'+c.notes+'</div>':'')+
+        (c.notes?'<div class="cc-notes-txt">'+_esc(c.notes)+'</div>':'')+
         cardSponsorActionsHtml(c)+
+        cardKpis(c)+
       '</div>'+
-      cardKpis(c)+
     '</div>';
   }).join('');
   updateBulkBar();
@@ -1663,18 +1709,26 @@ function getAllTypes(){
 function refreshTypeDropdowns(){
   var all = getAllTypes();
   var custom = getCustomTypes();
-  // Update the New-Contact dropdown (nT)
-  var nt = document.getElementById('nT');
-  if (nt){
-    var prev = nt.value;
-    nt.innerHTML = '<option value="">— Select type —</option>' + all.map(function(v){
-      var label = v === 'VIP' ? 'VIP / Guest' : v;
-      var marker = custom.indexOf(v) >= 0 ? ' ★' : '';
-      return '<option value="'+v+'">'+label+marker+'</option>';
-    }).join('');
-    nt.value = prev;
-  }
+  var nt = document.getElementById('nT'); // hidden input holds comma-separated value
+  var grid = document.getElementById('nTypeChips');
+  if (!grid) return;
+  var current = nt && nt.value ? nt.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+  grid.innerHTML = all.map(function(v){
+    var label = v === 'VIP' ? 'VIP / Guest' : v;
+    var marker = custom.indexOf(v) >= 0 ? ' \u2605' : '';
+    var isOn = current.indexOf(v) >= 0;
+    return '<div class="mt-chip'+(isOn?' on':'')+'" data-type="'+v+'" onclick="toggleNewType(\''+v.replace(/\'/g,"\\'")+'\')">'+ label + marker + '</div>';
+  }).join('');
 }
+window.toggleNewType = function(t){
+  var nt = document.getElementById('nT'); if (!nt) return;
+  var current = nt.value ? nt.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+  var i = current.indexOf(t);
+  if (i >= 0) current.splice(i, 1); else current.push(t);
+  nt.value = current.join(',');
+  refreshTypeDropdowns();
+  if (typeof onAddTypeChange === 'function') onAddTypeChange();
+};
 window.addCustomContactType = function(){
   var name = prompt('New contact type name (e.g. "Speakers", "Photographers", "Caterers"):');
   if (!name) return;
@@ -1716,8 +1770,10 @@ if (document.readyState === 'loading'){
 }
 
 function onAddTypeChange(){
-  var t=document.getElementById('nT').value;
-  document.getElementById('nSponsorCatWrap').style.display=(t==='Sponsor')?'block':'none';
+  var t=document.getElementById('nT').value||'';
+  var types = t.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var w = document.getElementById('nSponsorCatWrap');
+  if (w) w.style.display = (types.indexOf('Sponsor') >= 0) ? 'block' : 'none';
 }
 
 function toggleDetSponsorFields(){
