@@ -233,6 +233,14 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 
 /* Sort dropdown */
 .sort-select{padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;font-family:inherit;cursor:pointer;}
+/* Select all + Email button (post-filter bulk actions) */
+.select-all-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);transition:all .12s;}
+.select-all-wrap:hover{border-color:var(--accent);background:var(--accent-glow);}
+.select-all-wrap input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0;}
+.select-all-lbl{font-size:11px;font-weight:600;color:var(--text-primary);}
+.bulk-action-btn.email-btn{background:#fff;color:#2563eb;}
+.bulk-action-btn.email-btn:hover{background:rgba(255,255,255,.92);color:#1d4ed8;}
+
 
 .result-count{font-size:12px;color:var(--text-secondary);}
 .toolbar-right{display:flex;gap:6px;align-items:center;}
@@ -614,6 +622,9 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
       <button class="bulk-link" onclick="clearSelection()">Clear</button>
     </div>
     <div class="bulk-actions">
+      <button class="bulk-action-btn email-btn" id="bulkEmailBtn" onclick="bulkEmailSelected()" title="Compose an email to all selected contacts (via your email client)">
+        ✉ Email selected
+      </button>
       <button class="bulk-action-btn" id="bulkMarkBtn" onclick="bulkMarkSelectedAsSponsor()">
         ✓ Mark as sponsor for <strong id="bulkEventLabel">(select an event first)</strong>
       </button>
@@ -622,7 +633,13 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
 
   <!-- TOOLBAR -->
   <div class="list-toolbar">
-    <div class="result-count" id="rCount"></div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <label class="select-all-wrap" title="Select all visible contacts (respects current filters)">
+        <input type="checkbox" id="selectAllCheckbox" onchange="onSelectAllToggle(this.checked)">
+        <span class="select-all-lbl">Select all</span>
+      </label>
+      <div class="result-count" id="rCount"></div>
+    </div>
     <div class="toolbar-right">
       <select class="team-select" id="sortSel" onchange="onSortSelChange()" title="Sort or filter by event">
         <optgroup label="Sort">
@@ -1164,6 +1181,83 @@ function onSortSelChange(){
   }
   renderList();
 }
+
+
+/* ===== Select-all checkbox (post-filter) ===== */
+window.onSelectAllToggle = function(checked){
+  if (checked){
+    var visible = getFiltered();
+    visible.forEach(function(c){ selectedCards.add(c.customer_id); });
+  } else {
+    selectedCards.clear();
+  }
+  // Update visual state of each card without a full re-render
+  document.querySelectorAll('.cc').forEach(function(card){
+    var id = card.getAttribute('data-id');
+    var isSel = selectedCards.has(id);
+    card.classList.toggle('cc-selected', isSel);
+    var cb = card.querySelector('.cc-check input');
+    if (cb) cb.checked = isSel;
+  });
+  updateBulkBar();
+};
+
+// Keep the toolbar select-all checkbox in sync with current selection state
+(function(){
+  var prevUpdate = window.updateBulkBar;
+  window.updateBulkBar = function(){
+    if (typeof prevUpdate === 'function') prevUpdate();
+    var box = document.getElementById('selectAllCheckbox');
+    if (!box) return;
+    var visible = getFiltered();
+    var allSelected = visible.length > 0 && visible.every(function(c){return selectedCards.has(c.customer_id);});
+    var someSelected = visible.some(function(c){return selectedCards.has(c.customer_id);});
+    box.checked = allSelected;
+    box.indeterminate = someSelected && !allSelected;
+  };
+})();
+
+/* ===== Bulk email composer (opens mail client with BCC list) ===== */
+window.bulkEmailSelected = function(){
+  if (selectedCards.size === 0){ toast('No contacts selected'); return; }
+  // Gather emails from selected contacts
+  var ids = Array.from(selectedCards);
+  var withEmail = [];
+  var withoutEmail = [];
+  ids.forEach(function(cid){
+    var c = (allContacts||[]).find(function(x){return x.customer_id===cid;});
+    if (!c) return;
+    var label = (((c.first_name||'')+' '+(c.last_name||'')).trim()) || c.organization_name || 'Unknown';
+    if (c.email && c.email.indexOf('@') > 0) withEmail.push({email:c.email, label:label});
+    else withoutEmail.push(label);
+  });
+  if (!withEmail.length){ toast('None of the selected contacts have an email on file'); return; }
+  // Build mailto link with BCC. Most mail clients support BCC.
+  var bccList = withEmail.map(function(x){return x.email;}).join(',');
+  // Use the current event for a sensible default subject if one is selected
+  var pid = window.currentProjectId;
+  var proj = pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;}) : null;
+  var subj = proj ? (proj.event_name + (evYear(proj)?' '+evYear(proj):'')) : 'Quick update';
+  // Compose summary for confirmation
+  var msg = 'Email '+withEmail.length+' contact'+(withEmail.length!==1?'s':'')+' via your default mail client?';
+  if (withoutEmail.length){
+    msg += '\n\n'+withoutEmail.length+' selected contact'+(withoutEmail.length!==1?'s':'')+' have no email and will be skipped:';
+    msg += '\n\u2022 ' + withoutEmail.slice(0,5).join('\n\u2022 ');
+    if (withoutEmail.length > 5) msg += '\n... and '+(withoutEmail.length-5)+' more';
+  }
+  msg += '\n\nRecipients will be BCC\'d so they don\'t see each other\'s addresses.';
+  if (!confirm(msg)) return;
+  // Open mailto. Use a benign primary "to" (the user's own address) since some
+  // clients reject empty "to" with BCC. We don't have it from contacts table,
+  // so leave blank and put everything in BCC.
+  var mailto = 'mailto:?bcc=' + encodeURIComponent(bccList) + '&subject=' + encodeURIComponent(subj);
+  // Some mail clients have URL length limits (~2000 chars). Warn if approaching.
+  if (mailto.length > 1800){
+    if (!confirm('You have many recipients ('+withEmail.length+'). Your mail client may truncate the list. Continue anyway?')) return;
+  }
+  window.location.href = mailto;
+  toast('Opening email client with '+withEmail.length+' recipient'+(withEmail.length!==1?'s':''));
+};
 
 /* ===== CARD SELECTION (for bulk sponsor marking) ===== */
 var selectedCards = new Set();
