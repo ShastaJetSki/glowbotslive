@@ -310,6 +310,7 @@ body.dark .template-item{border-color:#2a2a2a;}
 <div class="settings-wrap">
   <nav class="settings-nav">
     <a class="settings-nav-item active" onclick="showSection('profile',event)">Profile</a>
+    <a class="settings-nav-item" onclick="showSection('email',event)">Email</a>
     <a class="settings-nav-item" onclick="showSection('team',event)">Team</a>
     <a class="settings-nav-item" onclick="showSection('templates',event)">Templates</a>
     <a class="settings-nav-item" onclick="showSection('branding',event)">Branding</a>
@@ -367,7 +368,59 @@ body.dark .template-item{border-color:#2a2a2a;}
     </div>
 
     <!-- TEAM -->
-    <div class="settings-section" id="sec-team">
+
+    <!-- EMAIL SETTINGS -->
+    <div class="settings-section" id="sec-email">
+      <div class="section-card">
+        <div class="section-card-title">Reply-To Email</div>
+        <div class="section-card-desc">Recipients reply to messages sent from EventLogic. Replies route to <strong>this</strong> address — use your personal Gmail / Outlook / iCloud / etc. so you read replies in the inbox you already check.</div>
+
+        <div class="form-group">
+          <label class="form-label">Reply-to address <span style="color:#ef4444;">*</span></label>
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <input type="email" class="form-input" id="settingReplyTo" placeholder="you@gmail.com" style="flex:1;">
+            <span id="replyToBadge" style="display:none;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;white-space:nowrap;"></span>
+          </div>
+          <div class="form-hint" id="replyToHint">Required to send email campaigns from the Contacts page.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Display name <span style="color:var(--text-secondary);font-weight:400;">— optional</span></label>
+          <input type="text" class="form-input" id="settingSenderName" placeholder="Joe at EventLogic">
+          <div class="form-hint">How your name appears in the recipient’s inbox. Example: <code>Joe at EventLogic &lt;noreply@send.yourdomain.com&gt;</code>. Falls back to a generic default if left blank.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Email signature <span style="color:var(--text-secondary);font-weight:400;">— optional</span></label>
+          <textarea class="form-input" id="settingSignature" rows="4" placeholder="— Joe&#10;Event Coordinator&#10;EventLogic&#10;(555) 123-4567" style="font-family:inherit;line-height:1.4;resize:vertical;"></textarea>
+          <div class="form-hint">Appended to every outgoing email. Use plain text, line breaks are preserved.</div>
+        </div>
+
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="settingBccSelf" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent);">
+            <span style="font-size:13px;">Send me a copy (BCC) of every email I send</span>
+          </label>
+          <div class="form-hint" style="margin-left:24px;">Useful for keeping a record in your sent folder. Recipients don’t see this.</div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-primary" onclick="saveEmailSettings()">Save Email Settings</button>
+          <button class="btn-secondary" id="sendTestBtn" onclick="sendTestEmail()" style="display:none;">Send Test to Myself</button>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-card-title">How it works</div>
+        <div class="section-card-desc">
+          <p style="margin:0 0 10px;"><strong>Sending</strong> — All campaigns send from <code>noreply@send.yourdomain.com</code> (one shared verified domain). This gives you fast deliverability without each user having to verify their own DNS.</p>
+          <p style="margin:0 0 10px;"><strong>Receiving</strong> — When recipients hit Reply, the message routes to the address you set above. You read replies in your normal Gmail / Outlook / etc. — no new inbox to check.</p>
+          <p style="margin:0;"><strong>Privacy</strong> — Bulk recipients are always BCC’d so they never see each other’s email addresses.</p>
+        </div>
+      </div>
+    </div>
+
+        <div class="settings-section" id="sec-team">
       <div class="section-card">
         <div class="section-card-title" style="display:flex;justify-content:space-between;align-items:center;">
           Team Members
@@ -760,6 +813,8 @@ async function init() {
   renderBilling();
   document.getElementById('prefDark').checked = isDark;
   document.getElementById('prefLanding').value = localStorage.getItem('elp_landing') || 'dashboard';
+
+  loadEmailSettings();
 }
 
 /* ===== PROFILE ===== */
@@ -1227,6 +1282,131 @@ document.addEventListener('keydown', function(e) {
     } catch(e) { console.warn('Branding loader:', e); }
   }, 200);
 })();
+
+/* ===== EMAIL SETTINGS ===== */
+async function loadEmailSettings(){
+  if (!userEmail) return;
+  try {
+    var r = await sb.from('users').select('reply_to_email, reply_to_verified, sender_display_name, email_signature, bcc_self_on_send').eq('email', userEmail).single();
+    if (r.error) throw r.error;
+    var u = r.data || {};
+    document.getElementById('settingReplyTo').value     = u.reply_to_email || '';
+    document.getElementById('settingSenderName').value  = u.sender_display_name || '';
+    document.getElementById('settingSignature').value   = u.email_signature || '';
+    document.getElementById('settingBccSelf').checked   = u.bcc_self_on_send !== false;
+    updateReplyToBadge(u.reply_to_email, u.reply_to_verified);
+  } catch(e){
+    console.warn('Could not load email settings (table column may be missing):', e);
+  }
+}
+
+function updateReplyToBadge(replyTo, verified){
+  var b = document.getElementById('replyToBadge');
+  var btn = document.getElementById('sendTestBtn');
+  if (!b) return;
+  if (!replyTo){
+    b.style.display = 'none';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  b.style.display = 'inline-block';
+  if (btn) btn.style.display = '';
+  if (verified){
+    b.textContent = '✓ Verified';
+    b.style.background = 'rgba(34,197,94,.12)';
+    b.style.color = '#16a34a';
+    b.style.border = '1px solid rgba(34,197,94,.3)';
+  } else {
+    b.textContent = 'Saved (not verified)';
+    b.style.background = 'rgba(245,158,11,.12)';
+    b.style.color = '#b45309';
+    b.style.border = '1px solid rgba(245,158,11,.3)';
+  }
+}
+
+async function saveEmailSettings(){
+  var replyTo = document.getElementById('settingReplyTo').value.trim();
+  var senderName = document.getElementById('settingSenderName').value.trim();
+  var sig = document.getElementById('settingSignature').value;
+  var bcc = document.getElementById('settingBccSelf').checked;
+  if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)){
+    toast('That doesn\'t look like a valid email');
+    return;
+  }
+  try {
+    var r = await sb.from('users').update({
+      reply_to_email: replyTo || null,
+      sender_display_name: senderName || null,
+      email_signature: sig || null,
+      bcc_self_on_send: bcc,
+      reply_to_verified: false  // any change requires re-verification
+    }).eq('email', userEmail).select().single();
+    if (r.error) throw r.error;
+    toast('Email settings saved');
+    updateReplyToBadge(r.data.reply_to_email, r.data.reply_to_verified);
+  } catch(e){
+    console.error(e);
+    if (String(e.message||'').toLowerCase().indexOf('column') >= 0){
+      alert('Email settings columns are missing.\n\nRun the user_email_settings_migration.sql in Supabase first.');
+    } else {
+      alert('Could not save: '+(e.message||e));
+    }
+  }
+}
+
+/* Sends a one-recipient test email to the user\'s reply_to address so they can confirm everything works */
+async function sendTestEmail(){
+  var replyTo = document.getElementById('settingReplyTo').value.trim();
+  if (!replyTo){ toast('Set a reply-to email first'); return; }
+  if (!confirm('Send a test email to '+replyTo+'?')) return;
+  var senderName = document.getElementById('settingSenderName').value.trim();
+  var sig = document.getElementById('settingSignature').value;
+  var bcc = document.getElementById('settingBccSelf').checked;
+  // Build the payload
+  var payload = {
+    tenant_id: tenantId,
+    from_email: userEmail,
+    sender_display_name: senderName || null,
+    reply_to: replyTo,
+    bcc_self: false,                            // not needed for the self-test
+    signature: sig || null,
+    subject: 'EventLogic test — your email is set up correctly',
+    body: 'Hi {first_name},\n\nThis is a test message confirming your EventLogic email settings are working.\n\nReplies to messages sent from EventLogic will arrive in this inbox.',
+    recipients: [{ email: replyTo, first_name: (firstName || 'there') }],
+    event_name: '',
+    attachments: []
+  };
+  // Resolve Supabase URL + key for direct fetch (same pattern as contacts composer)
+  var supaUrl = (sb && (sb.supabaseUrl || sb.supabase_url)) || (window.SUPABASE_URL) || '';
+  var supaKey = (sb && (sb.supabaseKey || sb.anonKey || sb.supabase_key)) || (window.SUPABASE_ANON_KEY) || '';
+  if (!supaUrl){ alert('Could not determine Supabase URL'); return; }
+  var url = supaUrl.replace(/\/$/,'') + '/functions/v1/send-campaign';
+  var headers = { 'Content-Type':'application/json' };
+  try {
+    var s = (await sb.auth.getSession()).data.session;
+    if (s && s.access_token) headers['Authorization'] = 'Bearer ' + s.access_token;
+    else if (supaKey) headers['Authorization'] = 'Bearer ' + supaKey;
+  } catch(_){ if (supaKey) headers['Authorization'] = 'Bearer ' + supaKey; }
+  if (supaKey) headers['apikey'] = supaKey;
+  try {
+    var resp = await fetch(url, { method:'POST', headers: headers, body: JSON.stringify(payload) });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.message || 'HTTP '+resp.status);
+    if (data.sent > 0){
+      toast('✓ Test sent! Check '+replyTo+' (and spam folder).');
+      // Mark verified
+      await sb.from('users').update({
+        reply_to_verified: true, reply_to_verified_at: new Date().toISOString()
+      }).eq('email', userEmail);
+      updateReplyToBadge(replyTo, true);
+    } else {
+      var msg = (data.results||[]).map(function(x){return x.error;}).join('\n') || 'Unknown error';
+      alert('Test failed:\n'+msg);
+    }
+  } catch(e){
+    alert('Test send failed:\n'+(e.message||e));
+  }
+}
 </script>
 
 </body>
