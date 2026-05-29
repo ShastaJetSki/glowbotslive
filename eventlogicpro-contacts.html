@@ -243,6 +243,13 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .composer-card{max-width:720px;width:100%;max-height:92vh;display:flex;flex-direction:column;}
 .composer-body{display:flex;flex-direction:column;gap:14px;padding:18px 20px;overflow-y:auto;flex:1;}
 .composer-footer{display:flex;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-secondary);position:sticky;bottom:0;}
+/* Reply-To indicator bar in composer */
+.comp-replyto{background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;}
+.comp-replyto-row{display:flex;align-items:center;gap:8px;font-size:11px;}
+.comp-replyto-lbl{color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:9px;width:80px;flex-shrink:0;}
+.comp-replyto-val{color:var(--text-primary);font-family:'Space Mono',monospace;font-size:11px;}
+.comp-replyto-val.missing{color:#b45309;font-style:italic;}
+
 
 .comp-recipients{background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
 .comp-recipients-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-primary);}
@@ -1266,6 +1273,23 @@ window.onSelectAllToggle = function(checked){
 
 /* ===== Bulk email composer (opens mail client with BCC list) ===== */
 
+
+// Pull the current user's email-sending settings (reply_to, signature, sender name).
+// Stored on window so the composer can read them without another fetch.
+async function loadCurrentUserEmailSettings(){
+  if (!window.userEmail) return;
+  try {
+    var r = await sb.from('users').select('reply_to_email, reply_to_verified, sender_display_name, email_signature, bcc_self_on_send').eq('email', window.userEmail).single();
+    if (r.error) return;
+    var u = r.data || {};
+    window.userReplyTo         = u.reply_to_email || '';
+    window.userReplyToVerified = !!u.reply_to_verified;
+    window.userSenderName      = u.sender_display_name || '';
+    window.userSignature       = u.email_signature || '';
+    window.userBccSelf         = u.bcc_self_on_send !== false;
+  } catch(_){}
+}
+
 // Open the in-app composer for a single contact (replaces mailto)
 window.emailOneContact = function(cid){
   var c = (allContacts||[]).find(function(x){return x.customer_id===cid;});
@@ -1316,6 +1340,21 @@ window.bulkEmailSelected = function(){
 };
 
 function openEmailComposer(){
+  // Populate the Reply-To indicator
+  var rt = window.userReplyTo || '';
+  var fromName = window.userSenderName || ((window.firstName||'') ? (window.firstName + ' at EventLogic') : 'EventLogic');
+  var fromNameEl = document.getElementById('compFromName');
+  if (fromNameEl) fromNameEl.textContent = fromName;
+  var rtEl = document.getElementById('compReplyToEmail');
+  if (rtEl){
+    if (rt){
+      rtEl.textContent = rt;
+      rtEl.classList.remove('missing');
+    } else {
+      rtEl.textContent = '— not set (go to Settings → Email) —';
+      rtEl.classList.add('missing');
+    }
+  }
   // Populate recipient summary
   var n = _composerRecipients.length;
   document.getElementById('compRcptCount').textContent = n;
@@ -1497,6 +1536,10 @@ async function sendCampaign(){
   if (!subject){ alert('Add a subject.'); return; }
   if (!body.trim()){ if (!confirm('Send with an empty message?')) return; }
   if (!_composerRecipients.length){ alert('No recipients with valid emails.'); return; }
+  if (!window.userReplyTo){
+    alert('You haven\'t set a reply-to email yet.\n\nGo to Settings → Email and set the address where replies should land. Without one, replies would vanish.');
+    return;
+  }
   var btn = document.getElementById('compSendBtn');
   btn.disabled = true; btn.textContent = 'Sending…';
   if (typeof window.setAutosave === 'function') setAutosave('saving', 'Sending campaign…');
@@ -1508,6 +1551,10 @@ async function sendCampaign(){
     var payload = {
       tenant_id: currentTenantId,
       from_email: window.userEmail || null,
+      sender_display_name: window.userSenderName || null,
+      reply_to: window.userReplyTo || null,
+      bcc_self: !!window.userBccSelf,
+      signature: window.userSignature || null,
       subject: subject,
       body: body,
       recipients: _composerRecipients.map(function(r){return {email:r.email, first_name:r.first_name, last_name:r.last_name, organization_name:r.organization_name};}),
@@ -2363,6 +2410,8 @@ async function init(){
   renderList();
 
   if (typeof populateSortEventOptions === 'function') setTimeout(populateSortEventOptions, 500);
+
+  loadCurrentUserEmailSettings();
 }
 init();
 </script>
@@ -2632,6 +2681,20 @@ document.addEventListener('keydown', function(e) {
         </div>
         <div class="comp-recipients-list" id="compRecipientsList" style="display:none;"></div>
         <div class="comp-skipped" id="compSkipped" style="display:none;"></div>
+      </div>
+
+      <!-- Reply-To indicator -->
+      <div class="comp-replyto" id="compReplyToBar">
+        <div class="comp-replyto-row">
+          <span class="comp-replyto-lbl">From:</span>
+          <span class="comp-replyto-val" id="compFromName">EventLogic</span>
+          <span style="color:var(--text-secondary);font-size:11px;">&lt;noreply@send.&hellip;&gt;</span>
+        </div>
+        <div class="comp-replyto-row">
+          <span class="comp-replyto-lbl">Replies go to:</span>
+          <span class="comp-replyto-val" id="compReplyToEmail">— not set —</span>
+          <a href="settings.html#email" class="comp-link" style="margin-left:auto;">Change</a>
+        </div>
       </div>
 
       <!-- Subject -->
