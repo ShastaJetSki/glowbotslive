@@ -95,15 +95,18 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .sb-add-stage:hover{background:rgba(220,38,38,.28);color:#fff;}
 
 /* TIMELINE */
-.timeline-wrap{overflow-x:auto;overflow-y:visible;padding-bottom:8px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) rgba(255,255,255,.03);}
-.timeline-wrap::-webkit-scrollbar{height:5px;}
-.timeline-wrap::-webkit-scrollbar-track{background:rgba(255,255,255,.03);border-radius:3px;}
-.timeline-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px;}
-.timeline-wrap::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28);}
+.timeline-wrap{overflow-x:hidden;overflow-y:visible;padding-bottom:8px;}
+
+
+
+
 .timeline-inner{display:flex;flex-direction:column;}
 
 /* RULER */
-.time-ruler{display:flex;margin-left:160px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;}
+.time-ruler{display:flex;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;}
+.time-ruler-wrap{margin-left:160px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.12) transparent;}
+.time-ruler-wrap::-webkit-scrollbar{height:4px;}
+.time-ruler-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px;}
 .time-tick{flex-shrink:0;font-size:9px;font-weight:700;color:rgba(255,255,255,.25);font-family:'Space Mono',monospace;padding:0 0 6px 4px;border-left:1px solid rgba(255,255,255,.06);}
 
 /* STAGE ROW */
@@ -118,7 +121,12 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .stage-mini-btn.danger:hover{color:#f87171;border-color:rgba(239,68,68,.4);}
 
 /* TRACK */
-.stage-track{flex:1;background:rgba(255,255,255,.025);border-radius:8px;border:1px solid rgba(255,255,255,.05);min-height:108px;display:flex;align-items:center;padding:8px;cursor:pointer;position:relative;}
+.stage-track{flex:1;min-width:0;background:rgba(255,255,255,.025);border-radius:8px;border:1px solid rgba(255,255,255,.05);min-height:108px;cursor:pointer;position:relative;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) rgba(255,255,255,.04);}
+.stage-track::-webkit-scrollbar{height:6px;}
+.stage-track::-webkit-scrollbar-track{background:rgba(255,255,255,.03);border-radius:3px;}
+.stage-track::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px;}
+.stage-track::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.32);}
+.stage-track-inner{display:flex;align-items:center;padding:8px;min-height:92px;}
 .stage-track:hover{border-color:rgba(255,255,255,.08);}
 
 /* ADD FIRST ACT */
@@ -541,12 +549,30 @@ function renderTimelineView(area){
 
     stagesH+='<div class="stage-row" id="sr-'+stage.stage_id+'">';
     stagesH+='<div class="stage-label"><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
-    stagesH+='<div class="stage-track" style="min-width:'+trackW+'px;" ondragover="event.preventDefault()" ondrop="actDropOnStage(event,\''+stage.stage_id+'\')" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')">'+actsH+'</div>';
+    stagesH+='<div class="stage-track" ondragover="event.preventDefault()" ondrop="actDropOnStage(event,\''+stage.stage_id+'\')" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
     stagesH+='</div>';
   });
 
   var totalW=Math.round(trackW)+160;
-  area.innerHTML='<div class="timeline-wrap"><div class="timeline-inner" style="min-width:'+totalW+'px;"><div class="time-ruler" style="width:'+trackW+'px;">'+rulerH+'</div>'+stagesH+'</div></div>';
+  area.innerHTML='<div class="timeline-wrap"><div class="timeline-inner"><div class="time-ruler-wrap" style="overflow-x:auto;overflow-y:hidden;margin-bottom:4px;"><div class="time-ruler" style="width:'+trackW+'px;margin-left:0;">'+rulerH+'</div></div>'+stagesH+'</div></div>';
+
+  // Auto-scroll each stage track to bring its first act into view
+  setTimeout(function(){
+    allStages.forEach(function(stage){
+      var row = document.getElementById('sr-'+stage.stage_id);
+      if (!row) return;
+      var track = row.querySelector('.stage-track');
+      if (!track) return;
+      // Find first real act (prefer non-break)
+      var firstAct = track.querySelector('.act-block:not(.act-type-break)');
+      if (!firstAct) firstAct = track.querySelector('.act-block');
+      if (!firstAct) return;
+      // Scroll so the first act sits a few pixels in from the left
+      var pad = 16;
+      var target = Math.max(0, firstAct.offsetLeft - pad);
+      track.scrollLeft = target;
+    });
+  }, 30);
 }
 
 function renderListView(area){
