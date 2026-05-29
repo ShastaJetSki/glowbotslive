@@ -947,14 +947,20 @@ function confirmDeleteFromEdit() {
 async function init() {
   var s = await checkAuth(); if (!s) return;
   var email = s.user.email || '';
-  var ur = await sb.from('users').select('tenant_id,user_id,display_name,first_name,last_name').eq('email', email).single();
+  var ur = await sb.from('users').select('tenant_id,user_id,display_name,first_name,last_name,full_name').eq('email', email).single();
   if (ur.data) {
     tenantId = ur.data.tenant_id;
     userId   = ur.data.user_id;
-    var firstName = ur.data.first_name || ur.data.display_name || email.split('@')[0];
-    document.getElementById('welcomeText').textContent = 'Welcome back, ' + firstName;
-    document.getElementById('headerEmail').textContent = ur.data.display_name || firstName;
-    document.getElementById('mBiz').textContent = ur.data.display_name || 'Event Logic Pro';
+    // Resolve display name: first_name > display_name > full_name > email prefix
+    var displayName = ur.data.first_name || ur.data.display_name || ur.data.full_name || email.split('@')[0];
+    var firstName   = (displayName.split(' ')[0]) || displayName;
+    // Welcome banner (uses first word of name)
+    var wt = document.getElementById('welcomeText'); if (wt) wt.textContent = 'Welcome back, ' + firstName;
+    // Header subtitle: name in red, email in grey (both desktop + mobile)
+    ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=displayName;});
+    ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
+    // Legacy mobile business label (kept for compatibility)
+    var mb = document.getElementById('mBiz'); if (mb) mb.textContent = displayName;
   }
   if (!tenantId) {
     var bs = await sb.from('business_settings').select('tenant_id,business_name').limit(1).single();
