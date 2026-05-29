@@ -162,6 +162,17 @@ html,body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;backgro
 .bg-opacity-row input[type=range]{flex:1;accent-color:var(--accent);}
 .bg-opacity-val{font-size:11px;font-family:'Space Mono',monospace;color:var(--text-primary);font-weight:700;min-width:36px;text-align:right;}
 
+
+/* Current-map header at top of right column */
+.current-map-bar{flex-shrink:0;padding:10px;background:var(--bg-card);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
+.cm-info{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cm-name{font-size:13px;font-weight:700;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
+.cm-name.empty{color:var(--text-secondary);font-weight:500;font-style:italic;}
+.cm-rename{padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;transition:all .12s;}
+.cm-rename:hover{border-color:var(--accent);color:var(--accent);}
+.cm-newbtn{padding:7px 10px;border:1px dashed var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s;}
+.cm-newbtn:hover{border-style:solid;border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
+
 /* Saved maps list (right panel) */
 .maps-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--border);max-height:40%;flex-shrink:0;}
 .maps-panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-secondary);background:var(--bg-card);border-bottom:1px solid var(--border);}
@@ -179,8 +190,7 @@ html,body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;backgro
 .mr-name{font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.25;}
 .mr-date{font-size:9px;color:var(--text-secondary);line-height:1;font-family:'Space Mono',monospace;}
 .maps-panel-empty{padding:14px 12px;text-align:center;color:var(--text-secondary);font-size:11px;font-style:italic;}
-.maps-panel-newbtn{display:block;width:100%;padding:6px 10px;margin:6px;border:1px dashed var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s;}
-.maps-panel-newbtn:hover{border-style:solid;border-color:var(--accent);color:var(--accent);}
+/* (maps-panel-newbtn moved to .current-map-bar above the list) */
 
 
 /* Map-type color chips (replaces native select dropdown) */
@@ -403,6 +413,14 @@ select.form-input{cursor:pointer;}
   </div>
   <!-- Right Panel -->
   <div class="panel-right">
+    <!-- CURRENT MAP HEADER + NEW MAP BUTTON -->
+    <div class="current-map-bar" id="currentMapBar">
+      <div class="cm-info">
+        <div class="cm-name" id="cmName">No map open</div>
+        <button class="cm-rename" id="cmRenameBtn" onclick="renameMap()" style="display:none;">Rename</button>
+      </div>
+      <button class="cm-newbtn" onclick="openNewMapModal()">+ New Map</button>
+    </div>
     <!-- SAVED MAPS LIST -->
     <div class="maps-panel">
       <div class="maps-panel-header">
@@ -412,9 +430,8 @@ select.form-input{cursor:pointer;}
       <div class="maps-panel-list" id="mapsPanelList">
         <div class="maps-panel-empty">No maps yet</div>
       </div>
-      <button class="maps-panel-newbtn" onclick="openNewMapModal()">+ New Map</button>
     </div>
-    <!-- PROPERTIES (existing) -->
+    <!-- PROPERTIES (object editor only — map info lives above now) -->
     <div id="propsPanel"><div class="empty-props">Select an object to<br>edit its properties</div></div>
   </div>
 </div>
@@ -624,9 +641,7 @@ function selectObj(id){selectedId=id;renderAll();renderLayers();renderProps();}
 function renderProps(){
   var el=document.getElementById('propsPanel');
   if(selectedId===null){
-    var map=currentMapId?allMaps.find(function(m){return m.id===currentMapId;}):null;
-    var bgHtml='<div class="empty-props">'+(map?'<strong>'+esc(map.name)+'</strong><br><button class="btn" onclick="renameMap()" style="margin-top:6px;font-size:11px;">Rename</button>':'Select an object to<br>edit its properties')+'</div>';
-    el.innerHTML=bgHtml;
+    el.innerHTML='<div class="empty-props">Select an object to<br>edit its properties</div>';
     return;
   }
 var obj=getObj(selectedId);if(!obj){el.innerHTML='';return;}
@@ -667,9 +682,22 @@ document.addEventListener('keydown',function(e){if(e.target.tagName==='INPUT'||e
 // ===== DB SAVE/LOAD =====
 async function loadMaps(){if(!tenantId)return;var r=await sb.from('site_maps').select('*').eq('tenant_id',tenantId).order('updated_at',{ascending:false});allMaps=r.data||[];renderMapSelect();}
 function updateCurrentMapLabel(){
-  // The floating chip was removed; only the Delete button visibility still depends on map state here.
   var del=document.getElementById('deleteMapBtn');
   if(del)del.style.display=currentMapId?'':'none';
+  // Populate the current-map header at the top of the right column
+  var nameEl=document.getElementById('cmName');
+  var rnBtn=document.getElementById('cmRenameBtn');
+  var map=currentMapId?(allMaps||[]).find(function(m){return m.id===currentMapId;}):null;
+  if(nameEl){
+    if(map){
+      nameEl.textContent = map.name || 'Untitled';
+      nameEl.classList.remove('empty');
+    } else {
+      nameEl.textContent = 'No map open';
+      nameEl.classList.add('empty');
+    }
+  }
+  if(rnBtn) rnBtn.style.display = map ? '' : 'none';
 }
 
 // Render the saved-maps list in the right panel
