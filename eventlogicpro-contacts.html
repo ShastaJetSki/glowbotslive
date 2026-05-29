@@ -140,12 +140,12 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 /* ===== KPI PILL BAR (SharkLaw style, ELP colors) ===== */
 .kpi-bar{display:flex;gap:6px;padding:0 0 10px;overflow-x:auto;scrollbar-width:none;}
 .kpi-bar::-webkit-scrollbar{display:none;}
-.kpi-pill{padding:8px 16px;border-radius:20px;background:var(--bg-card);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s;text-align:center;}
-.kpi-pill:hover{border-color:var(--accent);}
-.kpi-pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
-.kpi-val{font-size:17px;font-weight:700;}
-.kpi-lbl{font-size:10px;color:var(--text-secondary);margin-top:1px;}
-.kpi-pill.on .kpi-lbl{color:rgba(255,255,255,.8);}
+.kpi-pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:18px;background:var(--bg-card);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s;}
+.kpi-pill:hover{border-color:var(--accent);background:var(--accent-glow);}
+.kpi-pill.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 6px rgba(220,38,38,.25);}
+.kpi-val{font-size:13px;font-weight:800;color:var(--text-primary);line-height:1;}
+.kpi-lbl{font-size:11px;color:var(--text-secondary);font-weight:600;line-height:1;}
+.kpi-pill.on .kpi-lbl{color:rgba(255,255,255,.9);}
 
 /* ===== SEARCH ===== */
 .search-section{margin-bottom:8px;}
@@ -1367,6 +1367,10 @@ function renderAll(){renderKpis();renderList();}
 async function init(){
   var s=await checkAuth();if(!s)return;
   var email=s.user?.email;
+  // Always set the email in the header if we have one (so it shows even if user lookup fails)
+  if(email){
+    ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
+  }
   if(email){
     var r=await sb.from('users').select('*').eq('email',email).single();
     if(r.data?.tenant_id){
@@ -1375,8 +1379,11 @@ async function init(){
       currentUserRole=r.data.role||null;
       var displayName = r.data.first_name || r.data.display_name || r.data.full_name || email.split('@')[0];
       ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=displayName;});
-      // header email already set by init()
       (document.getElementById('mBiz')||{}).textContent=displayName;
+    } else {
+      // Fallback: at least show email prefix as name
+      var fallbackName = email.split('@')[0];
+      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=fallbackName;});
     }
   }
   if(!currentTenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data?.tenant_id)currentTenantId=r2.data.tenant_id;}
@@ -1605,7 +1612,10 @@ document.addEventListener('keydown', function(e) {
     var p = (window.allEvProjects || []).find(function(x){return x.event_project_id === projectId;});
     if (!p) return;
     window.currentProjectId = projectId;
-    if (typeof window.activeEventId !== 'undefined') window.activeEventId = projectId;
+    // NOTE: don't set window.activeEventId here — that would filter the
+    // contact list to ONLY this event's contacts. Proj-bar selection is for
+    // context (top-bar event info display), not a contact filter.
+    // if (typeof window.activeEventId !== 'undefined') window.activeEventId = projectId;
     localStorage.setItem('elp-selected-event', projectId);
     var input = document.getElementById('projSearchInput');
     if (input) input.value = '';
@@ -1639,7 +1649,8 @@ document.addEventListener('keydown', function(e) {
 
   window.clearProject = function(){
     window.currentProjectId = null;
-    if (typeof window.activeEventId !== 'undefined') window.activeEventId = null;
+    // activeEventId is no longer driven from proj-bar (see selectProject)
+    // if (typeof window.activeEventId !== 'undefined') window.activeEventId = null;
     localStorage.removeItem('elp-selected-event');
     var ebn=document.getElementById('ebarName'); if(ebn){ ebn.textContent='No event selected'; ebn.classList.add('empty'); }
     var ebd=document.getElementById('ebarDate'); if(ebd){ ebd.textContent='\u2014'; ebd.classList.add('empty'); }
