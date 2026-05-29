@@ -72,7 +72,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .view-tab.active{background:var(--bg-card);color:var(--text-primary);box-shadow:0 1px 4px rgba(0,0,0,.10);border:1px solid var(--border);}
 .tab-badge{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border-radius:10px;padding:1px 5px;font-size:9px;margin-left:4px;font-weight:700;min-width:16px;}
 .view-tab.active .tab-badge{background:var(--accent);}
-.tabs-action-btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tabs-action-btns{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 
 /* CONTENT */
 .content{max-width:960px;margin:0 auto;padding:24px;}
@@ -227,6 +227,25 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 /* PROJECT SEARCH BAR */
 .proj-bar{padding:10px 24px;display:flex;align-items:center;gap:10px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-wrap:wrap;}
 /* Inline event fields in proj-bar — matches tasks page visual style */
+/* Compact buttons + autosave inside the merged proj-bar */
+.proj-bar .hdr-btn{padding:6px 10px;font-size:12px;}
+.proj-bar .print-btn{padding:6px 10px;font-size:12px;}
+.proj-bar .autosave-indicator{font-size:11px;}
+.proj-bar .pbar-event input::placeholder{color:var(--text-secondary);opacity:.5;font-style:normal;font-weight:500;}
+/* Kebab overflow menu (Submit/Share/Delete) */
+.kebab-wrap{position:relative;display:inline-block;}
+.kebab-btn{padding:6px 10px;font-size:14px;font-weight:700;line-height:1;background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;border-radius:7px;letter-spacing:1px;transition:all .12s;}
+.kebab-btn:hover{background:var(--bg-hover);color:var(--text-primary);}
+.kebab-menu{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:1000;min-width:180px;padding:4px;}
+.kebab-menu.open{display:block;}
+.kebab-item{display:block;width:100%;padding:8px 12px;text-align:left;background:transparent;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);font-family:inherit;transition:background .12s;}
+.kebab-item:hover{background:var(--bg-hover);}
+.kebab-item.danger{color:#ef4444;}
+.kebab-item.danger:hover{background:rgba(239,68,68,.1);}
+.kebab-item.success{color:#16a34a;}
+.kebab-item.success:hover{background:rgba(22,163,74,.08);}
+
+
 .pbar-event{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0;}
 .pbar-event .grp{display:flex;align-items:center;gap:6px;min-width:0;}
 .pbar-event .elbl{font-size:10px;color:var(--text-secondary);font-weight:700;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;}
@@ -423,16 +442,21 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     </div>
     <div class="autosave-indicator" id="autosaveIndicator">
       <div class="autosave-dot" id="autosaveDot"></div>
-      <span id="autosaveText">Auto-save on</span>
+      <span id="autosaveText">Saved</span>
     </div>
     <div class="tabs-action-btns">
       <button class="hdr-btn primary" onclick="createNew()" title="Create another budget version (V2, V3...) for this event">+ New Version</button>
       <button class="hdr-btn" onclick="saveToDb()">Save</button>
       <button class="print-btn" onclick="window.print()">Print</button>
-      <button class="hdr-btn success" id="deskSubmitBtn" onclick="submitForReview()" style="display:none;">Submit for Review</button>
       <button class="hdr-btn publish" id="deskPublishBtn" onclick="publishEst()" style="display:none;">Publish as Official</button>
-      <button class="hdr-btn danger" id="deskDelBtn" onclick="deleteEst()" style="display:none;">Delete</button>
-      <button class="hdr-btn share" id="deskShareBtn" onclick="toggleShare()" style="display:none;">Share</button>
+      <div class="kebab-wrap" id="kebabWrap" style="display:none;">
+        <button class="kebab-btn" onclick="toggleKebab(event)" title="More actions" aria-label="More actions">&#8943;</button>
+        <div class="kebab-menu" id="kebabMenu">
+          <button class="kebab-item success" id="deskSubmitBtn" onclick="closeKebab();submitForReview();" style="display:none;">Submit for Review</button>
+          <button class="kebab-item" id="deskShareBtn" onclick="closeKebab();toggleShare();" style="display:none;">Share</button>
+          <button class="kebab-item danger" id="deskDelBtn" onclick="closeKebab();deleteEst();" style="display:none;">Delete</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -730,8 +754,9 @@ document.addEventListener('click', function(e) {
 });
 
 async function selectProject(projectId) {
+  try {
   var p = allProjects.find(function(x){return x.event_project_id === projectId;});
-  if (!p) return;
+  if (!p) { console.warn('[Budget] selectProject: project not in allProjects:', projectId); return; }
   currentProjectId = projectId;
 
   // Update pill
@@ -763,6 +788,10 @@ async function selectProject(projectId) {
   var official = projectBudgets.find(function(e){return e.status==='published';});
   var toLoad = official || projectBudgets[0];
   syncSel(toLoad.estimate_id);
+  } catch (e) {
+    console.error('[Budget] selectProject failed:', e);
+    if (typeof toast === 'function') toast('Could not load event: ' + (e.message || e));
+  }
 }
 
 async function autoCreateBudgetV1(project) {
@@ -798,8 +827,20 @@ async function autoCreateBudgetV1(project) {
       lineRows.push({estimate_id:estId,tenant_id:tenantId,category_key:c.id,category_type:'revenue',item_name:it.name,estimated_cost:0,actual_cost:0,due_timing:'day',sort_order:lo++});
     });
   });
-  await sb.from('estimate_categories').insert(catRows);
-  if (lineRows.length) await sb.from('estimate_line_items').insert(lineRows);
+  var cat_r = await sb.from('estimate_categories').insert(catRows);
+  if (cat_r.error) {
+    console.error('[Budget] autoCreate categories error:', cat_r.error);
+    if (typeof toast === 'function') toast('Categories failed: ' + cat_r.error.message);
+    return;
+  }
+  if (lineRows.length) {
+    var line_r = await sb.from('estimate_line_items').insert(lineRows);
+    if (line_r.error) {
+      console.error('[Budget] autoCreate line items error:', line_r.error);
+      if (typeof toast === 'function') toast('Line items failed: ' + line_r.error.message);
+      return;
+    }
+  }
   currentEstId = estId;
   localStorage.setItem('elp-last-est', estId);
   await loadEstimates();
@@ -973,15 +1014,49 @@ function updateActionButtons() {
   var isMine = est && est.created_by === userId;
   var isAdmin= userRole === 'admin' || userRole === 'manager';
   var status = est ? (est.status||'draft') : 'draft';
-  ['deskDelBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display=isMine?'':'none';});
+
+  // Delete (kebab item)
+  var delBtn = document.getElementById('deskDelBtn');
+  if (delBtn) delBtn.style.display = isMine ? '' : 'none';
+
+  // Share / Unshare (kebab item) — preserve class so styling sticks as kebab-item
   var dsb = document.getElementById('deskShareBtn');
-  if (dsb) { dsb.style.display=isMine?'':'none'; if(est)dsb.textContent=est.is_shared?'Unshare':'Share'; dsb.className='hdr-btn '+(est&&est.is_shared?'unshare':'share'); }
-  // Any team member can submit their own draft
+  if (dsb) {
+    dsb.style.display = isMine ? '' : 'none';
+    if (est) dsb.textContent = est.is_shared ? 'Unshare' : 'Share';
+  }
+
+  // Submit for Review (kebab item) — any team member can submit their own draft
   var canSubmit = isMine && status === 'draft';
-  var dsk = document.getElementById('deskSubmitBtn'); if(dsk) dsk.style.display = canSubmit ? '' : 'none';
+  var dsk = document.getElementById('deskSubmitBtn');
+  if (dsk) dsk.style.display = canSubmit ? '' : 'none';
+
+  // Publish (stays in main bar) — admins, not yet published
   var canPublish = isAdmin && est && status !== 'published';
-  var dpb = document.getElementById('deskPublishBtn'); if(dpb) dpb.style.display = canPublish ? '' : 'none';
+  var dpb = document.getElementById('deskPublishBtn');
+  if (dpb) dpb.style.display = canPublish ? '' : 'none';
+
+  // Show kebab only if any item inside is visible
+  var anyKebab = (delBtn && delBtn.style.display === '') ||
+                 (dsb && dsb.style.display === '') ||
+                 (dsk && dsk.style.display === '');
+  var kw = document.getElementById('kebabWrap');
+  if (kw) kw.style.display = anyKebab ? '' : 'none';
 }
+
+// ===== KEBAB MENU =====
+function toggleKebab(e) {
+  if (e) e.stopPropagation();
+  var m = document.getElementById('kebabMenu');
+  if (m) m.classList.toggle('open');
+}
+function closeKebab() {
+  var m = document.getElementById('kebabMenu');
+  if (m) m.classList.remove('open');
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.kebab-wrap')) closeKebab();
+});
 
 /* ===== AUTOSAVE ===== */
 function startAutoSave() {
