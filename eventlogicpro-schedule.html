@@ -34,7 +34,18 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .settings-link:hover,.logout-link:hover{color:var(--accent);}
 
 /* PROJ BAR */
-.proj-bar{padding:10px 24px;display:flex;align-items:center;gap:10px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.proj-bar{padding:10px 24px;display:flex;align-items:center;gap:12px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+
+/* Inline event info in proj-bar — matches tasks/budget/packages */
+.tbar-event{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0;}
+.tbar-event .grp{display:flex;align-items:center;gap:6px;min-width:0;}
+.tbar-event .elbl{font-size:10px;color:var(--text-secondary);font-weight:700;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;}
+.tbar-event .eval{font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;}
+.tbar-event .eval.empty{color:var(--text-secondary);font-weight:500;font-style:italic;}
+
+/* Compact buttons inside merged proj-bar */
+.proj-bar .hdr-btn{padding:6px 10px;font-size:12px;}
+.proj-bar .autosave-indicator{font-size:11px;}
 .proj-search-wrap{position:relative;flex:1;max-width:480px;}
 .proj-search-input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text-primary);font-size:13px;font-family:inherit;}
 .proj-search-input:focus{outline:none;border-color:var(--accent);}
@@ -51,7 +62,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .proj-pill-dot{width:8px;height:8px;border-radius:50%;}
 .proj-pill-name{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .proj-pill-clear{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:14px;padding:0;margin-left:2px;}
-.autosave-indicator{font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;white-space:nowrap;margin-left:auto;}
+.autosave-indicator{font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;white-space:nowrap;}
 .autosave-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;animation:asPulse 2s infinite;}
 .autosave-dot.saving{background:#f59e0b;animation:none;}
 @keyframes asPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
@@ -255,26 +266,29 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <a class="logout-link" onclick="logout()">Logout</a>
     </div>
   </div>
+  <!-- SEARCH + EVENT INFO + ACTIONS (single row) -->
   <div class="proj-bar">
     <div class="proj-search-wrap">
       <svg class="proj-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" class="proj-search-input" id="projSearchInput" placeholder="Search events..." autocomplete="off" oninput="projSearch(this.value)" onfocus="projSearch(this.value)" onkeydown="projSearchKey(event)">
       <div class="proj-autocomplete" id="projAutocomplete"></div>
     </div>
-    <div id="projPillWrap" style="display:none;">
-      <div class="proj-pill"><div class="proj-pill-dot" id="projPillDot"></div><span class="proj-pill-name" id="projPillName"></span><button class="proj-pill-clear" onclick="clearProject()">&times;</button></div>
+    <div class="tbar-event" id="ebarWrap">
+      <div class="grp"><span class="elbl">Event</span><span class="eval empty" id="ebarName">No event selected</span></div>
     </div>
     <div class="autosave-indicator" id="autosaveIndicator"><div class="autosave-dot" id="autosaveDot"></div><span id="autosaveText">Ready</span></div>
+    <div class="tabs-action-btns">
+      <button class="hdr-btn" onclick="addStage()">+ Stage</button>
+      <button class="hdr-btn primary" onclick="openActModal(null,null)">+ Add Act</button>
+    </div>
   </div>
+
+  <!-- VIEW TABS (kept on its own row) -->
   <div class="tabs-bar">
     <div class="view-tabs">
       <div class="view-tab active" id="tabTimeline" onclick="setView('timeline')">Timeline</div>
       <div class="view-tab" id="tabList" onclick="setView('list')">List View</div>
       <div class="view-tab" id="tabPrint" onclick="setView('print')">Print Sheet</div>
-    </div>
-    <div class="tabs-action-btns">
-      <button class="hdr-btn" onclick="addStage()">+ Stage</button>
-      <button class="hdr-btn primary" onclick="openActModal(null,null)">+ Add Act</button>
     </div>
   </div>
 </div>
@@ -418,8 +432,36 @@ async function loadSchedule(){if(!currentProjectId){allStages=[];allActs=[];retu
 function projSearch(val){var q=(val||'').trim().toLowerCase();var ac=document.getElementById('projAutocomplete');if(!ac)return;var f=q.length===0?allProjects.slice(0,12):allProjects.filter(function(p){return (p.event_name||'').toLowerCase().indexOf(q)>=0;}).slice(0,12);projAcResults=f;projAcIndex=-1;ac.innerHTML=f.length?f.map(function(p){var c=p.color_tag||'#DC2626';var d=p.event_date?new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'No date';return '<div class="proj-ac-item" onclick="selectProject(\''+p.event_project_id+'\')"><div class="proj-ac-dot" style="background:'+c+'"></div><div><div class="proj-ac-name">'+(p.event_name||'Untitled')+'</div><div class="proj-ac-sub">'+d+'</div></div></div>';}).join(''):'<div class="proj-ac-empty">No events found</div>';ac.classList.add('show');}
 function projSearchKey(e){var ac=document.getElementById('projAutocomplete');var items=ac.querySelectorAll('.proj-ac-item');if(e.key==='ArrowDown'){e.preventDefault();projAcIndex=Math.min(projAcIndex+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='ArrowUp'){e.preventDefault();projAcIndex=Math.max(projAcIndex-1,0);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='Enter'){if(projAcIndex>=0&&projAcResults[projAcIndex])selectProject(projAcResults[projAcIndex].event_project_id);}else if(e.key==='Escape'){ac.classList.remove('show');}}
 document.addEventListener('click',function(e){if(!e.target.closest('.proj-search-wrap')){var ac=document.getElementById('projAutocomplete');if(ac)ac.classList.remove('show');}});
-async function selectProject(projectId){var p=allProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;currentProjectId=projectId;document.getElementById('projPillDot').style.background=p.color_tag||'#DC2626';document.getElementById('projPillName').textContent=p.event_name||'Untitled';document.getElementById('projPillWrap').style.display='';document.getElementById('projSearchInput').value='';document.getElementById('projAutocomplete').classList.remove('show');localStorage.setItem('elp-last-project',projectId);document.getElementById('boardTitle').textContent=(p.event_name||'Event').toUpperCase()+' — ENTERTAINMENT SCHEDULE';restoreTimeRange();await loadSchedule();renderBoard();showSaved();}
-function clearProject(){currentProjectId=null;document.getElementById('projPillWrap').style.display='none';document.getElementById('projSearchInput').value='';document.getElementById('boardTitle').textContent='Entertainment Schedule';allStages=[];allActs=[];localStorage.removeItem('elp-last-project');renderBoard();}
+async function selectProject(projectId){
+  var p=allProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;
+  currentProjectId=projectId;
+  // Inline event name (replaces removed pill)
+  var ebn=document.getElementById('ebarName');
+  if(ebn){ ebn.textContent = p.event_name || 'Untitled'; ebn.classList.remove('empty'); }
+  // Pill is gone but null-guard any straggler refs just in case
+  var _ppd=document.getElementById('projPillDot');if(_ppd)_ppd.style.background=p.color_tag||'#DC2626';
+  var _ppn=document.getElementById('projPillName');if(_ppn)_ppn.textContent=p.event_name||'Untitled';
+  var _ppw=document.getElementById('projPillWrap');if(_ppw)_ppw.style.display='';
+  document.getElementById('projSearchInput').value='';
+  document.getElementById('projAutocomplete').classList.remove('show');
+  localStorage.setItem('elp-last-project',projectId);
+  document.getElementById('boardTitle').textContent=(p.event_name||'Event').toUpperCase()+' — ENTERTAINMENT SCHEDULE';
+  restoreTimeRange();
+  await loadSchedule();
+  renderBoard();
+  showSaved();
+}
+function clearProject(){
+  currentProjectId=null;
+  var ebn=document.getElementById('ebarName');
+  if(ebn){ ebn.textContent='No event selected'; ebn.classList.add('empty'); }
+  var _ppw=document.getElementById('projPillWrap');if(_ppw)_ppw.style.display='none';
+  document.getElementById('projSearchInput').value='';
+  document.getElementById('boardTitle').textContent='Entertainment Schedule';
+  allStages=[];allActs=[];
+  localStorage.removeItem('elp-last-project');
+  renderBoard();
+}
 
 /* VIEW */
 function setView(v){currentView=v;document.querySelectorAll('.view-tab').forEach(function(t){t.classList.remove('active');});var el=document.getElementById({timeline:'tabTimeline',list:'tabList',print:'tabPrint'}[v]);if(el)el.classList.add('active');renderBoard();}
@@ -524,7 +566,26 @@ async function saveAct(){var name=document.getElementById('amName').value.trim()
 async function deleteAct(){if(!editingActId)return;var act=allActs.find(function(a){return a.act_id===editingActId;});if(!confirm('Delete "'+act?.act_name+'"?'))return;await sb.from('event_schedule_acts').delete().eq('act_id',editingActId);allActs=allActs.filter(function(a){return a.act_id!==editingActId;});closeActModal();renderBoard();showSaved();toast('Deleted');}
 
 /* INIT */
-async function init(){var s=await checkAuth();if(!s)return;var email=s.user.email||'';var ur=await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email',email).single();if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;var n=ur.data.display_name||ur.data.first_name||email;var dEl=document.getElementById('dBiz');if(dEl)dEl.textContent=n;var mEl=document.getElementById('mBiz');if(mEl)mEl.textContent=n;}if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}if(!tenantId)return;await loadProjects();var lastProj=new URLSearchParams(window.location.search).get('event')||localStorage.getItem('elp-last-project');if(lastProj&&allProjects.find(function(p){return p.event_project_id===lastProj;})){await selectProject(lastProj);}}
+async function init(){
+  var s=await checkAuth();if(!s)return;
+  var email=s.user.email||'';
+  var ur=await sb.from('users').select('tenant_id,user_id,first_name,last_name,display_name,full_name').eq('email',email).single();
+  if(ur.data){
+    tenantId=ur.data.tenant_id;userId=ur.data.user_id;
+    var displayName = ur.data.first_name || ur.data.display_name || ur.data.full_name || email.split('@')[0];
+    ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=displayName;});
+    ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
+    var dEl=document.getElementById('dBiz');if(dEl)dEl.textContent=displayName;
+    var mEl=document.getElementById('mBiz');if(mEl)mEl.textContent=displayName;
+  }
+  if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}
+  if(!tenantId)return;
+  await loadProjects();
+  var lastProj=new URLSearchParams(window.location.search).get('event')||localStorage.getItem('elp-last-project');
+  if(lastProj&&allProjects.find(function(p){return p.event_project_id===lastProj;})){
+    await selectProject(lastProj);
+  }
+}
 init();
 </script>
 
@@ -570,19 +631,7 @@ document.addEventListener('keydown', function(e) {
       var session = sess.data.session;
       if (!session) return;
       var email = session.user.email;
-      var u = await sb.from('users').select('first_name, tenant_id').eq('email', email).maybeSingle();
-      if (!u.data) return;
-      var firstName = u.data.first_name || email.split('@')[0];
-      var tenantId  = u.data.tenant_id;
-      // Populate name + email
-      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
-      ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
-      // Load tenant logo
-      var bs = await sb.from('business_settings').select('tenant_logo_url').eq('tenant_id', tenantId).maybeSingle();
-      if (bs.data && bs.data.tenant_logo_url) {
-        ['tenantLogo','mTenantLogo'].forEach(function(id){
-          var el = document.getElementById(id);
-          if (el) { el.src = bs.data.tenant_logo_url; el.style.display = ''; }
+      // Name/email are now set by init() — don't overwrite here (avoids flicker).
         });
       }
     } catch(e) { console.warn('Branding loader:', e); }
