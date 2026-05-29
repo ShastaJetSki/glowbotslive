@@ -92,7 +92,13 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .hdr-btn.primary:hover{background:var(--accent-hover);}
 
 /* DEPT FILTER CHIPS */
-.dept-chips{padding:8px 24px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg-card);}
+.dept-chips-bar{padding:8px 24px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--bg-card);}
+.dept-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0;}
+.dept-add-btn{flex-shrink:0;padding:4px 12px;border-radius:20px;border:1px dashed var(--border);background:transparent;color:var(--text-secondary);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:inherit;}
+.dept-add-btn:hover{border-style:solid;border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
+.dept-chip{position:relative;}
+.dept-chip-x{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border:none;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit;}
+.dept-chip:hover .dept-chip-x{display:flex;}
 .dept-chip{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-secondary);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .dept-chip:hover{border-color:var(--accent);color:var(--accent);}
 .dept-chip.active{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);}
@@ -315,7 +321,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <div class="sep"></div>
       <div class="grp"><span class="elbl">Venue</span><span class="eval empty" id="ebarVenue">&mdash;</span></div>
     </div>
-    <div class="autosave-indicator" id="autosaveIndicator"><div class="autosave-dot" id="autosaveDot"></div><span id="autosaveText">Ready</span></div>
+    <div class="autosave-indicator" id="autosaveIndicator"><div class="autosave-dot" id="autosaveDot"></div><span id="autosaveText">All changes saved</span></div>
     <div class="search-wrap">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" class="search-q" id="searchQ" placeholder="Search questions…" oninput="renderGrid()">
@@ -325,8 +331,11 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 </div>
 
 <!-- DEPT FILTER -->
-<div class="dept-chips" id="deptChips">
-  <div class="dept-chip active" onclick="setDept('all',this)">All Depts</div>
+<div class="dept-chips-bar">
+  <div class="dept-chips" id="deptChips">
+    <div class="dept-chip active" onclick="setDept('all',this)">All Depts</div>
+  </div>
+  <button class="dept-add-btn" onclick="addNewDept()" title="Add a new department">+ Add Dept</button>
 </div>
 
 <!-- CONTENT -->
@@ -633,8 +642,37 @@ function toggleDark(){document.body.classList.toggle('dark');isDark=document.bod
 
 /* TOAST */
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2600);}
-function showSaving(){var d=document.getElementById('autosaveDot'),t=document.getElementById('autosaveText');if(d)d.className='autosave-dot saving';if(t)t.textContent='Saving…';}
-function showSaved(){var d=document.getElementById('autosaveDot'),t=document.getElementById('autosaveText');if(d)d.className='autosave-dot';if(t)t.textContent='Saved';}
+// ===== AUTOSAVE INDICATOR (consistent pattern across pages) =====
+var _lastSavedAt = null;
+var _autosaveTicker = null;
+function setAutosave(state, text){
+  var d=document.getElementById('autosaveDot'), t=document.getElementById('autosaveText');
+  if(!d||!t) return;
+  if(state==='saving'){
+    d.className='autosave-dot saving';
+    t.textContent = text || 'Saving…';
+  } else if(state==='saved'){
+    _lastSavedAt = Date.now();
+    d.className='autosave-dot';
+    t.textContent = text || 'Saved just now';
+    if(!_autosaveTicker) _autosaveTicker = setInterval(_tickAutosave, 15000);
+  } else { // idle
+    d.className='autosave-dot';
+    t.textContent = text || 'All changes saved';
+  }
+}
+function _tickAutosave(){
+  if(!_lastSavedAt) return;
+  var t=document.getElementById('autosaveText'); if(!t) return;
+  var sec=Math.floor((Date.now()-_lastSavedAt)/1000);
+  if(sec<5)       t.textContent='Saved just now';
+  else if(sec<60) t.textContent='Saved '+sec+'s ago';
+  else if(sec<3600) t.textContent='Saved '+Math.floor(sec/60)+'m ago';
+  else            t.textContent='Saved '+Math.floor(sec/3600)+'h ago';
+}
+// Legacy aliases so existing callers don't break
+function showSaving(){ setAutosave('saving'); }
+function showSaved(){  setAutosave('saved');  }
 
 /* AUTH */
 async function logout(){await sb.auth.signOut();location.replace('/');}
@@ -689,7 +727,46 @@ function clearProject(){
 }
 
 /* DEPT CHIPS */
-function buildDeptChips(){var el=document.getElementById('deptChips');var chips='<div class="dept-chip'+(currentDept==='all'?' active':'')+'" onclick="setDept(\'all\',this)">All Depts</div>';allDepts.forEach(function(d){chips+='<div class="dept-chip'+(currentDept===d?' active':'')+'" onclick="setDept(\''+d.replace(/'/g,"\\'")+'\''+',this)">'+d+'</div>';});el.innerHTML=chips;}
+function buildDeptChips(){
+  var el=document.getElementById('deptChips');
+  var chips='<div class="dept-chip'+(currentDept==='all'?' active':'')+'" onclick="setDept(\'all\',this)">All Depts</div>';
+  allDepts.forEach(function(d){
+    var safeD=d.replace(/'/g,"\\'");
+    chips+='<div class="dept-chip'+(currentDept===d?' active':'')+'" onclick="setDept(\''+safeD+'\',this)">'+d+
+      '<button class="dept-chip-x" onclick="event.stopPropagation();deleteDept(\''+safeD+'\')" title="Delete">×</button>'+
+    '</div>';
+  });
+  el.innerHTML=chips;
+}
+
+async function addNewDept(){
+  if(!tenantId){alert('Tenant not loaded yet — try again in a moment.');return;}
+  var name=prompt('New department name (e.g. "Hospitality", "Tech", "Volunteers"):');
+  if(!name) return;
+  name=name.trim();
+  if(!name) return;
+  if(allDepts.indexOf(name)>=0){alert('That department already exists.');return;}
+  setAutosave('saving','Adding department…');
+  var sort_order=(allDepts.length||0)+1;
+  var r=await sb.from('event_departments').insert({tenant_id:tenantId,name:name,sort_order:sort_order}).select().single();
+  if(r.error){alert('Error: '+r.error.message);setAutosave('idle');return;}
+  allDepts.push(name);
+  buildDeptChips();
+  setAutosave('saved');
+  toast('Department added');
+}
+
+async function deleteDept(name){
+  if(!confirm('Delete department "'+name+'"?\n\nQuestions assigned to it will keep their label — nothing is removed, the dept is just unfiled.')) return;
+  setAutosave('saving','Deleting…');
+  await sb.from('event_departments').delete().eq('tenant_id',tenantId).eq('name',name);
+  allDepts=allDepts.filter(function(d){return d!==name;});
+  if(currentDept===name) currentDept='all';
+  buildDeptChips();
+  renderGrid();
+  setAutosave('saved');
+  toast('Department deleted');
+}
 function setDept(d,el){currentDept=d;document.querySelectorAll('.dept-chip').forEach(function(c){c.classList.remove('active');});if(el)el.classList.add('active');renderGrid();}
 
 /* FILTER */
