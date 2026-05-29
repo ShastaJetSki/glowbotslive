@@ -595,7 +595,12 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
   <div class="list-toolbar">
     <div class="result-count" id="rCount"></div>
     <div class="toolbar-right">
-      <select class="sort-select" id="sortSel" onchange="renderList()" title="Sort contacts">
+      <select class="team-select" id="evFilterSel" onchange="renderList()" title="Filter by selected event">
+        <option value="all">Event filter: All contacts</option>
+        <option value="sponsored">Sponsored selected event</option>
+        <option value="not-sponsored">Not yet sponsored</option>
+      </select>
+      <select class="team-select" id="sortSel" onchange="renderList()" title="Sort contacts">
         <option value="alpha">Sort: A–Z</option>
         <option value="most-years">Sort: Most years sponsored</option>
         <option value="first-year-asc">Sort: First year (oldest)</option>
@@ -913,6 +918,11 @@ function setFilter(k){
   if(sb){ sb.value=''; }
   var dd=document.getElementById('acDd');
   if(dd){ dd.classList.remove('open'); }
+  // When the user clicks the "All" pill, reset the event-filter to "All contacts"
+  // so they truly see EVERY contact and aren't accidentally filtered by a stale event-filter.
+  if (k === 'all'){
+    var ev = document.getElementById('evFilterSel'); if (ev) ev.value = 'all';
+  }
   renderKpis();
   renderAlpha();
   renderList();
@@ -962,6 +972,23 @@ function getFiltered(){
         || (c.region||'').toLowerCase().includes(q);
   });
   // When the user has typed something, surface starts-with hits first, then alphabetic
+  // Hard filter: by selected event sponsorship (uses top-bar selected project)
+  var evFilter = (function(){var el=document.getElementById('evFilterSel'); return el?el.value:'all';})();
+  if (evFilter !== 'all'){
+    var _pid = window.currentProjectId;
+    var _proj = _pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===_pid;}) : null;
+    var _yr = _proj ? evYear(_proj) : null;
+    if (_yr){
+      list = list.filter(function(c){
+        var st = sponsorStatusForYear(c.customer_id, _yr);
+        // "sponsored" means confirmed for that year. "not-sponsored" means anything else.
+        if (evFilter === 'sponsored') return st === 'confirmed';
+        if (evFilter === 'not-sponsored') return st !== 'confirmed';
+        return true;
+      });
+    }
+  }
+
   var sortMode = (function(){
     var el=document.getElementById('sortSel');
     return el?el.value:'alpha';
@@ -1172,6 +1199,16 @@ window.bulkMarkSelectedAsSponsor = async function(){
 
 /* ===== RENDER LIST ===== */
 function renderList(){
+  // Keep the Event Filter labels in sync with the currently-selected event
+  (function(){
+    var sel = document.getElementById('evFilterSel');
+    if (!sel) return;
+    var pid = window.currentProjectId;
+    var proj = pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;}) : null;
+    var name = proj ? (proj.event_name + ' ' + (evYear(proj)||'')) : 'selected event';
+    sel.options[1].textContent = 'Sponsored ' + name;
+    sel.options[2].textContent = 'Not yet sponsored ' + name;
+  })();
   var list=getFiltered();
   var ev=activeEventId?(function(){var _p=allEventProjects.find(function(p){return p.event_project_id===activeEventId;});return _p?{event_name:_p.event_name,event_year:evYear(_p)}:null;})():null;
   var label=showVault?'vault contact':'contact';
