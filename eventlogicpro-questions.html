@@ -32,7 +32,21 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .settings-link:hover,.logout-link:hover{color:var(--accent);}
 
 /* PROJ BAR */
-.proj-bar{padding:10px 24px;display:flex;align-items:center;gap:10px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.proj-bar{padding:10px 24px;display:flex;align-items:center;gap:12px;background:var(--bg-card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+
+/* Inline event info in proj-bar — matches other pages */
+.tbar-event{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0;}
+.tbar-event .grp{display:flex;align-items:center;gap:6px;min-width:0;}
+.tbar-event .elbl{font-size:10px;color:var(--text-secondary);font-weight:700;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;}
+.tbar-event .eval{font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;}
+.tbar-event .eval.empty{color:var(--text-secondary);font-weight:500;font-style:italic;}
+.tbar-event .sep{width:1px;height:18px;background:var(--border);}
+
+/* Stale-answer banner shown when an answered question is re-opened */
+.q-prev-answer{background:rgba(99,102,241,.08);border:1px dashed rgba(99,102,241,.4);border-radius:8px;padding:10px 12px;margin-top:8px;}
+.q-prev-answer-label{font-size:10px;color:#818cf8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.q-prev-answer-text{font-size:13px;color:var(--text-primary);line-height:1.4;white-space:pre-wrap;}
+.q-prev-answer-by{font-size:11px;color:var(--text-secondary);margin-top:4px;font-style:italic;}
 .proj-search-wrap{position:relative;flex:1;max-width:480px;}
 .proj-search-input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text-primary);font-size:13px;font-family:inherit;}
 .proj-search-input:focus{outline:none;border-color:var(--accent);}
@@ -285,8 +299,12 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <input type="text" class="proj-search-input" id="projSearchInput" placeholder="Search events..." autocomplete="off" oninput="projSearch(this.value)" onfocus="projSearch(this.value)" onkeydown="projSearchKey(event)">
       <div class="proj-autocomplete" id="projAutocomplete"></div>
     </div>
-    <div id="projPillWrap" style="display:none;">
-      <div class="proj-pill"><div class="proj-pill-dot" id="projPillDot"></div><span class="proj-pill-name" id="projPillName"></span><button class="proj-pill-clear" onclick="clearProject()">&times;</button></div>
+    <div class="tbar-event" id="ebarWrap">
+      <div class="grp"><span class="elbl">Event</span><span class="eval empty" id="ebarName">No event selected</span></div>
+      <div class="sep"></div>
+      <div class="grp"><span class="elbl">Date</span><span class="eval empty" id="ebarDate">&mdash;</span></div>
+      <div class="sep"></div>
+      <div class="grp"><span class="elbl">Venue</span><span class="eval empty" id="ebarVenue">&mdash;</span></div>
     </div>
     <div class="autosave-indicator" id="autosaveIndicator"><div class="autosave-dot" id="autosaveDot"></div><span id="autosaveText">Ready</span></div>
   </div>
@@ -626,7 +644,7 @@ async function logout(){await sb.auth.signOut();location.replace('/');}
 async function checkAuth(){var r=await sb.auth.getSession();var s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.replace('/');return null;}}return s;}
 
 /* LOAD */
-async function loadProjects(){var r=await sb.from('event_projects').select('event_project_id,event_name,event_date,color_tag').eq('tenant_id',tenantId).order('event_date',{ascending:true});allProjects=r.data||[];}
+async function loadProjects(){var r=await sb.from('event_projects').select('event_project_id,event_name,event_date,venue,color_tag').eq('tenant_id',tenantId).order('event_date',{ascending:true});allProjects=r.data||[];}
 async function loadDepts(){if(!currentProjectId){allDepts=[];buildDeptChips();return;}var r=await sb.from('event_departments').select('name').eq('tenant_id',tenantId).order('sort_order');allDepts=(r.data||[]).map(function(d){return d.name;});if(!allDepts.length)allDepts=['General','Venue','Talent','Production','Security','Catering','Marketing'];buildDeptChips();}
 async function loadQuestions(){if(!currentProjectId){allQuestions=[];renderGrid();return;}var r=await sb.from('event_questions').select('*').eq('event_project_id',currentProjectId).order('sort_order',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false});allQuestions=r.data||[];applySavedOrder();updateCounts();renderGrid();}
 
@@ -634,8 +652,44 @@ async function loadQuestions(){if(!currentProjectId){allQuestions=[];renderGrid(
 function projSearch(val){var q=(val||'').trim().toLowerCase();var ac=document.getElementById('projAutocomplete');if(!ac)return;var f=q.length===0?allProjects.slice(0,12):allProjects.filter(function(p){return (p.event_name||'').toLowerCase().indexOf(q)>=0;}).slice(0,12);projAcResults=f;projAcIndex=-1;ac.innerHTML=f.length?f.map(function(p){var c=p.color_tag||'#DC2626';var d=p.event_date?new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'No date';return '<div class="proj-ac-item" onclick="selectProject(\''+p.event_project_id+'\')"><div class="proj-ac-dot" style="background:'+c+'"></div><div><div class="proj-ac-name">'+(p.event_name||'Untitled')+'</div><div class="proj-ac-sub">'+d+'</div></div></div>';}).join(''):'<div class="proj-ac-empty">No events found</div>';ac.classList.add('show');}
 function projSearchKey(e){var ac=document.getElementById('projAutocomplete');var items=ac.querySelectorAll('.proj-ac-item');if(e.key==='ArrowDown'){e.preventDefault();projAcIndex=Math.min(projAcIndex+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='ArrowUp'){e.preventDefault();projAcIndex=Math.max(projAcIndex-1,0);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='Enter'){if(projAcIndex>=0&&projAcResults[projAcIndex])selectProject(projAcResults[projAcIndex].event_project_id);}else if(e.key==='Escape'){ac.classList.remove('show');}}
 document.addEventListener('click',function(e){if(!e.target.closest('.proj-search-wrap')){var ac=document.getElementById('projAutocomplete');if(ac)ac.classList.remove('show');}});
-async function selectProject(projectId){var p=allProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;currentProjectId=projectId;document.getElementById('projPillDot').style.background=p.color_tag||'#DC2626';document.getElementById('projPillName').textContent=p.event_name||'Untitled';document.getElementById('projPillWrap').style.display='';document.getElementById('projSearchInput').value='';document.getElementById('projAutocomplete').classList.remove('show');localStorage.setItem('elp-last-project',projectId);await loadDepts();await loadQuestions();}
-function clearProject(){currentProjectId=null;document.getElementById('projPillWrap').style.display='none';document.getElementById('projSearchInput').value='';allQuestions=[];allDepts=[];buildDeptChips();renderGrid();localStorage.removeItem('elp-last-project');}
+async function selectProject(projectId){
+  var p=allProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;
+  currentProjectId=projectId;
+  // Inline event info (replaces pill)
+  var ebn=document.getElementById('ebarName');
+  if(ebn){ ebn.textContent = p.event_name || 'Untitled'; ebn.classList.remove('empty'); }
+  var ebd=document.getElementById('ebarDate');
+  if(ebd){
+    if(p.event_date){
+      var d=new Date(p.event_date+'T00:00:00');
+      ebd.textContent=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      ebd.classList.remove('empty');
+    } else { ebd.textContent='\u2014'; ebd.classList.add('empty'); }
+  }
+  var ebv=document.getElementById('ebarVenue');
+  if(ebv){
+    if(p.venue){ ebv.textContent=p.venue; ebv.classList.remove('empty'); }
+    else { ebv.textContent='\u2014'; ebv.classList.add('empty'); }
+  }
+  // Null-guard pill refs (HTML removed but JS may still touch them)
+  var _ppd=document.getElementById('projPillDot');if(_ppd)_ppd.style.background=p.color_tag||'#DC2626';
+  var _ppn=document.getElementById('projPillName');if(_ppn)_ppn.textContent=p.event_name||'Untitled';
+  var _ppw=document.getElementById('projPillWrap');if(_ppw)_ppw.style.display='';
+  document.getElementById('projSearchInput').value='';
+  document.getElementById('projAutocomplete').classList.remove('show');
+  localStorage.setItem('elp-last-project',projectId);
+  await loadDepts();await loadQuestions();
+}
+function clearProject(){
+  currentProjectId=null;
+  var ebn=document.getElementById('ebarName'); if(ebn){ ebn.textContent='No event selected'; ebn.classList.add('empty'); }
+  var ebd=document.getElementById('ebarDate'); if(ebd){ ebd.textContent='\u2014'; ebd.classList.add('empty'); }
+  var ebv=document.getElementById('ebarVenue'); if(ebv){ ebv.textContent='\u2014'; ebv.classList.add('empty'); }
+  var _ppw=document.getElementById('projPillWrap'); if(_ppw)_ppw.style.display='none';
+  document.getElementById('projSearchInput').value='';
+  allQuestions=[];allDepts=[];buildDeptChips();renderGrid();
+  localStorage.removeItem('elp-last-project');
+}
 
 /* DEPT CHIPS */
 function buildDeptChips(){var el=document.getElementById('deptChips');var chips='<div class="dept-chip'+(currentDept==='all'?' active':'')+'" onclick="setDept(\'all\',this)">All Depts</div>';allDepts.forEach(function(d){chips+='<div class="dept-chip'+(currentDept===d?' active':'')+'" onclick="setDept(\''+d.replace(/'/g,"\\'")+'\''+',this)">'+d+'</div>';});el.innerHTML=chips;}
@@ -674,6 +728,9 @@ function renderCard(q){
   var answerHtml='';
   if(q.status==='answered'&&q.answer_text){
     answerHtml='<div class="q-answer-area"><div class="q-answer-label">Answer</div><div class="q-answer-text">'+esc(q.answer_text)+'</div>'+(q.answered_by?'<div class="q-answer-by">— '+esc(q.answered_by)+'</div>':'')+'</div>';
+  } else if(q.answer_text){
+    // Re-opened or otherwise non-answered status — surface the previous answer so it isn't lost visually
+    answerHtml='<div class="q-prev-answer"><div class="q-prev-answer-label">Previous Answer (re-opened)</div><div class="q-prev-answer-text">'+esc(q.answer_text)+'</div>'+(q.answered_by?'<div class="q-prev-answer-by">— '+esc(q.answered_by)+'</div>':'')+'</div>';
   }
 
   var kbBadge=q.in_kb?'<span class="q-status-badge badge-kb">📚 KB</span>':'';
@@ -823,9 +880,10 @@ function openAnswerModal(qId){
   answeringQId=qId;
   var q=allQuestions.find(function(x){return x.question_id===qId;});if(!q)return;
   document.getElementById('amQuestionPreview').textContent=q.question_text;
-  document.getElementById('amAnswer').value='';
-  document.getElementById('amAnsweredBy').value=q.redirected_to||q.directed_to||'';
-  document.getElementById('amAddToKB').checked=true;
+  // Pre-fill existing answer so reopened questions don't lose their content
+  document.getElementById('amAnswer').value = q.answer_text || '';
+  document.getElementById('amAnsweredBy').value = q.answered_by || q.redirected_to || q.directed_to || '';
+  document.getElementById('amAddToKB').checked = q.in_kb !== false; // keep KB state if previously answered
   document.getElementById('answerModal').classList.add('show');
   setTimeout(function(){document.getElementById('amAnswer').focus();},80);
 }
@@ -854,13 +912,52 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 async function init(){
   var s=await checkAuth();if(!s)return;
   var email=s.user.email||'';
-  var ur=await sb.from('users').select('tenant_id,user_id,display_name,first_name').eq('email',email).single();
-  if(ur.data){tenantId=ur.data.tenant_id;userId=ur.data.user_id;userName=ur.data.display_name||ur.data.first_name||email;var n=userName;(document.getElementById('dBiz')||{}).textContent=n;(document.getElementById('mBiz')||{}).textContent=n;}
+  // Always set email in header first so it shows even if user lookup fails
+  ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
+  var ur=await sb.from('users').select('tenant_id,user_id,first_name,last_name,display_name,full_name').eq('email',email).single();
+  if(ur.data){
+    tenantId=ur.data.tenant_id;userId=ur.data.user_id;
+    userName=ur.data.first_name||ur.data.display_name||ur.data.full_name||(email.split('@')[0])||'';
+    var displayName = ur.data.first_name || ur.data.display_name || ur.data.full_name || email.split('@')[0];
+    ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=displayName;});
+  } else {
+    var fallback=email.split('@')[0];
+    ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=fallback;});
+  }
   if(!tenantId){var bs=await sb.from('business_settings').select('tenant_id').limit(1).single();if(bs.data)tenantId=bs.data.tenant_id;}
   if(!tenantId)return;
   await loadProjects();
-  var lastProj=new URLSearchParams(window.location.search).get('event')||localStorage.getItem('elp-last-project');
-  if(lastProj&&allProjects.find(function(p){return p.event_project_id===lastProj;})){await selectProject(lastProj);}
+
+  // Default-event picking:
+  //   1) ?event= URL param if it matches a project
+  //   2) Last-selected project from localStorage (if still exists)
+  //   3) Next upcoming event (event_date >= today, earliest first)
+  //   4) Most recent event if nothing is upcoming
+  var defaultProj = null;
+  var urlEv = new URLSearchParams(window.location.search).get('event');
+  if (urlEv && allProjects.find(function(p){return p.event_project_id===urlEv;})) {
+    defaultProj = urlEv;
+  } else {
+    var lastProj = localStorage.getItem('elp-last-project');
+    if (lastProj && allProjects.find(function(p){return p.event_project_id===lastProj;})) {
+      defaultProj = lastProj;
+    } else {
+      var today = new Date(); today.setHours(0,0,0,0);
+      var upcoming = allProjects
+        .filter(function(p){ return p.event_date && new Date(p.event_date+'T00:00:00') >= today; })
+        .sort(function(a,b){ return new Date(a.event_date) - new Date(b.event_date); });
+      if (upcoming.length) {
+        defaultProj = upcoming[0].event_project_id;
+      } else if (allProjects.length) {
+        // No upcoming — fall back to the most recent past event
+        var past = allProjects.slice().sort(function(a,b){
+          return new Date(b.event_date||0) - new Date(a.event_date||0);
+        });
+        defaultProj = past[0].event_project_id;
+      }
+    }
+  }
+  if (defaultProj) await selectProject(defaultProj);
 }
 init();
 </script>
@@ -912,8 +1009,8 @@ document.addEventListener('keydown', function(e) {
       var firstName = u.data.first_name || email.split('@')[0];
       var tenantId  = u.data.tenant_id;
       // Populate name + email
-      ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=firstName;});
-      ['headerEmail','mHeaderEmail'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=email;});
+      // header name already set by init()
+      // header email already set by init()
       // Load tenant logo
       var bs = await sb.from('business_settings').select('tenant_logo_url').eq('tenant_id', tenantId).maybeSingle();
       if (bs.data && bs.data.tenant_logo_url) {
