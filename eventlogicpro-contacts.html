@@ -174,6 +174,38 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 
 /* ===== TOOLBAR ===== */
 .list-toolbar{display:flex;justify-content:space-between;align-items:center;padding:4px 0 8px;}
+/* Card selection checkbox */
+.cc-header{display:flex;align-items:center;gap:8px;}
+.cc-check{display:flex;align-items:center;flex-shrink:0;cursor:pointer;}
+.cc-check input{width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin:0;}
+.cc-selected{box-shadow:0 0 0 2px var(--accent);background:var(--accent-glow);}
+
+/* Bulk action bar */
+.bulk-bar{display:none;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;margin:4px 0 10px;background:var(--accent);color:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(220,38,38,.25);flex-wrap:wrap;}
+.bulk-bar.show{display:flex;}
+.bulk-info{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.bulk-pill{background:rgba(255,255,255,.18);padding:4px 10px;border-radius:14px;font-size:12px;font-weight:700;}
+.bulk-link{background:transparent;border:none;color:#fff;text-decoration:underline;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;padding:2px 4px;}
+.bulk-link:hover{text-decoration:none;}
+.bulk-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.bulk-action-btn{padding:7px 14px;background:#fff;color:var(--accent);border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;}
+.bulk-action-btn:hover{background:rgba(255,255,255,.92);}
+.bulk-action-btn:disabled{opacity:.5;cursor:not-allowed;}
+.bulk-action-btn strong{font-weight:800;}
+
+/* Single mark-as-sponsor button (expanded card) */
+.cc-sponsor-action.empty{font-size:11px;color:var(--text-secondary);font-style:italic;padding:8px 0;line-height:1.4;}
+.cc-sponsor-action.ok{padding:8px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.cc-sponsor-msg{font-size:12px;font-weight:700;color:#16a34a;}
+.cc-sponsor-btn{width:100%;padding:8px 12px;background:transparent;border:1px dashed var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;}
+.cc-sponsor-btn:hover{background:var(--accent);color:#fff;border-style:solid;}
+
+/* Two-column KPI variant */
+.cc-kpis-2col{grid-template-columns:1fr 1fr;}
+
+/* Sort dropdown */
+.sort-select{padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:11px;font-family:inherit;font-weight:600;cursor:pointer;margin-right:6px;}
+
 .result-count{font-size:12px;color:var(--text-secondary);}
 .toolbar-right{display:flex;gap:6px;align-items:center;}
 
@@ -542,6 +574,20 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
         <div class="ac-dd" id="acDd"></div>
       </div>
       <button class="add-btn" onclick="openAdd()">+ New</button>
+    </div>
+  </div>
+
+  <!-- BULK ACTION BAR (only visible when contacts are checked) -->
+  <div class="bulk-bar" id="bulkBar">
+    <div class="bulk-info">
+      <span class="bulk-pill"><span id="bulkCount">0</span> selected</span>
+      <button class="bulk-link" onclick="selectAllVisible()">Select all visible</button>
+      <button class="bulk-link" onclick="clearSelection()">Clear</button>
+    </div>
+    <div class="bulk-actions">
+      <button class="bulk-action-btn" id="bulkMarkBtn" onclick="bulkMarkSelectedAsSponsor()">
+        ✓ Mark as sponsor for <strong id="bulkEventLabel">(select an event first)</strong>
+      </button>
     </div>
   </div>
 
@@ -916,6 +962,10 @@ function getFiltered(){
         || (c.region||'').toLowerCase().includes(q);
   });
   // When the user has typed something, surface starts-with hits first, then alphabetic
+  var sortMode = (function(){
+    var el=document.getElementById('sortSel');
+    return el?el.value:'alpha';
+  })();
   list.sort(function(a,b){
     var an=(a.organization_name||a.first_name||'').toLowerCase();
     var bn=(b.organization_name||b.first_name||'').toLowerCase();
@@ -924,6 +974,23 @@ function getFiltered(){
       var bStarts = bn.startsWith(q) || (b.first_name||'').toLowerCase().startsWith(q);
       if (aStarts && !bStarts) return -1;
       if (bStarts && !aStarts) return 1;
+    }
+    if (sortMode === 'most-years'){
+      var ay = confirmedCount(a.customer_id) || 0;
+      var by = confirmedCount(b.customer_id) || 0;
+      if (ay !== by) return by - ay;
+    } else if (sortMode === 'first-year-asc'){
+      var af = firstSponsored(a.customer_id);
+      var bf = firstSponsored(b.customer_id);
+      var afn = (typeof af === 'number') ? af : 9999;
+      var bfn = (typeof bf === 'number') ? bf : 9999;
+      if (afn !== bfn) return afn - bfn;
+    } else if (sortMode === 'last-year-desc'){
+      var al = lastSponsored(a.customer_id);
+      var bl = lastSponsored(b.customer_id);
+      var aln = (typeof al === 'number') ? al : 0;
+      var bln = (typeof bl === 'number') ? bl : 0;
+      if (aln !== bln) return bln - aln;
     }
     return an.localeCompare(bn);
   });
@@ -944,15 +1011,161 @@ function yearDotsHtml(cid,highlightYear){
 
 /* ===== CARD MINI KPIS ===== */
 function cardKpis(c){
-  var cnt=confirmedCount(c.customer_id);
   var first=firstSponsored(c.customer_id);
   var last=lastSponsored(c.customer_id);
-  return'<div class="cc-kpis">'+
-    '<div class="cc-kpi"><div class="cc-kpi-val">'+cnt+'</div><div class="cc-kpi-lbl">Total Yrs</div></div>'+
+  return'<div class="cc-kpis cc-kpis-2col">'+
     '<div class="cc-kpi"><div class="cc-kpi-val">'+first+'</div><div class="cc-kpi-lbl">First Year</div></div>'+
     '<div class="cc-kpi"><div class="cc-kpi-val">'+last+'</div><div class="cc-kpi-lbl">Last Year</div></div>'+
   '</div>';
 }
+
+
+/* ===== CARD SELECTION (for bulk sponsor marking) ===== */
+var selectedCards = new Set();
+function toggleCardSelected(cid, isChecked){
+  if (isChecked) selectedCards.add(cid);
+  else selectedCards.delete(cid);
+  // Update card visual without full re-render
+  var card = document.querySelector('.cc[data-id="'+cid+'"]');
+  if (card) card.classList.toggle('cc-selected', isChecked);
+  updateBulkBar();
+}
+function clearSelection(){
+  selectedCards.clear();
+  document.querySelectorAll('.cc-selected').forEach(function(el){ el.classList.remove('cc-selected'); });
+  document.querySelectorAll('.cc-check input').forEach(function(el){ el.checked = false; });
+  updateBulkBar();
+}
+function selectAllVisible(){
+  var visible = getFiltered();
+  visible.forEach(function(c){ selectedCards.add(c.customer_id); });
+  document.querySelectorAll('.cc').forEach(function(card){
+    var id = card.getAttribute('data-id');
+    if (selectedCards.has(id)) card.classList.add('cc-selected');
+    var cb = card.querySelector('.cc-check input');
+    if (cb && selectedCards.has(id)) cb.checked = true;
+  });
+  updateBulkBar();
+}
+function updateBulkBar(){
+  var bar = document.getElementById('bulkBar');
+  if (!bar) return;
+  var n = selectedCards.size;
+  if (n === 0){ bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  document.getElementById('bulkCount').textContent = n;
+  // Build the bulk-mark button label using the current event context
+  var btn = document.getElementById('bulkMarkBtn');
+  var label = document.getElementById('bulkEventLabel');
+  var pid = window.currentProjectId;
+  var proj = pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;}) : null;
+  if (proj && evYear(proj)){
+    if (btn){ btn.disabled = false; btn.title = ''; }
+    if (label) label.textContent = proj.event_name + ' ' + evYear(proj);
+  } else {
+    if (btn){ btn.disabled = true; btn.title = 'Select an event from the top search first'; }
+    if (label) label.textContent = '(select an event first)';
+  }
+}
+
+/* ===== Mark-as-sponsor: single card (expand area button) ===== */
+function cardSponsorActionsHtml(c){
+  var pid = window.currentProjectId;
+  if (!pid) {
+    return '<div class="cc-sponsor-action empty">Select an event in the top bar, then mark this contact as a sponsor for that year.</div>';
+  }
+  var proj = (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;});
+  if (!proj) return '<div class="cc-sponsor-action empty">Selected event not found.</div>';
+  var yr = evYear(proj);
+  if (!yr) return '<div class="cc-sponsor-action empty">Selected event has no date.</div>';
+  var alreadyStatus = sponsorStatusForYear(c.customer_id, yr);
+  var isConfirmed = (alreadyStatus === 'confirmed');
+  var label = (proj.event_name||'event') + ' ' + yr;
+  if (isConfirmed) {
+    return '<div class="cc-sponsor-action ok"><span class="cc-sponsor-msg">\u2713 Sponsor for '+ esc(label) +'</span></div>';
+  }
+  return '<button class="cc-sponsor-btn" onclick="event.stopPropagation();markSponsorForCurrentEvent(\''+ c.customer_id +'\')" title="Mark this contact as a confirmed sponsor for '+ esc(label) +'">+ Mark as sponsor for '+ esc(label) +'</button>';
+}
+
+/* Helper: resolve hella_event_id for an event year (creates if missing) */
+async function _resolveHellaEventId(yr, evName){
+  var hellaEv = (allEvents||[]).find(function(e){return e.event_year===yr;});
+  if (hellaEv) return hellaEv.id;
+  var ins=await sb.from('hella_events').insert({
+    tenant_id:currentTenantId, event_name:evName, event_year:yr,
+    notes:'Created from contacts mark-as-sponsor'
+  }).select().single();
+  if (ins.error) throw ins.error;
+  allEvents.push({id:ins.data.hella_event_id, event_name:evName, event_year:yr});
+  if (!YEARS.includes(yr)) YEARS.push(yr);
+  return ins.data.hella_event_id;
+}
+
+window.markSponsorForCurrentEvent = async function(cid){
+  var pid = window.currentProjectId;
+  if (!pid){ toast('Select an event from the top search first'); return; }
+  var proj = (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;});
+  if (!proj){ toast('Event not found'); return; }
+  var yr = evYear(proj); if (!yr){ toast('Event has no date'); return; }
+  var evName = proj.event_name || 'Event';
+  if (typeof window.setAutosave === 'function') setAutosave('saving','Marking sponsor\u2026');
+  try{
+    var hellaEventId = await _resolveHellaEventId(yr, evName);
+    var resp = await sb.from('hella_sponsorships').upsert({
+      tenant_id:currentTenantId, contact_id:cid, event_id:hellaEventId,
+      status:'confirmed', logged_by:(window.userEmail||'Staff'), logged_at:new Date().toISOString()
+    }, {onConflict:'contact_id,event_id'});
+    if (resp.error) throw resp.error;
+    var exSpon=allSponsorships.find(function(s){return s.contact_id===cid&&s.event_id===hellaEventId;});
+    if (exSpon){ exSpon.status='confirmed'; }
+    else { allSponsorships.push({contact_id:cid, event_id:hellaEventId, status:'confirmed', event_year:yr}); }
+    renderList();
+    if (typeof window.setAutosave === 'function') setAutosave('saved');
+    toast('\u2713 Marked as sponsor for '+evName+' '+yr);
+  } catch(e){
+    console.error(e);
+    toast('Could not mark sponsor: '+(e.message||''));
+    if (typeof window.setAutosave === 'function') setAutosave('idle');
+  }
+};
+
+/* ===== BULK mark-as-sponsor for all selected cards ===== */
+window.bulkMarkSelectedAsSponsor = async function(){
+  if (selectedCards.size === 0){ toast('No contacts selected'); return; }
+  var pid = window.currentProjectId;
+  if (!pid){ toast('Select an event from the top search first'); return; }
+  var proj = (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;});
+  if (!proj){ toast('Event not found'); return; }
+  var yr = evYear(proj); if (!yr){ toast('Event has no date'); return; }
+  var evName = proj.event_name || 'Event';
+  var ids = Array.from(selectedCards);
+  if (!confirm('Mark '+ids.length+' contact'+(ids.length!==1?'s':'')+' as confirmed sponsor'+(ids.length!==1?'s':'')+' for '+evName+' '+yr+'?')) return;
+  if (typeof window.setAutosave === 'function') setAutosave('saving','Marking '+ids.length+' sponsors\u2026');
+  try{
+    var hellaEventId = await _resolveHellaEventId(yr, evName);
+    // Build upsert payload for all selected contacts
+    var rows = ids.map(function(cid){
+      return {tenant_id:currentTenantId, contact_id:cid, event_id:hellaEventId,
+              status:'confirmed', logged_by:(window.userEmail||'Staff'), logged_at:new Date().toISOString()};
+    });
+    var resp = await sb.from('hella_sponsorships').upsert(rows, {onConflict:'contact_id,event_id'});
+    if (resp.error) throw resp.error;
+    // Update local cache
+    ids.forEach(function(cid){
+      var ex=allSponsorships.find(function(s){return s.contact_id===cid&&s.event_id===hellaEventId;});
+      if (ex){ ex.status='confirmed'; }
+      else { allSponsorships.push({contact_id:cid, event_id:hellaEventId, status:'confirmed', event_year:yr}); }
+    });
+    clearSelection();
+    renderList();
+    if (typeof window.setAutosave === 'function') setAutosave('saved');
+    toast('\u2713 Marked '+ids.length+' sponsor'+(ids.length!==1?'s':'')+' for '+evName+' '+yr);
+  } catch(e){
+    console.error(e);
+    toast('Bulk mark failed: '+(e.message||''));
+    if (typeof window.setAutosave === 'function') setAutosave('idle');
+  }
+};
 
 /* ===== RENDER LIST ===== */
 function renderList(){
@@ -969,9 +1182,12 @@ function renderList(){
     var cnt=confirmedCount(c.customer_id);
     var isInactive=c.sponsor_is_active===false;
     var borderColor=showVault?'#ef4444':ec;
-    var hlYr=ev?ev.event_year:null;
-    return'<div class="cc" data-id="'+c.customer_id+'" style="border-left-color:'+borderColor+';" onclick="handleCcClick(event,this,\''+c.customer_id+'\')">'  +
+    var isSelected = selectedCards.has(c.customer_id);
+    return'<div class="cc'+(isSelected?' cc-selected':'')+'" data-id="'+c.customer_id+'" style="border-left-color:'+borderColor+';" onclick="handleCcClick(event,this,\''+c.customer_id+'\')">'  +
       '<div class="cc-header">'+
+        '<label class="cc-check" onclick="event.stopPropagation()" title="Select for bulk actions">'+
+          '<input type="checkbox" '+(isSelected?'checked':'')+' onchange="toggleCardSelected(\''+c.customer_id+'\',this.checked)">'+
+        '</label>'+
         '<div class="cc-name'+(isInactive?' cc-name-inactive':'')+'">'+ name+(isInactive?'<span class="closed-chip">closed</span>':'')+'</div>'+
         '<span class="type-badge type-'+((c.customer_type||'Other').replace(/ /g,'-'))+'">'+((c.customer_type)||'Other')+'</span>'+
       '</div>'+
@@ -980,23 +1196,18 @@ function renderList(){
         '<span class="cc-assigned"><span class="cc-dot-emp" style="background:'+ec+'"></span>'+en+'</span>'+
       '</div>'+
       '<div class="cc-info-row">'+
-        '<span class="cc-region">'+(c.region||'—')+(c.club_affiliation?' · #'+c.club_affiliation:'')+'</span>'+
+        '<span class="cc-region">'+(c.region||'\u2014')+(c.club_affiliation?' \u00b7 #'+c.club_affiliation:'')+'</span>'+
         '<span class="yr-badge">'+cnt+' yr'+(cnt!==1?'s':'')+'</span>'+
       '</div>'+
       '<div class="cc-expand">'+
         '<div class="cc-divider"></div>'+
-        yearDotsHtml(c.customer_id,hlYr)+
         (c.notes?'<div class="cc-notes-txt">'+c.notes+'</div>':'')+
-        '<div class="yr-legend">'+
-          '<div class="leg-item"><div class="yr-dot yr-dot-y" style="width:8px;height:8px;"></div>Confirmed</div>'+
-          '<div class="leg-item"><div class="yr-dot yr-dot-c" style="width:8px;height:8px;"></div>Needs check</div>'+
-          '<div class="leg-item"><div class="yr-dot yr-dot-p" style="width:8px;height:8px;"></div>Pending</div>'+
-          '<div class="leg-item"><div class="yr-dot yr-dot-n" style="width:8px;height:8px;"></div>Declined</div>'+
-        '</div>'+
+        cardSponsorActionsHtml(c)+
       '</div>'+
       cardKpis(c)+
     '</div>';
   }).join('');
+  updateBulkBar();
 }
 
 /* ===== CARD CLICK (first=expand, second=open modal) ===== */
