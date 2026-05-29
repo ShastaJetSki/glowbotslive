@@ -874,12 +874,30 @@ function getFiltered(){
       if(_yr){var _st=sponsorStatusForYear(c.customer_id,_yr);if(_st==='declined')return false;}
     }
     if(!q)return true;
-    var n=((c.first_name||'')+' '+(c.last_name||'')+' '+(c.full_name||'')+' '+(c.organization_name||'')).toLowerCase();
-    return n.includes(q)||(c.phone||'').includes(q)||(c.email||'').toLowerCase().includes(q)||(c.region||'').toLowerCase().includes(q);
+    // Starts-with match on name fields (so typing 'c' jumps to contacts starting with C)
+    var fn = (c.first_name||'').toLowerCase();
+    var ln = (c.last_name||'').toLowerCase();
+    var full = (c.full_name||'').toLowerCase();
+    var org = (c.organization_name||'').toLowerCase();
+    var nameStarts = fn.startsWith(q) || ln.startsWith(q) || full.startsWith(q) || org.startsWith(q);
+    // Also match any word inside the org name (e.g. "moto" matches "Hot Moto Co")
+    var orgWordStarts = org.split(/\s+/).some(function(w){return w.startsWith(q);});
+    if (nameStarts || orgWordStarts) return true;
+    // For non-name fields keep contains-match (handy for partial phone digits / email substrings)
+    return (c.phone||'').includes(q)
+        || (c.email||'').toLowerCase().includes(q)
+        || (c.region||'').toLowerCase().includes(q);
   });
+  // When the user has typed something, surface starts-with hits first, then alphabetic
   list.sort(function(a,b){
     var an=(a.organization_name||a.first_name||'').toLowerCase();
     var bn=(b.organization_name||b.first_name||'').toLowerCase();
+    if (q){
+      var aStarts = an.startsWith(q) || (a.first_name||'').toLowerCase().startsWith(q);
+      var bStarts = bn.startsWith(q) || (b.first_name||'').toLowerCase().startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (bStarts && !aStarts) return 1;
+    }
     return an.localeCompare(bn);
   });
   return list;
