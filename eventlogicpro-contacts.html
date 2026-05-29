@@ -595,16 +595,16 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
   <div class="list-toolbar">
     <div class="result-count" id="rCount"></div>
     <div class="toolbar-right">
-      <select class="team-select" id="evFilterSel" onchange="renderList()" title="Filter by selected event">
-        <option value="all">Event filter: All contacts</option>
-        <option value="sponsored">Sponsored selected event</option>
-        <option value="not-sponsored">Not yet sponsored</option>
-      </select>
-      <select class="team-select" id="sortSel" onchange="renderList()" title="Sort contacts">
-        <option value="alpha">Sort: A–Z</option>
-        <option value="most-years">Sort: Most years sponsored</option>
-        <option value="first-year-asc">Sort: First year (oldest)</option>
-        <option value="last-year-desc">Sort: Last year (recent)</option>
+      <select class="team-select" id="sortSel" onchange="onSortSelChange()" title="Sort or filter by event">
+        <optgroup label="Sort">
+          <option value="sort:alpha">A–Z</option>
+          <option value="sort:most-years">Most years sponsored</option>
+          <option value="sort:first-year-asc">First year (oldest)</option>
+          <option value="sort:last-year-desc">Last year (recent)</option>
+        </optgroup>
+        <optgroup label="Filter by event" id="evOptGroup">
+          <option value="event:all">All events</option>
+        </optgroup>
       </select>
       <select class="team-select" id="teamSel" onchange="renderList()"><option value="">All Team Members</option></select>
     </div>
@@ -918,10 +918,12 @@ function setFilter(k){
   if(sb){ sb.value=''; }
   var dd=document.getElementById('acDd');
   if(dd){ dd.classList.remove('open'); }
-  // When the user clicks the "All" pill, reset the event-filter to "All contacts"
-  // so they truly see EVERY contact and aren't accidentally filtered by a stale event-filter.
+  // When the user clicks the "All" pill, reset the event filter too so
+  // they truly see EVERY contact.
   if (k === 'all'){
-    var ev = document.getElementById('evFilterSel'); if (ev) ev.value = 'all';
+    _eventFilterId = 'all';
+    var ss = document.getElementById('sortSel');
+    if (ss) ss.value = 'sort:'+_sortMode;
   }
   renderKpis();
   renderAlpha();
@@ -972,27 +974,17 @@ function getFiltered(){
         || (c.region||'').toLowerCase().includes(q);
   });
   // When the user has typed something, surface starts-with hits first, then alphabetic
-  // Hard filter: by selected event sponsorship (uses top-bar selected project)
-  var evFilter = (function(){var el=document.getElementById('evFilterSel'); return el?el.value:'all';})();
-  if (evFilter !== 'all'){
-    var _pid = window.currentProjectId;
-    var _proj = _pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===_pid;}) : null;
+  // Hard filter: by event (from merged sort/filter dropdown)
+  if (_eventFilterId && _eventFilterId !== 'all'){
+    var _proj = (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===_eventFilterId;});
     var _yr = _proj ? evYear(_proj) : null;
     if (_yr){
       list = list.filter(function(c){
-        var st = sponsorStatusForYear(c.customer_id, _yr);
-        // "sponsored" means confirmed for that year. "not-sponsored" means anything else.
-        if (evFilter === 'sponsored') return st === 'confirmed';
-        if (evFilter === 'not-sponsored') return st !== 'confirmed';
-        return true;
+        return sponsorStatusForYear(c.customer_id, _yr) === 'confirmed';
       });
     }
   }
-
-  var sortMode = (function(){
-    var el=document.getElementById('sortSel');
-    return el?el.value:'alpha';
-  })();
+  var sortMode = _sortMode || 'alpha';
   list.sort(function(a,b){
     var an=(a.organization_name||a.first_name||'').toLowerCase();
     var bn=(b.organization_name||b.first_name||'').toLowerCase();
@@ -1049,6 +1041,53 @@ function cardKpis(c){
 
 /* ===== HTML-escape helper (for sponsor card markup) ===== */
 function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+
+/* ===== SORT + EVENT FILTER (merged dropdown) ===== */
+var _sortMode = 'alpha';
+var _eventFilterId = 'all';  // either 'all' or an event_project_id
+function populateSortEventOptions(){
+  var grp = document.getElementById('evOptGroup');
+  if (!grp) return;
+  // Wipe and rebuild keeping the leading "All events" option
+  var first = '<option value="event:all">All events</option>';
+  var projs = (window.allEventProjects || allEventProjects || []);
+  // Build a list sorted by event_date desc so most recent appears first
+  var sorted = projs.slice().sort(function(a,b){
+    var ad = a.event_date || '0000-00-00';
+    var bd = b.event_date || '0000-00-00';
+    return bd.localeCompare(ad);
+  });
+  var opts = sorted.map(function(p){
+    var label = (p.event_name || 'Untitled');
+    var yr = evYear(p);
+    if (yr) label += ' ' + yr;
+    return '<option value="event:'+p.event_project_id+'">'+_esc(label)+'</option>';
+  }).join('');
+  grp.innerHTML = first + opts;
+  // Restore selection if event still exists
+  var sel = document.getElementById('sortSel');
+  if (sel){
+    var want = _eventFilterId === 'all' ? 'sort:'+_sortMode : 'event:'+_eventFilterId;
+    if (Array.prototype.some.call(sel.options, function(o){return o.value===want;})){
+      sel.value = want;
+    } else {
+      sel.value = 'sort:'+_sortMode;
+    }
+  }
+}
+function onSortSelChange(){
+  var sel = document.getElementById('sortSel');
+  if (!sel) return;
+  var val = sel.value || '';
+  if (val.indexOf('sort:') === 0){
+    _sortMode = val.substring(5);
+    // sort change leaves the event filter as-is
+  } else if (val.indexOf('event:') === 0){
+    _eventFilterId = val.substring(6);
+  }
+  renderList();
+}
 
 /* ===== CARD SELECTION (for bulk sponsor marking) ===== */
 var selectedCards = new Set();
@@ -1199,16 +1238,6 @@ window.bulkMarkSelectedAsSponsor = async function(){
 
 /* ===== RENDER LIST ===== */
 function renderList(){
-  // Keep the Event Filter labels in sync with the currently-selected event
-  (function(){
-    var sel = document.getElementById('evFilterSel');
-    if (!sel) return;
-    var pid = window.currentProjectId;
-    var proj = pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;}) : null;
-    var name = proj ? (proj.event_name + ' ' + (evYear(proj)||'')) : 'selected event';
-    sel.options[1].textContent = 'Sponsored ' + name;
-    sel.options[2].textContent = 'Not yet sponsored ' + name;
-  })();
   var list=getFiltered();
   var ev=activeEventId?(function(){var _p=allEventProjects.find(function(p){return p.event_project_id===activeEventId;});return _p?{event_name:_p.event_name,event_year:evYear(_p)}:null;})():null;
   var label=showVault?'vault contact':'contact';
@@ -1796,6 +1825,8 @@ async function init(){
   renderAlpha();
   populateTeamSelect();
   renderList();
+
+  if (typeof populateSortEventOptions === 'function') setTimeout(populateSortEventOptions, 500);
 }
 init();
 </script>
