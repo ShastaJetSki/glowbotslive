@@ -203,6 +203,9 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .mt-chip{padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;font-weight:600;cursor:pointer;user-select:none;transition:all .12s;}
 .mt-chip:hover{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);}
 .mt-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 6px rgba(220,38,38,.25);}
+/* Edit modal: ensure type chip grid wraps cleanly */
+#eTypeChips{margin-top:6px;}
+
 
 
 /* Bulk action bar */
@@ -1072,6 +1075,21 @@ function cardKpis(c){
 
 /* ===== HTML-escape helper (for sponsor card markup) ===== */
 function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+/* Multi-type toggle for edit modal */
+window.toggleEditType = function(t){
+  var hidden = document.getElementById('eT'); if (!hidden) return;
+  var current = hidden.value ? hidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+  var i = current.indexOf(t);
+  if (i >= 0) current.splice(i, 1); else current.push(t);
+  hidden.value = current.join(',');
+  // Update chip visual without re-render
+  var chip = document.querySelector('#eTypeChips .mt-chip[data-type="'+t+'"]');
+  if (chip) chip.classList.toggle('on');
+  // Trigger sponsor sub-fields visibility
+  if (typeof toggleDetSponsorFields === 'function') toggleDetSponsorFields();
+};
+
 /* ===== MULTI-TYPE HELPERS ===== */
 function getTypes(c){
   if (!c || !c.customer_type) return [];
@@ -1402,8 +1420,15 @@ function openDet(id){
   }).join('');
 
   var TYPE_OPTS = (typeof getAllTypes === 'function') ? getAllTypes() : ['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','Other'];
-  var ctO='<option value="">— Select type —</option>';
-  TYPE_OPTS.forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
+  // Multi-type chips for the edit modal — current types come from the contact's comma-separated customer_type.
+  var currentTypes = (c.customer_type||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var custom = (typeof getCustomTypes === 'function') ? getCustomTypes() : [];
+  var eChipsHtml = TYPE_OPTS.map(function(v){
+    var label = (v === 'VIP') ? 'VIP / Guest' : v;
+    var marker = custom.indexOf(v) >= 0 ? ' ★' : '';
+    var isOn = currentTypes.indexOf(v) >= 0;
+    return '<div class="mt-chip'+(isOn?' on':'')+'" data-type="'+_esc(v)+'" onclick="toggleEditType(\''+v.replace(/\'/g,"\\'")+'\')">'+ _esc(label) + marker + '</div>';
+  }).join('');
   var SCAT_OPTS=['','BUSINESS','MC','FRIEND'];
   var SCAT_LABELS={'':'— None —','BUSINESS':'Business','MC':'MC (Motorcycle Club)','FRIEND':'Friend / Personal'};
   var scatO=SCAT_OPTS.map(function(v){return'<option value="'+v+'"'+(c.sponsor_category===v?' selected':'')+'>'+SCAT_LABELS[v]+'</option>';}).join('');
@@ -1451,8 +1476,12 @@ function openDet(id){
     '</div>'+
 
     '<div class="sec"><div class="sec-title">Classification</div>'+
-      '<div class="fr">'+
-        '<div class="fg" style="margin-bottom:0;"><label class="fl">Contact Type</label><select class="fsel" id="eT" onchange="toggleDetSponsorFields()">'+ctO+'</select></div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px;">'+
+        '<div class="fg" style="margin-bottom:0;flex:1;min-width:0;">'+
+          '<label class="fl">Contact Type(s) <span style="font-weight:400;color:var(--text-secondary);font-size:11px;">— click to toggle (multiple allowed)</span></label>'+
+          '<input type="hidden" id="eT" value="'+_esc(c.customer_type||'')+'">'+
+          '<div class="multi-type-chips" id="eTypeChips">'+eChipsHtml+'</div>'+
+        '</div>'+
         '<div class="fg" style="margin-bottom:0;"><label class="fl">Assigned To</label>'+
           (isAdmin()||isManager()?'<select class="fsel" id="eA">'+buildAssignOpts(c.assigned_to)+'</select>':'<span style="font-size:13px;color:var(--text-secondary);">'+empName(c.assigned_to)+'</span><input type="hidden" id="eA" value="'+(c.assigned_to||'')+'">') +
         '</div>'+
@@ -1790,9 +1819,10 @@ function onAddTypeChange(){
 }
 
 function toggleDetSponsorFields(){
-  var t=document.getElementById('eT').value;
+  var t=(document.getElementById('eT')||{}).value||'';
+  var types=t.split(',').map(function(s){return s.trim();}).filter(Boolean);
   var w=document.getElementById('eSponsorWrap');
-  if(w)w.style.display=(t==='Sponsor')?'block':'none';
+  if(w)w.style.display=(types.indexOf('Sponsor')>=0)?'':'none';
 }
 async function saveAdd(){
   var org=document.getElementById('nO').value.trim();
