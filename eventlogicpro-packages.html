@@ -358,6 +358,30 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
 .proj-bar .hdr-sel{padding:6px 10px;font-size:12px;border-radius:7px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);max-width:200px;}
 .proj-bar .autosave-indicator{font-size:11px;}
 
+
+/* Revenue Estimator modal — full-screen panel */
+.rev-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;}
+.rev-modal-overlay.open{display:flex;}
+.rev-modal{background:var(--bg-primary);border:1px solid var(--border);border-radius:14px;width:100%;max-width:1100px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;}
+.rev-modal-hdr{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--bg-card);position:sticky;top:0;z-index:2;}
+.rev-modal-ttl{font-size:20px;font-weight:800;letter-spacing:-.3px;color:var(--text-primary);}
+.rev-modal-sub{font-size:12px;color:var(--text-secondary);margin-left:auto;}
+.rev-modal-close{margin-left:12px;width:32px;height:32px;border-radius:8px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;}
+.rev-modal-close:hover{background:var(--bg-hover);color:var(--text-primary);}
+.rev-modal-body{flex:1;overflow-y:auto;padding:20px 24px;}
+.rev-modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:24px;}
+.rev-mod-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.rev-mod-val{font-size:24px;font-weight:800;color:var(--text-primary);line-height:1.1;}
+.rev-mod-lbl{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:4px;}
+.rev-mod-section{margin-top:24px;}
+.rev-mod-section h3{font-size:15px;font-weight:700;margin-bottom:10px;color:var(--text-primary);}
+.rev-mod-table{width:100%;border-collapse:collapse;font-size:13px;}
+.rev-mod-table th{text-align:left;padding:10px 12px;background:var(--bg-card);border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);font-weight:700;}
+.rev-mod-table td{padding:10px 12px;border-bottom:1px solid var(--border);}
+.rev-mod-table tr:last-child td{border-bottom:none;}
+.rev-mod-empty{text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:13px;}
+@media(max-width:768px){.rev-modal-overlay{padding:0;}.rev-modal{border-radius:0;max-height:100vh;height:100vh;}}
+
 /* Kebab overflow menu */
 .kebab-wrap{position:relative;display:inline-block;}
 .kebab-btn{padding:6px 10px;font-size:14px;font-weight:700;line-height:1;background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;border-radius:7px;letter-spacing:1px;transition:all .12s;font-family:inherit;}
@@ -478,11 +502,10 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
     <span id="autosaveText">Saved</span>
   </div>
   <div class="tabs-action-btns" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-    <button class="hdr-btn" onclick="setViewMode('editor')" title="Switch to Revenue Estimator">Revenue Estimator</button>
+    <button class="hdr-btn primary" onclick="openRevModal()" title="Open Revenue Estimator">Revenue Estimator</button>
     <button class="hdr-btn primary" onclick="createSheet()">+ New Sheet</button>
     <button class="hdr-btn" onclick="saveToDb()">Save</button>
     <button class="hdr-btn" onclick="printSheet()">Print</button>
-    <button class="hdr-btn publish" id="deskPublishBtn" onclick="publishSheet()" style="display:none;">Publish as Official</button>
 
   </div>
 </div>
@@ -1007,6 +1030,107 @@ document.addEventListener('keydown', function(e) {
       }
     }, 200);
   })();
+})();
+</script>
+
+
+<!-- REVENUE ESTIMATOR MODAL -->
+<div class="rev-modal-overlay" id="revModalOverlay" onclick="if(event.target===this)closeRevModal()">
+  <div class="rev-modal" role="dialog" aria-modal="true" aria-labelledby="revModalTtl">
+    <div class="rev-modal-hdr">
+      <div class="rev-modal-ttl" id="revModalTtl">Revenue Estimator</div>
+      <div class="rev-modal-sub" id="revModalSheet"></div>
+      <button class="rev-modal-close" onclick="closeRevModal()" title="Close (Esc)" aria-label="Close">&times;</button>
+    </div>
+    <div class="rev-modal-body" id="revModalBody">
+      <div class="rev-modal-grid" id="revModalKpis"></div>
+      <div class="rev-mod-section">
+        <h3>Sponsor Levels</h3>
+        <div id="revModalSponsors"></div>
+      </div>
+      <div class="rev-mod-section">
+        <h3>Ticket Packages</h3>
+        <div id="revModalTickets"></div>
+      </div>
+      <div class="rev-mod-section">
+        <h3>Vendor Packages</h3>
+        <div id="revModalVendors"></div>
+      </div>
+      <div class="rev-mod-section">
+        <h3>Camping Packages</h3>
+        <div id="revModalCamping"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// Revenue Estimator modal
+(function(){
+  function fmtMoney(n){ var v=Number(n||0); return '$'+v.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+  function buildPackageTable(items, mode){
+    // mode: 'levels' or 'packages'
+    if (!items || !items.length) return '<div class="rev-mod-empty">None yet.</div>';
+    var rows = items.map(function(it){
+      var name = (mode==='levels' ? it.name : it.name) || 'Untitled';
+      var price = it.price || 0;
+      var subitems = (mode==='levels' ? it.perks : it.items) || [];
+      var qty = subitems.reduce(function(t,s){return t+(parseInt(s.qty)||0);},0);
+      var val = subitems.reduce(function(t,s){return t+((parseFloat(s.value)||0)*(parseInt(s.qty)||0));},0);
+      var cost = subitems.reduce(function(t,s){return t+((parseFloat(s.cost)||0)*(parseInt(s.qty)||0));},0);
+      return '<tr><td><b>'+esc(name)+'</b></td><td>'+fmtMoney(price)+'</td><td>'+qty+' items</td><td>'+fmtMoney(val)+'</td><td>'+fmtMoney(cost)+'</td></tr>';
+    }).join('');
+    return '<table class="rev-mod-table"><thead><tr><th>Name</th><th>Price</th><th>Inventory</th><th>Total Value</th><th>Total Cost</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+  function esc(s){return String(s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  window.openRevModal = function(){
+    var overlay = document.getElementById('revModalOverlay');
+    if (!overlay) return;
+
+    // Pull current KPIs straight from the existing page
+    var kpis = [
+      {id:'kpiGoalRev',  lbl:'Goal Revenue',   color:'#22c55e'},
+      {id:'kpiActualRev',lbl:'Actual Revenue', color:'var(--text-primary)'},
+      {id:'kpiTotalCost',lbl:'Total Cost',     color:'#f59e0b'},
+      {id:'kpiProfit',   lbl:'Net Profit',     color:'var(--text-primary)'},
+      {id:'kpiSold',     lbl:'Actual Sold',    color:'var(--accent)'}
+    ];
+    var grid = document.getElementById('revModalKpis');
+    grid.innerHTML = kpis.map(function(k){
+      var el = document.getElementById(k.id);
+      var v = el ? el.textContent : '—';
+      return '<div class="rev-mod-card"><div class="rev-mod-val" style="color:'+k.color+'">'+v+'</div><div class="rev-mod-lbl">'+k.lbl+'</div></div>';
+    }).join('');
+
+    // Sheet title in subhead
+    var sub = document.getElementById('revModalSheet');
+    var sn = document.getElementById('sheetName');
+    sub.textContent = sn && sn.value ? sn.value : '';
+
+    // Tables from the live page arrays
+    document.getElementById('revModalSponsors').innerHTML = buildPackageTable(window.levels||[], 'levels');
+    document.getElementById('revModalTickets').innerHTML  = buildPackageTable(window.tickPkgs||[], 'packages');
+    document.getElementById('revModalVendors').innerHTML  = buildPackageTable(window.vendorPkgs||[], 'packages');
+    document.getElementById('revModalCamping').innerHTML  = buildPackageTable(window.campingPkgs||[], 'packages');
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closeRevModal = function(){
+    var overlay = document.getElementById('revModalOverlay');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  };
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){
+      var overlay = document.getElementById('revModalOverlay');
+      if (overlay && overlay.classList.contains('open')) closeRevModal();
+    }
+  });
 })();
 </script>
 
