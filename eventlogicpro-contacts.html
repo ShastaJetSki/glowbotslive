@@ -1047,35 +1047,45 @@ function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 var _sortMode = 'alpha';
 var _eventFilterId = 'all';  // either 'all' or an event_project_id
 function populateSortEventOptions(){
+  // Only show the currently-selected event (from the top search bar) in the dropdown.
+  // The full event list can grow large — we keep this scoped to the one event
+  // the user has chosen as their working context.
   var grp = document.getElementById('evOptGroup');
   if (!grp) return;
-  // Wipe and rebuild keeping the leading "All events" option
   var first = '<option value="event:all">All events</option>';
-  var projs = (window.allEventProjects || allEventProjects || []);
-  // Build a list sorted by event_date desc so most recent appears first
-  var sorted = projs.slice().sort(function(a,b){
-    var ad = a.event_date || '0000-00-00';
-    var bd = b.event_date || '0000-00-00';
-    return bd.localeCompare(ad);
-  });
-  var opts = sorted.map(function(p){
-    var label = (p.event_name || 'Untitled');
-    var yr = evYear(p);
+  var pid = window.currentProjectId;
+  var proj = pid ? (window.allEventProjects||allEventProjects||[]).find(function(p){return p.event_project_id===pid;}) : null;
+  var opts = '';
+  if (proj){
+    var label = (proj.event_name || 'Untitled');
+    var yr = evYear(proj);
     if (yr) label += ' ' + yr;
-    return '<option value="event:'+p.event_project_id+'">'+_esc(label)+'</option>';
-  }).join('');
+    opts = '<option value="event:'+proj.event_project_id+'">'+_esc(label)+'</option>';
+  }
   grp.innerHTML = first + opts;
-  // Restore selection if event still exists
+  // Restore selection
   var sel = document.getElementById('sortSel');
   if (sel){
     var want = _eventFilterId === 'all' ? 'sort:'+_sortMode : 'event:'+_eventFilterId;
-    if (Array.prototype.some.call(sel.options, function(o){return o.value===want;})){
+    // If the currently-stored event filter is for an event no longer in the dropdown, reset it
+    var hasOption = Array.prototype.some.call(sel.options, function(o){return o.value===want;});
+    if (hasOption){
       sel.value = want;
     } else {
+      _eventFilterId = 'all';
       sel.value = 'sort:'+_sortMode;
     }
   }
 }
+
+// Refresh the dropdown whenever the top-bar event selection changes
+document.addEventListener('projbar:select', function(){
+  if (typeof populateSortEventOptions === 'function') populateSortEventOptions();
+});
+document.addEventListener('projbar:clear', function(){
+  _eventFilterId = 'all';
+  if (typeof populateSortEventOptions === 'function') populateSortEventOptions();
+});
 function onSortSelChange(){
   var sel = document.getElementById('sortSel');
   if (!sel) return;
