@@ -478,17 +478,12 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:v
     <span id="autosaveText">Saved</span>
   </div>
   <div class="tabs-action-btns" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+    <button class="hdr-btn" onclick="setViewMode('editor')" title="Switch to Revenue Estimator">Revenue Estimator</button>
     <button class="hdr-btn primary" onclick="createSheet()">+ New Sheet</button>
     <button class="hdr-btn" onclick="saveToDb()">Save</button>
     <button class="hdr-btn" onclick="printSheet()">Print</button>
     <button class="hdr-btn publish" id="deskPublishBtn" onclick="publishSheet()" style="display:none;">Publish as Official</button>
-    <div class="kebab-wrap" id="kebabWrap" style="display:none;">
-      <button class="kebab-btn" onclick="toggleKebab(event)" title="More actions" aria-label="More actions">&#8943;</button>
-      <div class="kebab-menu" id="kebabMenu">
-        <button class="kebab-item success" id="deskSubmitBtn" onclick="closeKebab();submitForReview();" style="display:none;">Submit for Review</button>
-        <button class="kebab-item danger" id="deskDelBtn" onclick="closeKebab();deleteSheet();" style="display:none;">Delete</button>
-      </div>
-    </div>
+
   </div>
 </div>
 
@@ -910,7 +905,7 @@ document.addEventListener('keydown', function(e) {
       ? filtered.map(function(p){
           var color = p.color_tag || '#DC2626';
           var date = p.event_date
-            ? new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+            ? new Date(p.event_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
             : 'No date';
           return '<div class="proj-ac-item" onclick="selectProject(\''+p.event_project_id+'\')">'
                + '<div class="proj-ac-dot" style="background:'+color+'"></div>'
@@ -951,6 +946,23 @@ document.addEventListener('keydown', function(e) {
       var _ppn=document.getElementById('projPillName');if(_ppn)_ppn.textContent = p.event_name || 'Untitled';
       var _ppd=document.getElementById('projPillDot');if(_ppd)_ppd.style.background = p.color_tag || '#DC2626';
     }
+
+    // Find a matching sheet by event_name; load it if found.
+    // Otherwise prep the form with the event's info ready for "+ New Sheet".
+    try {
+      var sheets = (window.allSheets || []);
+      var match = sheets.find(function(s){ return (s.event_name||'').trim() === (p.event_name||'').trim() && (p.event_name||'').trim(); });
+      if (match && typeof window.syncSel === 'function'){
+        window.syncSel(match.sheet_id);
+      } else {
+        // No matching sheet — populate the top-bar fields with this event's data
+        var nm = document.getElementById('sheetName');   if (nm) nm.value = p.event_name || '';
+        var dt = document.getElementById('sheetEvent');  if (dt) dt.value = p.event_date || '';
+        var vn = document.getElementById('sheetVenue');  if (vn) vn.value = p.venue || '';
+        if (typeof window.toast === 'function') window.toast('Event selected — click "+ New Sheet" to create a sheet for it.');
+      }
+    } catch (e) { console.warn('[Packages] selectProject sheet match:', e); }
+
     document.dispatchEvent(new CustomEvent('projbar:select', { detail: { project: p } }));
   };
 
