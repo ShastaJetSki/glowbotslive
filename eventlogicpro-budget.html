@@ -727,7 +727,7 @@ function projSearch(val) {
   } else {
     ac.innerHTML = filtered.map(function(p, i) {
       var color = p.color_tag || '#DC2626';
-      var date  = p.event_date ? new Date(p.event_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'No date';
+      var date  = p.event_date ? new Date(p.event_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'No date';
       return '<div class="proj-ac-item" data-idx="'+i+'" onclick="selectProject(\''+p.event_project_id+'\')">'+
         '<div class="proj-ac-dot" style="background:'+color+';"></div>'+
         '<div><div class="proj-ac-name">'+esc(p.event_name||'Untitled')+'</div>'+
@@ -978,8 +978,10 @@ async function loadEstimates() {
 async function loadEstimateData(id) {
   var est = allEstimates.find(function(e){return e.estimate_id===id;});
   if (!est) return;
-  document.getElementById('eName').value = est.event_name    || '';
-  document.getElementById('eDate').value = est.event_date    || '';
+  // Pull display name/date from the parent project if linked, otherwise from estimate
+  var proj = est.event_project_id ? allProjects.find(function(p){return p.event_project_id===est.event_project_id;}) : null;
+  document.getElementById('eName').value = (proj && proj.event_name) || est.event_name || '';
+  document.getElementById('eDate').value = (proj && proj.event_date) || est.event_date || '';
   document.getElementById('eAtt').value  = est.expected_attendance || '';
   var cr = await sb.from('estimate_categories').select('*').eq('estimate_id', id).order('sort_order');
   var cats = cr.data || [];
@@ -1265,7 +1267,12 @@ async function saveToDb(silent) {
   var pkgRevEl=document.getElementById('pkgRevTotal');
   var pkgRev=pkgRevEl?(parseFloat(pkgRevEl.dataset.value)||0):0;
   var eName=document.getElementById('eName').value||'Untitled';
-  await sb.from('event_estimates').update({event_name:eName,event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:pkgRev,net_profit:pkgRev-exp}).eq('estimate_id',currentEstId);
+  var _curEst = allEstimates.find(function(e){return e.estimate_id===currentEstId;});
+  var _saveObj = {event_date:document.getElementById('eDate').value||null,expected_attendance:parseInt(document.getElementById('eAtt').value)||0,total_expenses:exp,total_revenue:pkgRev,net_profit:pkgRev-exp};
+  // Only write event_name back to the estimate if this estimate is NOT linked to a project
+  // (avoids overwriting the canonical project name with a per-version label)
+  if (!_curEst || !_curEst.event_project_id) _saveObj.event_name = eName;
+  await sb.from('event_estimates').update(_saveObj).eq('estimate_id',currentEstId);
   await sb.from('estimate_categories').delete().eq('estimate_id',currentEstId);
   var catRows=[];
   expCats.forEach(function(c,i){catRows.push({estimate_id:currentEstId,tenant_id:tenantId,category_key:c.id,category_type:'expense',title:c.title,color:c.color,sort_order:i});});
