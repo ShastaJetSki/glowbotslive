@@ -257,7 +257,14 @@ body.dark .type-Other{background:#374151;color:#9ca3af;}
 
 /* ===== SPONSOR EVENT LOG ===== */
 .spon-ev-row{display:flex;gap:8px;align-items:flex-end;}
-.spon-ev-row .fsel{flex:1;} #eSpEv{flex:1;min-width:0;}
+.spon-ev-row .fsel{flex:1;}
+/* Contact type row with add / delete buttons */
+.type-row{display:flex;align-items:stretch;gap:6px;}
+.type-row .fsel{flex:1;}
+.type-btn{padding:0 10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;line-height:1;font-family:inherit;transition:all .12s;display:flex;align-items:center;justify-content:center;min-width:32px;}
+.type-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
+.type-btn.danger:hover{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.08);}
+ #eSpEv{flex:1;min-width:0;}
 .log-btn{padding:9px 12px;border-radius:6px;border:none;background:#16a34a;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;opacity:.8;width:120px;}
 .log-btn:hover{background:#15803d;}
 .log-btn:disabled{background:#9ca3af;cursor:not-allowed;}
@@ -574,11 +581,11 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
       </div>
       <div class="sec">
         <div class="sec-title">Organization</div>
-        <div class="fg"><label class="fl">Organization / Business Name <span class="req">*</span></label><input type="text" class="fi" id="nO" placeholder="e.g. Ramblers MC Nomads"></div>
+        <div class="fg"><label class="fl">Organization / Business Name <span class="req">*</span></label><input type="text" class="fi" id="nO" placeholder="Organization name"></div>
       </div>
       <div class="sec">
         <div class="sec-title">Contact Info</div>
-        <div class="fg"><label class="fl">Phone</label><input type="tel" class="fi" id="nP" placeholder="530-235-5632" oninput="formatPhone(this)" maxlength="12"></div>
+        <div class="fg"><label class="fl">Phone</label><input type="tel" class="fi" id="nP" placeholder="555-123-1234" oninput="formatPhone(this)" maxlength="12"></div>
         <div class="fg"><label class="fl">Email</label><input type="email" class="fi" id="nE" placeholder="email@example.com"></div>
       </div>
       <div class="sec">
@@ -586,22 +593,13 @@ body.dark .s-pending{background:#1e40af;color:#bfdbfe;}
         <div class="fr">
           <div class="fg" style="margin-bottom:0;">
             <label class="fl">Contact Type <span class="req">*</span></label>
-            <select class="fsel" id="nT" onchange="onAddTypeChange()">
-              <option value="">— Select type —</option>
-              <option value="Sponsor">Sponsor</option>
-              <option value="Vendor">Vendor</option>
-              <option value="Entertainment">Entertainment</option>
-              <option value="Venue">Venue</option>
-              <option value="Production">Production</option>
-              <option value="Media">Media</option>
-              <option value="Security">Security</option>
-              <option value="Medical">Medical</option>
-              <option value="Logistics">Logistics</option>
-              <option value="Government">Government</option>
-              <option value="Staff">Staff</option>
-              <option value="VIP">VIP / Guest</option>
-              <option value="Other">Other</option>
-            </select>
+            <div class="type-row">
+              <select class="fsel" id="nT" onchange="onAddTypeChange()">
+                <option value="">— Select type —</option>
+              </select>
+              <button type="button" class="type-btn" onclick="addCustomContactType()" title="Add a new contact type">+</button>
+              <button type="button" class="type-btn danger" onclick="deleteCustomContactType()" title="Delete the selected custom type">&times;</button>
+            </div>
           </div>
           <div class="fg" style="margin-bottom:0;"><label class="fl">Assign To</label><select class="fsel" id="nA"><option value="">— Unassigned —</option></select></div>
         </div>
@@ -830,6 +828,19 @@ document.addEventListener('click',function(e){
 
 /* ===== KPI BAR ===== */
 function renderKpis(){
+  // Merge any custom types into ALL_TYPES so they appear as filter pills
+  if (typeof getCustomTypes === 'function'){
+    var builtinKeys = ALL_TYPES.map(function(t){return t.key;});
+    getCustomTypes().forEach(function(ct){
+      if (builtinKeys.indexOf(ct) < 0){
+        ALL_TYPES.push({key: ct, label: ct});
+      }
+    });
+    // Also drop pills for types that were custom-then-deleted
+    var validKeys = ['all'].concat(BUILTIN_TYPES).concat(getCustomTypes());
+    ALL_TYPES = ALL_TYPES.filter(function(t){return validKeys.indexOf(t.key) >= 0;});
+  }
+
   var removedIds=isAdmin()?allRemovalIds:myRemovals.map(function(r){return r.customer_id;});
   var source=showVault?vaultContacts:allContacts;
   var visible=showVault?source:source.filter(function(c){return!removedIds.includes(c.customer_id);});
@@ -1036,7 +1047,7 @@ function openDet(id){
     '</div>';
   }).join('');
 
-  var TYPE_OPTS=['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','Other'];
+  var TYPE_OPTS = (typeof getAllTypes === 'function') ? getAllTypes() : ['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','Other'];
   var ctO='<option value="">— Select type —</option>';
   TYPE_OPTS.forEach(function(v){ctO+='<option value="'+v+'"'+(c.customer_type===v?' selected':'')+'>'+v+'</option>';});
   var SCAT_OPTS=['','BUSINESS','MC','FRIEND'];
@@ -1340,6 +1351,73 @@ function buildEventProjectSelect(id,selectedId){
     opts+='<option value="'+p.event_project_id+'"'+sel+'>'+label+'</option>';
   });
   return'<select class="fsel" style="flex:1;min-width:0;overflow:hidden;" id="'+id+'">'+opts+'</select>';
+}
+
+// ===== CUSTOM CONTACT TYPES (built-in + user-added) =====
+var BUILTIN_TYPES = ['Sponsor','Vendor','Entertainment','Venue','Production','Media','Security','Medical','Logistics','Government','Staff','VIP','Other'];
+function getCustomTypes(){
+  try { return JSON.parse(localStorage.getItem('elp_custom_contact_types') || '[]'); }
+  catch(e){ return []; }
+}
+function setCustomTypes(arr){
+  localStorage.setItem('elp_custom_contact_types', JSON.stringify(arr));
+}
+function getAllTypes(){
+  return BUILTIN_TYPES.concat(getCustomTypes());
+}
+function refreshTypeDropdowns(){
+  var all = getAllTypes();
+  var custom = getCustomTypes();
+  // Update the New-Contact dropdown (nT)
+  var nt = document.getElementById('nT');
+  if (nt){
+    var prev = nt.value;
+    nt.innerHTML = '<option value="">— Select type —</option>' + all.map(function(v){
+      var label = v === 'VIP' ? 'VIP / Guest' : v;
+      var marker = custom.indexOf(v) >= 0 ? ' ★' : '';
+      return '<option value="'+v+'">'+label+marker+'</option>';
+    }).join('');
+    nt.value = prev;
+  }
+}
+window.addCustomContactType = function(){
+  var name = prompt('New contact type name (e.g. "Speakers", "Photographers", "Caterers"):');
+  if (!name) return;
+  name = name.trim();
+  if (!name) return;
+  var all = getAllTypes();
+  if (all.indexOf(name) >= 0){ alert('That type already exists.'); return; }
+  var custom = getCustomTypes();
+  custom.push(name);
+  setCustomTypes(custom);
+  refreshTypeDropdowns();
+  // Re-render the KPI bar so the new type shows up as a filter pill too
+  if (typeof renderKpis === 'function') renderKpis();
+  // Pre-select the new type in the New-Contact dropdown
+  var nt = document.getElementById('nT'); if (nt) nt.value = name;
+  if (typeof onAddTypeChange === 'function') onAddTypeChange();
+};
+window.deleteCustomContactType = function(){
+  var nt = document.getElementById('nT');
+  var val = nt ? nt.value : '';
+  if (!val){ alert('Select a type from the dropdown first, then click × to delete it.'); return; }
+  if (BUILTIN_TYPES.indexOf(val) >= 0){
+    alert('Built-in types cannot be deleted ("'+val+'" is built-in). Only custom types you added can be removed.');
+    return;
+  }
+  if (!confirm('Delete the custom type "'+val+'"? This will not delete any contacts — they\'ll just lose this type label.')) return;
+  var custom = getCustomTypes().filter(function(t){return t !== val;});
+  setCustomTypes(custom);
+  refreshTypeDropdowns();
+  if (typeof renderKpis === 'function') renderKpis();
+  if (nt) nt.value = '';
+  if (typeof onAddTypeChange === 'function') onAddTypeChange();
+};
+// Initial population on load
+if (document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', refreshTypeDropdowns);
+} else {
+  setTimeout(refreshTypeDropdowns, 0);
 }
 
 function onAddTypeChange(){
