@@ -1514,15 +1514,55 @@ async function sendCampaign(){
       event_name: evName,
       attachments: _composerAttachments  // [{name,type,size,base64}]
     };
+    // Call the Supabase Edge Function directly via fetch for clearer error handling.
+    // (sb.functions.invoke wraps errors in a way that obscures the actual response body.)
     var resp;
-    if (sb && sb.functions && typeof sb.functions.invoke === 'function'){
-      resp = await sb.functions.invoke('send-campaign', { body: payload });
-    } else {
-      // Fallback: direct POST endpoint (set up via Vercel/Netlify function later)
-      var r = await fetch('/api/send-campaign', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
-      resp = {data: await r.json(), error: r.ok ? null : {message: 'HTTP '+r.status}};
+    var supabaseUrl = (sb && (sb.supabaseUrl || sb.supabase_url)) ||
+                      (window.SUPABASE_URL) ||
+                      (sb && sb.rest && sb.rest.url ? sb.rest.url.replace(/\/rest\/v1\/?$/, '') : '');
+    var supabaseKey = (sb && (sb.supabaseKey || sb.anonKey || sb.supabase_key)) ||
+                      (window.SUPABASE_ANON_KEY) || '';
+    if (!supabaseUrl){
+      throw new Error('Could not determine Supabase URL. Set window.SUPABASE_URL.');
     }
-    if (resp.error) throw resp.error;
+    var funcUrl = supabaseUrl.replace(/\/$/, '') + '/functions/v1/send-campaign';
+    // Build headers — include the user's session token if signed in, fall back to anon key.
+    var headers = {'Content-Type':'application/json'};
+    try {
+      var session = (await sb.auth.getSession()).data.session;
+      if (session && session.access_token){
+        headers['Authorization'] = 'Bearer ' + session.access_token;
+      } else if (supabaseKey){
+        headers['Authorization'] = 'Bearer ' + supabaseKey;
+      }
+    } catch(_){
+      if (supabaseKey) headers['Authorization'] = 'Bearer ' + supabaseKey;
+    }
+    if (supabaseKey) headers['apikey'] = supabaseKey;
+
+    var r = await fetch(funcUrl, {
+      method:'POST',
+      headers: headers,
+      body: JSON.stringify(payload)
+    });
+    var text = await r.text();
+    var data;
+    try { data = JSON.parse(text); } catch(_) { data = {raw:text}; }
+    if (!r.ok){
+      var errMsg = (data && (data.error || data.message)) || text || ('HTTP '+r.status);
+      throw new Error('HTTP '+r.status+': '+errMsg);
+    }
+    resp = { data: data, error: null };
+    // Surface per-recipient failures from Resend if any
+    if (data && typeof data.failed === 'number' && data.failed > 0){
+      var failures = (data.results||[]).filter(function(x){return !x.ok;}).map(function(x){return x.email+': '+x.error;}).join('\n');
+      if (data.sent === 0){
+        throw new Error('All sends failed:\n'+failures);
+      } else {
+        toast('Sent '+data.sent+', failed '+data.failed);
+        console.warn('Partial send failures:\n'+failures);
+      }
+    }
     // Optionally log to email_campaigns table
     try {
       await sb.from('email_campaigns').insert({
@@ -1540,15 +1580,12 @@ async function sendCampaign(){
     _composerAttachments = []; renderAttachList();
     closeComposer();
   } catch(e){
-    console.error(e);
+    console.error('sendCampaign error:', e);
     if (typeof window.setAutosave === 'function') setAutosave('idle');
-    // Helpful messaging for missing backend
     var msg = String(e.message || e);
-    if (msg.toLowerCase().indexOf('function') >= 0 || msg.indexOf('404') >= 0 || msg.toLowerCase().indexOf('not found') >= 0){
-      alert('Sending requires a Supabase Edge Function called "send-campaign".\n\nSet it up to call your transactional email provider (Resend, SendGrid, Postmark, etc.).\n\nIn the meantime, you can use "Save as draft" to capture the campaign and recipients.');
-    } else {
-      alert('Send failed: '+msg);
-    }
+    // Show the actual error verbatim — lets the user see Resend's response
+    // (e.g. domain not verified, recipient restrictions, etc.) instead of a generic stub.
+    alert('Send failed:\n\n' + msg);
   } finally {
     btn.disabled = false;
     btn.innerHTML = '✉ Send to <span id="compSendCount">'+_composerRecipients.length+'</span>';
