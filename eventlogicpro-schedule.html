@@ -111,7 +111,20 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 
 /* STAGE ROW */
 .stage-row{display:flex;align-items:stretch;margin-top:8px;min-height:108px;}
-.stage-label{width:160px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;padding:8px 12px 8px 0;}
+
+/* Shared horizontal-scroll layout: labels column on the left, tracks in
+   one shared scroll container on the right. Every stage row inside the
+   tracks column shares the same scroll position automatically. */
+.stages-grid{display:flex;align-items:stretch;width:100%;}
+.stages-labels-col{width:160px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;padding-top:8px;}
+.stages-tracks-col{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) rgba(255,255,255,.04);}
+.stages-tracks-col::-webkit-scrollbar{height:8px;}
+.stages-tracks-col::-webkit-scrollbar-track{background:rgba(255,255,255,.04);}
+.stages-tracks-col::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px;}
+.stages-tracks-inner{display:flex;flex-direction:column;gap:8px;padding:8px 0;}
+.stage-track-row{background:rgba(255,255,255,.025);border-radius:8px;border:1px solid rgba(255,255,255,.05);min-height:108px;cursor:pointer;position:relative;}
+.stage-track-row:hover{border-color:rgba(255,255,255,.08);}
+.stage-label{flex-shrink:0;min-height:108px;display:flex;flex-direction:column;justify-content:center;padding:8px 12px 8px 0;}
 .stage-dot-name{display:flex;align-items:center;gap:7px;}
 .stage-dot{width:9px;height:9px;border-radius:50%;}
 .stage-name-text{font-size:13px;font-weight:700;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}
@@ -513,8 +526,11 @@ function renderTimelineView(area){
     rulerH+='<div class="time-tick" style="width:'+(tick*PPM)+'px;">'+h12+':'+(min<10?'0':'')+min+' '+ampm+'</div>';
   }
 
-  // Stages
-  var stagesH='';
+  // Stages — build labels and tracks as TWO separate columns.
+  // The tracks column lives inside ONE shared horizontal scroll container,
+  // so all stages stay perfectly time-aligned and scroll in lockstep at the CSS level.
+  var labelsH = '';
+  var tracksH = '';
   allStages.forEach(function(stage){
     var acts=allActs.filter(function(a){return a.stage_id===stage.stage_id;}).sort(function(a,b){return timeToMins(a.start_time)-timeToMins(b.start_time);});
     var stageColor=stage.stage_color||'#DC2626';
@@ -528,10 +544,8 @@ function renderTimelineView(area){
         var actStart=timeToMins(act.start_time);
         var dur=parseInt(act.duration_minutes)||45;
         var width=Math.max(50,dur*PPM);
-        // Gap before act
         var gap=actStart-prevEnd;
         if(gap>4){actsH+='<div class="gap-block" style="width:'+(gap*PPM)+'px;" ondblclick="trackDblClickGap(event,\''+stage.stage_id+'\','+actStart+')"><div class="gap-line"></div><div class="gap-label">'+gap+'m</div><div class="gap-line"></div></div>';}
-        // Act color
         var tc=act.color||(ACT_DEF_COLORS[act.act_type]||'#0284c7');
         var tcRgb=hexToRgb(tc);
         var breakCls=act.act_type==='break'?' act-type-break':'';
@@ -547,50 +561,37 @@ function renderTimelineView(area){
       actsH+='<button class="stage-add-btn" onclick="event.stopPropagation();openActModal(\''+stage.stage_id+'\',null)">+ Add Act</button>';
     }
 
-    stagesH+='<div class="stage-row" id="sr-'+stage.stage_id+'">';
-    stagesH+='<div class="stage-label"><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
-    stagesH+='<div class="stage-track" ondragover="event.preventDefault()" ondrop="actDropOnStage(event,\''+stage.stage_id+'\')" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
-    stagesH+='</div>';
+    // Labels column (fixed width, stays put while tracks scroll)
+    labelsH += '<div class="stage-label" id="sl-'+stage.stage_id+'"><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
+    // Track row (no individual scroll — outer container scrolls all together)
+    tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" ondragover="event.preventDefault()" ondrop="actDropOnStage(event,\''+stage.stage_id+'\')" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
   });
 
-  var totalW=Math.round(trackW)+160;
-  area.innerHTML='<div class="timeline-wrap"><div class="timeline-inner">'+stagesH+'</div></div>';
+  area.innerHTML =
+    '<div class="timeline-wrap"><div class="stages-grid">'+
+      '<div class="stages-labels-col">'+labelsH+'</div>'+
+      '<div class="stages-tracks-col" id="stagesTracksCol">'+
+        '<div class="stages-tracks-inner" style="width:'+trackW+'px;">'+tracksH+'</div>'+
+      '</div>'+
+    '</div></div>';
 
-  // After render: (1) scroll ALL stage tracks to the earliest first-act
-  // across all stages so they share the same starting timeframe, then
-  // (2) wire up cross-stage scroll sync so dragging the scrollbar on
-  // any row moves all rows in lockstep — keeping equal-time positions
-  // visually aligned across stages.
+  // After render: scroll the shared tracks container to the EARLIEST
+  // first-act across ALL stages. Since all stage rows live inside the
+  // same horizontal scroll container, they automatically stay in lockstep
+  // — no JS sync needed, ever. New stages added later will also be
+  // perfectly aligned because they share the same parent scroll.
   setTimeout(function(){
-    var tracks = Array.prototype.slice.call(document.querySelectorAll('#schedBoard .stage-track'));
-    if (!tracks.length) return;
-
-    // Find the earliest first-act offset across all stages
+    var scrollCol = document.getElementById('stagesTracksCol');
+    if (!scrollCol) return;
+    var firstActs = scrollCol.querySelectorAll('.act-block:not(.act-type-break)');
+    if (!firstActs.length) firstActs = scrollCol.querySelectorAll('.act-block');
     var earliestOffset = Infinity;
-    tracks.forEach(function(track){
-      var firstAct = track.querySelector('.act-block:not(.act-type-break)');
-      if (!firstAct) firstAct = track.querySelector('.act-block');
-      if (!firstAct) return;
-      if (firstAct.offsetLeft < earliestOffset) earliestOffset = firstAct.offsetLeft;
+    Array.prototype.forEach.call(firstActs, function(el){
+      var off = el.offsetLeft;
+      if (off < earliestOffset) earliestOffset = off;
     });
     if (earliestOffset === Infinity) earliestOffset = 0;
-    var initial = Math.max(0, earliestOffset - 16);
-    // Apply the same scroll position to every stage track
-    tracks.forEach(function(track){ track.scrollLeft = initial; });
-
-    // Cross-stage scroll sync: when one track scrolls, mirror onto all others
-    var _syncing = false;
-    tracks.forEach(function(track){
-      track.addEventListener('scroll', function(){
-        if (_syncing) return;
-        _syncing = true;
-        var x = track.scrollLeft;
-        tracks.forEach(function(other){
-          if (other !== track && other.scrollLeft !== x) other.scrollLeft = x;
-        });
-        requestAnimationFrame(function(){ _syncing = false; });
-      }, { passive: true });
-    });
+    scrollCol.scrollLeft = Math.max(0, earliestOffset - 16);
   }, 30);
 }
 
