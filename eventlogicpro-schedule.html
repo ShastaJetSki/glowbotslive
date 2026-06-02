@@ -125,6 +125,16 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .stage-track-row{background:rgba(255,255,255,.025);border-radius:8px;border:1px solid rgba(255,255,255,.05);min-height:108px;cursor:pointer;position:relative;}
 .stage-track-row:hover{border-color:rgba(255,255,255,.08);}
 .stage-label{flex-shrink:0;min-height:108px;display:flex;flex-direction:column;justify-content:center;padding:8px 12px 8px 0;}
+/* Waffle grip handle for stage reorder */
+.stage-label{position:relative;}
+.stage-grip{position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:22px;height:32px;border:none;background:transparent;color:rgba(255,255,255,.22);cursor:grab;padding:0;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s;touch-action:none;}
+.stage-grip:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.65);}
+.stage-grip:active{cursor:grabbing;}
+.stage-label{padding-left:18px;}
+.stage-label.stage-dragging,.stage-track-row.stage-dragging{opacity:.6;z-index:30;box-shadow:0 12px 32px rgba(0,0,0,.55);transition:none;}
+.stage-label.drop-above,.stage-track-row.drop-above{box-shadow:inset 0 3px 0 var(--accent);}
+.stage-label.drop-below,.stage-track-row.drop-below{box-shadow:inset 0 -3px 0 var(--accent);}
+
 .stage-dot-name{display:flex;align-items:center;gap:7px;}
 .stage-dot{width:9px;height:9px;border-radius:50%;}
 .stage-name-text{font-size:13px;font-weight:700;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}
@@ -568,7 +578,7 @@ function renderTimelineView(area){
     }
 
     // Labels column (fixed width, stays put while tracks scroll)
-    labelsH += '<div class="stage-label" id="sl-'+stage.stage_id+'"><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
+    labelsH += '<div class="stage-label" id="sl-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'"><button class="stage-grip" onpointerdown="stageGripPointerDown(event,\''+stage.stage_id+'\')" title="Drag to reorder stages"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><circle cx="4" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="3" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="10" cy="11" r="1.2"/></svg></button><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
     // Track row (no individual scroll — outer container scrolls all together)
     tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
   });
@@ -793,6 +803,130 @@ async function actPointerUp(e){
     toast('Moved to '+ minsToTime(d.currentMins));
   } catch(err){
     console.error('Drag-move save failed:', err);
+    toast('Save failed');
+  }
+  renderBoard();
+}
+
+/* ===== STAGE REORDER (waffle grip vertical drag) =====
+   - Drag the waffle handle on the left of a stage label up or down
+   - Other stages highlight to show where the dragged stage will land
+   - On release: stages reorder, stage_order column persists to DB
+============================================================ */
+var _sdrag = null;
+
+function stageGripPointerDown(e, stageId){
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  var labelEl = document.getElementById('sl-'+stageId);
+  var trackEl = document.getElementById('sr-'+stageId);
+  if (!labelEl || !trackEl) return;
+  var allLabels = Array.prototype.slice.call(document.querySelectorAll('.stages-labels-col .stage-label'));
+  var origIndex = allLabels.indexOf(labelEl);
+
+  _sdrag = {
+    stageId: stageId,
+    labelEl: labelEl,
+    trackEl: trackEl,
+    allLabels: allLabels,
+    origIndex: origIndex,
+    targetIndex: origIndex,
+    startY: e.clientY,
+    pointerId: e.pointerId,
+    grip: e.currentTarget,
+    hasMoved: false
+  };
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
+  e.currentTarget.addEventListener('pointermove', stageGripPointerMove);
+  e.currentTarget.addEventListener('pointerup', stageGripPointerUp);
+  e.currentTarget.addEventListener('pointercancel', stageGripPointerUp);
+}
+
+function stageGripPointerMove(e){
+  if (!_sdrag) return;
+  var dy = e.clientY - _sdrag.startY;
+  if (!_sdrag.hasMoved && Math.abs(dy) < 4) return;
+  if (!_sdrag.hasMoved){
+    _sdrag.hasMoved = true;
+    _sdrag.labelEl.classList.add('stage-dragging');
+    _sdrag.trackEl.classList.add('stage-dragging');
+  }
+
+  // Move both label and corresponding track row in lockstep
+  _sdrag.labelEl.style.transform = 'translateY('+ dy +'px)';
+  _sdrag.trackEl.style.transform = 'translateY('+ dy +'px)';
+
+  // Determine which label the cursor is hovering over
+  var stack = document.elementsFromPoint(e.clientX, e.clientY);
+  var hoverLabel = null;
+  for (var i = 0; i < stack.length; i++){
+    if (stack[i].classList && stack[i].classList.contains('stage-label') && stack[i] !== _sdrag.labelEl){
+      hoverLabel = stack[i]; break;
+    }
+  }
+  // Clear all previous drop hints
+  _sdrag.allLabels.forEach(function(el){
+    el.classList.remove('drop-above','drop-below');
+    var sId = el.getAttribute('data-stage-id');
+    var tr  = document.getElementById('sr-'+sId);
+    if (tr) tr.classList.remove('drop-above','drop-below');
+  });
+  if (hoverLabel){
+    var newIndex = _sdrag.allLabels.indexOf(hoverLabel);
+    _sdrag.targetIndex = newIndex;
+    // Highlight which side will receive the drop
+    var hintClass = (newIndex < _sdrag.origIndex) ? 'drop-above' : 'drop-below';
+    hoverLabel.classList.add(hintClass);
+    var hSId = hoverLabel.getAttribute('data-stage-id');
+    var hTr  = document.getElementById('sr-'+hSId);
+    if (hTr) hTr.classList.add(hintClass);
+  }
+}
+
+async function stageGripPointerUp(e){
+  if (!_sdrag) return;
+  var d = _sdrag;
+  _sdrag = null;
+
+  try { d.grip.releasePointerCapture(d.pointerId); } catch(_){}
+  d.grip.removeEventListener('pointermove', stageGripPointerMove);
+  d.grip.removeEventListener('pointerup', stageGripPointerUp);
+  d.grip.removeEventListener('pointercancel', stageGripPointerUp);
+
+  // Clear visual state
+  d.labelEl.classList.remove('stage-dragging');
+  d.trackEl.classList.remove('stage-dragging');
+  d.labelEl.style.transform = '';
+  d.trackEl.style.transform = '';
+  d.allLabels.forEach(function(el){
+    el.classList.remove('drop-above','drop-below');
+    var sId = el.getAttribute('data-stage-id');
+    var tr  = document.getElementById('sr-'+sId);
+    if (tr) tr.classList.remove('drop-above','drop-below');
+  });
+
+  if (!d.hasMoved || d.targetIndex === d.origIndex) return;
+
+  // Reorder the allStages array
+  var stage = allStages[d.origIndex];
+  allStages.splice(d.origIndex, 1);
+  allStages.splice(d.targetIndex, 0, stage);
+
+  // Persist new stage_order values
+  showSaving && showSaving();
+  try {
+    var promises = allStages.map(function(s, idx){
+      if (s.stage_order !== idx){
+        s.stage_order = idx;
+        return sb.from('event_stages').update({stage_order: idx}).eq('stage_id', s.stage_id);
+      }
+    }).filter(Boolean);
+    await Promise.all(promises);
+    showSaved && showSaved();
+    toast('Stages reordered');
+  } catch(err){
+    console.error('Stage reorder save failed:', err);
     toast('Save failed');
   }
   renderBoard();
