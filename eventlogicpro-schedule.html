@@ -556,21 +556,40 @@ function renderTimelineView(area){
   var totalW=Math.round(trackW)+160;
   area.innerHTML='<div class="timeline-wrap"><div class="timeline-inner">'+stagesH+'</div></div>';
 
-  // Auto-scroll each stage track to bring its first act into view
+  // After render: (1) scroll ALL stage tracks to the earliest first-act
+  // across all stages so they share the same starting timeframe, then
+  // (2) wire up cross-stage scroll sync so dragging the scrollbar on
+  // any row moves all rows in lockstep — keeping equal-time positions
+  // visually aligned across stages.
   setTimeout(function(){
-    allStages.forEach(function(stage){
-      var row = document.getElementById('sr-'+stage.stage_id);
-      if (!row) return;
-      var track = row.querySelector('.stage-track');
-      if (!track) return;
-      // Find first real act (prefer non-break)
+    var tracks = Array.prototype.slice.call(document.querySelectorAll('#schedBoard .stage-track'));
+    if (!tracks.length) return;
+
+    // Find the earliest first-act offset across all stages
+    var earliestOffset = Infinity;
+    tracks.forEach(function(track){
       var firstAct = track.querySelector('.act-block:not(.act-type-break)');
       if (!firstAct) firstAct = track.querySelector('.act-block');
       if (!firstAct) return;
-      // Scroll so the first act sits a few pixels in from the left
-      var pad = 16;
-      var target = Math.max(0, firstAct.offsetLeft - pad);
-      track.scrollLeft = target;
+      if (firstAct.offsetLeft < earliestOffset) earliestOffset = firstAct.offsetLeft;
+    });
+    if (earliestOffset === Infinity) earliestOffset = 0;
+    var initial = Math.max(0, earliestOffset - 16);
+    // Apply the same scroll position to every stage track
+    tracks.forEach(function(track){ track.scrollLeft = initial; });
+
+    // Cross-stage scroll sync: when one track scrolls, mirror onto all others
+    var _syncing = false;
+    tracks.forEach(function(track){
+      track.addEventListener('scroll', function(){
+        if (_syncing) return;
+        _syncing = true;
+        var x = track.scrollLeft;
+        tracks.forEach(function(other){
+          if (other !== track && other.scrollLeft !== x) other.scrollLeft = x;
+        });
+        requestAnimationFrame(function(){ _syncing = false; });
+      }, { passive: true });
     });
   }, 30);
 }
