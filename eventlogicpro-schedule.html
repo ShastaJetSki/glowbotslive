@@ -149,6 +149,8 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 /* ADD ACT BUTTON */
 .stage-add-btn{height:90px;padding:0 16px;border-radius:7px;border:1.5px dashed rgba(255,255,255,.14);background:transparent;color:rgba(255,255,255,.35);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:all .2s;flex-shrink:0;margin-left:4px;}
 .stage-add-btn:hover{border-color:var(--accent);color:rgba(255,255,255,.9);background:rgba(220,38,38,.08);}
+.stage-add-circle{width:38px;height:38px;border-radius:50%;border:1.5px dashed rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.45);font-size:22px;font-weight:300;cursor:pointer;font-family:'DM Sans',sans-serif;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center;margin-left:10px;transition:all .18s;padding:0;}
+.stage-add-circle:hover{border-style:solid;border-color:var(--accent);color:#fff;background:rgba(220,38,38,.18);transform:scale(1.08);}
 
 /* GAP BLOCK */
 .gap-block{height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 5px;flex-shrink:0;opacity:.45;cursor:pointer;}
@@ -156,12 +158,20 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .gap-label{font-size:8px;color:rgba(255,255,255,.3);font-family:'Space Mono',monospace;padding:3px 0;white-space:nowrap;letter-spacing:.3px;}
 
 /* ACT BLOCK */
-.act-block{height:90px;border-radius:8px;border:1px solid rgba(255,255,255,.1);border-left:5px solid #0284c7;background:rgba(2,132,199,.2);display:flex;flex-direction:column;justify-content:center;padding:10px 12px 10px 14px;cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden;flex-shrink:0;margin-right:3px;}
+.act-block{min-height:90px;border-radius:8px;border:1px solid rgba(255,255,255,.1);border-left:5px solid #0284c7;background:rgba(2,132,199,.2);display:flex;flex-direction:column;justify-content:center;padding:10px 12px 10px 14px;cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden;flex-shrink:0;margin-right:3px;align-self:center;}
 .act-block:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.5);}
+/* Live-drag visuals */
+.act-block{user-select:none;touch-action:none;}
+.act-block.act-dragging{cursor:grabbing;z-index:20;box-shadow:0 12px 32px rgba(0,0,0,.55);transform-origin:center;transition:none;opacity:.92;}
+.stage-track-row.drop-target{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.45);box-shadow:inset 0 0 0 1px rgba(220,38,38,.35);}
+.act-block:hover{cursor:grab;}
+
 .act-block.act-type-break{border-left-color:rgba(255,255,255,.15)!important;background:rgba(255,255,255,.04)!important;border-style:dashed;}
 .act-drag{position:absolute;left:3px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.2);font-size:10px;cursor:grab;line-height:1;}
 .act-name{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;letter-spacing:-.1px;}
-.act-time{font-size:12px;color:rgba(255,255,255,.8);font-family:'Space Mono',monospace;margin-top:5px;white-space:nowrap;font-weight:600;}
+.act-time{font-size:12px;color:rgba(255,255,255,.8);font-family:'Space Mono',monospace;margin-top:5px;font-weight:600;display:flex;flex-wrap:wrap;gap:0;line-height:1.4;}
+.act-time .t-start,.act-time .t-end{white-space:nowrap;}
+.act-time .t-end{margin-left:4px;}
 .act-dur{font-size:10px;color:rgba(255,255,255,.45);font-family:'Space Mono',monospace;margin-top:3px;}
 
 /* EMPTY STATE */
@@ -324,15 +334,9 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     <div class="sched-board-header">
       <div class="sched-board-title" id="boardTitle">Entertainment Schedule</div>
       <div class="sched-board-controls">
-        <span class="sb-label">FROM</span>
-        <input type="time" id="eventStartSel" class="sb-btn" value="08:00" onchange="saveTimeRange();renderBoard()">
-        <span class="sb-label">TO</span>
-        <input type="time" id="eventEndSel" class="sb-btn" value="22:00" onchange="saveTimeRange();renderBoard()">
-        <select id="tickIntervalSel" class="sb-btn" onchange="saveTimeRange();renderBoard()">
-          <option value="15">15 min</option>
-          <option value="30" selected>30 min</option>
-          <option value="60">1 hour</option>
-        </select>
+        <input type="hidden" id="eventStartSel" value="08:00">
+        <input type="hidden" id="eventEndSel"   value="22:00">
+        <input type="hidden" id="tickIntervalSel" value="30">
         <button class="sb-btn sb-add-stage" onclick="addStage()">+ Stage</button>
       </div>
     </div>
@@ -368,7 +372,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
     <div class="modal-header"><div class="modal-title" id="actModalTitle">Add Act</div><button class="modal-close" onclick="closeActModal()">&times;</button></div>
     <div class="modal-body">
       <div class="form-group"><label class="form-label">Stage</label><select class="form-select" id="amStage"></select></div>
-      <div class="form-group"><label class="form-label">Act / Set Name</label><input type="text" class="form-input" id="amName" placeholder="e.g. Big Money Luke" oninput="onActNameInput()"></div>
+      <div class="form-group"><label class="form-label">Act / Set Name</label><input type="text" class="form-input" id="amName" placeholder="e.g. Headliner Set" oninput="onActNameInput()"></div>
       <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="amType"><option value="opener">Opener</option><option value="performer">Performer</option><option value="headliner">Headliner</option><option value="soundcheck">Soundcheck</option><option value="setup">Setup / Load-in</option><option value="break">Break</option></select></div>
       <div class="form-group">
         <label class="form-label">Color</label>
@@ -511,6 +515,8 @@ function renderBoard(){var area=document.getElementById('scheduleArea');if(!curr
 
 function renderTimelineView(area){
   var startMins=parseTInput('eventStartSel','08:00');
+  window._SCHED_STARTMINS = startMins;
+  window._SCHED_PPM = 7;
   var endMins=parseTInput('eventEndSel','22:00');
   if(endMins<=startMins)endMins=startMins+60;
   allActs.forEach(function(a){var ae=timeToMins(a.start_time)+(parseInt(a.duration_minutes)||45);if(ae>endMins)endMins=ae+30;});
@@ -550,21 +556,21 @@ function renderTimelineView(area){
         var tcRgb=hexToRgb(tc);
         var breakCls=act.act_type==='break'?' act-type-break':'';
         var inlineStyle=act.act_type==='break'?'':'border-left-color:'+tc+';background:rgba('+tcRgb+',0.22);';
-        actsH+='<div class="act-block'+breakCls+'" style="width:'+width+'px;'+inlineStyle+'" draggable="true" onclick="openActModal(\''+stage.stage_id+'\',\''+act.act_id+'\',event)" ondragstart="actDragStart(event,\''+act.act_id+'\',\''+stage.stage_id+'\')" ondragend="actDragEnd(event)" title="'+act.act_name+' · '+minsToTime(actStart)+' – '+minsToTime(actStart+dur)+'">';
+        actsH+='<div class="act-block'+breakCls+'" data-act-id="'+act.act_id+'" data-stage-id="'+stage.stage_id+'" data-start-mins="'+actStart+'" data-dur-mins="'+dur+'" style="width:'+width+'px;'+inlineStyle+'" onpointerdown="actPointerDown(event,\''+act.act_id+'\',\''+stage.stage_id+'\')" title="'+act.act_name+' · '+minsToTime(actStart)+' – '+minsToTime(actStart+dur)+'">';
         actsH+='<div class="act-drag">⠿</div>';
         actsH+='<div class="act-name">'+act.act_name+'</div>';
-        actsH+='<div class="act-time">'+minsToTime(actStart)+' – '+minsToTime(actStart+dur)+'</div>';
+        actsH+='<div class="act-time"><span class="t-start">'+minsToTime(actStart)+'</span><span class="t-end"> – '+minsToTime(actStart+dur)+'</span></div>';
         actsH+='<div class="act-dur">'+dur+' min</div>';
         actsH+='</div>';
         prevEnd=actStart+dur;
       });
-      actsH+='<button class="stage-add-btn" onclick="event.stopPropagation();openActModal(\''+stage.stage_id+'\',null)">+ Add Act</button>';
+      actsH+='<button class="stage-add-circle" onclick="event.stopPropagation();openActModal(\''+stage.stage_id+'\',null)" title="Add next act">+</button>';
     }
 
     // Labels column (fixed width, stays put while tracks scroll)
     labelsH += '<div class="stage-label" id="sl-'+stage.stage_id+'"><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
     // Track row (no individual scroll — outer container scrolls all together)
-    tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" ondragover="event.preventDefault()" ondrop="actDropOnStage(event,\''+stage.stage_id+'\')" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
+    tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
   });
 
   area.innerHTML =
@@ -649,14 +655,148 @@ function renderListView(area){
 function renderPrintView(area){var h='<div style="background:#fff;border-radius:10px;padding:32px;color:#111;"><div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #111;padding-bottom:16px;"><div style="font-size:20px;font-weight:800;letter-spacing:1px;">'+document.getElementById('boardTitle').textContent+'</div></div>';allStages.forEach(function(stage){var acts=allActs.filter(function(a){return a.stage_id===stage.stage_id;}).sort(function(a,b){return timeToMins(a.start_time)-timeToMins(b.start_time);});h+='<div style="margin-bottom:20px;"><div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid #ddd;padding-bottom:6px;margin-bottom:8px;">'+stage.stage_name+'</div>';acts.forEach(function(act){var sm=timeToMins(act.start_time);var dur=parseInt(act.duration_minutes)||45;h+='<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid #f0f0f0;"><div style="width:120px;font-size:12px;font-weight:600;font-family:monospace;color:#444;">'+minsToTime(sm)+' – '+minsToTime(sm+dur)+'</div><div style="flex:1;font-size:13px;font-weight:600;">'+act.act_name+'</div><div style="font-size:11px;color:#888;width:60px;text-align:right;">'+dur+' min</div></div>';});h+='</div>';});h+='<div style="margin-top:24px;text-align:right;font-size:10px;color:#999;">Generated by Event Logic Pro</div></div>';h+='<div style="text-align:center;margin-top:16px;"><button class="sb-btn" onclick="window.print()" style="font-size:13px;padding:10px 24px;">🖨 Print / Save PDF</button></div>';area.innerHTML=h;}
 
 /* DOUBLE CLICK TO ADD ACT */
-function trackDblClick(e,stageId,startMins,ppm){if(e.target.closest('.act-block')||e.target.closest('.stage-add-btn')||e.target.closest('.stage-empty-btn'))return;e.stopPropagation();var track=e.currentTarget;var rect=track.getBoundingClientRect();var clickX=e.clientX-rect.left-8;var clickMins=Math.round((clickX/ppm+startMins)/15)*15;clickMins=Math.max(startMins,clickMins);openActModal(stageId,null);setTimeout(function(){var si=document.getElementById('amStart');if(si)si.value=minsToTimeInput(clickMins);},60);}
+function trackDblClick(e,stageId,startMins,ppm){if(e.target.closest('.act-block')||e.target.closest('.stage-add-btn')||e.target.closest('.stage-add-circle')||e.target.closest('.stage-empty-btn'))return;e.stopPropagation();var track=e.currentTarget;var rect=track.getBoundingClientRect();var clickX=e.clientX-rect.left-8;var clickMins=Math.round((clickX/ppm+startMins)/15)*15;clickMins=Math.max(startMins,clickMins);openActModal(stageId,null);setTimeout(function(){var si=document.getElementById('amStart');if(si)si.value=minsToTimeInput(clickMins);},60);}
 function trackDblClickGap(e,stageId,afterMins){e.stopPropagation();openActModal(stageId,null);setTimeout(function(){var si=document.getElementById('amStart');if(si)si.value=minsToTimeInput(afterMins);},60);}
 
 /* DRAG */
 var dragActId=null,dragStageId=null;
-function actDragStart(e,actId,stageId){dragActId=actId;dragStageId=stageId;e.target.closest('.act-block').style.opacity='.4';e.dataTransfer.effectAllowed='move';}
-function actDragEnd(e){dragActId=null;dragStageId=null;var el=e.target.closest('.act-block');if(el)el.style.opacity='';}
-function actDropOnStage(e,targetStageId){e.preventDefault();if(!dragActId||dragStageId===targetStageId)return;var act=allActs.find(function(a){return a.act_id===dragActId;});if(!act)return;act.stage_id=targetStageId;sb.from('event_schedule_acts').update({stage_id:targetStageId}).eq('act_id',dragActId);renderBoard();toast('Moved to '+allStages.find(function(s){return s.stage_id===targetStageId;})?.stage_name);}
+/* ===== LIVE POINTER DRAG (real-time card movement + time update) =====
+   - Click without movement (< 4px) → opens edit modal
+   - Drag horizontally → card translates, time updates live, snaps to 5-min grid
+   - Drag vertically over another stage row → target stage highlighted; on release the act moves between stages
+   - On release → saves new start_time + stage_id to Supabase, re-renders board
+=================================================================== */
+var _adrag = null;
+
+function actPointerDown(e, actId, stageId){
+  if (e.button !== undefined && e.button !== 0) return;       // only primary button
+  if (e.target.closest('button')) return;                     // ignore button clicks inside card
+  var card = e.currentTarget;
+  var act = allActs.find(function(a){return a.act_id===actId;});
+  if (!act) return;
+
+  _adrag = {
+    actId: actId,
+    origStageId: stageId,
+    currentStageId: stageId,
+    card: card,
+    initialMins: timeToMins(act.start_time),
+    dur: parseInt(act.duration_minutes) || 45,
+    startX: e.clientX,
+    startY: e.clientY,
+    currentMins: timeToMins(act.start_time),
+    hasMoved: false,
+    minStartMins: window._SCHED_STARTMINS || 0,
+    ppm: window._SCHED_PPM || 7,
+    pointerId: e.pointerId
+  };
+
+  try { card.setPointerCapture(e.pointerId); } catch(_){}
+  card.addEventListener('pointermove', actPointerMove);
+  card.addEventListener('pointerup', actPointerUp);
+  card.addEventListener('pointercancel', actPointerUp);
+  e.preventDefault();
+}
+
+function actPointerMove(e){
+  if (!_adrag) return;
+  var dx = e.clientX - _adrag.startX;
+  var dy = e.clientY - _adrag.startY;
+
+  // Threshold before drag starts — a tiny twitch shouldn't trigger it
+  if (!_adrag.hasMoved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+  if (!_adrag.hasMoved){
+    _adrag.hasMoved = true;
+    _adrag.card.classList.add('act-dragging');
+  }
+
+  // Convert pixel delta → minute delta, snapped to 5-min grid
+  var deltaMin = Math.round(dx / _adrag.ppm / 5) * 5;
+  var newMins = Math.max(_adrag.minStartMins, _adrag.initialMins + deltaMin);
+  // Effective deltaMin (after clamping to min start time)
+  var effectiveDelta = newMins - _adrag.initialMins;
+  _adrag.currentMins = newMins;
+
+  // Move the card visually
+  _adrag.card.style.transform = 'translateX('+ (effectiveDelta * _adrag.ppm) +'px)';
+
+  // Update displayed time text in real time
+  var timeEl = _adrag.card.querySelector('.act-time');
+  if (timeEl){
+    timeEl.innerHTML =
+      '<span class="t-start">'+ minsToTime(newMins) +'</span>'+
+      '<span class="t-end"> – '+ minsToTime(newMins + _adrag.dur) +'</span>';
+  }
+
+  // Find which stage row the cursor is hovering over (for cross-stage move)
+  var stack = document.elementsFromPoint(e.clientX, e.clientY);
+  var targetRow = null;
+  for (var i = 0; i < stack.length; i++){
+    if (stack[i].classList && stack[i].classList.contains('stage-track-row')){
+      targetRow = stack[i]; break;
+    }
+  }
+  if (targetRow){
+    var newStageId = targetRow.getAttribute('data-stage-id');
+    if (newStageId && newStageId !== _adrag.currentStageId){
+      _adrag.currentStageId = newStageId;
+      document.querySelectorAll('.stage-track-row.drop-target').forEach(function(el){ el.classList.remove('drop-target'); });
+      targetRow.classList.add('drop-target');
+    } else if (newStageId === _adrag.origStageId) {
+      // Back over original stage — no highlight
+      document.querySelectorAll('.stage-track-row.drop-target').forEach(function(el){ el.classList.remove('drop-target'); });
+    }
+  }
+}
+
+async function actPointerUp(e){
+  if (!_adrag) return;
+  var d = _adrag;
+  _adrag = null;
+
+  try { d.card.releasePointerCapture(d.pointerId); } catch(_){}
+  d.card.removeEventListener('pointermove', actPointerMove);
+  d.card.removeEventListener('pointerup', actPointerUp);
+  d.card.removeEventListener('pointercancel', actPointerUp);
+
+  d.card.classList.remove('act-dragging');
+  document.querySelectorAll('.stage-track-row.drop-target').forEach(function(el){ el.classList.remove('drop-target'); });
+
+  // If pointer never crossed the drag threshold, treat as a click
+  if (!d.hasMoved){
+    d.card.style.transform = '';
+    openActModal(d.origStageId, d.actId);
+    return;
+  }
+
+  // Did the position actually change?
+  var stageChanged = d.currentStageId !== d.origStageId;
+  var timeChanged  = d.currentMins !== d.initialMins;
+  if (!stageChanged && !timeChanged){
+    d.card.style.transform = '';
+    return;
+  }
+
+  var newStart = minsToTimeInput(d.currentMins);
+  // Update local cache + persist
+  var act = allActs.find(function(a){return a.act_id===d.actId;});
+  if (act){
+    act.start_time = newStart;
+    act.stage_id   = d.currentStageId;
+  }
+  showSaving && showSaving();
+  try {
+    await sb.from('event_schedule_acts').update({
+      start_time: newStart, stage_id: d.currentStageId
+    }).eq('act_id', d.actId);
+    showSaved && showSaved();
+    toast('Moved to '+ minsToTime(d.currentMins));
+  } catch(err){
+    console.error('Drag-move save failed:', err);
+    toast('Save failed');
+  }
+  renderBoard();
+}
 
 /* COLOR PICKER */
 function buildSwatches(containerId,activeColor,onSelect){var wrap=document.getElementById(containerId);if(!wrap)return;wrap.innerHTML='';ACT_PALETTE.forEach(function(c){var el=document.createElement('div');el.className='cswatch'+(c===activeColor?' active':'');el.style.background=c;el.title=c;el.onclick=function(){onSelect(c);};wrap.appendChild(el);});}
