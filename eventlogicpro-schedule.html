@@ -167,6 +167,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 /* Empty stage gets the same circle, centered, with a soft hint label */
 .stage-empty-wrap{display:flex;align-items:center;gap:12px;padding:0 16px;height:100%;min-height:90px;}
 .stage-empty-wrap .stage-add-circle{margin-left:0;}
+.stage-add-circle.stage-add-left{margin-left:8px;margin-right:12px;}
 .stage-empty-hint{font-size:12px;color:rgba(255,255,255,.32);font-weight:500;font-family:inherit;letter-spacing:.2px;}
 
 /* GAP BLOCK */
@@ -480,6 +481,7 @@ function projSearch(val){var q=(val||'').trim().toLowerCase();var ac=document.ge
 function projSearchKey(e){var ac=document.getElementById('projAutocomplete');var items=ac.querySelectorAll('.proj-ac-item');if(e.key==='ArrowDown'){e.preventDefault();projAcIndex=Math.min(projAcIndex+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='ArrowUp'){e.preventDefault();projAcIndex=Math.max(projAcIndex-1,0);items.forEach(function(el,i){el.classList.toggle('active',i===projAcIndex);});}else if(e.key==='Enter'){if(projAcIndex>=0&&projAcResults[projAcIndex])selectProject(projAcResults[projAcIndex].event_project_id);}else if(e.key==='Escape'){ac.classList.remove('show');}}
 document.addEventListener('click',function(e){if(!e.target.closest('.proj-search-wrap')){var ac=document.getElementById('projAutocomplete');if(ac)ac.classList.remove('show');}});
 async function selectProject(projectId){
+  window._timelineScrollInitialized = false;
   var p=allProjects.find(function(x){return x.event_project_id===projectId;});if(!p)return;
   currentProjectId=projectId;
   // Inline event name + date + venue (replaces removed pill)
@@ -564,6 +566,8 @@ function renderTimelineView(area){
     if(!acts.length){
       actsH='<div class="stage-empty-wrap"><button class="stage-add-circle" onclick="event.stopPropagation();openActModal(\''+stage.stage_id+'\',null)" title="Add first act"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button><span class="stage-empty-hint">Add first act</span></div>';
     } else {
+      // "Add before first act" circle at the start of the row
+      actsH+='<button class="stage-add-circle stage-add-left" onclick="event.stopPropagation();openActModalBefore(event,\''+stage.stage_id+'\')" title="Add act before first"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>';
       acts.forEach(function(act){
         var actStart=timeToMins(act.start_time);
         var dur=parseInt(act.duration_minutes)||45;
@@ -599,23 +603,34 @@ function renderTimelineView(area){
       '</div>'+
     '</div></div>';
 
-  // After render: scroll the shared tracks container to the EARLIEST
-  // first-act across ALL stages. Since all stage rows live inside the
-  // same horizontal scroll container, they automatically stay in lockstep
-  // — no JS sync needed, ever. New stages added later will also be
-  // perfectly aligned because they share the same parent scroll.
+  // After render:
+  //   - On the FIRST render for this event → auto-scroll to the
+  //     earliest first-act across all stages.
+  //   - On every subsequent render (after edits, drags, adds, etc.)
+  //     → preserve the user's existing scroll position so the
+  //     timeline doesn't jump back to the beginning.
+  var _preserveScroll = window._timelineScrollInitialized
+    ? (document.getElementById('stagesTracksCol') || {}).scrollLeft
+    : null;
   setTimeout(function(){
     var scrollCol = document.getElementById('stagesTracksCol');
     if (!scrollCol) return;
-    var firstActs = scrollCol.querySelectorAll('.act-block:not(.act-type-break)');
-    if (!firstActs.length) firstActs = scrollCol.querySelectorAll('.act-block');
-    var earliestOffset = Infinity;
-    Array.prototype.forEach.call(firstActs, function(el){
-      var off = el.offsetLeft;
-      if (off < earliestOffset) earliestOffset = off;
-    });
-    if (earliestOffset === Infinity) earliestOffset = 0;
-    scrollCol.scrollLeft = Math.max(0, earliestOffset - 16);
+    if (!window._timelineScrollInitialized){
+      // First render for this event — jump to the earliest first-act
+      var firstActs = scrollCol.querySelectorAll('.act-block:not(.act-type-break)');
+      if (!firstActs.length) firstActs = scrollCol.querySelectorAll('.act-block');
+      var earliestOffset = Infinity;
+      Array.prototype.forEach.call(firstActs, function(el){
+        var off = el.offsetLeft;
+        if (off < earliestOffset) earliestOffset = off;
+      });
+      if (earliestOffset === Infinity) earliestOffset = 0;
+      scrollCol.scrollLeft = Math.max(0, earliestOffset - 16);
+      window._timelineScrollInitialized = true;
+    } else if (_preserveScroll != null){
+      // Re-render after edit/drag/add — keep user where they were
+      scrollCol.scrollLeft = _preserveScroll;
+    }
   }, 30);
 }
 
@@ -998,6 +1013,40 @@ async function deleteStageConfirm(stageId,stageName){var acts=allActs.filter(fun
 async function deleteStage(){if(!editingStageId)return;var stage=allStages.find(function(s){return s.stage_id===editingStageId;});closeStageModal();if(stage)await deleteStageConfirm(editingStageId,stage.stage_name);}
 
 /* ACT CRUD */
+
+/* Opens the New Act modal for inserting BEFORE the first act on a stage.
+   Pre-fills start_time to (first_act_start - 45 min) clamped to event start,
+   and pre-fills duration so the new act ends just before the existing first act. */
+function openActModalBefore(e, stageId){
+  if (e) e.stopPropagation();
+  var stageActs = allActs.filter(function(a){return a.stage_id===stageId;});
+  if (!stageActs.length){
+    openActModal(stageId, null);
+    return;
+  }
+  var firstStart = stageActs.reduce(function(min, a){
+    var s = timeToMins(a.start_time);
+    return s < min ? s : min;
+  }, Infinity);
+  var startMins = parseTInput('eventStartSel','08:00');
+  var defaultDur = 45;
+  var newStart = Math.max(startMins, firstStart - defaultDur);
+  var actualDur = Math.min(defaultDur, firstStart - newStart);
+  if (actualDur < 5){
+    toast('No room before the first act');
+    return;
+  }
+  openActModal(stageId, null);
+  // Override the defaults openActModal set (last-end + 45min) with our
+  // "before first" values once the modal has built its DOM
+  setTimeout(function(){
+    var si = document.getElementById('amStart');
+    var di = document.getElementById('amDur');
+    if (si) si.value = minsToTimeInput(newStart);
+    if (di) di.value = actualDur;
+  }, 90);
+}
+
 function openActModal(stageId,actId,e){if(e)e.stopPropagation();editingActId=actId;document.getElementById('actModalTitle').textContent=actId?'Edit Act':'Add Act';document.getElementById('amDelBtn').style.display=actId?'':'none';
   var dupBtn=document.getElementById('amDupBtn'); if(dupBtn) dupBtn.style.display=actId?'':'none';var stageOpts=allStages.map(function(s){return '<option value="'+s.stage_id+'"'+(s.stage_id===stageId?' selected':'')+'>'+s.stage_name+'</option>';}).join('');document.getElementById('amStage').innerHTML=stageOpts;if(actId){var act=allActs.find(function(a){return a.act_id===actId;});if(act){document.getElementById('amName').value=act.act_name||'';document.getElementById('amType').value=act.act_type||'performer';document.getElementById('amStart').value=act.start_time||'12:00';document.getElementById('amDur').value=act.duration_minutes||45;document.getElementById('amNotes').value=act.notes||'';document.getElementById('amStage').value=act.stage_id;var c=act.color||(ACT_DEF_COLORS[act.act_type]||'#0284c7');setActColor(c);}}else{document.getElementById('amName').value='';document.getElementById('amType').value='performer';document.getElementById('amNotes').value='';var stageActs=allActs.filter(function(a){return a.stage_id===stageId;});var lastEnd=stageActs.reduce(function(max,a){return Math.max(max,timeToMins(a.start_time)+(parseInt(a.duration_minutes)||45));},parseTInput('eventStartSel','08:00'));document.getElementById('amStart').value=minsToTimeInput(lastEnd);document.getElementById('amDur').value=45;var defColor=ACT_PALETTE[Math.floor(Math.random()*ACT_PALETTE.length)];setActColor(defColor);}document.getElementById('actModal').classList.add('show');setTimeout(function(){document.getElementById('amName').focus();},80);}
 function closeActModal(){document.getElementById('actModal').classList.remove('show');}
