@@ -118,8 +118,13 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .cbody{display:none;border-top:1px solid var(--border);}
 .csec.expanded .cbody{display:block;}
 .cinner{padding:8px 14px 12px;}
-.lhdr{display:grid;grid-template-columns:1fr 80px 110px 110px 32px;gap:6px;padding:4px 0 6px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);margin-bottom:4px;}
-.lrow{display:grid;grid-template-columns:1fr 80px 110px 110px 32px;gap:6px;padding:4px 0;align-items:center;}
+.lhdr{display:grid;grid-template-columns:24px 1fr 80px 110px 110px 32px;gap:6px;padding:4px 0 6px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+.lrow{display:grid;grid-template-columns:24px 1fr 80px 110px 110px 32px;gap:6px;padding:4px 0;align-items:center;}
+.ldrag{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);cursor:grab;font-size:13px;opacity:.4;flex-shrink:0;}
+.lrow:hover .ldrag{opacity:1;}
+.ldrag:active{cursor:grabbing;}
+.lrow.dragging{opacity:.4;}
+.lrow.l-drag-over{box-shadow:0 -2px 0 0 var(--accent);}
 .lname{padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text-primary);font-size:13px;font-family:inherit;width:100%;}
 .lname:focus{outline:none;border-color:var(--accent);}
 .ldue{padding:7px 6px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text-primary);font-size:12px;font-family:inherit;width:100%;}
@@ -321,7 +326,7 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
   .sp-summary{grid-template-columns:1fr 1fr;}
   body{padding-bottom:140px;}
 }
-@media print{.desktop-header,.mobile-top-header,.mobile-bottom-nav,.actbar,.ladd,.lrm,.tbtns,.cdrag,.cdel,.view-tabs,.review-panel,.official-banner,.readonly-overlay,.hdr-bar,.print-btn,.footer-bar,.staff-panel{display:none!important;}body{background:#fff;color:#000;padding:0;}.content{max-width:100%;padding:10px;}.scard,.csec,.ebar{border:1px solid #ddd;break-inside:avoid;}.cbody{max-height:none!important;overflow:visible!important;}}
+@media print{.desktop-header,.mobile-top-header,.mobile-bottom-nav,.actbar,.ladd,.lrm,.tbtns,.cdrag,.ldrag,.cdel,.view-tabs,.review-panel,.official-banner,.readonly-overlay,.hdr-bar,.print-btn,.footer-bar,.staff-panel{display:none!important;}body{background:#fff;color:#000;padding:0;}.content{max-width:100%;padding:10px;}.scard,.csec,.ebar{border:1px solid #ddd;break-inside:avoid;}.cbody{max-height:none!important;overflow:visible!important;}}
 
 /* PRINT HEADER */
 .print-header{display:none;}
@@ -641,6 +646,7 @@ var allEstimates = [], allProjects = [], currentEstId = null, currentProjectId =
 var userRole = 'manager', viewMode = 'editor';
 var expCats = [], revCats = [], expandedSet = new Set(), allExpanded = false;
 var dragSrcIdx = null, dragType = null;
+var itemDragSrc = null; // {type, ci, li} while a line item is being dragged
 var addingType = 'expense', selColor = '#DC2626';
 var autoSaveInterval = null, lastSaveTime = null;
 var projAcResults = [], projAcIndex = -1;
@@ -1137,11 +1143,12 @@ function renderCat(c, idx, type) {
   h += '<button class="cdel" onclick="event.stopPropagation();deleteCat(\''+type+'\','+idx+')" title="Delete">&times;</button>';
   h += '<span class="cchv" onclick="toggleSec(\''+c.id+'\')">&#9660;</span></div></div>';
   h += '<div class="cbody"><div class="cinner">';
-  h += '<div class="lhdr"><span>Item</span><span>Due</span><span>Estimated</span><span>Actual</span><span></span></div>';
+  h += '<div class="lhdr"><span></span><span>Item</span><span>Due</span><span>Estimated</span><span>Actual</span><span></span></div>';
   items.forEach(function(item, li) {
     var dv = item.due || 'pre';
     var dc = dv==='pre'?'pre':dv==='day'?'day':'post';
-    h += '<div class="lrow">';
+    h += '<div class="lrow" data-li="'+li+'">';
+    h += '<div class="ldrag" draggable="true" title="Drag to reorder">&#9783;</div>';
     h += '<input type="text" class="lname" value="'+esc(item.name)+'" onchange="updName(\''+type+'\','+idx+','+li+',this.value)" placeholder="Line item name">';
     h += '<select class="ldue '+dc+'" onchange="updDue(\''+type+'\','+idx+','+li+',this.value,this)"><option value="pre"'+(dv==='pre'?' selected':'')+'>Pre</option><option value="day"'+(dv==='day'?' selected':'')+'>Day Of</option><option value="post"'+(dv==='post'?' selected':'')+'>Post</option></select>';
     h += '<input type="number" value="'+(item.est||'')+'" placeholder="0.00" step="0.01" oninput="updVal(\''+type+'\','+idx+','+li+',\'est\',this.value)">';
@@ -1263,6 +1270,45 @@ function attachDragHandles(){
     sec.addEventListener('dragover',function(e){if(dragType!==sec.dataset.type)return;e.preventDefault();sec.classList.add('drag-over');});
     sec.addEventListener('dragleave',function(){sec.classList.remove('drag-over');});
     sec.addEventListener('drop',function(e){e.preventDefault();sec.classList.remove('drag-over');if(dragType!==sec.dataset.type)return;var toIdx=parseInt(sec.dataset.idx);if(dragSrcIdx===null||dragSrcIdx===toIdx)return;var arr=dragType==='expense'?expCats:revCats;var moved=arr.splice(dragSrcIdx,1)[0];arr.splice(toIdx,0,moved);render();markDirty();});
+  });
+  // Line-item reorder via waffle grip (within the same category)
+  document.querySelectorAll('.ldrag').forEach(function(handle){
+    var row=handle.closest('.lrow');
+    var sec=handle.closest('.csec');
+    if(!row||!sec)return;
+    handle.addEventListener('dragstart',function(e){
+      itemDragSrc={type:sec.dataset.type,ci:parseInt(sec.dataset.idx),li:parseInt(row.dataset.li)};
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+      e.stopPropagation();
+    });
+    handle.addEventListener('dragend',function(){
+      row.classList.remove('dragging');
+      document.querySelectorAll('.lrow').forEach(function(r){r.classList.remove('l-drag-over');});
+      itemDragSrc=null;
+    });
+    row.addEventListener('dragover',function(e){
+      if(!itemDragSrc)return;
+      // Same category only
+      if(itemDragSrc.type!==sec.dataset.type||itemDragSrc.ci!==parseInt(sec.dataset.idx))return;
+      e.preventDefault();e.stopPropagation();
+      row.classList.add('l-drag-over');
+    });
+    row.addEventListener('dragleave',function(){row.classList.remove('l-drag-over');});
+    row.addEventListener('drop',function(e){
+      if(!itemDragSrc)return;
+      if(itemDragSrc.type!==sec.dataset.type||itemDragSrc.ci!==parseInt(sec.dataset.idx))return;
+      e.preventDefault();e.stopPropagation();
+      row.classList.remove('l-drag-over');
+      var toLi=parseInt(row.dataset.li);
+      if(itemDragSrc.li===toLi)return;
+      var arr=itemDragSrc.type==='expense'?expCats:revCats;
+      var items=arr[itemDragSrc.ci].items;
+      var moved=items.splice(itemDragSrc.li,1)[0];
+      items.splice(toLi,0,moved);
+      expandedSet.add(arr[itemDragSrc.ci].id); // keep section open after re-render
+      render();markDirty();
+    });
   });
 }
 
