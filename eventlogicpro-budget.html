@@ -1007,6 +1007,24 @@ async function loadEstimates() {
 }
 
 var loadSeq = 0; // guards against racing loads clobbering each other
+
+/* Repair data doubled by a past concurrent-save glitch.
+   Only collapses an item list when it is EXACTLY doubled — every row has an
+   identical twin, either adjacent (a,a,b,b) or appended (a,b,a,b as two
+   halves). A budget that legitimately repeats one row is left untouched. */
+function dedupeDoubledItems(items){
+  var n=items.length;
+  if(n<2||n%2!==0)return null;
+  var sig=function(i){return [i.name,parseFloat(i.est)||0,parseFloat(i.act)||0,i.due||'pre'].join('|');};
+  var adjacent=true;
+  for(var i=0;i<n;i+=2){if(sig(items[i])!==sig(items[i+1])){adjacent=false;break;}}
+  if(adjacent){var out=[];for(var j=0;j<n;j+=2)out.push(items[j]);return out;}
+  var half=n/2,halved=true;
+  for(var k=0;k<half;k++){if(sig(items[k])!==sig(items[k+half])){halved=false;break;}}
+  if(halved)return items.slice(0,half);
+  return null;
+}
+
 async function loadEstimateData(id) {
   var est = allEstimates.find(function(e){return e.estimate_id===id;});
   if (!est) return;
@@ -1024,12 +1042,21 @@ async function loadEstimateData(id) {
   if (mySeq !== loadSeq || currentEstId !== id) return;
   if (cats.length) {
     expCats = []; revCats = [];
+    var seenKeys = {}, repaired = false;
     cats.forEach(function(c) {
+      if (seenKeys[c.category_key]) { repaired = true; return; } // duplicated category row
+      seenKeys[c.category_key] = true;
       var cl  = lines.filter(function(l){return l.category_key===c.category_key;});
       var obj = {id:c.category_key,color:c.color,title:c.title,items:cl.map(function(l){return{name:l.item_name,est:parseFloat(l.estimated_cost)||0,act:parseFloat(l.actual_cost)||0,due:l.due_timing||'pre'};})};
+      var fixed = dedupeDoubledItems(obj.items);
+      if (fixed) { obj.items = fixed; repaired = true; }
       if (!obj.items.length) obj.items = [{name:'',est:0,act:0,due:'pre'}];
       if (c.category_type==='revenue') revCats.push(obj); else expCats.push(obj);
     });
+    if (repaired) {
+      markDirty(); // debounced save persists the cleaned data
+      toast('Removed duplicated rows from this budget');
+    }
   } else { var d = makeDefaults(); expCats = d.exp; revCats = []; }
   setViewMode('editor');
   updateActionButtons();
@@ -1364,7 +1391,19 @@ function confirmAddCat(){
 }
 
 /* ===== SAVE / LOAD ===== */
-async function saveToDb(silent) {
+// Saves are delete-then-insert, so two overlapping saves would double every
+// row. Serialize: if one is in flight, queue exactly one follow-up.
+var _saving=false,_saveQueued=false;
+async function saveToDb(silent){
+  if(_saving){_saveQueued=true;return;}
+  _saving=true;
+  try{ await _saveToDbInner(silent); }
+  finally{
+    _saving=false;
+    if(_saveQueued){_saveQueued=false;if(dirty)saveToDb(true);}
+  }
+}
+async function _saveToDbInner(silent) {
   if (!tenantId){if(!silent)toast('Not authenticated');return;}
   if (!currentEstId){if(!silent)toast('Select or create a budget first');return;}
   var savingEstId = currentEstId; // pin: user may switch budgets mid-save
@@ -1386,12 +1425,15 @@ async function saveToDb(silent) {
   expCats.forEach(function(c,i){catRows.push({estimate_id:savingEstId,tenant_id:tenantId,category_key:c.id,category_type:'expense',title:c.title,color:c.color,sort_order:i});});
   var lineRows=[],ord=0;
   expCats.forEach(function(c){c.items.forEach(function(it){lineRows.push({estimate_id:savingEstId,tenant_id:tenantId,category_key:c.id,category_type:'expense',item_name:it.name||'(unnamed)',estimated_cost:parseFloat(it.est)||0,actual_cost:parseFloat(it.act)||0,sort_order:ord++,due_timing:it.due||'pre'});});});
+  // Snapshot taken — clear dirty NOW so edits made while this save is in
+  // flight re-mark it and get picked up by the queued follow-up save
+  dirty=false;
   var hr = await sb.from('event_estimates').update(_saveObj).eq('estimate_id',savingEstId);
-  if (hr.error) { console.error('[Budget] save header error:', hr.error); if(!silent)toast('Save failed: '+hr.error.message); return; }
+  if (hr.error) { dirty=true; console.error('[Budget] save header error:', hr.error); if(!silent)toast('Save failed: '+hr.error.message); return; }
   await sb.from('estimate_categories').delete().eq('estimate_id',savingEstId);
   if(catRows.length){
     var cr2=await sb.from('estimate_categories').insert(catRows);
-    if(cr2.error){console.error('[Budget] save categories error:', cr2.error);toast('Save failed (categories): '+cr2.error.message);return;}
+    if(cr2.error){dirty=true;console.error('[Budget] save categories error:', cr2.error);toast('Save failed (categories): '+cr2.error.message);return;}
   }
   await sb.from('estimate_line_items').delete().eq('estimate_id',savingEstId);
   if(lineRows.length){
@@ -1399,13 +1441,13 @@ async function saveToDb(silent) {
     if(lr2.error){
       // Items were deleted but re-insert failed — surface loudly and keep
       // dirty so autosave retries, instead of silently zeroing the budget
+      dirty=true;
       console.error('[Budget] save line items error:', lr2.error);
       toast('Save failed (line items): '+lr2.error.message+' — will retry');
       return;
     }
   }
   await loadEstimates();
-  dirty=false;
   if(!silent)toast('Saved');
 }
 
@@ -1584,8 +1626,8 @@ async function loadOfficialEst(){
   var cats=cr.data||[];
   var lr=await sb.from('estimate_line_items').select('*').eq('estimate_id',pub.estimate_id).order('sort_order');
   var lines=lr.data||[];
-  var offExpCats=[],offRevCats=[];
-  cats.forEach(function(c){var cl=lines.filter(function(l){return l.category_key===c.category_key;});var obj={id:c.category_key,color:c.color,title:c.title,items:cl.map(function(l){return{name:l.item_name,est:parseFloat(l.estimated_cost)||0,act:parseFloat(l.actual_cost)||0,due:l.due_timing||'pre'};})};if(c.category_type==='revenue')offRevCats.push(obj);else offExpCats.push(obj);});
+  var offExpCats=[],offRevCats=[],offSeen={};
+  cats.forEach(function(c){if(offSeen[c.category_key])return;offSeen[c.category_key]=true;var cl=lines.filter(function(l){return l.category_key===c.category_key;});var obj={id:c.category_key,color:c.color,title:c.title,items:cl.map(function(l){return{name:l.item_name,est:parseFloat(l.estimated_cost)||0,act:parseFloat(l.actual_cost)||0,due:l.due_timing||'pre'};})};var offFixed=dedupeDoubledItems(obj.items);if(offFixed)obj.items=offFixed;if(c.category_type==='revenue')offRevCats.push(obj);else offExpCats.push(obj);});
   var prevExp=expCats,prevRev=revCats;expCats=offExpCats;revCats=offRevCats;
   var content=document.getElementById('officialContent');
   content.innerHTML='<div id="offExpBox"></div><div style="margin-top:20px;" id="offRevBox"></div>';
