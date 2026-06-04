@@ -250,6 +250,40 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 @media(max-width:768px){.desktop-header{display:none;}.mobile-top-header{display:block;}.mobile-bottom-nav{display:block;}body{padding-bottom:140px;}.content{padding:12px;}.form-row{grid-template-columns:1fr;}}
 @media(min-width:769px){.mobile-top-header{display:none!important;}.mobile-bottom-nav{display:none!important;}}
 
+/* ===== PRINT — PDF mirrors the on-screen dark timeline ===== */
+@media print{
+  @page{size:landscape;margin:8mm;}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  html,body{background:#0d0d10!important;padding:0!important;}
+  /* Nothing above the board title: hide all app chrome and controls */
+  .desktop-header,.mobile-top-header,.mobile-bottom-nav,.proj-bar,.view-tabs,
+  .footer-bar,.toast,.save-indicator,.help-modal-overlay,.modal-overlay,
+  .sched-board-controls,.stage-add-circle,.stage-empty-hint,.stage-btns,.stage-grip{display:none!important;}
+  .content{max-width:100%!important;padding:0!important;margin:0!important;}
+  .sched-board{border-radius:0!important;padding:10px 14px!important;min-height:0!important;background:#0d0d10!important;}
+  .sched-board-title{color:rgba(255,255,255,.45)!important;margin-bottom:10px;}
+  /* Lay stages out as standalone blocks so a page break never splits one */
+  .stages-grid{display:block!important;}
+  .stages-labels-col{display:none!important;}
+  .timeline-wrap,.stages-tracks-col{overflow:visible!important;}
+  .stages-tracks-inner{display:block!important;}
+  .stage-track-row{
+    break-inside:avoid;page-break-inside:avoid;
+    margin-bottom:10px;
+    background:rgba(255,255,255,.03)!important;
+  }
+  /* Stage name printed above its own track (labels column is hidden) */
+  .stage-track-row::before{
+    content:attr(data-stage-name);
+    display:block;
+    padding:8px 10px 0;
+    font:700 11px 'Space Mono',monospace;
+    letter-spacing:2px;text-transform:uppercase;
+    color:var(--stage-color,#fff);
+  }
+  .act-block:hover{transform:none!important;box-shadow:none!important;}
+}
+
 /* === Header polish (added) === */
 .header-right{display:flex;align-items:center;gap:14px;}
 .tenant-logo{max-height:56px;max-width:140px;object-fit:contain;border-radius:6px;}
@@ -599,7 +633,7 @@ function renderTimelineView(area){
     // Labels column (fixed width, stays put while tracks scroll)
     labelsH += '<div class="stage-label" id="sl-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'"><button class="stage-grip" onpointerdown="stageGripPointerDown(event,\''+stage.stage_id+'\')" title="Drag to reorder stages"><svg viewBox="0 0 14 22" width="14" height="22" aria-hidden="true"><circle cx="4" cy="3" r="1.4"/><circle cx="4" cy="8" r="1.4"/><circle cx="4" cy="13" r="1.4"/><circle cx="4" cy="18" r="1.4"/><circle cx="10" cy="3" r="1.4"/><circle cx="10" cy="8" r="1.4"/><circle cx="10" cy="13" r="1.4"/><circle cx="10" cy="18" r="1.4"/></svg></button><div class="stage-dot-name"><div class="stage-dot" style="background:'+stageColor+';"></div><div class="stage-name-text">'+stage.stage_name+'</div></div><div class="stage-btns"><button class="stage-mini-btn" onclick="editStage(\''+stage.stage_id+'\')">Edit</button><button class="stage-mini-btn danger" onclick="deleteStageConfirm(\''+stage.stage_id+'\',\''+stage.stage_name+'\')">Remove</button></div></div>';
     // Track row (no individual scroll — outer container scrolls all together)
-    tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
+    tracksH += '<div class="stage-track-row" id="sr-'+stage.stage_id+'" data-stage-id="'+stage.stage_id+'" data-stage-name="'+stage.stage_name.replace(/"/g,'&quot;')+'" style="--stage-color:'+stageColor+';" ondblclick="trackDblClick(event,\''+stage.stage_id+'\','+startMins+','+PPM+')"><div class="stage-track-inner" style="min-width:'+trackW+'px;">'+actsH+'</div></div>';
   });
 
   // Capture the user's scroll position BEFORE replacing the DOM —
@@ -1127,6 +1161,24 @@ async function init(){
   }
 }
 init();
+
+// ===== PRINT: fit the full timeline width onto the page =====
+// The screen scrolls horizontally; paper can't. Scale the tracks down
+// just enough that the entire event window fits the printable width.
+window.addEventListener('beforeprint', function(){
+  var inner=document.querySelector('.stages-tracks-inner');
+  if(!inner)return;
+  var w=parseFloat(inner.style.width)||inner.scrollWidth||0;
+  if(!w)return;
+  var target=1040; // ≈ printable width of a landscape page at 96dpi
+  var z=Math.min(1,target/w);
+  inner.dataset.prevZoom=inner.style.zoom||'';
+  inner.style.zoom=z;
+});
+window.addEventListener('afterprint', function(){
+  var inner=document.querySelector('.stages-tracks-inner');
+  if(inner){inner.style.zoom=inner.dataset.prevZoom||'';delete inner.dataset.prevZoom;}
+});
 </script>
 
 <!-- Help Modal (added) -->
