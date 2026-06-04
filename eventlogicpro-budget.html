@@ -84,7 +84,11 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .elbl{font-size:11px;color:var(--text-secondary);font-weight:600;white-space:nowrap;}
 
 /* SUMMARY BAR */
-.sbar{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
+.sbar{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:10px;}
+.sbar2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;}
+.sbar2 .scard{padding:11px 16px;}
+.sbar2 .scard-val{font-size:15px;font-weight:700;letter-spacing:.2px;}
+.sbar2 .due-sep{color:var(--text-secondary);font-weight:500;padding:0 2px;}
 .scard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
 .scard-val{font-size:20px;font-weight:800;line-height:1;margin-bottom:3px;}
 .scard-lbl{font-size:11px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
@@ -310,8 +314,8 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
 .m-nav-btn:hover,.m-nav-btn.active{background:var(--accent);color:#fff;}
 
 /* RESPONSIVE */
-@media(max-width:1100px){.sbar{grid-template-columns:repeat(3,1fr);}}
-@media(max-width:700px){.sbar{grid-template-columns:repeat(2,1fr);}.sp-summary{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:1100px){.sbar{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:700px){.sbar{grid-template-columns:repeat(2,1fr);}.sbar2{grid-template-columns:1fr;}.sp-summary{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:768px){
   .desktop-header{display:none!important;}
   .mobile-top-header{display:block;}
@@ -516,6 +520,10 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
         <div class="scard-val" id="totFilled" style="color:#0284c7;">0%</div>
         <div class="scard-lbl">Budget Complete</div>
       </div>
+      <div class="scard" title="Sum of estimated amounts — planning total">
+        <div class="scard-val" id="totEst" style="color:#f59e0b;">$0</div>
+        <div class="scard-lbl">Estimated Expenses</div>
+      </div>
       <div class="scard" title="Sum of actual amounts only — estimates are not included">
         <div class="scard-val" id="totExp" style="color:var(--accent);">$0</div>
         <div class="scard-lbl">Actual Expenses</div>
@@ -527,6 +535,16 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
       <div class="scard" title="Projected revenue minus actual expenses">
         <div class="svl" id="totNet">$0</div>
         <div class="scard-lbl">Net P/L</div>
+      </div>
+    </div>
+    <div class="sbar2">
+      <div class="scard" title="Estimated expenses by due timing: Pre-event / Day Of / Post-event">
+        <div class="scard-val" id="dueEst" style="color:#f59e0b;">$0 <span class="due-sep">/</span> $0 <span class="due-sep">/</span> $0</div>
+        <div class="scard-lbl">Estimated &mdash; Pre / Day Of / Post</div>
+      </div>
+      <div class="scard" title="Actual expenses by due timing: Pre-event / Day Of / Post-event">
+        <div class="scard-val" id="dueAct" style="color:var(--accent);">$0 <span class="due-sep">/</span> $0 <span class="due-sep">/</span> $0</div>
+        <div class="scard-lbl">Actual &mdash; Pre / Day Of / Post</div>
       </div>
     </div>
     <span id="totLI" style="display:none;"></span>
@@ -1164,19 +1182,32 @@ function renderCat(c, idx, type) {
 function calcTotals() {
   // KPI cards reflect ACTUAL spend only — estimates never roll up here.
   // Budget Complete = line items with an actual amount entered / total line items.
-  var exp=0, cnt=0, filled=0;
+  var exp=0, estTot=0, cnt=0, filled=0;
+  var ePre=0,eDay=0,ePost=0,aPre=0,aDay=0,aPost=0;
   expCats.forEach(function(c){
     c.items.forEach(function(i){
       cnt++;
       var act = parseFloat(i.act) || 0;
+      var est = parseFloat(i.est) || 0;
       if (act > 0) filled++;
-      exp += act;
+      exp += act; estTot += est;
+      var d = i.due || 'pre';
+      if (d==='pre'){ePre+=est;aPre+=act;}
+      else if (d==='day'){eDay+=est;aDay+=act;}
+      else {ePost+=est;aPost+=act;}
     });
   });
   var depts = expCats.length;
   var pct = cnt > 0 ? Math.round(filled/cnt*100) : 0;
 
   document.getElementById('totExp').textContent = '$' + fmt(exp);
+  var estEl = document.getElementById('totEst');
+  if (estEl) estEl.textContent = '$' + fmt(estTot);
+  var sep = ' <span class="due-sep">/</span> ';
+  var dueEstEl = document.getElementById('dueEst');
+  if (dueEstEl) dueEstEl.innerHTML = '$'+fmt(ePre) + sep + '$'+fmt(eDay) + sep + '$'+fmt(ePost);
+  var dueActEl = document.getElementById('dueAct');
+  if (dueActEl) dueActEl.innerHTML = '$'+fmt(aPre) + sep + '$'+fmt(aDay) + sep + '$'+fmt(aPost);
   document.getElementById('totLI').textContent  = cnt + ' line items';
 
   var liCard = document.getElementById('totLICard');
@@ -1199,7 +1230,7 @@ function calcTotals() {
 
 /* ===== INTERACTIONS ===== */
 function updName(type,ci,li,val){(type==='expense'?expCats:revCats)[ci].items[li].name=val;markDirty();calcTotals();}
-function updDue(type,ci,li,val,sel){(type==='expense'?expCats:revCats)[ci].items[li].due=val;sel.className='ldue '+(val==='pre'?'pre':val==='day'?'day':'post');markDirty();}
+function updDue(type,ci,li,val,sel){(type==='expense'?expCats:revCats)[ci].items[li].due=val;sel.className='ldue '+(val==='pre'?'pre':val==='day'?'day':'post');markDirty();calcTotals();}
 function updVal(type,ci,li,field,val){
   var arr = type==='expense' ? expCats : revCats;
   var cat = arr[ci];
