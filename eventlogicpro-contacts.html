@@ -2457,8 +2457,19 @@ async function init(){
       ['headerName','mHeaderName'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=fallbackName;});
     }
   }
+  if(!currentTenantId&&email){
+    // Users invited as team members may not have a row in `users` —
+    // resolve their tenant through event_members by email so they
+    // still see the tenant's shared contacts (e.g. hamcredding team).
+    var em=await sb.from('event_members').select('tenant_id,member_id,role_level').eq('email',email).eq('is_active',true).limit(1).maybeSingle();
+    if(em.data){
+      currentTenantId=em.data.tenant_id;
+      currentUserRole=currentUserRole||em.data.role_level||null;
+      currentEmployeeId=em.data.member_id;
+    }
+  }
   if(!currentTenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data?.tenant_id)currentTenantId=r2.data.tenant_id;}
-  if(!currentTenantId)return;
+  if(!currentTenantId){toast('Could not determine your organization — contact your admin');return;}
   if(!currentUserRole&&email){var e=await sb.from('event_members').select('role_level').eq('email',email).eq('tenant_id',currentTenantId).single();if(e.data?.role_level)currentUserRole=e.data.role_level;}
   // Load employees
   var er=await sb.from('event_members').select('member_id,first_name,last_name,email,role_level').eq('tenant_id',currentTenantId).eq('is_active',true).order('first_name');
@@ -2475,6 +2486,7 @@ async function init(){
   if(email){var me=allEmployees.find(function(e){return e.email===email;});if(me)currentEmployeeId=me.employee_id;}
   // Load contacts
   var cr=await sb.from('customers').select('*').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('organization_name',{nullsFirst:false});
+  if(cr.error){console.error('[Contacts] load error:',cr.error);toast('Could not load contacts: '+cr.error.message);}
   var allTenantContacts=cr.data||[];
   var rr=await sb.from('contact_removals').select('customer_id,removed_by').eq('tenant_id',currentTenantId);
   var allRemovals=rr.data||[];
