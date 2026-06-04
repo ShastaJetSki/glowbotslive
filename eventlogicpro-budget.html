@@ -507,21 +507,21 @@ body.dark .view-tab:hover{background:rgba(255,255,255,.06);}
         <div class="scard-val" id="totLICard" style="color:var(--text-primary);">0</div>
         <div class="scard-lbl">Line Items</div>
       </div>
-      <div class="scard" title="How many line items have a dollar value entered">
+      <div class="scard" title="% of line items with an actual amount entered">
         <div class="scard-val" id="totFilled" style="color:#0284c7;">0%</div>
         <div class="scard-lbl">Budget Complete</div>
       </div>
-      <div class="scard">
+      <div class="scard" title="Sum of actual amounts only — estimates are not included">
         <div class="scard-val" id="totExp" style="color:var(--accent);">$0</div>
-        <div class="scard-lbl">Total Expenses</div>
+        <div class="scard-lbl">Actual Expenses</div>
       </div>
       <div class="scard">
         <div class="scard-val" id="totRev" style="color:#16a34a;">--</div>
         <div class="scard-lbl">Projected Revenue</div>
       </div>
-      <div class="scard">
+      <div class="scard" title="Projected revenue minus actual expenses">
         <div class="svl" id="totNet">$0</div>
-        <div class="scard-lbl">Est. Net P/L</div>
+        <div class="scard-lbl">Net P/L</div>
       </div>
     </div>
     <span id="totLI" style="display:none;"></span>
@@ -1155,14 +1155,15 @@ function renderCat(c, idx, type) {
 }
 
 function calcTotals() {
+  // KPI cards reflect ACTUAL spend only — estimates never roll up here.
+  // Budget Complete = line items with an actual amount entered / total line items.
   var exp=0, cnt=0, filled=0;
   expCats.forEach(function(c){
     c.items.forEach(function(i){
       cnt++;
-      var est = parseFloat(i.est) || 0;
       var act = parseFloat(i.act) || 0;
-      if (est > 0 || act > 0) filled++;
-      exp += (act > 0 ? act : est);
+      if (act > 0) filled++;
+      exp += act;
     });
   });
   var depts = expCats.length;
@@ -1291,11 +1292,9 @@ async function saveToDb(silent) {
   if (!currentEstId){if(!silent)toast('Select or create a budget first');return;}
   var savingEstId = currentEstId; // pin: user may switch budgets mid-save
   var exp=0;
-  // Same formula as calcTotals (actual wins over estimate) so the saved
-  // total always matches the KPI cards and review-board cards
+  // Same rule as the KPI cards: actual amounts only, estimates don't roll up
   expCats.forEach(function(c){c.items.forEach(function(i){
-    var act=parseFloat(i.act)||0, est=parseFloat(i.est)||0;
-    exp += (act>0?act:est);
+    exp += (parseFloat(i.act)||0);
   });});
   var pkgRevEl=document.getElementById('pkgRevTotal');
   var pkgRev=pkgRevEl?(parseFloat(pkgRevEl.dataset.value)||0):0;
