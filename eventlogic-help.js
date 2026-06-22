@@ -380,11 +380,18 @@
   padding:12px 14px 12px;border-radius:0 9px 9px 0;font-size:13px;line-height:1.62;color:var(--text-secondary,#444);margin:14px 0 2px;}
 .elp-help-eg-tag{display:block;font:700 10px/1 inherit;letter-spacing:.1em;text-transform:uppercase;color:var(--accent,#DC2626);margin-bottom:6px;}
 .elp-help-eg b{color:var(--text-primary,#111);font-weight:600;}
-.elp-help-foot{padding:12px 26px 22px;display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--bg-card,#fff);}
-.elp-help-got{appearance:none;border:none;cursor:pointer;font:600 14px/1 inherit;padding:11px 20px;border-radius:9px;
+.elp-help-foot{padding:12px 26px 22px;display:flex;align-items:center;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--bg-card,#fff);}
+.elp-help-got{appearance:none;border:none;cursor:pointer;font:600 14px/1 inherit;padding:11px 20px;border-radius:9px;margin-left:auto;
   background:var(--accent,#DC2626);color:#fff;transition:background .15s ease;}
 .elp-help-got:hover{background:var(--accent-hover,#B91C1C);}
 .elp-help-got:focus-visible{outline:3px solid var(--text-primary,#111);outline-offset:2px;}
+.elp-help-install{appearance:none;cursor:pointer;font:600 14px/1 inherit;padding:10px 16px;border-radius:9px;
+  background:transparent;color:var(--accent,#DC2626);border:1.5px solid var(--accent,#DC2626);transition:all .15s ease;display:inline-flex;align-items:center;gap:6px;}
+.elp-help-install:hover{background:var(--accent,#DC2626);color:#fff;}
+.elp-help-install:disabled{opacity:.6;cursor:default;}
+.elp-help-iosnote{background:var(--bg-hover,#f0f0f3);border:1px solid var(--accent,#DC2626);border-radius:9px;
+  padding:11px 13px;font-size:13px;line-height:1.55;color:var(--text-secondary,#444);margin:0 0 12px;}
+.elp-help-iosnote b{color:var(--text-primary,#111);}
 
 @media(prefers-reduced-motion:reduce){
   .elp-help-fab.elp-flash{animation:none;}
@@ -398,6 +405,30 @@
 
   /* ------------------------- BUILD DOM PIECES ----------------------------- */
   var overlay, card, fab, hint, lastFocus;
+  var deferredInstall = null, refreshInstallBtn = null, installBtn = null;
+
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+           window.navigator.standalone === true;
+  }
+  function isIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function isMobileUA() { return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent); }
+
+  function showIosHint() {
+    if (!overlay) return;
+    var body = overlay.querySelector('.elp-help-body');
+    if (!body) return;
+    if (!overlay.querySelector('.elp-help-iosnote')) {
+      var note = document.createElement('div');
+      note.className = 'elp-help-iosnote';
+      note.innerHTML = 'iPhone can\u2019t add the icon for you automatically. In <b>Safari</b>, tap the <b>Share</b> icon (the square with an up arrow), then <b>Add to Home Screen</b>.';
+      body.insertBefore(note, body.firstChild);
+      note.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
 
   function buildOverlay(entry) {
     overlay = document.createElement('div');
@@ -414,7 +445,7 @@
           '<h2>' + entry.title + '</h2>' +
         '</div>' +
         '<div class="elp-help-body">' + buildBodyHTML(entry) + '</div>' +
-        '<div class="elp-help-foot"><button class="elp-help-got">Got it</button></div>' +
+        '<div class="elp-help-foot"><button class="elp-help-install" id="elpInstallBtn" type="button" style="display:none;">Add to phone</button><button class="elp-help-got">Got it</button></div>' +
       '</div>';
     document.body.appendChild(overlay);
     card = overlay.querySelector('.elp-help-card');
@@ -422,6 +453,29 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
     overlay.querySelector('.elp-help-x').addEventListener('click', close);
     overlay.querySelector('.elp-help-got').addEventListener('click', close);
+
+    installBtn = overlay.querySelector('#elpInstallBtn');
+    refreshInstallBtn = function () {
+      if (!installBtn) return;
+      if (isStandalone()) { installBtn.style.display = 'none'; return; }      // already installed
+      if (deferredInstall) { installBtn.textContent = isMobileUA() ? 'Add to phone' : 'Install app'; installBtn.style.display = ''; return; }
+      if (isIOS()) { installBtn.textContent = 'Add to iPhone'; installBtn.style.display = ''; return; }
+      installBtn.style.display = 'none';                                      // not installable here
+    };
+    installBtn.addEventListener('click', function () {
+      if (deferredInstall) {                  // Android / Chromium: one-tap native install
+        installBtn.disabled = true;
+        deferredInstall.prompt();
+        Promise.resolve(deferredInstall.userChoice).then(function (c) {
+          if (c && c.outcome === 'accepted') installBtn.textContent = '\u2713 Added';
+          deferredInstall = null; installBtn.disabled = false;
+          setTimeout(refreshInstallBtn, 1500);
+        }).catch(function () { installBtn.disabled = false; });
+      } else if (isIOS()) {                   // iPhone: Apple allows manual only — show the steps
+        showIosHint();
+      }
+    });
+    refreshInstallBtn();
   }
 
   function buildFab() {
@@ -445,6 +499,7 @@
   function open() {
     lastFocus = document.activeElement;
     overlay.classList.add('show');
+    if (refreshInstallBtn) refreshInstallBtn();
     var got = overlay.querySelector('.elp-help-got');
     if (got) got.focus();
   }
@@ -491,6 +546,17 @@
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && overlay.classList.contains('show')) close();
+    });
+
+    // One-tap install support (Android / Chromium). iOS has no equivalent API.
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredInstall = e;
+      if (refreshInstallBtn) refreshInstallBtn();
+    });
+    window.addEventListener('appinstalled', function () {
+      deferredInstall = null;
+      if (installBtn) installBtn.style.display = 'none';
     });
 
     if (CONFIG.autoShowOnFirstVisit && !lsGet(seenKey(slug))) {
