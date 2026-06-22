@@ -32,7 +32,14 @@
                                   // 'once'    = flash home button one time ever
     flashHint: 'Help lives here', // tiny label shown beside the button when it flashes
     hideLegacyHelpButton: true,   // hide any old header "?" so there's a single home
-    storagePrefix: 'elp_help_'    // localStorage key prefix
+    storagePrefix: 'elp_help_',   // localStorage key prefix
+
+    // Home-screen / "install as app" support (injects manifest + icon meta if missing)
+    addHomeScreenMeta: true,
+    appName: 'Event Logic Pro',
+    themeColor: '#DC2626',
+    touchIcon: 'favicon-eventlogic-192.png',  // existing icon file in your folder
+    manifestHref: 'manifest.json'             // upload manifest.json alongside your pages
   };
 
   /* ------------------------- INSTRUCTION CONTENT --------------------------
@@ -50,6 +57,19 @@
           '<b>Open an event</b> — click anywhere on a card (not a button) to jump into its Tasks view.',
           '<b>KPIs</b> — track upcoming events, task completion, budget, projected income, and net P/L across everything.',
           '<b>Collapse All</b> — tidy the view when you are running a lot of events at once.'
+        ]],
+        ['Add it to your phone', 'Put Event Logic Pro on your home screen so it opens full-screen like a real app — one tap, no browser bar. You only do this once per phone.'],
+        ['On iPhone &amp; iPad (Safari)', [
+          'Open the app in <b>Safari</b> — it has to be Safari, not Chrome.',
+          'Tap the <b>Share</b> icon (the square with an arrow pointing up).',
+          'Scroll down and tap <b>Add to Home Screen</b>.',
+          'Tap <b>Add</b> — the Event Logic Pro icon lands on your home screen.'
+        ]],
+        ['On Android (Chrome)', [
+          'Open the app in <b>Chrome</b>.',
+          'Tap the <b>\u22ee menu</b> (three dots, top-right).',
+          'Tap <b>Add to Home screen</b> (some phones say <b>Install app</b>).',
+          'Tap <b>Add</b> / <b>Install</b> — the icon appears with your other apps.'
         ]],
         ['For example', 'Say you manage three events. The Dashboard shows your <b>Summer Fest</b> at 64% of tasks done, the <b>Corporate Gala</b> already in the black, and a <b>Wedding</b> you just created. Click the Summer Fest card to drop into its tasks — or click <b>+ New Event</b>, pick your "Music Festival" template, and the next event spins up with its departments already built.'],
         ['Get the most out of it', 'Build an event from a template — it instantly fills Tasks with the right departments and adds start/end milestones to your Calendar, so a new event is half set up the moment you create it.']
@@ -281,6 +301,33 @@
     return html;
   }
 
+  /* ----------------- HOME-SCREEN / INSTALL-AS-APP META --------------------
+     Adds a web manifest + iOS/Android meta so "Add to Home Screen" produces a
+     proper app icon. Only adds tags that are missing, so it won't duplicate
+     anything a page already has. */
+  function setMetaName(name, content) {
+    if (document.querySelector('meta[name="' + name + '"]')) return;
+    var m = document.createElement('meta');
+    m.setAttribute('name', name); m.setAttribute('content', content);
+    document.head.appendChild(m);
+  }
+  function setLinkRel(rel, href) {
+    if (document.querySelector('link[rel="' + rel + '"]')) return;
+    var l = document.createElement('link');
+    l.setAttribute('rel', rel); l.setAttribute('href', href);
+    document.head.appendChild(l);
+  }
+  function ensureHomeScreenMeta() {
+    if (!CONFIG.addHomeScreenMeta) return;
+    setLinkRel('manifest', CONFIG.manifestHref);
+    setMetaName('theme-color', CONFIG.themeColor);
+    setMetaName('apple-mobile-web-app-capable', 'yes');
+    setMetaName('mobile-web-app-capable', 'yes');
+    setMetaName('apple-mobile-web-app-status-bar-style', 'default');
+    setMetaName('apple-mobile-web-app-title', CONFIG.appName);
+    setLinkRel('apple-touch-icon', CONFIG.touchIcon);
+  }
+
   /* ------------------------------ STYLES ---------------------------------- */
   /* Uses the app's own CSS variables, so it follows light/dark automatically. */
   function injectStyles() {
@@ -434,6 +481,7 @@
   /* -------------------------------- INIT ---------------------------------- */
   var slug;
   function init() {
+    ensureHomeScreenMeta();            // make every page installable as an app
     slug = resolveSlug();
     if (!slug) return;                 // unknown/contextual page: stay invisible
     injectStyles();
