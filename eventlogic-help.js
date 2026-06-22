@@ -39,7 +39,10 @@
     appName: 'Event Logic Pro',
     themeColor: '#DC2626',
     touchIcon: 'favicon-eventlogic-192.png',  // existing icon file in your folder
-    manifestHref: 'manifest.json'             // upload manifest.json alongside your pages
+    manifestHref: 'manifest.json',            // upload manifest.json alongside your pages
+
+    // Standardized, collapsible mobile bottom nav (same on every page)
+    standardizeMobileNav: true
   };
 
   /* ------------------------- INSTRUCTION CONTENT --------------------------
@@ -328,6 +331,90 @@
     setLinkRel('apple-touch-icon', CONFIG.touchIcon);
   }
 
+  /* -------------------- STANDARDIZED MOBILE BOTTOM NAV --------------------
+     One consistent panel on every page. Three rows (3 / 3 / 4) and a handle
+     the user can tap to collapse the panel down; the state is remembered
+     across pages. Only visible on phones (<=768px). */
+  var NAV_ROWS = [
+    [['Dashboard', 'eventlogicpro-dashboard.html'], ['Calendar', 'eventlogicpro-calendar.html'], ['Contacts', 'eventlogicpro-contacts.html']],
+    [['Tasks', 'eventlogicpro.html'], ['Budget', 'eventlogicpro-budget.html'], ['Packages', 'eventlogicpro-packages.html']],
+    [['Schedule', 'eventlogicpro-schedule.html'], ['Documents', 'eventlogicpro-documents.html'], ['Site Maps', 'eventlogicpro-sitemap.html'], ['Questions', 'eventlogicpro-questions.html']]
+  ];
+  function navNormalize(n) { return (n || '').replace(/\.html?$/i, '').replace(/__\d+_$/, ''); }
+
+  function injectNavStyles() {
+    if (document.getElementById('elpNavStyles')) return;
+    var css = `
+.elp-mnav{display:none;}
+@media(max-width:768px){
+  .elp-mnav{display:block;position:fixed;left:0;right:0;bottom:0;z-index:200;background:var(--bg-card,#fff);
+    border-top:1px solid var(--border,#e2e4e8);box-shadow:0 -4px 18px rgba(0,0,0,.10);padding-bottom:env(safe-area-inset-bottom);}
+  .elp-mnav-handle{display:flex;align-items:center;justify-content:center;gap:9px;height:30px;cursor:pointer;user-select:none;}
+  .elp-mnav-grip{width:34px;height:4px;border-radius:2px;background:var(--border,#d8dade);}
+  .elp-mnav-chev{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+    border-top:6px solid var(--text-secondary,#6b7280);transition:transform .28s ease;}
+  .elp-mnav-rows{padding:2px 8px 10px;display:flex;flex-direction:column;gap:6px;overflow:hidden;max-height:360px;
+    transition:max-height .28s ease,opacity .2s ease,padding .28s ease;}
+  .elp-mnav-row{display:grid;gap:6px;}
+  .elp-mnav-row.r3{grid-template-columns:repeat(3,1fr);}
+  .elp-mnav-row.r4{grid-template-columns:repeat(4,1fr);}
+  .elp-mnav-btn{text-align:center;padding:9px 4px;font:600 11px/1.1 inherit;color:var(--text-secondary,#6b7280);
+    text-decoration:none;border-radius:9px;background:var(--bg-hover,#f0f0f3);min-height:38px;
+    display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease,transform .1s ease;}
+  .elp-mnav-btn:active{transform:scale(.97);}
+  .elp-mnav-btn.active{background:var(--accent,#DC2626);color:#fff;}
+  body.elp-mnav-collapsed .elp-mnav-rows{max-height:0;opacity:0;padding-top:0;padding-bottom:0;}
+  body.elp-mnav-collapsed .elp-mnav-chev{transform:rotate(180deg);}
+  body{padding-bottom:196px!important;}
+  body.elp-mnav-collapsed{padding-bottom:64px!important;}
+  body.elp-mnav-collapsed .elp-help-fab{bottom:72px;}
+}`;
+    var s = document.createElement('style');
+    s.id = 'elpNavStyles';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function buildMobileNav() {
+    if (!CONFIG.standardizeMobileNav) return;
+    if (document.querySelector('.elp-mnav')) return;
+    injectNavStyles();
+    // hide any pre-existing bottom nav so there's only one, consistent panel
+    document.querySelectorAll('.mobile-bottom-nav').forEach(function (n) { n.style.display = 'none'; });
+
+    var cur = navNormalize((location.pathname.split('/').pop() || ''));
+    var html = '<div class="elp-mnav-handle" id="elpMnavHandle" role="button" tabindex="0" aria-label="Collapse or expand the menu">' +
+                 '<span class="elp-mnav-grip"></span><span class="elp-mnav-chev"></span>' +
+               '</div><div class="elp-mnav-rows">';
+    NAV_ROWS.forEach(function (row) {
+      html += '<div class="elp-mnav-row ' + (row.length === 4 ? 'r4' : 'r3') + '">';
+      row.forEach(function (it) {
+        var active = navNormalize(it[1]) === cur ? ' active' : '';
+        html += '<a class="elp-mnav-btn' + active + '" href="' + it[1] + '">' + it[0] + '</a>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+
+    var nav = document.createElement('nav');
+    nav.className = 'elp-mnav';
+    nav.setAttribute('aria-label', 'Main navigation');
+    nav.innerHTML = html;
+    document.body.appendChild(nav);
+
+    if (lsGet('elp_nav_collapsed') === '1') document.body.classList.add('elp-mnav-collapsed');
+
+    function toggle() {
+      var collapsed = document.body.classList.toggle('elp-mnav-collapsed');
+      lsSet('elp_nav_collapsed', collapsed ? '1' : '0');
+    }
+    var handle = nav.querySelector('#elpMnavHandle');
+    handle.addEventListener('click', toggle);
+    handle.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  }
+
   /* ------------------------------ STYLES ---------------------------------- */
   /* Uses the app's own CSS variables, so it follows light/dark automatically. */
   function injectStyles() {
@@ -336,10 +423,10 @@
 .elp-help-fab{position:fixed;right:20px;bottom:24px;z-index:99998;width:46px;height:46px;border-radius:50%;
   background:var(--bg-card,#fff);color:var(--accent,#DC2626);border:1.5px solid var(--accent,#DC2626);
   font-size:20px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 6px 22px rgba(0,0,0,.16);transition:transform .15s ease, background .15s ease, color .15s ease;}
+  box-shadow:0 6px 22px rgba(0,0,0,.16);transition:transform .15s ease, background .15s ease, color .15s ease, bottom .28s ease;}
 .elp-help-fab:hover{background:var(--accent,#DC2626);color:#fff;transform:translateY(-1px);}
 .elp-help-fab:focus-visible{outline:3px solid var(--accent,#DC2626);outline-offset:2px;}
-@media(max-width:768px){.elp-help-fab{bottom:150px;right:16px;width:42px;height:42px;font-size:18px;}}
+@media(max-width:768px){.elp-help-fab{bottom:188px;right:16px;width:42px;height:42px;font-size:18px;}}
 
 .elp-help-fab.elp-flash{animation:elpHelpPulse 1.4s ease-out 1;}
 @keyframes elpHelpPulse{
@@ -537,6 +624,7 @@
   var slug;
   function init() {
     ensureHomeScreenMeta();            // make every page installable as an app
+    buildMobileNav();                  // consistent collapsible bottom nav on every page
     slug = resolveSlug();
     if (!slug) return;                 // unknown/contextual page: stay invisible
     injectStyles();
