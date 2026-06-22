@@ -61,18 +61,19 @@
           '<b>KPIs</b> — track upcoming events, task completion, budget, projected income, and net P/L across everything.',
           '<b>Collapse All</b> — tidy the view when you are running a lot of events at once.'
         ]],
-        ['Add it to your phone', 'Put Event Logic Pro on your home screen so it opens full-screen like a real app — one tap, no browser bar. You only do this once per phone.'],
-        ['On iPhone &amp; iPad (Safari)', [
-          'Open the app in <b>Safari</b> — it has to be Safari, not Chrome.',
-          'Tap the <b>Share</b> icon (the square with an arrow pointing up).',
-          'Scroll down and tap <b>Add to Home Screen</b>.',
-          'Tap <b>Add</b> — the Event Logic Pro icon lands on your home screen.'
+        ['Add it to your phone', 'Put Event Logic Pro on your home screen so it opens full-screen like a real app. You only do this once per phone.'],
+        ['On Android', [
+          'Tap the red <b>Add to phone</b> button below — or open Chrome\u2019s <b>\u22ee menu</b> (top-right) and choose <b>Install app</b> / <b>Add to Home screen</b>.',
+          'A small panel slides up from the bottom — tap <b>Install</b>.',
+          '<b>Where it goes:</b> the app saves to your <b>app drawer</b>, not straight to the home screen. Swipe up from the bottom of your home screen to open the drawer, then look for <b>Event Logic Pro</b> (apps are usually listed A\u2013Z).',
+          '<b>To keep it on your home screen:</b> press and hold the icon in the drawer, then drag it onto the home screen and drop it wherever you like next to your other apps.'
         ]],
-        ['On Android (Chrome)', [
-          'Open the app in <b>Chrome</b>.',
-          'Tap the <b>\u22ee menu</b> (three dots, top-right).',
-          'Tap <b>Add to Home screen</b> (some phones say <b>Install app</b>).',
-          'Tap <b>Add</b> / <b>Install</b> — the icon appears with your other apps.'
+        ['On iPhone &amp; iPad', [
+          'Open the app in <b>Safari</b> — this only works in Safari, not Chrome.',
+          'Tap the <b>Share</b> button: a square with an arrow pointing up. It\u2019s at the <b>bottom-center</b> on iPhone, and at the <b>top-right</b> on iPad.',
+          'In the row of options, scroll down and tap <b>Add to Home Screen</b>.',
+          'You can shorten the name if you want, then tap <b>Add</b> in the top-right corner.',
+          'The Event Logic Pro icon now sits on your home screen — tap it to open the app full-screen.'
         ]],
         ['For example', 'Say you manage three events. The Dashboard shows your <b>Summer Fest</b> at 64% of tasks done, the <b>Corporate Gala</b> already in the black, and a <b>Wedding</b> you just created. Click the Summer Fest card to drop into its tasks — or click <b>+ New Event</b>, pick your "Music Festival" template, and the next event spins up with its departments already built.'],
         ['Get the most out of it', 'Build an event from a template — it instantly fills Tasks with the right departments and adds start/end milestones to your Calendar, so a new event is half set up the moment you create it.']
@@ -508,17 +509,24 @@
   }
   function isMobileUA() { return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent); }
 
-  function showIosHint() {
+  function showNote(html) {
     if (!overlay) return;
     var body = overlay.querySelector('.elp-help-body');
     if (!body) return;
-    if (!overlay.querySelector('.elp-help-iosnote')) {
-      var note = document.createElement('div');
+    var note = overlay.querySelector('.elp-help-iosnote');
+    if (!note) {
+      note = document.createElement('div');
       note.className = 'elp-help-iosnote';
-      note.innerHTML = 'iPhone can\u2019t add the icon for you automatically. In <b>Safari</b>, tap the <b>Share</b> icon (the square with an up arrow), then <b>Add to Home Screen</b>.';
       body.insertBefore(note, body.firstChild);
-      note.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
+    note.innerHTML = html;
+    note.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function showIosHint() {
+    showNote('iPhone can\u2019t add the icon for you automatically. In <b>Safari</b>, tap the <b>Share</b> icon (the square with an up arrow), then <b>Add to Home Screen</b>.');
+  }
+  function showAndroidInstalledHint() {
+    showNote('Installed. <b>Where to find it:</b> swipe up to open your <b>app drawer</b> and look for <b>Event Logic Pro</b>. To keep it on your home screen, press and hold the icon and drag it out.');
   }
 
   function buildOverlay(entry) {
@@ -558,7 +566,7 @@
         installBtn.disabled = true;
         deferredInstall.prompt();
         Promise.resolve(deferredInstall.userChoice).then(function (c) {
-          if (c && c.outcome === 'accepted') installBtn.textContent = '\u2713 Added';
+          if (c && c.outcome === 'accepted') { installBtn.textContent = '\u2713 Added'; showAndroidInstalledHint(); }
           deferredInstall = null; installBtn.disabled = false;
           setTimeout(refreshInstallBtn, 1500);
         }).catch(function () { installBtn.disabled = false; });
