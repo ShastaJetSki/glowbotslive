@@ -338,7 +338,7 @@
   var NAV_ROWS = [
     [['Dashboard', 'eventlogicpro-dashboard.html'], ['Calendar', 'eventlogicpro-calendar.html'], ['Contacts', 'eventlogicpro-contacts.html']],
     [['Tasks', 'eventlogicpro.html'], ['Budget', 'eventlogicpro-budget.html'], ['Packages', 'eventlogicpro-packages.html']],
-    [['Schedule', 'eventlogicpro-schedule.html'], ['Documents', 'eventlogicpro-documents.html'], ['Site Maps', 'eventlogicpro-sitemap.html'], ['Questions', 'eventlogicpro-questions.html']]
+    [['Schedule', 'eventlogicpro-schedule.html'], ['Documents', 'eventlogicpro-documents.html'], ['Questions', 'eventlogicpro-questions.html']]
   ];
   function navNormalize(n) { return (n || '').replace(/\.html?$/i, '').replace(/__\d+_$/, ''); }
 
