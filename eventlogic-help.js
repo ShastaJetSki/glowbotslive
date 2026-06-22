@@ -336,9 +336,9 @@
      the user can tap to collapse the panel down; the state is remembered
      across pages. Only visible on phones (<=768px). */
   var NAV_ROWS = [
-    [['Dashboard', 'eventlogicpro-dashboard.html'], ['Calendar', 'eventlogicpro-calendar.html'], ['Contacts', 'eventlogicpro-contacts.html']],
-    [['Tasks', 'eventlogicpro.html'], ['Budget', 'eventlogicpro-budget.html'], ['Packages', 'eventlogicpro-packages.html']],
-    [['Schedule', 'eventlogicpro-schedule.html'], ['Documents', 'eventlogicpro-documents.html'], ['Questions', 'eventlogicpro-questions.html']]
+    [['Budget', 'eventlogicpro-budget.html'], ['Calendar', 'eventlogicpro-calendar.html'], ['Contacts', 'eventlogicpro-contacts.html']],
+    [['Dashboard', 'eventlogicpro-dashboard.html'], ['Documents', 'eventlogicpro-documents.html'], ['Packages', 'eventlogicpro-packages.html']],
+    [['Questions', 'eventlogicpro-questions.html'], ['Schedule', 'eventlogicpro-schedule.html'], ['Tasks', 'eventlogicpro.html']]
   ];
   function navNormalize(n) { return (n || '').replace(/\.html?$/i, '').replace(/__\d+_$/, ''); }
 
