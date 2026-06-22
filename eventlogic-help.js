@@ -379,8 +379,12 @@
     if (!CONFIG.standardizeMobileNav) return;
     if (document.querySelector('.elp-mnav')) return;
     injectNavStyles();
-    // hide any pre-existing bottom nav so there's only one, consistent panel
-    document.querySelectorAll('.mobile-bottom-nav').forEach(function (n) { n.style.display = 'none'; });
+    // hide any pre-existing bottom nav so there's only one, consistent panel.
+    // Pages force theirs visible with display:block!important, so we must use
+    // !important here too (inline !important overrides a stylesheet !important).
+    document.querySelectorAll('.mobile-bottom-nav').forEach(function (n) {
+      n.style.setProperty('display', 'none', 'important');
+    });
 
     var cur = navNormalize((location.pathname.split('/').pop() || ''));
     var html = '<div class="elp-mnav-handle" id="elpMnavHandle" role="button" tabindex="0" aria-label="Collapse or expand the menu">' +
