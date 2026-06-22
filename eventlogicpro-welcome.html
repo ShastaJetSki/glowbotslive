@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Logic Pro — Run every event like a pro</title>
+<meta name="description" content="One command center for the whole production. Tasks, budgets, run-of-show schedules, contracts, contacts and venue maps — together, so nothing slips between planning and the big day.">
+<meta name="theme-color" content="#0c0c0f">
+<link rel="icon" href="favicon-eventlogic.ico">
+<link rel="apple-touch-icon" href="favicon-eventlogic-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0c0c0f; --bg-2:#141418; --card:#17171c; --card-2:#1d1d23;
+    --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+    --text:#f5f5f7; --muted:#9a9aa6; --faint:#6b6b76;
+    --red:#DC2626; --red-bright:#EF4444; --red-soft:rgba(220,38,38,.14);
+    --glow:rgba(220,38,38,.45);
+    --blue:#3b82f6; --green:#22c55e; --violet:#8b5cf6; --amber:#f59e0b;
+    --maxw:1160px;
+    --ease:cubic-bezier(.22,.61,.36,1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
+  body{
+    font-family:'DM Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.55;
+    overflow-x:hidden; -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;text-decoration:none;}
+  .mono{font-family:'Space Mono',ui-monospace,monospace;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
+  .eyebrow{
+    font-family:'Space Mono',monospace;font-size:11px;font-weight:700;
+    letter-spacing:3px;text-transform:uppercase;color:var(--red-bright);
+    display:inline-flex;align-items:center;gap:9px;
+  }
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--red);display:inline-block;}
+  :focus-visible{outline:2px solid var(--red-bright);outline-offset:3px;border-radius:4px;}
+
+  /* session gate (hides the splash from logged-in members until we know) */
+  #elp-gate{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;transition:opacity .35s var(--ease);}
+  #elp-gate.hide{opacity:0;pointer-events:none;}
+  #elp-gate .spin{width:30px;height:30px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:var(--red-bright);animation:elpspin .7s linear infinite;}
+  @keyframes elpspin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion:reduce){#elp-gate .spin{animation:none;border-top-color:rgba(255,255,255,.14);}}
+
+  /* ---------- NAV ---------- */
+  .nav{
+    position:fixed;top:0;left:0;right:0;z-index:100;
+    transition:background .3s var(--ease),border-color .3s var(--ease),backdrop-filter .3s;
+    border-bottom:1px solid transparent;
+  }
+  .nav.solid{background:rgba(12,12,15,.82);backdrop-filter:blur(14px);border-bottom-color:var(--line);}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:68px;}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:-.3px;font-size:17px;white-space:nowrap;}
+  .brand img{width:30px;height:30px;border-radius:8px;display:block;}
+  .nav-links{display:flex;align-items:center;gap:30px;}
+  .nav-links a.navlink{font-size:14px;color:var(--muted);font-weight:500;transition:color .2s;}
+  .nav-links a.navlink:hover{color:var(--text);}
+  .nav-cta{display:flex;align-items:center;gap:8px;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;
+    border-radius:10px;padding:10px 18px;border:1px solid transparent;
+    transition:transform .15s var(--ease),background .2s,border-color .2s,box-shadow .25s;
+    white-space:nowrap;
+  }
+  .btn-ghost{background:transparent;border-color:var(--line-2);color:var(--text);}
+  .btn-ghost:hover{border-color:#3a3a44;background:rgba(255,255,255,.03);}
+  .btn-red{background:var(--red);color:#fff;box-shadow:0 6px 20px -6px var(--glow);}
+  .btn-red:hover{background:var(--red-bright);transform:translateY(-1px);box-shadow:0 10px 30px -8px var(--glow);}
+  .btn-lg{padding:14px 26px;font-size:15.5px;border-radius:12px;}
+
+  /* ---------- HERO ---------- */
+  .hero{position:relative;padding:150px 0 80px;overflow:hidden;}
+  .hero-glow{
+    position:absolute;top:-180px;left:50%;transform:translateX(-50%);
+    width:1100px;height:620px;pointer-events:none;z-index:0;
+    background:radial-gradient(ellipse at center,var(--glow),transparent 62%);
+    opacity:.5;filter:blur(8px);animation:breathe 9s ease-in-out infinite;
+  }
+  .grid-fade{
+    position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:54px 54px;
+    -webkit-mask-image:radial-gradient(ellipse 80% 55% at 50% 30%,#000 25%,transparent 75%);
+            mask-image:radial-gradient(ellipse 80% 55% at 50% 30%,#000 25%,transparent 75%);
+  }
+  @keyframes breathe{0%,100%{opacity:.42;}50%{opacity:.62;}}
+  .hero-in{position:relative;z-index:2;display:grid;grid-template-columns:1.05fr .95fr;gap:54px;align-items:center;}
+  .hero-copy{max-width:560px;}
+  .hero h1{
+    font-size:clamp(38px,5.4vw,62px);line-height:1.02;font-weight:800;
+    letter-spacing:-1.8px;margin:20px 0 0;
+  }
+  .hero h1 .accent{color:var(--red-bright);}
+  .hero p.lede{font-size:clamp(16px,1.7vw,19px);color:var(--muted);margin-top:22px;max-width:520px;}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px;}
+  .hero-note{display:flex;align-items:center;gap:8px;margin-top:20px;font-size:13px;color:var(--faint);}
+  .hero-note .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);}
+
+  /* reveal-on-load */
+  .ld{opacity:0;transform:translateY(16px);}
+  body.ready .ld{opacity:1;transform:none;transition:opacity .7s var(--ease),transform .7s var(--ease);}
+  body.ready .ld.d1{transition-delay:.06s;}
+  body.ready .ld.d2{transition-delay:.14s;}
+  body.ready .ld.d3{transition-delay:.22s;}
+  body.ready .ld.d4{transition-delay:.30s;}
+  body.ready .ld.d5{transition-delay:.40s;}
+
+  /* ---------- HERO PANEL (signature live mock) ---------- */
+  .panel{
+    position:relative;background:linear-gradient(180deg,#16161b,#121216);
+    border:1px solid var(--line-2);border-radius:18px;padding:16px;
+    box-shadow:0 40px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.02) inset;
+  }
+  .panel::after{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:linear-gradient(120deg,transparent 40%,rgba(220,38,38,.08));}
+  .pbar{display:flex;align-items:center;gap:7px;padding:2px 4px 14px;}
+  .pdot{width:10px;height:10px;border-radius:50%;background:#2c2c33;}
+  .pbar .title{margin-left:10px;font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;}
+  .pill{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;
+    padding:4px 9px;border-radius:20px;background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px 13px 12px;}
+  .tile .lab{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--faint);text-transform:uppercase;}
+  .tile .val{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-top:6px;line-height:1;}
+  .tile .val small{font-size:13px;font-weight:700;color:var(--muted);}
+  .tile .track{height:5px;border-radius:4px;background:rgba(255,255,255,.07);margin-top:10px;overflow:hidden;}
+  .tile .fill{height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,var(--red),var(--red-bright));
+    transition:width 1.3s var(--ease) .3s;}
+
+  .ros{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;}
+  .ros-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;}
+  .ros-head .lab{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;}
+  .ros-head .time{font-family:'Space Mono',monospace;font-size:9px;color:var(--faint);}
+  .stage{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+  .stage:last-child{margin-bottom:0;}
+  .stage .name{width:58px;flex-shrink:0;font-size:10px;font-weight:700;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stage .lane{flex:1;height:26px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:7px;position:relative;overflow:hidden;}
+  .blk{position:absolute;top:3px;bottom:3px;border-radius:5px;display:flex;align-items:center;padding:0 8px;
+    font-size:9px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;
+    transform:scaleX(0);transform-origin:left;opacity:0;}
+  body.ready .blk{transform:scaleX(1);opacity:1;transition:transform .6s var(--ease),opacity .4s var(--ease);}
+  body.ready .blk.b1{transition-delay:.55s;} body.ready .blk.b2{transition-delay:.7s;}
+  body.ready .blk.b3{transition-delay:.85s;} body.ready .blk.b4{transition-delay:1s;}
+
+  /* ---------- SECTION SHELL ---------- */
+  .section{padding:90px 0;position:relative;}
+  .section-head{max-width:640px;margin:0 auto 52px;text-align:center;}
+  .section-head h2{font-size:clamp(28px,3.6vw,42px);font-weight:800;letter-spacing:-1px;margin-top:16px;line-height:1.08;}
+  .section-head p{color:var(--muted);font-size:17px;margin-top:14px;}
+  .center-eyebrow{display:flex;justify-content:center;}
+
+  /* reveal-on-scroll */
+  .rv{opacity:0;transform:translateY(26px);transition:opacity .7s var(--ease),transform .7s var(--ease);}
+  .rv.in{opacity:1;transform:none;}
+
+  /* ---------- STAT STRIP ---------- */
+  .stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg-2);}
+  .stats-in{display:grid;grid-template-columns:repeat(3,1fr);}
+  .stat{padding:46px 24px;text-align:center;border-right:1px solid var(--line);}
+  .stat:last-child{border-right:none;}
+  .stat .num{font-size:clamp(40px,6vw,64px);font-weight:800;letter-spacing:-2px;line-height:1;
+    background:linear-gradient(180deg,#fff,#b9b9c2);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .stat .num .u{color:var(--red-bright);-webkit-text-fill-color:var(--red-bright);}
+  .stat .cap{margin-top:12px;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--muted);}
+
+  /* ---------- MODULES GRID ---------- */
+  .mod-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .mod{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;
+    transition:transform .2s var(--ease),border-color .2s,background .2s;position:relative;overflow:hidden;
+  }
+  .mod:hover{transform:translateY(-4px);border-color:var(--line-2);background:var(--card-2);}
+  .mod-ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;margin-bottom:15px;
+    background:var(--red-soft);border:1px solid rgba(220,38,38,.25);}
+  .mod-ic svg{width:21px;height:21px;stroke:var(--red-bright);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .mod h3{font-size:16.5px;font-weight:700;letter-spacing:-.2px;}
+  .mod p{font-size:14px;color:var(--muted);margin-top:7px;}
+  .mod .tag{position:absolute;top:16px;right:16px;font-family:'Space Mono',monospace;font-size:9px;
+    letter-spacing:1px;color:var(--faint);}
+
+  /* ---------- MARQUEE FEATURE ROWS ---------- */
+  .feat{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;margin-bottom:34px;}
+  .feat.flip .feat-visual{order:-1;}
+  .feat-copy h3{font-size:clamp(24px,3vw,34px);font-weight:800;letter-spacing:-.8px;margin-top:16px;line-height:1.1;}
+  .feat-copy p{color:var(--muted);font-size:16.5px;margin-top:14px;max-width:440px;}
+  .feat-list{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:11px;}
+  .feat-list li{display:flex;align-items:flex-start;gap:11px;font-size:15px;color:#d6d6dd;}
+  .feat-list svg{width:18px;height:18px;flex-shrink:0;margin-top:2px;stroke:var(--green);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+  .feat-visual{position:relative;}
+  .vcard{background:linear-gradient(180deg,#16161b,#121216);border:1px solid var(--line-2);border-radius:16px;padding:18px;
+    box-shadow:0 30px 60px -28px rgba(0,0,0,.75);}
+  .vcard .vlab{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--faint);
+    text-transform:uppercase;margin-bottom:14px;display:block;}
+
+  /* budget mock */
+  .brow{display:flex;align-items:center;gap:12px;margin-bottom:11px;}
+  .brow .bn{flex:1;font-size:13px;color:#cfcfd6;}
+  .brow .bt{flex:2;height:9px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;}
+  .brow .bf{display:block;height:100%;border-radius:6px;width:0;transition:width 1s var(--ease);}
+  .brow .bv{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);width:54px;text-align:right;}
+  .btotal{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;padding-top:13px;border-top:1px solid var(--line);}
+  .btotal .l{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--faint);text-transform:uppercase;}
+  .btotal .r{font-size:22px;font-weight:800;letter-spacing:-.5px;}
+  .btotal .r.good{color:#4ade80;}
+
+  /* tasks mock */
+  .trow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line);}
+  .trow:last-child{border-bottom:none;}
+  .tcheck{width:19px;height:19px;border-radius:6px;border:1.6px solid var(--line-2);flex-shrink:0;display:grid;place-items:center;transition:all .3s;}
+  .tcheck.on{background:var(--green);border-color:var(--green);}
+  .tcheck svg{width:11px;height:11px;stroke:#0c0c0f;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s;}
+  .tcheck.on svg{opacity:1;}
+  .trow .tt{flex:1;font-size:13.5px;color:#d6d6dd;transition:color .3s;}
+  .trow .tt.done{color:var(--faint);text-decoration:line-through;}
+  .trow .dept{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:3px 8px;border-radius:20px;
+    background:rgba(255,255,255,.05);color:var(--muted);}
+
+  /* phone mock */
+  .phone-wrap{display:flex;justify-content:center;}
+  .phone{width:230px;border:9px solid #1c1c22;border-radius:34px;background:#0e0e12;overflow:hidden;
+    box-shadow:0 30px 60px -25px rgba(0,0,0,.8);}
+  .phone-top{height:26px;background:#141418;display:flex;align-items:center;justify-content:center;}
+  .phone-top span{width:64px;height:5px;border-radius:4px;background:#26262d;}
+  .phone-body{padding:16px 14px 20px;}
+  .phone-logo{width:40px;height:40px;border-radius:11px;margin:6px auto 14px;display:block;}
+  .phone-h{font-size:15px;font-weight:800;text-align:center;letter-spacing:-.3px;}
+  .phone-sub{font-size:11px;color:var(--muted);text-align:center;margin-top:4px;}
+  .phone-stat{display:flex;gap:8px;margin-top:14px;}
+  .phone-stat div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px;text-align:center;}
+  .phone-stat .pv{font-size:15px;font-weight:800;}
+  .phone-stat .pl{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;color:var(--faint);text-transform:uppercase;margin-top:3px;}
+  .phone-cta{margin-top:13px;background:var(--red);color:#fff;border-radius:9px;text-align:center;padding:9px;font-size:12px;font-weight:700;}
+
+  /* ---------- STEPS ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px 24px;position:relative;}
+  .step .no{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--red-bright);letter-spacing:1px;}
+  .step h3{font-size:19px;font-weight:700;margin-top:14px;letter-spacing:-.3px;}
+  .step p{color:var(--muted);font-size:14.5px;margin-top:9px;}
+  .step .line{position:absolute;top:34px;right:-9px;width:18px;height:1px;background:var(--line-2);}
+  .steps .step:last-child .line{display:none;}
+
+  /* ---------- FINAL CTA ---------- */
+  .final{position:relative;text-align:center;padding:100px 24px;overflow:hidden;}
+  .final-glow{position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(ellipse 60% 70% at 50% 120%,var(--glow),transparent 60%);opacity:.6;}
+  .final-in{position:relative;z-index:1;max-width:640px;margin:0 auto;}
+  .final h2{font-size:clamp(30px,4.4vw,50px);font-weight:800;letter-spacing:-1.4px;line-height:1.05;}
+  .final p{color:var(--muted);font-size:18px;margin-top:18px;}
+  .final .hero-actions{justify-content:center;margin-top:32px;}
+
+  /* ---------- FOOTER ---------- */
+  footer{border-top:1px solid var(--line);padding:34px 0;}
+  .foot-in{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;}
+  .foot-brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px;}
+  .foot-brand img{width:26px;height:26px;border-radius:7px;}
+  .foot-links{display:flex;gap:24px;font-size:13.5px;color:var(--muted);}
+  .foot-links a:hover{color:var(--text);}
+  .foot-copy{font-family:'Space Mono',monospace;font-size:11px;color:var(--faint);letter-spacing:.5px;}
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:920px){
+    .hero{padding:120px 0 50px;}
+    .hero-in{grid-template-columns:1fr;gap:42px;}
+    .hero-copy{max-width:none;}
+    .hero-visual{max-width:480px;margin:0 auto;width:100%;}
+    .feat{grid-template-columns:1fr;gap:28px;}
+    .feat.flip .feat-visual{order:0;}
+    .nav-links .navlink{display:none;}
+    .nav-cta .btn-ghost{display:none;}
+    .nav-in{height:60px;}
+    .nav .btn{padding:9px 15px;font-size:13.5px;}
+    .brand{font-size:16px;}
+  }
+  @media (max-width:360px){
+    .brandname{display:none;}
+  }
+  @media (max-width:680px){
+    .stats-in{grid-template-columns:1fr;}
+    .stat{border-right:none;border-bottom:1px solid var(--line);}
+    .stat:last-child{border-bottom:none;}
+    .mod-grid{grid-template-columns:1fr;}
+    .steps{grid-template-columns:1fr;}
+    .step .line{display:none;}
+    .section{padding:64px 0;}
+    .tiles{grid-template-columns:1fr 1fr;}
+    .tile:last-child{grid-column:1/-1;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important;scroll-behavior:auto;}
+    .ld,.rv,.blk{opacity:1!important;transform:none!important;}
+    .tile .fill,.brow .bf{transition:none!important;}
+  }
+</style>
+</head>
+<body>
+<div id="elp-gate" aria-hidden="true"><div class="spin"></div></div>
+<script>
+/* If a logged-in member opens this page, send them straight to the app — they never see the splash. */
+(function(){
+  var DASH='eventlogicpro-dashboard.html';
+  var gate=document.getElementById('elp-gate');
+  var done=false;
+  function reveal(){ if(done) return; done=true; clearTimeout(fs); if(gate){ gate.classList.add('hide'); setTimeout(function(){ if(gate&&gate.parentNode) gate.parentNode.removeChild(gate); },420); } }
+  function enter(){ if(done) return; done=true; clearTimeout(fs); location.replace(DASH); }
+  /* fail-safe: never trap a visitor behind the gate if auth is slow/offline */
+  var fs=setTimeout(reveal,2500);
+  try{
+    if(!window.supabase){ reveal(); return; }
+    var sb=window.supabase.createClient(
+      'https://kxqkwpkmtgvmthpafoqx.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4'
+    );
+    (async function(){
+      try{
+        var r=await sb.auth.getSession(); var s=r&&r.data&&r.data.session;
+        if(!s){
+          var t=localStorage.getItem('sb_access_token'), rf=localStorage.getItem('sb_refresh_token');
+          if(t&&rf){ var sr=await sb.auth.setSession({access_token:t,refresh_token:rf}); s=sr&&sr.data&&sr.data.session; }
+        }
+        if(s) enter(); else reveal();
+      }catch(e){ reveal(); }
+    })();
+  }catch(e){ reveal(); }
+})();
+</script>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><img src="favicon-eventlogic-192.png" alt=""> <span class="brandname">Event Logic Pro</span></a>
+    <div class="nav-links">
+      <a class="navlink" href="#modules">Modules</a>
+      <a class="navlink" href="#features">Features</a>
+      <a class="navlink" href="#how">How it works</a>
+      <div class="nav-cta">
+        <a class="btn btn-ghost" href="login.html">Log in</a>
+        <a class="btn btn-red" href="login.html">Get started</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero" id="top">
+  <div class="hero-glow"></div>
+  <div class="grid-fade"></div>
+  <div class="wrap hero-in">
+    <div class="hero-copy">
+      <span class="eyebrow ld d1">Event production, orchestrated</span>
+      <h1 class="ld d2">Run every event like the <span class="accent">pros</span> do.</h1>
+      <p class="lede ld d3">Every moving piece of your event — tasks, budgets, run-of-show, contracts, contacts and venue maps — in one command center. So nothing slips between the plan and the big day.</p>
+      <div class="hero-actions ld d4">
+        <a class="btn btn-red btn-lg" href="login.html">Get started — it's free →</a>
+        <a class="btn btn-ghost btn-lg" href="#features">See how it works</a>
+      </div>
+      <div class="hero-note ld d5"><span class="dot"></span> No spreadsheets. No scattered tabs. One source of truth.</div>
+    </div>
+
+    <!-- SIGNATURE LIVE PANEL -->
+    <div class="hero-visual ld d3">
+      <div class="panel" aria-hidden="true">
+        <div class="pbar">
+          <span class="pdot"></span><span class="pdot"></span><span class="pdot"></span>
+          <span class="title">Summer Music Festival</span>
+          <span class="pill">ON TRACK</span>
+        </div>
+        <div class="tiles">
+          <div class="tile">
+            <div class="lab">Tasks done</div>
+            <div class="val"><span data-count="87" data-suffix="%">0%</span></div>
+            <div class="track"><div class="fill" data-w="87%"></div></div>
+          </div>
+          <div class="tile">
+            <div class="lab">Budget used</div>
+            <div class="val"><small>$</small><span data-count="42.8" data-dec="1">0</span><small>k</small></div>
+            <div class="track"><div class="fill" data-w="68%"></div></div>
+          </div>
+          <div class="tile">
+            <div class="lab">Days out</div>
+            <div class="val"><span data-count="12">0</span></div>
+            <div class="track"><div class="fill" data-w="40%"></div></div>
+          </div>
+        </div>
+        <div class="ros">
+          <div class="ros-head">
+            <span class="lab">Run of show</span>
+            <span class="time">17:00 — 23:00</span>
+          </div>
+          <div class="stage">
+            <span class="name">Main</span>
+            <span class="lane"><span class="blk b1" style="left:4%;width:34%;background:linear-gradient(90deg,#dc2626,#ef4444)">Headliner</span><span class="blk b2" style="left:42%;width:26%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)">DJ Set</span></span>
+          </div>
+          <div class="stage">
+            <span class="name">Acoustic</span>
+            <span class="lane"><span class="blk b3" style="left:10%;width:28%;background:linear-gradient(90deg,#3b82f6,#60a5fa)">Opener</span><span class="blk b4" style="left:54%;width:30%;background:linear-gradient(90deg,#f59e0b,#fbbf24)">Sunset Trio</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- STAT STRIP -->
+<section class="stats">
+  <div class="wrap"><div class="stats-in">
+    <div class="stat rv"><div class="num"><span data-count="10">0</span></div><div class="cap">Tools in one place</div></div>
+    <div class="stat rv"><div class="num"><span class="u">0</span></div><div class="cap">Spreadsheets to wrangle</div></div>
+    <div class="stat rv"><div class="num"><span data-count="1">0</span></div><div class="cap">Source of truth</div></div>
+  </div></div>
+</section>
+
+<!-- MODULES -->
+<section class="section" id="modules">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="center-eyebrow rv"><span class="eyebrow">The whole toolkit</span></div>
+      <h2 class="rv">Ten tools that used to live in ten tabs.</h2>
+      <p class="rv">Each one built for events, all sharing the same event, the same team, the same numbers.</p>
+    </div>
+    <div class="mod-grid">
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></div><h3>Dashboard</h3><p>See every event's health at a glance — tasks, budget and timeline in one view.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div><h3>Calendar</h3><p>Every date, deadline and show day laid out so nothing sneaks up on you.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3>Tasks</h3><p>Assign work by department and watch the whole crew stay in sync.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><h3>Budget</h3><p>Track every dollar in and out, and stay in the black before the bills land.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg></div><h3>Packages</h3><p>Build, price and present everything you sell — sponsorships included.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Schedule</h3><p>Build a run-of-show by stage, down to the minute, ready for the big day.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div><h3>Documents</h3><p>Contracts, riders and permits — organized, versioned and easy to share.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg></div><h3>Contacts</h3><p>Vendors, crew and clients in one CRM, tied to the events they touch.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg></div><h3>Questions</h3><p>Collect and answer questions by department so nothing goes unanswered.</p></div>
+      <div class="mod rv"><div class="mod-ic"><svg viewBox="0 0 24 24"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></svg></div><h3>Site Maps</h3><p>Lay out your venue visually — stages, vendors, exits and crowd flow.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE FEATURES -->
+<section class="section" id="features" style="padding-top:30px;">
+  <div class="wrap">
+
+    <!-- Schedule -->
+    <div class="feat">
+      <div class="feat-copy rv">
+        <span class="eyebrow">Run of show</span>
+        <h3>Your day-of, locked in by the minute.</h3>
+        <p>Lay out every stage on one timeline, drag acts into place, and hand the crew a run-of-show they can actually follow.</p>
+        <ul class="feat-list">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Multiple stages on a single timeline</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Drag-and-drop set times and changeovers</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Print a clean run sheet for the team</li>
+        </ul>
+      </div>
+      <div class="feat-visual rv">
+        <div class="vcard">
+          <span class="vlab">Run of show · show day</span>
+          <div class="stage"><span class="name">Main</span><span class="lane"><span class="blk b1 in" style="left:3%;width:40%;background:linear-gradient(90deg,#dc2626,#ef4444);transform:scaleX(1);opacity:1;">Headliner · 21:00</span></span></div>
+          <div class="stage"><span class="name">Second</span><span class="lane"><span class="blk b2 in" style="left:20%;width:34%;background:linear-gradient(90deg,#8b5cf6,#a78bfa);transform:scaleX(1);opacity:1;">DJ Set · 20:00</span></span></div>
+          <div class="stage"><span class="name">Acoustic</span><span class="lane"><span class="blk b3 in" style="left:8%;width:30%;background:linear-gradient(90deg,#3b82f6,#60a5fa);transform:scaleX(1);opacity:1;">Opener · 18:00</span></span></div>
+          <div class="stage"><span class="name">Food</span><span class="lane"><span class="blk b4 in" style="left:0%;width:92%;background:linear-gradient(90deg,#f59e0b,#fbbf24);transform:scaleX(1);opacity:1;">Vendors open all day</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Budget -->
+    <div class="feat flip">
+      <div class="feat-copy rv">
+        <span class="eyebrow">Budget</span>
+        <h3>A budget that never surprises you.</h3>
+        <p>Watch money in and out update as you plan, with a running total that tells you exactly where you stand — before the invoices arrive.</p>
+        <ul class="feat-list">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Line items grouped the way you work</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Live remaining balance, always visible</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Know if you're in the black at a glance</li>
+        </ul>
+      </div>
+      <div class="feat-visual rv">
+        <div class="vcard">
+          <span class="vlab">Budget · summer music festival</span>
+          <div class="brow"><span class="bn">Talent</span><span class="bt"><span class="bf" data-w="78%" style="background:linear-gradient(90deg,#dc2626,#ef4444)"></span></span><span class="bv">$24.0k</span></div>
+          <div class="brow"><span class="bn">Production</span><span class="bt"><span class="bf" data-w="55%" style="background:linear-gradient(90deg,#8b5cf6,#a78bfa)"></span></span><span class="bv">$11.2k</span></div>
+          <div class="brow"><span class="bn">Marketing</span><span class="bt"><span class="bf" data-w="34%" style="background:linear-gradient(90deg,#3b82f6,#60a5fa)"></span></span><span class="bv">$5.4k</span></div>
+          <div class="brow"><span class="bn">Staffing</span><span class="bt"><span class="bf" data-w="28%" style="background:linear-gradient(90deg,#f59e0b,#fbbf24)"></span></span><span class="bv">$2.2k</span></div>
+          <div class="btotal"><span class="l">Remaining</span><span class="r good">+ $7,200</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div class="feat">
+      <div class="feat-copy rv">
+        <span class="eyebrow">Tasks by department</span>
+        <h3>Everyone knows what's theirs.</h3>
+        <p>Break the work down by department, assign owners, and let the whole production move forward without a single "wait, who's doing that?"</p>
+        <ul class="feat-list">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Owners and departments on every task</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Progress that rolls up to the dashboard</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Nothing falls through the cracks</li>
+        </ul>
+      </div>
+      <div class="feat-visual rv">
+        <div class="vcard">
+          <span class="vlab">Tasks · this week</span>
+          <div class="trow"><span class="tcheck on"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><span class="tt done">Confirm headliner contract</span><span class="dept">Talent</span></div>
+          <div class="trow"><span class="tcheck on"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><span class="tt done">Order stage barricades</span><span class="dept">Production</span></div>
+          <div class="trow"><span class="tcheck"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><span class="tt">Finalize vendor map</span><span class="dept">Ops</span></div>
+          <div class="trow"><span class="tcheck"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><span class="tt">Send press passes</span><span class="dept">Marketing</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- MOBILE / PWA -->
+<section class="section" style="background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+  <div class="wrap">
+    <div class="feat" style="margin-bottom:0;">
+      <div class="feat-copy rv">
+        <span class="eyebrow">Built for the field</span>
+        <h3>Run the day from your pocket.</h3>
+        <p>Install Event Logic Pro on your phone in one tap and open it like any app — full-screen, no browser bar. Check the run-of-show from backstage, mark tasks done on the floor, pull up a contact mid-load-in.</p>
+        <ul class="feat-list">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Add to your home screen, Android or iPhone</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Opens full-screen like a native app</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Everything syncs to one source of truth</li>
+        </ul>
+      </div>
+      <div class="feat-visual rv">
+        <div class="phone-wrap"><div class="phone">
+          <div class="phone-top"><span></span></div>
+          <div class="phone-body">
+            <img class="phone-logo" src="favicon-eventlogic-192.png" alt="">
+            <div class="phone-h">Summer Music Festival</div>
+            <div class="phone-sub">12 days out · on track</div>
+            <div class="phone-stat">
+              <div><div class="pv">87%</div><div class="pl">Tasks</div></div>
+              <div><div class="pv">$42k</div><div class="pl">Budget</div></div>
+              <div><div class="pv">4</div><div class="pl">Stages</div></div>
+            </div>
+            <div class="phone-cta">Open run of show</div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="center-eyebrow rv"><span class="eyebrow">How it works</span></div>
+      <h2 class="rv">From blank slate to show day in three steps.</h2>
+    </div>
+    <div class="steps">
+      <div class="step rv"><span class="line"></span><div class="no">STEP 01</div><h3>Create your event</h3><p>Start from a template or a blank slate. Departments and structure spin up with it.</p></div>
+      <div class="step rv"><span class="line"></span><div class="no">STEP 02</div><h3>Build it out</h3><p>Add tasks, budget lines, the schedule, documents and contacts — all tied to that event.</p></div>
+      <div class="step rv"><div class="no">STEP 03</div><h3>Run the day</h3><p>Open the run-of-show and execute, from any device, with your whole team on the same page.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final">
+  <div class="final-glow"></div>
+  <div class="final-in">
+    <span class="eyebrow rv" style="display:inline-flex;margin-bottom:18px;">Ready when you are</span>
+    <h2 class="rv">Run your next event like a pro.</h2>
+    <p class="rv">Bring the whole production into one place and walk into show day in control.</p>
+    <div class="hero-actions rv">
+      <a class="btn btn-red btn-lg" href="login.html">Get started — it's free →</a>
+      <a class="btn btn-ghost btn-lg" href="login.html">Log in</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap foot-in">
+    <div class="foot-brand"><img src="favicon-eventlogic-192.png" alt=""> Event Logic Pro</div>
+    <div class="foot-links">
+      <a href="#modules">Modules</a>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="login.html">Log in</a>
+    </div>
+    <div class="foot-copy">© 2026 EVENT LOGIC PRO</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // load-in
+  requestAnimationFrame(function(){ document.body.classList.add('ready'); });
+
+  // nav solidify on scroll
+  var nav = document.getElementById('nav');
+  function onScroll(){ nav.classList.toggle('solid', window.scrollY > 12); }
+  onScroll(); window.addEventListener('scroll', onScroll, {passive:true});
+
+  // count-up helper
+  function countUp(el){
+    var target = parseFloat(el.getAttribute('data-count'));
+    var dec = parseInt(el.getAttribute('data-dec')||'0',10);
+    var suffix = el.getAttribute('data-suffix')||'';
+    if (reduce){ el.textContent = target.toFixed(dec)+suffix; return; }
+    var dur = 1100, start = performance.now();
+    function tick(now){
+      var p = Math.min((now-start)/dur,1);
+      var e = 1-Math.pow(1-p,3);
+      el.textContent = (target*e).toFixed(dec)+suffix;
+      if (p<1) requestAnimationFrame(tick);
+      else el.textContent = target.toFixed(dec)+suffix;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // fire hero panel fills + counts shortly after load
+  function runPanel(scope){
+    scope.querySelectorAll('.fill[data-w], .bf[data-w]').forEach(function(f){
+      f.style.width = f.getAttribute('data-w');
+    });
+    scope.querySelectorAll('[data-count]').forEach(countUp);
+  }
+  setTimeout(function(){ runPanel(document.querySelector('.hero')); }, 350);
+
+  // scroll reveals + section-scoped animation triggers
+  if ('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (!en.isIntersecting) return;
+        en.target.classList.add('in');
+        // counts inside stat strip
+        en.target.querySelectorAll && en.target.querySelectorAll('[data-count]').forEach(countUp);
+        // budget bar fills inside revealed feature cards
+        en.target.querySelectorAll && en.target.querySelectorAll('.bf[data-w]').forEach(function(f){ f.style.width = f.getAttribute('data-w'); });
+        io.unobserve(en.target);
+      });
+    }, {threshold:.18, rootMargin:'0px 0px -40px 0px'});
+    document.querySelectorAll('.rv').forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll('.rv').forEach(function(el){ el.classList.add('in'); });
+    document.querySelectorAll('.bf[data-w]').forEach(function(f){ f.style.width = f.getAttribute('data-w'); });
+    document.querySelectorAll('[data-count]').forEach(countUp);
+  }
+})();
+</script>
+</body>
+</html>
