@@ -262,9 +262,9 @@ async function createAccount() {
   setLoading('btnStep2', true);
 
   try {
-    // ── 0. Block repeat free trials by phone ──────────────────
+    // ── 0. Repeat phone? Still allowed to sign up — just no free trial ─
     const { data: phoneUsed } = await sb.rpc('phone_in_use', { p: phoneDigits });
-    if (phoneUsed) { showAlert('This phone number has already been used for a free trial.'); setLoading('btnStep2', false, 'Create Account &amp; Continue'); return; }
+    const trialStatus = phoneUsed ? 'unpaid' : 'trial';
 
     // ── 1. Create Supabase Auth User ──────────────────────────
     const { data: authData, error: authErr } = await sb.auth.signUp({
@@ -293,7 +293,7 @@ async function createAccount() {
       tenant_name:               orgName,
       company_name:              orgName,
       billing_email:             pendingEmail,
-      status:                    'trial',
+      status:                    trialStatus,
       billing_cycle:             'monthly',
       monthly_recurring_revenue: 19.95,
       created_at:                now,
@@ -317,11 +317,7 @@ async function createAccount() {
       created_at:    now,
       updated_at:    now
     });
-    if (userErr) {
-      if (/duplicate|unique|already exists|23505/i.test((userErr.message||'') + (userErr.code||'')))
-        throw new Error('This phone number has already been used for a free trial.');
-      throw new Error('User record failed: ' + userErr.message);
-    }
+    if (userErr) throw new Error('User record failed: ' + userErr.message);
 
     // ── 4. Create Employee Row ────────────────────────────────
     await sb.from('employees').insert({
@@ -417,7 +413,7 @@ async function createAccountGoogle() {
 
   try {
     const { data: phoneUsed } = await sb.rpc('phone_in_use', { p: phoneDigits });
-    if (phoneUsed) { showAlert('This phone number has already been used for a free trial.'); setLoading('btnStep2', false, 'Create Account &amp; Continue'); return; }
+    const trialStatus = phoneUsed ? 'unpaid' : 'trial';
 
     const { data: { session } } = await sb.auth.getSession();
     const authUserId = session?.user?.id || null;
@@ -427,7 +423,7 @@ async function createAccountGoogle() {
 
     await sb.from('tenants').insert({
       tenant_id: tenantId, tenant_name: orgName, company_name: orgName,
-      billing_email: pendingEmail, status: 'trial', billing_cycle: 'monthly',
+      billing_email: pendingEmail, status: trialStatus, billing_cycle: 'monthly',
       monthly_recurring_revenue: 19.95, created_at: now, updated_at: now
     });
 
@@ -437,11 +433,7 @@ async function createAccountGoogle() {
       role: 'owner', auth_user_id: authUserId, auth_provider: 'google',
       is_active: true, created_at: now, updated_at: now
     });
-    if (gUserErr) {
-      if (/duplicate|unique|already exists|23505/i.test((gUserErr.message||'') + (gUserErr.code||'')))
-        throw new Error('This phone number has already been used for a free trial.');
-      throw new Error('User record failed: ' + gUserErr.message);
-    }
+    if (gUserErr) throw new Error('User record failed: ' + gUserErr.message);
 
     await sb.from('employees').insert({
       employee_id: crypto.randomUUID(), tenant_id: tenantId, user_id: userId,
