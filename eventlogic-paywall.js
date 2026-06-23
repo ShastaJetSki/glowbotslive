@@ -1,0 +1,103 @@
+/* Event Logic Pro — subscription paywall
+ * ---------------------------------------------------------------
+ * Include on every app page you want gated, e.g. before </body>:
+ *     <script src="eventlogicpro-paywall.js"></script>
+ *
+ * Behavior: if the signed-in user's tenant status is 'unpaid'
+ * (the state set at signup when their phone already used a trial),
+ * a full-screen "Start your subscription" lock is shown.
+ * Everyone else (trial, active, etc.) is unaffected.
+ * Fails OPEN — any error never locks out a paying customer.
+ * --------------------------------------------------------------- */
+(function () {
+  var SB_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
+
+  // Statuses that get LOCKED. Only the explicit no-trial state is gated,
+  // so existing trial/active/other accounts are never affected by accident.
+  var BLOCKED = ['unpaid'];
+
+  var BILLING_URL = 'eventlogicpro-billing.html';
+
+  function ready(fn){
+    if (document.readyState !== 'loading') fn();
+    else document.addEventListener('DOMContentLoaded', fn);
+  }
+
+  ready(function () {
+    if (!window.supabase || !window.supabase.createClient) return;
+    check(window.supabase.createClient(SB_URL, SB_KEY));
+  });
+
+  async function check(sb) {
+    try {
+      var sess = (await sb.auth.getSession()).data.session;
+      if (!sess) {
+        var at = localStorage.getItem('sb_access_token');
+        var rt = localStorage.getItem('sb_refresh_token');
+        if (at && rt) {
+          sess = (await sb.auth.setSession({ access_token: at, refresh_token: rt })).data.session;
+        }
+      }
+      if (!sess) return; // not logged in — the page's own guard handles redirect
+
+      var u = (await sb.from('users').select('tenant_id').eq('email', sess.user.email).limit(1).maybeSingle()).data;
+      if (!u || !u.tenant_id) return;
+
+      var t = (await sb.from('tenants').select('status').eq('tenant_id', u.tenant_id).maybeSingle()).data;
+      if (!t) return;
+
+      var status = (t.status || '').toLowerCase();
+      if (BLOCKED.indexOf(status) !== -1) showPaywall();
+    } catch (e) {
+      /* fail open: never lock out a paying customer over a transient error */
+    }
+  }
+
+  function showPaywall() {
+    if (document.getElementById('elp-paywall')) return;
+
+    var css = document.createElement('style');
+    css.textContent =
+      '#elp-paywall{position:fixed;inset:0;z-index:2147483600;background:rgba(13,15,20,.72);' +
+      '-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);display:flex;align-items:center;' +
+      'justify-content:center;padding:24px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}' +
+      '#elp-paywall .pw{background:#fff;border-radius:18px;max-width:430px;width:100%;padding:34px 30px;' +
+      'text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.45);}' +
+      '#elp-paywall .pw-badge{width:54px;height:54px;border-radius:14px;background:#DC2626;display:flex;' +
+      'align-items:center;justify-content:center;margin:0 auto 16px;}' +
+      '#elp-paywall .pw-badge svg{width:28px;height:28px;stroke:#fff;fill:none;stroke-width:2.2;' +
+      'stroke-linecap:round;stroke-linejoin:round;}' +
+      '#elp-paywall .pw-title{font-size:23px;font-weight:800;color:#16161c;letter-spacing:-.4px;margin-bottom:10px;}' +
+      '#elp-paywall .pw-sub{font-size:14px;color:#5b5b67;line-height:1.55;margin-bottom:24px;}' +
+      '#elp-paywall .pw-btn{display:block;background:#DC2626;color:#fff;font-size:16px;font-weight:700;' +
+      'padding:14px;border-radius:10px;text-decoration:none;transition:background .2s;}' +
+      '#elp-paywall .pw-btn:hover{background:#b91c1c;}' +
+      '#elp-paywall .pw-foot{margin-top:16px;font-size:12.5px;color:#9ca3af;}' +
+      '#elp-paywall .pw-foot a{color:#9ca3af;text-decoration:underline;cursor:pointer;}';
+    document.head.appendChild(css);
+
+    var o = document.createElement('div');
+    o.id = 'elp-paywall';
+    o.innerHTML =
+      '<div class="pw" role="dialog" aria-modal="true">' +
+        '<div class="pw-badge"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"></rect>' +
+        '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>' +
+        '<div class="pw-title">Start your subscription</div>' +
+        '<div class="pw-sub">Your account is ready. A free trial isn\u2019t available for this phone number, ' +
+        'so subscribe to unlock Event Logic Pro.</div>' +
+        '<a class="pw-btn" href="' + BILLING_URL + '">Start subscription \u2192</a>' +
+        '<div class="pw-foot"><a id="elp-pw-signout">Sign out</a></div>' +
+      '</div>';
+    document.body.appendChild(o);
+    document.documentElement.style.overflow = 'hidden';
+
+    document.getElementById('elp-pw-signout').addEventListener('click', function () {
+      try {
+        localStorage.removeItem('sb_access_token');
+        localStorage.removeItem('sb_refresh_token');
+      } catch (e) {}
+      location.replace('/');
+    });
+  }
+})();
