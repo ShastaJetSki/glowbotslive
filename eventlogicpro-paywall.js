@@ -13,11 +13,16 @@
   var SB_URL = 'https://kxqkwpkmtgvmthpafoqx.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4cWt3cGttdGd2bXRocGFmb3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NDI1OTQsImV4cCI6MjA4MTAxODU5NH0.GT9pOMqrUr1EvVLh1magyoB4I_LprziRaybKsGHhrX4';
 
-  // Statuses that get LOCKED. Only the explicit no-trial state is gated,
+  // The no-trial state that gets LOCKED. Only this exact value is gated,
   // so existing trial/active/other accounts are never affected by accident.
   var BLOCKED = ['unpaid'];
 
-  var BILLING_URL = 'eventlogicpro-billing.html';
+  // Stripe states that count as "paying" — if any of these is set, the lock
+  // lifts even if the 'status' column still reads 'unpaid'. This is what makes
+  // the paywall disappear automatically once your Stripe webhook records payment.
+  var PAYING_STRIPE = ['active', 'trialing', 'past_due'];
+
+  var BILLING_URL = 'eventlogicpro-plans.html';
 
   function ready(fn){
     if (document.readyState !== 'loading') fn();
@@ -44,11 +49,16 @@
       var u = (await sb.from('users').select('tenant_id').eq('email', sess.user.email).limit(1).maybeSingle()).data;
       if (!u || !u.tenant_id) return;
 
-      var t = (await sb.from('tenants').select('status').eq('tenant_id', u.tenant_id).maybeSingle()).data;
+      var t = (await sb.from('tenants').select('*').eq('tenant_id', u.tenant_id).maybeSingle()).data;
       if (!t) return;
 
-      var status = (t.status || '').toLowerCase();
-      if (BLOCKED.indexOf(status) !== -1) showPaywall();
+      var status       = (t.status || '').toLowerCase();
+      var stripeStatus = (t.stripe_status || '').toLowerCase();
+      var blocked = BLOCKED.indexOf(status) !== -1;
+      var paying  = PAYING_STRIPE.indexOf(stripeStatus) !== -1;
+
+      // Lock the no-trial account, but only while it isn't actually paying.
+      if (blocked && !paying) showPaywall();
     } catch (e) {
       /* fail open: never lock out a paying customer over a transient error */
     }
