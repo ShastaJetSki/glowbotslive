@@ -558,18 +558,28 @@ async function loadContacts(){
   var r=await sb.from('contacts').select('contact_id,first_name,last_name,phone,email').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false').order('last_name');
   allContacts=r.data||[];
 }
-async function loadAppointments(){
-  var q=sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
-  // Associates only see their own — admins/owners/managers see all
-  if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate'){
-    q=q.eq('assigned_to',userId);
-  }
+function _todayISO(){return dateStr(new Date());}
+function _mergeRows(target,rows,idKey){var seen={};target.forEach(function(x){seen[x[idKey]]=true;});rows.forEach(function(r){if(!seen[r[idKey]])target.push(r);});}
+async function loadAppointments(scope){
+  function base(){var q=sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
+    if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate'){q=q.eq('assigned_to',userId);}return q;}
+  var q=base();
+  if(scope==='current')q=q.gte('appointment_date',_todayISO());
+  else if(scope==='past')q=q.or('appointment_date.lt.'+_todayISO()+',appointment_date.is.null');
   var r=await q;
-  allAppointments=r.data||[];
+  if(r.error&&scope){ if(scope==='current'){r=await base();allAppointments=r.data||[];} return; }
+  var rows=r.data||[];
+  if(scope==='past')_mergeRows(allAppointments,rows,'appointment_id'); else allAppointments=rows;
 }
-async function loadEvents(){
-  var r=await sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
-  allEvents=r.data||[];
+async function loadEvents(scope){
+  function base(){return sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');}
+  var q=base();
+  if(scope==='current')q=q.gte('event_date',_todayISO());
+  else if(scope==='past')q=q.or('event_date.lt.'+_todayISO()+',event_date.is.null');
+  var r=await q;
+  if(r.error&&scope){ if(scope==='current'){r=await base();allEvents=r.data||[];} return; }
+  var rows=r.data||[];
+  if(scope==='past')_mergeRows(allEvents,rows,'event_id'); else allEvents=rows;
 }
 async function loadUserThemeBank(){/* themes simplified to light/dark */}
 
@@ -1502,12 +1512,14 @@ async function init(){
     currentView='week';
   }
   setView(currentView);renderMiniCal();
-  // Load the data, then fill the calendar in.
-  await Promise.all([loadMembers(),loadAppointments(),loadEvents()]);
+  // Instant load: today + future only, so the calendar fills immediately.
+  await Promise.all([loadMembers(),loadAppointments('current'),loadEvents('current')]);
   maybeShowMineAll();
   setView(currentView);renderMiniCal();renderCalLayers();renderMemberFilters();
   // Contacts are only needed for the appointment contact picker — load in background so they don't gate the calendar paint.
   loadContacts();
+  // Lazy-load past items in the background, then merge in and repaint (they render dimmed).
+  Promise.all([loadAppointments('past'),loadEvents('past')]).then(function(){_itemIndex=null;render();renderMiniCal();}).catch(function(){});
 }
 init();
 </script>
