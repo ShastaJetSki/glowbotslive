@@ -431,6 +431,33 @@ function isPast(dateStr,timeStr){return new Date(dateStr+'T'+(timeStr||'23:59:00
 function sparkles(el){var r=el.getBoundingClientRect(),cols=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899'];for(var i=0;i<10;i++){var s=document.createElement('div');s.className='sparkle';s.style.cssText='left:'+(r.left+r.width/2)+'px;top:'+(r.top+r.height/2)+'px;background:'+cols[i%cols.length]+';';s.style.setProperty('--tx',(Math.random()-.5)*60+'px');s.style.setProperty('--ty',(Math.random()-.5)*60+'px');document.body.appendChild(s);setTimeout(function(){s.remove();},600);}}
 function toggleTodayCard(id){var body=document.getElementById(id).querySelector('.today-card-body');body.style.display=body.style.display==='none'?'':'none';}
 async function checkAuth(){var r=await sb.auth.getSession(),s=r.data.session;if(!s){var t=localStorage.getItem('sb_access_token'),rf=localStorage.getItem('sb_refresh_token');if(t&&rf){var sr=await sb.auth.setSession({access_token:t,refresh_token:rf});s=sr.data?.session;}if(!s){location.href='v2-login.html';return null;}}return s;}
+/* An event can now have several associates. events.assigned_to still holds
+   only the owner, so filtering on it alone hides the event from everyone
+   else on it. Look up this member's event_ids and match on either. */
+var _myEventIds=null;
+async function myEventIds(){
+  if(_myEventIds)return _myEventIds;
+  if(!currentUserId){_myEventIds=[];return _myEventIds;}
+  var ids=[],page=0,size=1000;
+  while(page<20){
+    var r=await sb.from('event_assignees').select('event_id')
+      .eq('tenant_id',currentTenantId).eq('member_id',currentUserId)
+      .order('event_id').range(page*size,(page+1)*size-1);
+    if(r.error){console.warn('event_assignees:',r.error.message);break;}
+    var rows=r.data||[];
+    rows.forEach(function(x){ids.push(x.event_id);});
+    if(rows.length<size)break;
+    page++;
+  }
+  _myEventIds=ids;
+  return ids;
+}
+function orMineEvents(ids){
+  var f='assigned_to.eq.'+currentUserId;
+  if(ids&&ids.length)f+=',event_id.in.('+ids.join(',')+')';
+  return f;
+}
+
 async function loadTodayCards(){
   var todayStr=new Date().toISOString().split('T')[0];
   var isOA=['owner','admin'].includes(currentUserRole||'');
@@ -438,7 +465,7 @@ async function loadTodayCards(){
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time');
   if(filterMine&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
   var eq2=sb.from('events').select('*').eq('tenant_id',currentTenantId).eq('event_date',todayStr).order('event_time');
-  if(filterMine&&currentUserId)eq2=eq2.eq('assigned_to',currentUserId);
+  if(filterMine&&currentUserId)eq2=eq2.or(orMineEvents(await myEventIds()));
   var [ar,er]=await Promise.all([aq,eq2]);
   var appts=ar.data||[],events=er.data||[];
   document.getElementById('todayApptsCount').textContent=appts.length;
@@ -924,8 +951,8 @@ async function loadWeek(){
   var endStr=days[6].toISOString().split('T')[0];
   var isOAw=['owner','admin'].includes(currentUserRole||'');
   var waq=sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time');
-  var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
-  if(!isOAw||(viewMode==='mine')){waq=waq.eq('assigned_to',currentUserId);weq=weq.eq('assigned_to',currentUserId);}
+  var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to,event_id').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
+  if(!isOAw||(viewMode==='mine')){waq=waq.eq('assigned_to',currentUserId);weq=weq.or(orMineEvents(await myEventIds()));}
   var [ar,er]=await Promise.all([waq,weq]);
   var appts=ar.data||[],events=er.data||[];
   var DAYS2=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
