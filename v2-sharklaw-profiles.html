@@ -13,6 +13,20 @@
   <link rel="stylesheet" href="themes.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
+    .ac-wrap{position:relative;}
+    .ac-drop{display:none;position:absolute;top:100%;left:0;right:0;z-index:500;margin-top:4px;
+      background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;
+      max-height:220px;overflow-y:auto;box-shadow:0 6px 24px rgba(0,0,0,.5);}
+    .ac-item{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text-primary);border-bottom:1px solid var(--border-default);}
+    .ac-item:last-child{border-bottom:none;}
+    .ac-item:hover,.ac-item.sel{background:var(--accent-primary);color:#fff;}
+    .ac-item b{color:var(--accent-light);font-weight:700;}
+    .ac-item:hover b,.ac-item.sel b{color:#fff;}
+    .ac-none{padding:9px 12px;font-size:12px;color:var(--text-secondary);}
+    #eCounty{cursor:pointer;padding-right:30px;
+      background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%239fb0c3' d='M0 0h10L5 6z'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 11px center;}
+    #eCounty:focus{cursor:text;}
     :root{--bg-primary:#0b1220;--bg-secondary:#131c2b;--bg-card:#1b2738;--bg-hover:#26354a;--border-default:#2c3d54;--text-primary:#eef4fb;--text-secondary:#aebccf;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
     [data-theme="dark"]{--bg-primary:#0b1220;--bg-secondary:#131c2b;--bg-card:#1b2738;--bg-hover:#26354a;--border-default:#2c3d54;--text-primary:#eef4fb;--text-secondary:#aebccf;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
     [data-theme="light"]{--bg-primary:#f4f6fb;--bg-secondary:#ffffff;--bg-card:#ffffff;--bg-hover:#e8edf6;--border-default:#d3dbe8;--text-primary:#14213a;--text-secondary:#44546c;--accent-primary:#2563eb;--accent-light:#1d4ed8;}
@@ -262,6 +276,15 @@
           </div>
           <div class="fg"><label class="fl">Assigned To</label><select class="fsel" id="eA"></select></div>
         </div>
+        <div class="fr">
+          <div class="fg ac-wrap">
+            <label class="fl">County</label>
+            <input type="text" class="fi" id="eCounty" autocomplete="off" readonly placeholder="Select a county…"
+              oninput="acOpen()" onfocus="acOpen()" onkeydown="acKey(event)" onblur="acBlur()">
+            <div class="ac-drop" id="countyDrop"></div>
+          </div>
+          <div class="fg"></div>
+        </div>
       </div>
       <div class="sec-m"><div class="sec-m-title">Funnel Stage</div>
         <div class="stage-selector" id="editStageSelector"></div>
@@ -423,6 +446,7 @@ function renderProfile(){
         '<div class="info-item"><div class="info-lbl">Email</div><div class="info-val">'+(c.email?'<a href="mailto:'+esc(c.email)+'">'+esc(c.email)+'</a>':'<span class="empty">Not set</span>')+'</div></div>'+
         '<div class="info-item"><div class="info-lbl">Birthday</div><div class="info-val '+(c.birthday?'':'empty')+'">'+esc(c.birthday?fmtDate(c.birthday):'Not set')+'</div></div>'+
         '<div class="info-item"><div class="info-lbl">Anniversary</div><div class="info-val '+(c.anniversary?'':'empty')+'">'+esc(c.anniversary?fmtDate(c.anniversary):'Not set')+'</div></div>'+
+        '<div class="info-item"><div class="info-lbl">County</div><div class="info-val '+(c.county?'':'empty')+'">'+esc(c.county||'Not set')+'</div></div>'+
         '<div class="info-item"><div class="info-lbl">Added</div><div class="info-val">'+esc(fmtDate(c.created_at))+'</div></div>'+
         '<div class="info-item"><div class="info-lbl">Last Updated</div><div class="info-val">'+esc(fmtDate(c.updated_at))+'</div></div>'+
       '</div></div>'+
@@ -492,6 +516,97 @@ async function removeContact(){
 }
 
 /* ===== EDIT MODAL ===== */
+/* ── CALIFORNIA COUNTIES ── */
+var COUNTIES=['Alameda','Alpine','Amador','Butte','Calaveras','Colusa','Contra Costa','Del Norte',
+'El Dorado','Fresno','Glenn','Humboldt','Imperial','Inyo','Kern','Kings','Lake','Lassen',
+'Los Angeles','Madera','Marin','Mariposa','Mendocino','Merced','Modoc','Mono','Monterey','Napa',
+'Nevada','Orange','Placer','Plumas','Riverside','Sacramento','San Benito','San Bernardino',
+'San Diego','San Francisco','San Joaquin','San Luis Obispo','San Mateo','Santa Barbara',
+'Santa Clara','Santa Cruz','Shasta','Sierra','Siskiyou','Solano','Sonoma','Stanislaus','Sutter',
+'Tehama','Trinity','Tulare','Tuolumne','Ventura','Yolo','Yuba'];
+var acIdx=-1,acList=[];
+
+function acOpts(){
+  var out=[{v:'',label:'— No county —'}];
+  COUNTIES.forEach(function(c){out.push({v:c,label:c});});
+  return out;
+}
+
+/* Prefix matches rank above substring matches, so "san" leads with
+   San Benito rather than burying it under Mariposa. */
+function acFilter(q){
+  q=(q||'').trim().toLowerCase();
+  var opts=acOpts();
+  if(!q)return opts;
+  var a=[],b=[];
+  opts.forEach(function(o){
+    if(o.v==='')return;
+    var i=o.label.toLowerCase().indexOf(q);
+    if(i===0)a.push(o); else if(i>0)b.push(o);
+  });
+  return a.concat(b);
+}
+
+function acOpen(){
+  var el=document.getElementById('eCounty'),d=document.getElementById('countyDrop');
+  var q=el.readOnly?'':el.value;
+  acList=acFilter(q); acIdx=-1;
+  if(!acList.length){
+    d.innerHTML='<div class="ac-none">No California county matches that</div>';
+    d.style.display='block';return;
+  }
+  var lq=(q||'').trim().toLowerCase();
+  d.innerHTML=acList.map(function(o,i){
+    var label=esc(o.label),k=lq?o.label.toLowerCase().indexOf(lq):-1;
+    if(k>=0&&lq)label=esc(o.label.slice(0,k))+'<b>'+esc(o.label.slice(k,k+lq.length))+'</b>'+esc(o.label.slice(k+lq.length));
+    return '<div class="ac-item" data-i="'+i+'" onmousedown="acPick('+i+')">'+label+'</div>';
+  }).join('');
+  d.style.display='block';
+}
+
+function acClose(){document.getElementById('countyDrop').style.display='none';acIdx=-1;}
+
+function acPick(i){
+  if(!acList[i])return;
+  var el=document.getElementById('eCounty');
+  el.dataset.val=acList[i].v; el.value=acList[i].v;
+  acClose(); el.readOnly=true; el.blur();
+}
+
+function acKey(e){
+  var d=document.getElementById('countyDrop');
+  if(e.key==='Escape'){acClose();return;}
+  /* read-only until you type, so it behaves like a picker but stays searchable */
+  if(e.key.length===1&&/[a-z ]/i.test(e.key)){
+    var el=document.getElementById('eCounty');
+    if(el.readOnly){el.readOnly=false;el.value='';}
+  }
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    if(d.style.display!=='block'){acOpen();return;}
+    if(!acList.length)return;
+    acIdx=e.key==='ArrowDown'?(acIdx+1)%acList.length:(acIdx<=0?acList.length-1:acIdx-1);
+    var it=d.querySelectorAll('.ac-item');
+    for(var i=0;i<it.length;i++)it[i].classList.toggle('sel',i===acIdx);
+    if(it[acIdx])it[acIdx].scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(e.key==='Enter'||e.key==='Tab'){
+    if(d.style.display==='block'&&acList.length){
+      if(e.key==='Enter')e.preventDefault();
+      acPick(acIdx>=0?acIdx:0);
+    }
+  }
+}
+
+function acBlur(){
+  setTimeout(function(){
+    var el=document.getElementById('eCounty');
+    if(el){el.readOnly=true;el.value=el.dataset.val||'';}
+    acClose();
+  },150);
+}
+
 function openEdit(){
   if(!contact)return;
   var c=contact;
@@ -505,6 +620,8 @@ function openEdit(){
   document.getElementById('eBd').value=c.birthday?c.birthday.split('T')[0]:'';
   document.getElementById('eAn').value=c.anniversary?c.anniversary.split('T')[0]:'';
   document.getElementById('eN').value=c.notes||'';
+  document.getElementById('eCounty').value=c.county||'';
+  document.getElementById('eCounty').dataset.val=c.county||'';
   document.getElementById('eStage').value=stage;
 
   // Assign dropdown
@@ -540,6 +657,7 @@ async function saveEdit(){
     birthday:document.getElementById('eBd').value||null,
     anniversary:document.getElementById('eAn').value||null,
     notes:document.getElementById('eN').value.trim()||null,
+    county:document.getElementById('eCounty').value.trim()||null,
     updated_at:new Date().toISOString()
   };
   var r=await sb.from('contacts').update(u).eq('contact_id',contact.contact_id);
