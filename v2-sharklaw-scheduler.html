@@ -465,7 +465,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar.</div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 3)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="emNotes"></textarea></div>
@@ -1385,11 +1385,25 @@ function openEventModal(ds,hr){
   document.getElementById('eventModal').classList.add('active');
 }
 
-function openEditEvent(id){
+async function refreshAssigneesFor(eventId){
+  var r=await sb.from('event_assignees').select('member_id,is_owner').eq('event_id',eventId);
+  if(r.error){console.warn('refreshAssigneesFor:',r.error.message);return null;}
+  var owner=[],rest=[];
+  (r.data||[]).forEach(function(x){ (x.is_owner?owner:rest).push(x.member_id); });
+  var list=owner.concat(rest);
+  eventAssignees[eventId]=list;
+  return list;
+}
+
+async function openEditEvent(id){
   var e=allEvents.find(function(x){return x.event_id===id;});if(!e)return;
   editingEventId=id;populateAssignSelect('emAssign');
   maSelected=assigneesOf(e).slice();
   document.getElementById('emAssignInput').value='';maRenderChips();maClose();
+  /* the cached map can be stale; re-read this one event and redraw */
+  refreshAssigneesFor(id).then(function(list){
+    if(list&&editingEventId===id){maSelected=list.slice();maRenderChips();}
+  });
   document.getElementById('emTitle').textContent='Edit Event';
   document.getElementById('emName').value=e.event_name||e.title||'';
   document.getElementById('emDate').value=e.event_date||e.start_date||'';
@@ -1424,7 +1438,7 @@ async function saveEvent(){
       var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
       if(ev)Object.assign(ev,data);
       var okA=await saveEventAssignees(editingEventId);
-      if(okA)showToast('Updated');
+      if(okA)showToast('Updated — '+maSelected.length+(maSelected.length===1?' person':' people')+' assigned');
     }else{
       data.tenant_id=tenantId;
       data.created_at=new Date().toISOString();data.is_deleted=false;
@@ -1432,7 +1446,7 @@ async function saveEvent(){
       if(r.error)throw r.error;
       var okB=true;
       if(r.data&&r.data.event_id)okB=await saveEventAssignees(r.data.event_id);
-      if(okB)showToast('Event created');
+      if(okB)showToast('Event created — '+maSelected.length+(maSelected.length===1?' person':' people')+' assigned');
     }
     closeEventModal();await loadEvents();await loadEventAssignees();renderCalLayers();render();
   }catch(e){
