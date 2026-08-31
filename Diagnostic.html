@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Assignee Save — Diagnostic</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b0f14;color:#e8eef6;padding:20px;line-height:1.5}
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:20px;color:#fff;margin-bottom:4px}
+  .sub{color:#9fb0c3;font-size:13px;margin-bottom:20px}
+  .panel{background:#1a2535;border:1px solid #223044;border-radius:12px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:11px;color:#9fb0c3;margin-bottom:4px}
+  input,select{width:100%;background:#0f1621;border:1px solid #334155;color:#e8eef6;border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  @media(max-width:640px){.row{grid-template-columns:1fr}}
+  .btn{padding:10px 18px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;background:#3b82f6;color:#fff}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-run{background:#10b981}
+  .log{background:#0f1621;border:1px solid #223044;border-radius:8px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:460px;overflow-y:auto;margin-top:12px}
+  .ok{color:#4ade80}.err{color:#f87171}.info{color:#60a5fa}.warn{color:#fbbf24}.dim{color:#64748b}
+  .step{border-left:2px solid #334155;padding-left:10px;margin:10px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #334155;background:#0f1621;color:#9fb0c3}
+  .chip.on{background:#3b82f6;color:#fff;border-color:#3b82f6}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Assignee Save — Diagnostic</h1>
+<p class="sub">Runs the exact same sequence the scheduler uses, and prints the raw database response at every step. Nothing is hidden.</p>
+
+<div class="panel">
+  <div class="row">
+    <div><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
+    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+  </div>
+  <button class="btn" id="btnLogin" onclick="doLogin()">Sign in &amp; load</button>
+</div>
+
+<div class="panel" id="pickPanel" style="display:none">
+  <label for="evSel">Event to test on</label>
+  <select id="evSel"></select>
+  <label style="margin-top:12px">People to assign (first = owner)</label>
+  <div class="chips" id="memChips"></div>
+  <button class="btn btn-run" style="margin-top:14px" onclick="runTest()">Run the save</button>
+</div>
+
+<div class="log" id="log" style="display:none"></div>
+
+</div>
+<script>
+const SB_URL='https://wiwbmvmgrutjfbnqhfnb.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indpd2Jtdm1ncnV0amZibnFoZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjY4NzQsImV4cCI6MjA5MDI0Mjg3NH0.puEaHAJijQPSi1ziuYsqTRZnSAALK0tpH1myrLz7dYk';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+
+let tenantId=null, members=[], events=[], picked=[];
+
+function L(msg,cls){const l=document.getElementById('log');l.style.display='block';
+  const d=document.createElement('div');if(cls)d.className=cls;d.textContent=msg;l.appendChild(d);l.scrollTop=l.scrollHeight;}
+function J(o){try{return JSON.stringify(o,null,1);}catch(e){return String(o);}}
+function step(t){L('');L('── '+t+' ','info');}
+
+async function doLogin(){
+  document.getElementById('log').innerHTML='';
+  const b=document.getElementById('btnLogin');b.disabled=true;
+  try{
+    step('Signing in');
+    const a=await sb.auth.signInWithPassword({
+      email:document.getElementById('email').value.trim(),
+      password:document.getElementById('pw').value});
+    if(a.error){L('Sign-in FAILED: '+a.error.message,'err');b.disabled=false;return;}
+    L('signed in as '+a.data.user.email,'ok');
+    L('auth uid = '+a.data.user.id,'dim');
+
+    step('Resolving your team_members row');
+    let tm=await sb.from('team_members').select('member_id,tenant_id,role,is_active')
+      .eq('auth_user_id',a.data.user.id).maybeSingle();
+    if(!tm.data){
+      L('no row matched auth_user_id — falling back to email','warn');
+      tm=await sb.from('team_members').select('member_id,tenant_id,role,is_active')
+        .eq('email',a.data.user.email).maybeSingle();
+    }
+    if(tm.error){L('team_members error: '+tm.error.message,'err');}
+    if(!tm.data){L('NO team_members ROW FOUND. tenantId would be null — this alone breaks saving.','err');}
+    else{
+      tenantId=tm.data.tenant_id;
+      L('member_id = '+tm.data.member_id,'dim');
+      L('tenant_id = '+tenantId, tenantId==='55555555-5555-5555-5555-555555555555'?'ok':'err');
+      if(tenantId!=='55555555-5555-5555-5555-555555555555')
+        L('^ This does NOT match the UUID hardcoded in every RLS policy. Writes will be rejected.','err');
+      L('role = '+tm.data.role+', is_active = '+tm.data.is_active,'dim');
+    }
+
+    step('Can we READ event_assignees?');
+    const ea=await sb.from('event_assignees').select('id,event_id,member_id,is_owner').limit(5);
+    if(ea.error){L('SELECT FAILED: '+ea.error.message,'err');L('code='+ea.error.code+' hint='+(ea.error.hint||'-'),'dim');}
+    else L('ok — '+ea.data.length+' sample rows readable','ok');
+
+    step('Loading members and upcoming events');
+    const m=await sb.from('team_members').select('member_id,first_name,last_name')
+      .eq('tenant_id',tenantId).or('is_active.is.null,is_active.eq.true').order('last_name');
+    members=m.data||[];L('members: '+members.length,'dim');
+
+    const today=new Date().toISOString().slice(0,10);
+    const e=await sb.from('events').select('event_id,event_name,event_date,assigned_to')
+      .eq('tenant_id',tenantId).gte('event_date',today)
+      .or('is_deleted.is.null,is_deleted.eq.false').order('event_date').limit(25);
+    if(e.error){L('events error: '+e.error.message,'err');}
+    events=e.data||[];L('upcoming events: '+events.length,'dim');
+
+    document.getElementById('evSel').innerHTML=events.map(x=>
+      '<option value="'+x.event_id+'">'+(x.event_date||'')+' — '+(x.event_name||'(untitled)')+'</option>').join('');
+    document.getElementById('memChips').innerHTML=members.map(x=>
+      '<span class="chip" data-id="'+x.member_id+'" onclick="tog(this)">'+
+      ((x.first_name||'')+' '+(x.last_name||'')).trim()+'</span>').join('');
+    document.getElementById('pickPanel').style.display='block';
+    L('');L('Pick an event and two people, then Run the save.','info');
+  }catch(err){L('unexpected: '+err.message,'err');}
+  b.disabled=false;
+}
+
+function tog(el){
+  const id=el.dataset.id;
+  if(picked.includes(id)){picked=picked.filter(x=>x!==id);el.classList.remove('on');}
+  else{picked.push(id);el.classList.add('on');}
+}
+
+async function runTest(){
+  document.getElementById('log').innerHTML='';
+  const eventId=document.getElementById('evSel').value;
+  if(!eventId){L('pick an event','err');return;}
+  if(!picked.length){L('pick at least one person','err');return;}
+
+  L('event_id = '+eventId,'dim');
+  L('assigning ('+picked.length+'): '+picked.join(', '),'dim');
+  L('tenant_id being written = '+tenantId,'dim');
+
+  step('1. Read existing rows for this event');
+  const cur=await sb.from('event_assignees').select('id,member_id,is_owner').eq('event_id',eventId);
+  if(cur.error){L('FAILED: '+cur.error.message,'err');L(J(cur.error),'dim');return;}
+  L('found '+(cur.data||[]).length+' existing: '+J(cur.data),'ok');
+
+  step('2. Delete anyone removed');
+  const stale=(cur.data||[]).filter(r=>!picked.includes(r.member_id)).map(r=>r.id);
+  if(!stale.length)L('nothing to remove','dim');
+  else{
+    const d=await sb.from('event_assignees').delete().in('id',stale);
+    if(d.error){L('DELETE FAILED: '+d.error.message,'err');L(J(d.error),'dim');return;}
+    L('removed '+stale.length,'ok');
+  }
+
+  step('3. Upsert the selected people');
+  const rows=picked.map((id,i)=>({tenant_id:tenantId,event_id:eventId,member_id:id,is_owner:i===0}));
+  L('payload: '+J(rows),'dim');
+  const up=await sb.from('event_assignees').upsert(rows,{onConflict:'event_id,member_id'}).select();
+  if(up.error){
+    L('UPSERT FAILED: '+up.error.message,'err');
+    L('code    = '+up.error.code,'err');
+    L('details = '+(up.error.details||'-'),'dim');
+    L('hint    = '+(up.error.hint||'-'),'dim');
+    L('','');
+    if(up.error.code==='42501')L('42501 = RLS blocked it. The INSERT or UPDATE policy on event_assignees is missing or its tenant check does not match.','warn');
+    if(up.error.code==='23505')L('23505 = unique violation. onConflict is not matching the constraint.','warn');
+    if(up.error.code==='23503')L('23503 = foreign key. That member_id or event_id does not exist.','warn');
+    if(String(up.error.message).includes('no unique'))L('No unique constraint on (event_id, member_id) — run script 50.','warn');
+    return;
+  }
+  L('upsert returned '+((up.data||[]).length)+' rows','ok');
+
+  step('4. Read back — did it actually persist?');
+  const after=await sb.from('event_assignees').select('member_id,is_owner').eq('event_id',eventId);
+  if(after.error){L('read-back failed: '+after.error.message,'err');return;}
+  L(J(after.data),'ok');
+  const got=(after.data||[]).map(r=>r.member_id).sort().join(',');
+  const want=picked.slice().sort().join(',');
+  L('');
+  if(got===want)L('SAVED CORRECTLY — the database has exactly what was selected.','ok');
+  else{
+    L('MISMATCH','err');
+    L('  wanted: '+want,'err');
+    L('  got:    '+got,'err');
+    L('Rows were written but a policy is filtering them back out on read.','warn');
+  }
+}
+</script>
+</body>
+</html>
