@@ -1254,16 +1254,50 @@ function maKey(e){
 function maBlur(){setTimeout(maClose,150);}
 
 /* Writes the join rows for one event. Owner is whoever is listed first. */
+/* Diffs against what's already stored rather than delete-then-insert.
+   The backfill gave every event an owner row, so a blind insert collides
+   with unique(event_id, member_id) and the whole batch is rejected.
+   Returns true on success so the caller doesn't claim it saved. */
 async function saveEventAssignees(eventId){
-  var del=await sb.from('event_assignees').delete().eq('event_id',eventId);
-  if(del.error){console.warn('clear assignees:',del.error.message);}
-  if(!maSelected.length){eventAssignees[eventId]=[];return;}
-  var rows=maSelected.map(function(id,i){
+  var want=maSelected.slice();
+
+  var cur=await sb.from('event_assignees')
+    .select('id,member_id').eq('event_id',eventId);
+  if(cur.error){
+    showToast('Could not read assignees: '+cur.error.message);
+    console.error('event_assignees select:',cur.error);
+    return false;
+  }
+  var existing=cur.data||[];
+
+  // drop anyone removed from the picker
+  var stale=existing.filter(function(r){return want.indexOf(r.member_id)<0;})
+                    .map(function(r){return r.id;});
+  if(stale.length){
+    var d=await sb.from('event_assignees').delete().in('id',stale);
+    if(d.error){
+      showToast('Could not remove assignee: '+d.error.message);
+      console.error('event_assignees delete:',d.error);
+      return false;
+    }
+  }
+
+  if(!want.length){eventAssignees[eventId]=[];return true;}
+
+  // upsert handles both new people and a change of owner
+  var rows=want.map(function(id,i){
     return {tenant_id:tenantId,event_id:eventId,member_id:id,is_owner:i===0};
   });
-  var ins=await sb.from('event_assignees').insert(rows);
-  if(ins.error){showToast('Could not save assignees: '+ins.error.message);return;}
-  eventAssignees[eventId]=maSelected.slice();
+  var up=await sb.from('event_assignees')
+    .upsert(rows,{onConflict:'event_id,member_id'});
+  if(up.error){
+    showToast('Could not save assignees: '+up.error.message);
+    console.error('event_assignees upsert:',up.error,rows);
+    return false;
+  }
+
+  eventAssignees[eventId]=want;
+  return true;
 }
 
 function populateAssignSelect(selId){
@@ -1389,15 +1423,16 @@ async function saveEvent(){
       if(r.error)throw r.error;
       var ev=allEvents.find(function(x){return x.event_id===editingEventId;});
       if(ev)Object.assign(ev,data);
-      await saveEventAssignees(editingEventId);
-      showToast('Updated');
+      var okA=await saveEventAssignees(editingEventId);
+      if(okA)showToast('Updated');
     }else{
       data.tenant_id=tenantId;
       data.created_at=new Date().toISOString();data.is_deleted=false;
       var r=await sb.from('events').insert(data).select('event_id').single();
       if(r.error)throw r.error;
-      if(r.data&&r.data.event_id)await saveEventAssignees(r.data.event_id);
-      showToast('Event created');
+      var okB=true;
+      if(r.data&&r.data.event_id)okB=await saveEventAssignees(r.data.event_id);
+      if(okB)showToast('Event created');
     }
     closeEventModal();await loadEvents();await loadEventAssignees();renderCalLayers();render();
   }catch(e){
