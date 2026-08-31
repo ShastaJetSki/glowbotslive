@@ -30,6 +30,20 @@
     .ma-none{padding:9px 12px;font-size:12px;color:var(--text-secondary);}
     .ma-hint{font-size:11px;color:var(--text-secondary);margin-top:5px;}
     /* "+2" badge on a calendar block with several people */
+    .people-pill{display:inline-flex;align-items:center;gap:3px;padding:1px 6px 1px 4px;
+      border-radius:9px;background:rgba(0,0,0,.34);font-size:9px;font-weight:700;
+      line-height:1.5;cursor:pointer;flex-shrink:0;}
+    .people-pill:hover{background:rgba(0,0,0,.5);}
+    .people-pill svg{width:9px;height:9px;display:block;}
+    .who-pop{position:fixed;z-index:3000;background:var(--bg-secondary);border:1px solid var(--border-default);
+      border-radius:10px;padding:6px;min-width:170px;max-width:240px;box-shadow:0 10px 34px rgba(0,0,0,.55);}
+    .who-pop-h{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-secondary);
+      padding:4px 8px 6px;}
+    .who-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:12.5px;
+      color:var(--text-primary);}
+    .who-row:hover{background:var(--bg-card);}
+    .who-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+    .who-own{margin-left:auto;font-size:8.5px;font-weight:700;color:var(--text-secondary);letter-spacing:.05em;}
     .ev-more{display:inline-block;margin-left:4px;padding:0 5px;border-radius:8px;
       background:rgba(255,255,255,.28);font-size:9px;font-weight:700;vertical-align:middle;}
     :root{--bg-primary:#0b1220;--bg-secondary:#131c2b;--bg-card:#1b2738;--bg-hover:#26354a;--border-default:#2c3d54;--text-primary:#eef4fb;--text-secondary:#aebccf;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
@@ -465,7 +479,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 3)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 4)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="emNotes"></textarea></div>
@@ -561,9 +575,74 @@ function getMemberColor(id){
 }
 function getItemColor(it){if(it._empId)return getMemberColor(it._empId);return it._isEvent?EVENT_LAYER_COLOR:APPT_LAYER_COLOR;}
 /* "+2" badge shown next to the title when several people are on an event */
+/* "Jim · Bob" on the card. Last names are dropped — the colour already
+   identifies who, and the space is better spent on the second person. */
+function firstNameOf(id){
+  var m=allMembers.find(function(x){return x.member_id===id;});
+  if(!m)return '';
+  var f=(m.first_name||'').trim();
+  return f||((m.last_name||'').trim())||'';
+}
+
+function whoOf(it){
+  if(!it)return [];
+  if(it._isEvent&&it._data)return assigneesOf(it._data);
+  return it._empId?[it._empId]:[];
+}
+
+/* Up to two names inline; beyond that, two names plus a tappable pill. */
+function peopleLine(it,subColor){
+  var ids=whoOf(it);
+  if(!ids.length)return '';
+  var names=ids.map(firstNameOf).filter(Boolean);
+  if(!names.length)return '';
+  var shown=names.slice(0,2).join(' · ');
+  var hidden=names.length-2;
+  var txt='<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+subColor+';font-weight:600;">'+esc(shown)+'</span>';
+  if(hidden>0){
+    txt+='<span class="people-pill" onclick="event.stopPropagation();showWho(this,\''+it._id+'\')" title="Show everyone assigned">'+
+      '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="5" r="2.6"/><path d="M1 14c0-2.5 2-4.2 4.5-4.2S10 11.5 10 14z"/><circle cx="11.5" cy="5.6" r="2.1"/><path d="M11.5 9.4c2.1 0 3.5 1.5 3.5 3.4h-4.2c0-1.3-.4-2.4-1-3.2a4 4 0 0 1 1.7-.2z"/></svg>'+
+      '+'+hidden+'</span>';
+  }
+  return txt;
+}
+
 function moreBadge(it){
   return (it&&it._extra>0)?'<span class="ev-more">+'+it._extra+'</span>':'';
 }
+function closeWho(){var p=document.getElementById('whoPop');if(p)p.remove();}
+document.addEventListener('click',function(e){
+  var p=document.getElementById('whoPop');
+  if(p&&!p.contains(e.target))closeWho();
+});
+window.addEventListener('scroll',closeWho,true);
+
+function showWho(anchor,itemId){
+  closeWho();
+  var it=null,idx=_itemIndex||buildItemIndex();
+  Object.keys(idx).some(function(k){
+    return idx[k].some(function(x){ if(x._id===itemId){it=x;return true;} });
+  });
+  if(!it)return;
+  var ids=whoOf(it);
+  if(!ids.length)return;
+
+  var pop=document.createElement('div');
+  pop.className='who-pop';pop.id='whoPop';
+  pop.innerHTML='<div class="who-pop-h">Assigned</div>'+ids.map(function(id,i){
+    return '<div class="who-row"><span class="who-dot" style="background:'+getMemberColor(id)+'"></span>'+
+      esc(memberName(id))+(i===0?'<span class="who-own">OWNER</span>':'')+'</div>';
+  }).join('');
+  document.body.appendChild(pop);
+
+  var r=anchor.getBoundingClientRect(),pr=pop.getBoundingClientRect();
+  var top=r.bottom+6, left=r.left;
+  if(left+pr.width>window.innerWidth-10)left=window.innerWidth-pr.width-10;
+  if(left<10)left=10;
+  if(top+pr.height>window.innerHeight-10)top=r.top-pr.height-6;
+  pop.style.top=Math.max(10,top)+'px';pop.style.left=left+'px';
+}
+
 function assigneeTooltip(it){
   if(!it||!it._data||!it._isEvent)return '';
   var a=assigneesOf(it._data);
@@ -839,8 +918,8 @@ function stripHTML(it,ds){
   var pastCls=isPast?' past-strip':'';
   var stripLabel=it._isEvent?'EVT':'APT';
   var stripContent=it._date===ds||!isMulti?
-    '<span class="cal-strip-time">'+timeStr+'</span><span class="cal-strip-name">'+esc(it._title)+moreBadge(it)+'</span><span style="margin-left:auto;font-size:7px;background:rgba(0,0,0,0.5);padding:1px 4px;border-radius:2px;color:#fff;flex-shrink:0;">'+stripLabel+'</span>':
-    '<span class="cal-strip-name">'+esc(it._title)+moreBadge(it)+'</span>';
+    '<span class="cal-strip-time">'+timeStr+'</span><span class="cal-strip-name">'+esc(it._title)+'</span><span style="margin-left:auto;font-size:7px;background:rgba(0,0,0,0.5);padding:1px 4px;border-radius:2px;color:#fff;flex-shrink:0;">'+stripLabel+'</span>':
+    '<span class="cal-strip-name">'+esc(it._title)+'</span>';
   return '<div class="cal-strip'+pastCls+'" style="'+style+'" onclick="event.stopPropagation();'+handler+'(\''+it._id+'\')" title="'+timeStr+' '+esc(it._title)+esc(assigneeTooltip(it))+'">'+stripContent+'</div>';
 }
 
@@ -938,11 +1017,11 @@ function renderWeek(){_itemIndex=null;
         if(col&&col[0]==='#'){var hx=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2=parseInt(hx.slice(0,2),16)||100;g2=parseInt(hx.slice(2,4),16)||100;b2=parseInt(hx.slice(4,6),16)||200;}
         var bg=col;var tc=textOn(col),sc=subOn(col);
         h+='<div style="background:'+bg+';border-left:4px solid '+col+';color:'+tc+';padding:7px 7px 7px 9px;border-radius:5px;cursor:pointer;font-size:11px;overflow:hidden;height:100px;min-height:100px;max-height:100px;display:flex;flex-direction:column;justify-content:flex-start;gap:2px;width:100%;box-sizing:border-box;" onclick="event.stopPropagation();'+handler+'(this.dataset.id)" data-id="'+it._id+'">'+
-          '<div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3;">'+esc(it._title)+moreBadge(it)+'</div>'+
+          '<div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3;">'+esc(it._title)+'</div>'+
           (timeStr?'<div style="font-size:12px;font-weight:600;color:'+sc+';">'+timeStr+endTime+'</div>':'')+
           (loc?'<div style="font-size:12px;font-weight:600;color:'+sc+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(loc)+'</div>':'')+
           (svc&&!loc?'<div style="font-size:12px;color:'+sc+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(svc)+'</div>':'')+
-          '<div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:4px;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:'+sc+';">'+(mn?esc(mn):'')+'</span><span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,0.5);color:#fff;letter-spacing:.5px;flex-shrink:0;">'+(it._isEvent?'EVENT':'APPT')+'</span></div>'+
+          '<div style="display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:4px;font-size:12px;">'+peopleLine(it,sc)+'<span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,0.5);color:#fff;letter-spacing:.5px;flex-shrink:0;">'+(it._isEvent?'EVENT':'APPT')+'</span></div>'+
         '</div>';
       });
       if(!items.length)h+='<div style="height:40px;"></div>';
@@ -1003,10 +1082,10 @@ function renderWeek(){_itemIndex=null;
           if(col&&col[0]==='#'){var hx=col.length===4?col[1]+col[1]+col[2]+col[2]+col[3]+col[3]:col.slice(1);r2=parseInt(hx.slice(0,2),16)||100;g2=parseInt(hx.slice(2,4),16)||100;b2=parseInt(hx.slice(4,6),16)||200;}
           var bg=col;var tc=textOn(col),sc=subOn(col);
           h+='<div class="mw-event" style="background:'+bg+';border-left-color:'+col+';color:'+tc+';" onclick="event.stopPropagation();'+handler+'(this.dataset.id)" data-id="'+it._id+'">';
-          h+='<div class="mw-event-line1" style="color:'+tc+';">'+esc(it._title)+moreBadge(it)+'</div>';
+          h+='<div class="mw-event-line1" style="color:'+tc+';">'+esc(it._title)+'</div>';
           h+='<div class="mw-event-line2" style="color:'+sc+';font-weight:600;">'+(timeStr?timeStr+endTime:'—')+'</div>';
           h+='<div class="mw-event-line3" style="color:'+sc+';font-weight:600;">'+(line3||'—')+'</div>';
-          h+='<div class="mw-event-badge-row" style="display:flex;align-items:center;gap:8px;margin-top:auto;"><span class="mw-event-line3" style="color:'+sc+';font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:0;">'+(mn2?esc(mn2):'')+'</span><span class="mw-event-badge">'+dayLabel+'</span></div>';
+          h+='<div class="mw-event-badge-row" style="display:flex;align-items:center;gap:6px;margin-top:auto;">'+peopleLine(it,sc)+'<span class="mw-event-badge">'+dayLabel+'</span></div>';
           h+='</div>';
         });
       }
@@ -1094,11 +1173,11 @@ function renderDay(){_itemIndex=null;
       var bgd=col;var tc=textOn(col),sc=subOn(col);
       var dayLabel=it._isEvent?'EVENT':'APPT';
       h+='<div class="day-ev" style="background:'+bgd+';border-left-color:'+col+';color:'+tc+';" onclick="event.stopPropagation();'+handler+'(\''+it._id+'\')">'  ;
-      h+='<div class="day-ev-title" style="color:'+tc+';">'+esc(it._title)+moreBadge(it)+'</div>';
+      h+='<div class="day-ev-title" style="color:'+tc+';">'+esc(it._title)+'</div>';
       h+='<div class="day-ev-meta" style="color:'+sc+';font-weight:600;">'+(it._time?formatTime(it._time):'')+'</div>';
       h+=(it._location?'<div class="day-ev-meta" style="color:'+sc+';font-weight:600;">'+esc(it._location)+'</div>':'');
       h+=(it._service?'<div class="day-ev-meta" style="color:'+sc+';">'+esc(it._service)+'</div>':'');
-      h+='<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><span class="day-ev-meta" style="color:'+sc+';font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:0;">'+(a?esc(a):'')+'</span><span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,0.5);color:#fff;letter-spacing:.5px;flex-shrink:0;">'+dayLabel+'</span></div>';
+      h+='<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;">'+peopleLine(it,sc)+'<span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,0.5);color:#fff;letter-spacing:.5px;flex-shrink:0;">'+dayLabel+'</span></div>';
       h+='</div>';
     });
     h+='</div></div>';
