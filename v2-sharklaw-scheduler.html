@@ -377,6 +377,9 @@
       <button class="sched-add-btn" onclick="openApptModal()">+ Appt</button>
       <button class="sched-add-btn" style="background:#f97316;" onclick="openEventModal()">+ Event</button>
       <button class="sched-add-btn mobile-today-btn" onclick="goToday()" style="display:none;background:transparent;border:1px solid var(--border-default);color:var(--text-primary);margin-left:6px;">Today</button>
+      <a href="v2-sharklaw-archive.html" class="sched-add-btn" style="background:transparent;border:1px solid var(--border-default);color:var(--text-secondary);margin-left:6px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;" title="Events older than 180 days">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M1 3.2A1.2 1.2 0 0 1 2.2 2h11.6A1.2 1.2 0 0 1 15 3.2v1.6A1.2 1.2 0 0 1 13.8 6H2.2A1.2 1.2 0 0 1 1 4.8zM2.4 7.4h11.2v5.4a1.2 1.2 0 0 1-1.2 1.2H3.6a1.2 1.2 0 0 1-1.2-1.2zm3.4 2a.7.7 0 0 0 0 1.4h4.4a.7.7 0 0 0 0-1.4z"/></svg>
+        Archive</a>
       <div id="mineAllToggle" style="display:none!important;margin-left:8px;">
         <div class="view-toggle">
           <button class="vt-btn active" id="vtMine" onclick="setMineAll('mine')">Mine</button>
@@ -479,7 +482,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 5)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 7)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="emNotes"></textarea></div>
@@ -690,17 +693,26 @@ async function loadAppointments(scope){
     if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate'){q=q.eq('assigned_to',userId);}return q;}
   var q=base();
   if(scope==='current')q=q.gte('appointment_date',_todayISO());
-  else if(scope==='past')q=q.or('appointment_date.lt.'+_todayISO()+',appointment_date.is.null');
+  else if(scope==='past')q=q.gte('appointment_date',_historyCutoffISO()).lt('appointment_date',_todayISO());
   var r=await q;
   if(r.error&&scope){ if(scope==='current'){r=await base();allAppointments=r.data||[];} return; }
   var rows=r.data||[];
   if(scope==='past')_mergeRows(allAppointments,rows,'appointment_id'); else allAppointments=rows;
 }
+/* Anything older than this lives in events_archive and is deliberately not
+   loaded — it's what keeps the calendar fast. Use the history search to
+   reach older events. Keep in step with archive_old_events(90). */
+var HISTORY_DAYS=180;
+function _historyCutoffISO(){
+  var d=new Date();d.setDate(d.getDate()-HISTORY_DAYS);
+  return d.toISOString().slice(0,10);
+}
+
 async function loadEvents(scope){
   function base(){return sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');}
   var q=base();
   if(scope==='current')q=q.gte('event_date',_todayISO());
-  else if(scope==='past')q=q.or('event_date.lt.'+_todayISO()+',event_date.is.null');
+  else if(scope==='past')q=q.gte('event_date',_historyCutoffISO()).lt('event_date',_todayISO());
   var r=await q;
   if(r.error&&scope){ if(scope==='current'){r=await base();allEvents=r.data||[];} return; }
   var rows=r.data||[];
