@@ -165,6 +165,11 @@
       background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%239fb0c3' d='M0 0h10L5 6z'/%3E%3C/svg%3E");
       background-repeat:no-repeat;background-position:right 11px center;}
     #countyFilterInput:focus{outline:none;border-color:var(--accent-primary);cursor:text;}
+    /* modal county field reads as a dropdown, not a free-text box */
+    #mCounty{cursor:pointer;padding-right:30px;
+      background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%239fb0c3' d='M0 0h10L5 6z'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 11px center;}
+    #mCounty:focus{cursor:text;}
     #countyFilterInput.on{border-color:var(--accent-primary);color:var(--accent-light);}
     .ac-item.head{font-size:11px;color:var(--text-secondary);cursor:default;
       text-transform:none;background:var(--bg-card);}
@@ -417,7 +422,7 @@
       <div class="fr">
         <div class="fg ac-wrap">
           <label class="fl">County</label>
-          <input type="text" class="fi" id="mCounty" autocomplete="off" placeholder="Start typing a county…"
+          <input type="text" class="fi" id="mCounty" autocomplete="off" readonly placeholder="Select a county…"
             oninput="acOpen('mCounty')" onfocus="acOpen('mCounty')" onkeydown="acKey(event,'mCounty')" onblur="acBlur('mCounty')">
           <div class="ac-drop" id="countyDrop"></div>
         </div>
@@ -465,11 +470,24 @@ var countyFilterValue='';
 var AC={
   mCounty:{
     drop:'countyDrop',
-    opts:function(){return COUNTIES.map(function(c){return {v:c,label:c};});},
-    pick:function(o){document.getElementById('mCounty').value=o.v;}
+    select:true,
+    opts:function(){
+      var out=[{v:'',label:'— No county —'}];
+      COUNTIES.forEach(function(c){out.push({v:c,label:c});});
+      return out;
+    },
+    pick:function(o){
+      var el=document.getElementById('mCounty');
+      el.dataset.val=o.v; el.value=o.v;
+    },
+    display:function(){return document.getElementById('mCounty').dataset.val||'';}
   },
   countyFilterInput:{
     drop:'countyFilterInputDrop',
+    select:true,
+    display:function(){
+      return countyFilterValue==='__none'?'No county set':(countyFilterValue||'');
+    },
     opts:function(){
       var seen={};
       allContacts.forEach(function(c){if(c.county)seen[c.county]=(seen[c.county]||0)+1;});
@@ -508,7 +526,7 @@ function acFilter(opts,q){
 
 function acOpen(id){
   var cfg=AC[id],el=document.getElementById(id),d=document.getElementById(cfg.drop);
-  var q=(id==='countyFilterInput'&&el.readOnly)?'':el.value;
+  var q=(cfg.select&&el.readOnly)?'':el.value;
   var list=acFilter(cfg.opts(),q);
   acState[id]={list:list,idx:-1};
   if(!list.length){
@@ -536,7 +554,7 @@ function acPick(id,i){
   AC[id].pick(st.list[i]);
   acClose(id);
   var el=document.getElementById(id);
-  if(id==='countyFilterInput'){el.readOnly=true;el.blur();}
+  if(AC[id].select){el.readOnly=true;el.blur();}
 }
 
 function acKey(e,id){
@@ -544,7 +562,7 @@ function acKey(e,id){
   if(e.key==='Escape'){acClose(id);return;}
   /* the filter is read-only until you type, so it behaves like a select
      but still accepts a search the moment you start typing */
-  if(id==='countyFilterInput'&&e.key.length===1&&/[a-z ]/i.test(e.key)){
+  if(AC[id].select&&e.key.length===1&&/[a-z ]/i.test(e.key)){
     var el=document.getElementById(id);
     if(el.readOnly){el.readOnly=false;el.value='';}
   }
@@ -568,17 +586,10 @@ function acKey(e,id){
 
 function acBlur(id){
   setTimeout(function(){
-    var el=document.getElementById(id);
-    if(el&&id==='mCounty'){
-      var v=(el.value||'').trim().toLowerCase();
-      for(var i=0;i<COUNTIES.length;i++){
-        if(COUNTIES[i].toLowerCase()===v){el.value=COUNTIES[i];break;}
-      }
-    }
-    if(el&&id==='countyFilterInput'){
+    var cfg=AC[id],el=document.getElementById(id);
+    if(el&&cfg.select){
       el.readOnly=true;
-      el.value=countyFilterValue&&countyFilterValue!=='__none'?countyFilterValue:
-               (countyFilterValue==='__none'?'No county set':'');
+      el.value=cfg.display?cfg.display():'';
     }
     acClose(id);
   },150);
@@ -708,6 +719,7 @@ function openAddModal(){
   document.getElementById('modalDeleteBtn').style.display='none';
   document.getElementById('modalSaveBtn').textContent='Add Contact';
   ['mFirst','mLast','mPhone','mEmail','mOrg','mNotes','mCounty'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('mCounty').dataset.val='';
   document.getElementById('mType').value='';
   document.getElementById('mStage').value='';
   document.getElementById('mAssign').value='';
@@ -732,6 +744,7 @@ function openEditModal(id){
   document.getElementById('mAssign').value=c.assigned_to||'';
   document.getElementById('mNotes').value=c.notes||'';
   document.getElementById('mCounty').value=c.county||'';
+  document.getElementById('mCounty').dataset.val=c.county||'';
   document.getElementById('modalMsg').innerHTML='';
   document.getElementById('contactModal').classList.add('active');
 }
