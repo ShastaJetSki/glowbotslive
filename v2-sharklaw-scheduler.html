@@ -479,7 +479,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 4)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(multi-assign build 5)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="emNotes"></textarea></div>
@@ -1229,18 +1229,30 @@ var eventAssignees={};
 var maSelected=[];       // member_ids for the event open in the modal, owner first
 var maIdx=-1, maList=[];
 
+/* PostgREST caps an unpaginated select at 1000 rows and says nothing about
+   it. With 1000+ assignments the tail was silently dropped, so events near
+   the end of the table looked single-assignee on the calendar while the
+   modal (which re-reads one event) showed everyone. Page through instead. */
 async function loadEventAssignees(){
-  var r=await sb.from('event_assignees')
-    .select('event_id,member_id,is_owner')
-    .eq('tenant_id',tenantId);
-  if(r.error){console.warn('event_assignees:',r.error.message);eventAssignees={};return;}
-  var map={};
-  (r.data||[]).forEach(function(row){
-    if(!map[row.event_id])map[row.event_id]=[];
-    if(row.is_owner)map[row.event_id].unshift(row.member_id);
-    else map[row.event_id].push(row.member_id);
-  });
+  var map={},page=0,size=1000;
+  while(page<50){
+    var r=await sb.from('event_assignees')
+      .select('event_id,member_id,is_owner')
+      .eq('tenant_id',tenantId)
+      .order('event_id')
+      .range(page*size,(page+1)*size-1);
+    if(r.error){console.warn('event_assignees:',r.error.message);break;}
+    var rows=r.data||[];
+    rows.forEach(function(row){
+      if(!map[row.event_id])map[row.event_id]=[];
+      if(row.is_owner)map[row.event_id].unshift(row.member_id);
+      else map[row.event_id].push(row.member_id);
+    });
+    if(rows.length<size)break;
+    page++;
+  }
   eventAssignees=map;
+  _itemIndex=null;   // counts changed, so the render index must be rebuilt
 }
 
 /* Everyone on an event. Falls back to assigned_to for rows that predate
@@ -1833,6 +1845,7 @@ async function init(){
   // Instant load: today + future only, so the calendar fills immediately.
   await Promise.all([loadMembers(),loadAppointments('current'),loadEvents('current')]);
   await loadEventAssignees();
+  _itemIndex=null;
   maybeShowMineAll();
   setView(currentView);renderMiniCal();renderCalLayers();renderMemberFilters();_fadeCal();
   // Contacts are only needed for the appointment contact picker — load in background so they don't gate the calendar paint.
