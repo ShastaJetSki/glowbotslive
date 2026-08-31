@@ -453,6 +453,10 @@ var allContacts=[],allMembers=[],_ccFirst=true;
 var editingId=null;
 
 /* ── UTILS ── */
+/* Import wrote the literal text "null" into name columns. Treat those
+   sentinels as empty so they never reach a contact card. */
+function nm(v){var t=String(v==null?'':v).trim();
+  return /^(null|undefined|n\/a|na|none|nil|-)$/i.test(t)?'':t;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 /* ── CALIFORNIA COUNTIES ── */
 var COUNTIES=['Alameda','Alpine','Amador','Butte','Calaveras','Colusa','Contra Costa','Del Norte',
@@ -602,7 +606,7 @@ function fmt(s){if(!s)return'';var d=s.replace(/\D/g,'').slice(0,10);if(d.length
 function formatPhoneInput(el){var old=el.value;var caret=el.selectionStart;var before=old.slice(0,caret).replace(/\D/g,'').length;var nv=fmt(old);el.value=nv;var pos=0,seen=0;if(before>0){for(pos=0;pos<nv.length;pos++){if(/\d/.test(nv.charAt(pos))){seen++;if(seen===before){pos++;break;}}}}el.setSelectionRange(pos,pos);}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
 function memberColor(id){var m=allMembers.find(function(x){return x.member_id===id;});return(m&&m.color)||'#6b7280';}
-function memberName(id){var m=allMembers.find(function(x){return x.member_id===id;});if(!m)return'Unassigned';return((m.first_name||'')+' '+(m.last_name||'')).trim();}
+function memberName(id){var m=allMembers.find(function(x){return x.member_id===id;});if(!m)return'Unassigned';return(nm(m.first_name)+' '+nm(m.last_name)).trim();}
 function hexToRgb(hex){if(!hex||hex[0]!=='#')return'100,100,200';var h=hex.length===4?hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3]:hex.slice(1);return parseInt(h.slice(0,2),16)+','+parseInt(h.slice(2,4),16)+','+parseInt(h.slice(4,6),16);}
 
 /* ── THEME ── */
@@ -653,9 +657,9 @@ function applyFilters(c){
   if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
   if(mf&&(c.assigned_to||'')!==mf)return false;
   if(search){
-    var n=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
+    var n=(nm(c.first_name)+' '+nm(c.last_name)).toLowerCase();
     var p=fmt(c.phone||'');
-    if(n.indexOf(search)<0&&p.indexOf(search)<0&&(c.email||'').toLowerCase().indexOf(search)<0&&(c.organization_name||'').toLowerCase().indexOf(search)<0)return false;
+    if(n.indexOf(search)<0&&p.indexOf(search)<0&&(c.email||'').toLowerCase().indexOf(search)<0&&(nm(c.organization_name)).toLowerCase().indexOf(search)<0)return false;
   }
   return true;
 }
@@ -690,7 +694,7 @@ function buildCard(c,_i,_anim){
   var type=c.customer_type||'';
   var stage=stageName(c.funnel_stage);
   var firstName=esc(c.first_name||'Unknown');
-  var org=esc(c.organization_name||'');
+  var org=esc(nm(c.organization_name));
   var _a=_anim?'animation:ccIn .34s ease both;animation-delay:'+(Math.min(_i||0,24)*16)+'ms;':'';
   return '<div class="cc" style="background:rgba('+rgb+',0.2);border-left-color:'+col+';'+_a+'" onclick="goProfile(this.dataset.cid)" data-cid="'+c.contact_id+'">'
     +'<div class="cc-row"><span class="cc-name">'+firstName+'</span><span class="cc-org">'+org+'</span></div>'
@@ -738,7 +742,7 @@ function openEditModal(id){
   document.getElementById('mLast').value=c.last_name||'';
   document.getElementById('mPhone').value=fmt(c.phone||'');
   document.getElementById('mEmail').value=c.email||'';
-  document.getElementById('mOrg').value=c.organization_name||'';
+  document.getElementById('mOrg').value=nm(c.organization_name);
   document.getElementById('mType').value=c.customer_type||'';
   document.getElementById('mStage').value=c.funnel_stage||'';
   document.getElementById('mAssign').value=c.assigned_to||'';
@@ -810,10 +814,10 @@ async function loadMembers(){
   allMembers=r.data||[];
   var sel=document.getElementById('memberFilter');
   sel.innerHTML='<option value="">All Reps</option>';
-  allMembers.forEach(function(m){sel.innerHTML+='<option value="'+m.member_id+'">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
+  allMembers.forEach(function(m){sel.innerHTML+='<option value="'+m.member_id+'">'+(nm(m.first_name)+' '+nm(m.last_name)).trim()+'</option>';});
   var asel=document.getElementById('mAssign');
   asel.innerHTML='<option value="">Unassigned</option>';
-  allMembers.forEach(function(m){asel.innerHTML+='<option value="'+m.member_id+'">'+((m.first_name||'')+' '+(m.last_name||'')).trim()+'</option>';});
+  allMembers.forEach(function(m){asel.innerHTML+='<option value="'+m.member_id+'">'+(nm(m.first_name)+' '+nm(m.last_name)).trim()+'</option>';});
 }
 
 /* ── INIT ── */
@@ -828,8 +832,8 @@ function showMyContactsDrop(){
 function handleContactSearch(q){
   if(!q.trim()){showMyContactsDrop();return;}
   var matches=allContacts.filter(function(c){
-    var n=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
-    var org=(c.organization_name||'').toLowerCase();
+    var n=(nm(c.first_name)+' '+nm(c.last_name)).toLowerCase();
+    var org=(nm(c.organization_name)).toLowerCase();
     var ph=(c.phone||'').replace(/[^0-9]/g,'');
     return n.includes(q.toLowerCase())||org.includes(q.toLowerCase())||ph.includes(q.replace(/[^0-9]/g,''));
   }).slice(0,15);
@@ -843,8 +847,8 @@ function renderSearchDrop(list,header){
   if(header)h+='<div style="padding:6px 12px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border-default);">'+header+'</div>';
   if(!list.length){h+='<div style="padding:10px 12px;font-size:13px;color:var(--text-secondary);">No contacts found</div>';}
   else{h+=list.map(function(c){
-    var n=((c.first_name||'')+' '+(c.last_name||'')).trim()||'Unknown';
-    var org=c.organization_name?'<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">'+esc(c.organization_name)+'</span>':'';
+    var n=(nm(c.first_name)+' '+nm(c.last_name)).trim()||'Unknown';
+    var org=c.organization_name?'<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">'+esc(nm(c.organization_name))+'</span>':'';
     var col=memberColor(c.assigned_to);
     return '<div class="sdrop-row" data-cid="'+c.contact_id+'" style="padding:9px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border-default);display:flex;align-items:center;gap:8px;">'
       +'<span style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0;display:inline-block;"></span>'
