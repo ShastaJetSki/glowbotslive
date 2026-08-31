@@ -157,6 +157,17 @@
     .search-type-row>div:first-child{min-width:0;}
     .filters-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
     .filters-row select{width:100%;}
+    .ac-wrap{position:relative;}
+    .ac-drop{display:none;position:absolute;top:100%;left:0;right:0;z-index:400;margin-top:4px;
+      background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;
+      max-height:240px;overflow-y:auto;box-shadow:0 6px 24px rgba(0,0,0,.5);}
+    .ac-item{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text-primary);
+      border-bottom:1px solid var(--border-default);}
+    .ac-item:last-child{border-bottom:none;}
+    .ac-item:hover,.ac-item.sel{background:var(--accent-primary);color:#fff;}
+    .ac-item b{color:var(--accent-light);font-weight:700;}
+    .ac-item:hover b,.ac-item.sel b{color:#fff;}
+    .ac-none{padding:9px 12px;font-size:12px;color:var(--text-secondary);}
     @media(max-width:768px){
       .desktop-header{display:none!important;}
       .mobile-top-header{display:block;}
@@ -301,6 +312,9 @@
       <select id="memberFilter" onchange="renderContacts()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;">
         <option value="">All Reps</option>
       </select>
+      <select id="countyFilter" onchange="renderContacts()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;">
+        <option value="">All Counties</option>
+      </select>
     </div>
     <button class="btn-add" id="addContactDesktop" onclick="openAddModal()">+ Add Contact</button>
   </div>
@@ -371,6 +385,15 @@
         </div>
         <div class="fg"><label class="fl">Assign To</label><select class="fsel" id="mAssign"><option value="">Unassigned</option></select></div>
       </div>
+      <div class="fr">
+        <div class="fg ac-wrap">
+          <label class="fl">County</label>
+          <input type="text" class="fi" id="mCounty" autocomplete="off" placeholder="Start typing a county…"
+            oninput="countyOpen()" onfocus="countyOpen()" onkeydown="countyKey(event)" onblur="countyBlur()">
+          <div class="ac-drop" id="countyDrop"></div>
+        </div>
+        <div class="fg"></div>
+      </div>
       <div class="fg"><label class="fl">Notes</label><textarea class="fta" id="mNotes"></textarea></div>
       <div id="modalMsg" style="font-size:13px;margin-top:4px;"></div>
     </div>
@@ -397,6 +420,103 @@ var editingId=null;
 
 /* ── UTILS ── */
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+/* ── CALIFORNIA COUNTIES ── */
+var COUNTIES=['Alameda','Alpine','Amador','Butte','Calaveras','Colusa','Contra Costa','Del Norte',
+'El Dorado','Fresno','Glenn','Humboldt','Imperial','Inyo','Kern','Kings','Lake','Lassen',
+'Los Angeles','Madera','Marin','Mariposa','Mendocino','Merced','Modoc','Mono','Monterey','Napa',
+'Nevada','Orange','Placer','Plumas','Riverside','Sacramento','San Benito','San Bernardino',
+'San Diego','San Francisco','San Joaquin','San Luis Obispo','San Mateo','Santa Barbara',
+'Santa Clara','Santa Cruz','Shasta','Sierra','Siskiyou','Solano','Sonoma','Stanislaus','Sutter',
+'Tehama','Trinity','Tulare','Tuolumne','Ventura','Yolo','Yuba'];
+
+var acIdx=-1,acList=[];
+
+/* Names that start with what you typed rank above names that merely contain it,
+   so "san" leads with San Benito rather than burying it under Mariposa. */
+function countyMatch(q){
+  q=(q||'').trim().toLowerCase();
+  if(!q)return COUNTIES.slice();
+  var a=[],b=[];
+  COUNTIES.forEach(function(c){
+    var i=c.toLowerCase().indexOf(q);
+    if(i===0)a.push(c); else if(i>0)b.push(c);
+  });
+  return a.concat(b);
+}
+
+function countyOpen(){
+  var v=document.getElementById('mCounty').value;
+  var d=document.getElementById('countyDrop');
+  acList=countyMatch(v); acIdx=-1;
+  if(!acList.length){
+    d.innerHTML='<div class="ac-none">No California county matches that</div>';
+    d.style.display='block'; return;
+  }
+  var q=(v||'').trim().toLowerCase();
+  d.innerHTML=acList.map(function(c){
+    var label=esc(c), i=q?c.toLowerCase().indexOf(q):-1;
+    if(i>=0&&q)label=esc(c.slice(0,i))+'<b>'+esc(c.slice(i,i+q.length))+'</b>'+esc(c.slice(i+q.length));
+    return '<div class="ac-item" data-v="'+esc(c)+'" onmousedown="countyPick(this.dataset.v)">'+label+'</div>';
+  }).join('');
+  d.style.display='block';
+}
+
+function countyClose(){document.getElementById('countyDrop').style.display='none';acIdx=-1;}
+
+function countyPick(v){
+  document.getElementById('mCounty').value=v;
+  countyClose();
+}
+
+function countyKey(e){
+  var d=document.getElementById('countyDrop');
+  if(e.key==='Escape'){countyClose();return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    if(d.style.display!=='block'){countyOpen();return;}
+    if(!acList.length)return;
+    acIdx=e.key==='ArrowDown'?(acIdx+1)%acList.length:(acIdx<=0?acList.length-1:acIdx-1);
+    var items=d.querySelectorAll('.ac-item');
+    for(var i=0;i<items.length;i++)items[i].classList.toggle('sel',i===acIdx);
+    if(items[acIdx])items[acIdx].scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(e.key==='Enter'||e.key==='Tab'){
+    if(d.style.display==='block'&&acList.length){
+      if(e.key==='Enter')e.preventDefault();
+      countyPick(acList[acIdx>=0?acIdx:0]);
+    }
+  }
+}
+
+/* Fix casing on the way out so "los angeles" is stored as "Los Angeles"
+   and the filter groups it with everything else. */
+function countyBlur(){
+  setTimeout(function(){
+    var el=document.getElementById('mCounty');
+    if(el){
+      var v=(el.value||'').trim().toLowerCase();
+      for(var i=0;i<COUNTIES.length;i++){
+        if(COUNTIES[i].toLowerCase()===v){el.value=COUNTIES[i];break;}
+      }
+    }
+    countyClose();
+  },150);
+}
+
+/* Only counties that actually appear on a contact, so the list stays short. */
+function populateCountyFilter(){
+  var sel=document.getElementById('countyFilter');
+  if(!sel)return;
+  var prev=sel.value, seen={};
+  allContacts.forEach(function(c){if(c.county)seen[c.county]=(seen[c.county]||0)+1;});
+  var names=Object.keys(seen).sort();
+  sel.innerHTML='<option value="">All Counties</option>'+
+    names.map(function(n){return '<option value="'+esc(n)+'">'+esc(n)+' ('+seen[n]+')</option>';}).join('')+
+    '<option value="__none">— No county set —</option>';
+  if(prev)sel.value=prev;
+}
+
 function fmt(s){if(!s)return'';var d=s.replace(/\D/g,'').slice(0,10);if(d.length<=3)return d;if(d.length<=6)return d.slice(0,3)+'-'+d.slice(3);return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6);}
 function formatPhoneInput(el){var old=el.value;var caret=el.selectionStart;var before=old.slice(0,caret).replace(/\D/g,'').length;var nv=fmt(old);el.value=nv;var pos=0,seen=0;if(before>0){for(pos=0;pos<nv.length;pos++){if(/\d/.test(nv.charAt(pos))){seen++;if(seen===before){pos++;break;}}}}el.setSelectionRange(pos,pos);}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
@@ -445,9 +565,9 @@ function applyFilters(c){
   var tf=document.getElementById('typeFilter').value;
   var sf=document.getElementById('stageFilter').value;
   var mf=document.getElementById('memberFilter').value;
-  var tf=document.getElementById('typeFilter').value;
-  var sf=document.getElementById('stageFilter').value;
-  var mf=document.getElementById('memberFilter').value;
+  var cf=(document.getElementById('countyFilter')||{}).value||'';
+  if(cf==='__none'){if(c.county)return false;}
+  else if(cf&&(c.county||'')!==cf)return false;
   if(tf&&(c.customer_type||'')!==tf)return false;
   if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
   if(mf&&(c.assigned_to||'')!==mf)return false;
@@ -517,7 +637,7 @@ function openAddModal(){
   document.getElementById('modalTitle').textContent='Add Contact';
   document.getElementById('modalDeleteBtn').style.display='none';
   document.getElementById('modalSaveBtn').textContent='Add Contact';
-  ['mFirst','mLast','mPhone','mEmail','mOrg','mNotes'].forEach(function(id){document.getElementById(id).value='';});
+  ['mFirst','mLast','mPhone','mEmail','mOrg','mNotes','mCounty'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('mType').value='';
   document.getElementById('mStage').value='';
   document.getElementById('mAssign').value='';
@@ -541,6 +661,7 @@ function openEditModal(id){
   document.getElementById('mStage').value=c.funnel_stage||'';
   document.getElementById('mAssign').value=c.assigned_to||'';
   document.getElementById('mNotes').value=c.notes||'';
+  document.getElementById('mCounty').value=c.county||'';
   document.getElementById('modalMsg').innerHTML='';
   document.getElementById('contactModal').classList.add('active');
 }
@@ -559,6 +680,7 @@ async function saveContact(){
     funnel_stage:document.getElementById('mStage').value||null,
     assigned_to:document.getElementById('mAssign').value||currentUserId||null,
     notes:document.getElementById('mNotes').value.trim()||null,
+    county:document.getElementById('mCounty').value.trim()||null,
     updated_at:new Date().toISOString()
   };
   var r;
@@ -579,6 +701,7 @@ async function deleteContact(){
 async function loadContacts(){
   var r=await sb.from('contacts').select('*').eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('last_name').order('first_name');
   allContacts=r.data||[];
+  populateCountyFilter();
   document.getElementById('statTotal').textContent=allContacts.length;
   var mine=allContacts.filter(function(c){return c.assigned_to===currentUserId;}).length;
   document.getElementById('statMine').textContent=mine;
