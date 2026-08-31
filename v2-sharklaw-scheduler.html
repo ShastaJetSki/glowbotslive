@@ -171,10 +171,12 @@
     .ask button b{display:block;font-size:13.5px;}
     .ask button span{display:block;font-size:11.5px;color:var(--text-secondary);font-weight:400;margin-top:2px;}
     .ask .cancel{text-align:center;background:transparent;color:var(--text-secondary);margin-top:4px;margin-bottom:0;}
-    .is-past{opacity:.42;}
-    .is-past:hover{opacity:.72;}
-    .cal-strip.past-strip{opacity:.42;}
-    .cal-strip.past-strip:hover{opacity:.72;}
+    /* Hover feedback works in both directions: a bright card dips, a dimmed
+       past card lifts. Either way the card under the cursor changes. */
+    .cal-strip,.mw-event,.day-ev{transition:opacity .12s ease;}
+    .cal-strip:hover,.mw-event:hover,.day-ev:hover{opacity:.78;}
+    .is-past,.cal-strip.past-strip{opacity:.42;}
+    .is-past:hover,.cal-strip.past-strip:hover{opacity:.72;}
     @keyframes calFadeIn{from{opacity:0;}to{opacity:1;}}
     .cal-fade{animation:calFadeIn .4s ease;}
     .cal-strip:hover{filter:brightness(1.15);opacity:1;}
@@ -519,7 +521,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 9 · repeats)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 10 · contrast)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group" id="repeatWrap">
@@ -1015,8 +1017,59 @@ function _lum(hex){
   var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
   return(0.299*r+0.587*g+0.114*b)/255;
 }
-function textOn(hex){return '#000';}
-function subOn(hex){return 'rgba(0,0,0,.72)';}
+/* Text colour is chosen from the background's relative luminance (WCAG),
+   not hardcoded. Previously every card got black text, so a dark member
+   colour produced black-on-dark and became unreadable.
+
+   No fixed threshold: we compute the WCAG contrast ratio of the background
+   against black and against white, and use whichever wins. A threshold
+   picked by eye gets cases like #10b981 wrong — white on it is only 2.54:1
+   (unreadable) while black is 8.28:1. */
+var _lumCache={};
+function _luminance(col){
+  if(!col)return 1;
+  if(_lumCache[col]!==undefined)return _lumCache[col];
+  var hex=String(col).trim(),m;
+  if(hex.indexOf('gradient')>=0){
+    m=hex.match(/#([0-9a-f]{3,8})/i);
+    hex=m?m[0]:'#888888';
+  }
+  if(hex[0]!=='#'){
+    m=hex.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+    if(m){hex='#'+[m[1],m[2],m[3]].map(function(v){
+      return ('0'+parseInt(v,10).toString(16)).slice(-2);}).join('');}
+    else hex='#888888';
+  }
+  var h=hex.slice(1);
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  if(h.length>6)h=h.slice(0,6);
+  var r=parseInt(h.slice(0,2),16)/255,
+      g=parseInt(h.slice(2,4),16)/255,
+      b=parseInt(h.slice(4,6),16)/255;
+  if(isNaN(r)||isNaN(g)||isNaN(b)){_lumCache[col]=1;return 1;}
+  function lin(c){return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+  var L=0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+  _lumCache[col]=L;
+  return L;
+}
+/* contrast ratio of a background luminance against black (0) or white (1) */
+function _ratio(L,other){
+  var a=Math.max(L,other)+0.05,b=Math.min(L,other)+0.05;
+  return a/b;
+}
+function isLightBg(col){
+  var L=_luminance(col);
+  return _ratio(L,0)>=_ratio(L,1);   // black wins => treat as light
+}
+function textOn(col){return isLightBg(col)?'#000':'#fff';}
+/* Secondary text is translucent, which cuts its effective contrast, so it
+   sits closer to full strength than a normal muted colour would. */
+function subOn(col){return isLightBg(col)?'rgba(0,0,0,.78)':'rgba(255,255,255,.88)';}
+/* Worst-case contrast for any background, useful when checking a palette. */
+function contrastOn(col){
+  var L=_luminance(col);
+  return Math.max(_ratio(L,0),_ratio(L,1));
+}
 function stripHTML(it,ds){
   var col=getItemColor(it);
   var handler=it._isEvent?'openEditEvent':'openEditAppt';
