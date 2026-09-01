@@ -530,7 +530,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 12 · hover)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 13 · convert)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group" id="repeatWrap">
@@ -1562,6 +1562,10 @@ function repToggle(){
       var iso=(dt.getDay()+6)%7;           // JS Sun=0 -> Mon=0
       repSelDays[DAYCODES[iso]]=1;
       document.getElementById('repMonthDay').value=DAYCODES[iso];
+      /* which occurrence of that weekday the date is: the 17th is the 3rd
+         Thursday, so default to "third" rather than guessing */
+      var nth=Math.ceil(dt.getDate()/7);
+      document.getElementById('repPos').value=String(nth>4?-1:nth);
       repBuildDays();
     }
   }
@@ -1840,10 +1844,86 @@ async function saveEvent(){
   if(tEnd)data.event_end_time=tEnd;
   try{
     if(editingEventId){
+      var repOnNow=document.getElementById('repOn').checked;
+
+      /* Turning a one-off into a repeating event. The event itself becomes
+         the first occurrence rather than being duplicated. */
+      if(!editingSeriesId&&repOnNow){
+        var newRule=repPayload();
+        if(!newRule){showToast('Pick at least one day for the repeat');return;}
+
+        var upd0=await sb.from('events').update(data).eq('event_id',editingEventId);
+        if(upd0.error)throw upd0.error;
+        await saveEventAssignees(editingEventId);
+
+        var nsr=await sb.from('event_series').insert({
+          tenant_id:tenantId,
+          freq:newRule.freq,interval_n:newRule.interval_n,byday:newRule.byday,
+          bysetpos:newRule.bysetpos,start_date:dt,until_date:newRule.until_date,
+          event_name:title,event_type:data.event_type,event_time:data.event_time,
+          event_end_time:data.event_end_time||null,location:data.location,
+          notes:data.notes,assigned_to:data.assigned_to
+        }).select('series_id').single();
+        if(nsr.error)throw nsr.error;
+        var nsid=nsr.data.series_id;
+
+        /* Link this event to the series FIRST. generate_occurrences skips
+           dates already present for the series, so tagging it now stops a
+           duplicate being created on this date. */
+        var lk=await sb.from('events')
+          .update({series_id:nsid,is_exception:false}).eq('event_id',editingEventId);
+        if(lk.error)throw lk.error;
+
+        var g=await sb.rpc('generate_occurrences',{p_series:nsid});
+        if(g.error)throw g.error;
+        var added=g.data!=null?g.data:0;
+
+        if(maSelected.length){
+          var evs=await sb.from('events').select('event_id').eq('series_id',nsid);
+          var arows=[];
+          (evs.data||[]).forEach(function(x){
+            maSelected.forEach(function(mid,i){
+              arows.push({tenant_id:tenantId,event_id:x.event_id,member_id:mid,is_owner:i===0});
+            });
+          });
+          for(var ai=0;ai<arows.length;ai+=500){
+            var au=await sb.from('event_assignees')
+              .upsert(arows.slice(ai,ai+500),{onConflict:'event_id,member_id'});
+            if(au.error){showToast('Assignees partly saved: '+au.error.message);break;}
+          }
+        }
+        showToast('Now repeating — '+added+' more date'+(added===1?'':'s')+' added');
+        closeEventModal();
+        await loadEvents();await loadEventAssignees();renderCalLayers();render();
+        return;
+      }
+
       var scope='one';
       if(editingSeriesId){
         scope=await askSeries('edit');
         if(!scope)return;                       // cancelled
+      }
+
+      /* Unticking Repeats on a series occurrence detaches it. */
+      if(editingSeriesId&&!repOnNow){
+        var u1=await sb.from('events').update(data).eq('event_id',editingEventId);
+        if(u1.error)throw u1.error;
+        await saveEventAssignees(editingEventId);
+        if(scope==='series'){
+          var cf=await sb.rpc('cancel_series_future',
+            {p_series:editingSeriesId,p_from:dt});
+          if(cf.error){showToast('Could not end the series: '+cf.error.message);return;}
+          await sb.from('events')
+            .update({series_id:null,is_deleted:false}).eq('event_id',editingEventId);
+          showToast('Series ended — this date kept as a one-off');
+        }else{
+          await sb.from('events')
+            .update({series_id:null,is_exception:true}).eq('event_id',editingEventId);
+          showToast('This date detached from the series');
+        }
+        closeEventModal();
+        await loadEvents();await loadEventAssignees();renderCalLayers();render();
+        return;
       }
 
       var r=await sb.from('events').update(data).eq('event_id',editingEventId);
