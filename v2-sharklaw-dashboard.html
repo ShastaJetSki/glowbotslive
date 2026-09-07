@@ -468,6 +468,14 @@ async function loadTodayCards(){
   if(filterMine&&currentUserId)eq2=eq2.or(orMineEvents(await myEventIds()));
   var [ar,er]=await Promise.all([aq,eq2]);
   var appts=ar.data||[],events=er.data||[];
+  /* An event can match this query on more than one condition (owner OR
+     assignee), so drop repeats of the same event_id before rendering. */
+  var _seen={};
+  events=events.filter(function(e){
+    if(!e.event_id)return true;
+    if(_seen[e.event_id])return false;
+    _seen[e.event_id]=1;return true;
+  });
   document.getElementById('todayApptsCount').textContent=appts.length;
   document.getElementById('todayEventsCount').textContent=events.length;
   var aList=document.getElementById('todayApptsList');
@@ -1003,7 +1011,9 @@ async function loadWeek(){
     var all=da.concat(de.map(function(e){return{_time:e.event_time,_name:e.event_name,_isEvt:true,assigned_to:e.assigned_to};}));
     all.sort(function(a,b){return(a.appointment_time||a._time||'').localeCompare(b.appointment_time||b._time||'');});
     var isToday2=ds===today.toISOString().split('T')[0];
-    var dayLabel=DAYS2[d.getDay()]+' '+d.getMonth()+1+'/'+d.getDate();
+    /* Brackets matter: without them getMonth() is already a string by this
+       point, so +1 appends the character "1" and September renders as 81. */
+    var dayLabel=DAYS2[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate();
     if(!all.length)return;
     html+='<div class="week-day'+(isToday2?' today-col':'')+'"><div class="week-day-hdr"><div class="week-day-label">'+dayLabel+(isToday2?' · Today':'')+'</div><div class="week-day-count">'+all.length+'</div></div><div class="week-day-items">';
     all.forEach(function(item){
