@@ -522,7 +522,7 @@ async function loadKpis(){
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
     (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
-    sb.from('swag_inventory').select('item_id',{count:'exact',head:true}).eq('tenant_id',currentTenantId).lte('quantity_on_hand',5),
+    sb.from('swag_inventory').select('item_id,quantity_on_hand,reorder_point').eq('tenant_id',currentTenantId),
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
     (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
@@ -531,7 +531,14 @@ async function loadKpis(){
   if(document.getElementById('kAppts'))document.getElementById('kAppts').textContent=ar.count??0;
   if(document.getElementById('k7Days'))document.getElementById('k7Days').textContent=a7r.count??0;
   if(document.getElementById('kTasks'))document.getElementById('kTasks').textContent=tr.count??0;
-  if(document.getElementById('kSwagLow'))document.getElementById('kSwagLow').textContent=sr.count??0;
+  /* counted from rows now, using each item's own reorder_point */
+  if(document.getElementById('kSwagLow')){
+    var lowN=(sr.data||[]).filter(function(x){
+      var t=(x.reorder_point!=null&&x.reorder_point>0)?x.reorder_point:5;
+      return (x.quantity_on_hand||0)<=t;
+    }).length;
+    document.getElementById('kSwagLow').textContent=lowN;
+  }
   if(document.getElementById('kInPipeline'))document.getElementById('kInPipeline').textContent=pipeR?.count??0;
   if(document.getElementById('kOverdue'))document.getElementById('kOverdue').textContent=or2?.count??0;
 }
@@ -894,7 +901,39 @@ async function loadMessages(){
 async function openMessage(id){var m=allMessages.find(function(x){return x.notification_id===id;});if(!m)return;await sb.from('notifications').update({is_read:true}).eq('notification_id',id);m.is_read=true;loadMessages();document.getElementById('msgDetailBody').innerHTML='<div><div style="font-size:18px;font-weight:700;margin-bottom:8px;">'+esc(m.title||'Notification')+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">'+new Date(m.created_at).toLocaleString()+'</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap;">'+esc(m.body||'No content')+'</div></div>';document.getElementById('msgDetailModal').classList.add('active');document.getElementById('msgDetailModal').style.display='flex';}
 function openComposeModal(){document.getElementById('composeTo').innerHTML='<option value="">Select recipient</option><option value="all">All Team Members</option>';allMembers.forEach(function(m){var n=((m.first_name||'')+' '+(m.last_name||'')).trim();document.getElementById('composeTo').innerHTML+='<option value="'+m.member_id+'">'+esc(n)+'</option>';});document.getElementById('composeSubject').value='';document.getElementById('composeBody').value='';document.getElementById('composeModal').classList.add('active');document.getElementById('composeModal').style.display='flex';}
 async function sendMessage(){var to=document.getElementById('composeTo').value,subj=document.getElementById('composeSubject').value.trim(),body=document.getElementById('composeBody').value.trim();if(!subj||!body||!to){showToast('Fill in all fields');return;}var now=new Date().toISOString(),inserts=[];if(to==='all'){allMembers.forEach(function(m){inserts.push({tenant_id:currentTenantId,recipient_id:m.member_id,notification_type:'message',title:subj,body:'From: '+currentUserName+'\n\n'+body,is_read:false,created_at:now});});}else{inserts.push({tenant_id:currentTenantId,recipient_id:to,notification_type:'message',title:subj,body:'From: '+currentUserName+'\n\n'+body,is_read:false,created_at:now});}inserts.push({tenant_id:currentTenantId,recipient_id:currentUserId,notification_type:'message',title:'Sent: '+subj,body:'To: '+(to==='all'?'All Team':memberName(to))+'\n\n'+body,is_read:true,created_at:now});await sb.from('notifications').insert(inserts);closeModal('composeModal');showToast('Message sent!');loadMessages();}
-async function loadSwag(){var el=document.getElementById('swagContainer');if(!el)return;var r=await sb.from('swag_inventory').select('item_id,item_name,category,quantity_on_hand').eq('tenant_id',currentTenantId).lte('quantity_on_hand',5).order('quantity_on_hand');if(!r.data||!r.data.length){el.innerHTML='<div class="empty-state">All items well-stocked &#10003;</div>';return;}el.innerHTML='<div class="swag-list">'+r.data.map(function(s){var isOut=(s.quantity_on_hand||0)===0;return'<div class="swag-item '+(isOut?'out':'low')+'"><div class="swag-info"><div class="swag-nm">'+esc(s.item_name||'Item')+'</div><div class="swag-cat">'+esc(s.category||'&#8212;')+'</div></div><div class="swag-qty"><div class="swag-qty-val">'+s.quantity_on_hand+'</div><div class="swag-qty-lbl">'+(isOut?'Out':'Low')+'</div></div></div>';}).join('')+'</div>';}
+/* swag_inventory has part_name / part_number / bin_location.
+   This queried item_name and category, neither of which exists on the table,
+   so the request 400'd and the widget rendered empty every time. The error
+   was never checked, which is why it looked like "no low stock". */
+async function loadSwag(){
+  var el=document.getElementById('swagContainer');
+  if(!el)return;
+  var r=await sb.from('swag_inventory')
+    .select('item_id,part_name,part_number,bin_location,quantity_on_hand,reorder_point')
+    .eq('tenant_id',currentTenantId)
+    .order('quantity_on_hand');
+  if(r.error){
+    console.warn('swag_inventory:',r.error.message);
+    el.innerHTML='<div class="empty-state">Could not load stock &#8212; '+esc(r.error.message)+'</div>';
+    return;
+  }
+  /* Use each item's own reorder_point when it has one, falling back to 5,
+     rather than a single hardcoded threshold for every part. */
+  var low=(r.data||[]).filter(function(s){
+    var t=(s.reorder_point!=null&&s.reorder_point>0)?s.reorder_point:5;
+    return (s.quantity_on_hand||0)<=t;
+  });
+  if(!low.length){el.innerHTML='<div class="empty-state">All items well-stocked &#10003;</div>';return;}
+  el.innerHTML='<div class="swag-list">'+low.map(function(s){
+    var isOut=(s.quantity_on_hand||0)===0;
+    var sub=[s.part_number,s.bin_location].filter(Boolean).join(' &middot; ')||'&#8212;';
+    return '<div class="swag-item '+(isOut?'out':'low')+'"><div class="swag-info">'+
+      '<div class="swag-nm">'+esc(s.part_name||'Item')+'</div>'+
+      '<div class="swag-cat">'+sub+'</div></div>'+
+      '<div class="swag-qty"><div class="swag-qty-val">'+s.quantity_on_hand+'</div>'+
+      '<div class="swag-qty-lbl">'+(isOut?'Out':'Low')+'</div></div></div>';
+  }).join('')+'</div>';
+}
 function loadTeam(){var el=document.getElementById('teamContainer');if(!allMembers.length){el.innerHTML='<div class="empty-state">No team members</div>';return;}var ORDER=['owner','admin','manager','sr_associate','associate','jr_associate'];var sorted=allMembers.slice().sort(function(a,b){return(ORDER.indexOf(a.role)<0?99:ORDER.indexOf(a.role))-(ORDER.indexOf(b.role)<0?99:ORDER.indexOf(b.role));});function rLabel(r){var m={owner:'Owner',admin:'Admin',manager:'Manager',sr_associate:'Sr. Associate',associate:'Associate',jr_associate:'Jr. Associate'};return m[r]||r||'Team';}el.innerHTML='<div class="team-list">'+sorted.map(function(m){var name=((m.first_name||'')+' '+(m.last_name||'')).trim()||m.email||'Unknown';var initials=((m.first_name||'?')[0]+((m.last_name||'')[0]||'')).toUpperCase();var color=m.color||'#6b7280';var phone=formatPhone(m.phone||'');return'<div class="emp-row"><div class="emp-av" style="background:'+color+';">'+initials+'</div><div class="emp-info"><div class="emp-nm">'+esc(name)+'</div><div class="emp-role-lbl">'+rLabel(m.role)+(m.department?' &middot; '+m.department:'')+'</div></div><div class="emp-acts">'+(phone?'<a href="tel:'+m.phone+'" class="emp-act">Call</a>':'')+(m.email?'<a href="mailto:'+m.email+'" class="emp-act">Email</a>':'')+'</div></div>';}).join('')+'</div>';}
 async function loadFollowups(){
   var el=document.getElementById('followupContainer');
