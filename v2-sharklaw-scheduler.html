@@ -530,7 +530,7 @@
             oninput="maOpen()" onfocus="maOpen()" onkeydown="maKey(event)" onblur="maBlur()">
         </div>
         <div class="ma-drop" id="emAssignDrop"></div>
-        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 13 · convert)</span></div>
+        <div class="ma-hint">The first person added owns the event. Their colour is used on the calendar. <span style="opacity:.5">(build 14 · no-dupe)</span></div>
         <select id="emAssign" style="display:none"></select>
       </div>
       <div class="form-group" id="repeatWrap">
@@ -1831,7 +1831,13 @@ async function openEditEvent(id){
 }
 function closeEventModal(){document.getElementById('eventModal').classList.remove('active');flyerUploading=false;}
 
+/* Four duplicate events in the table were created ~1 second apart: the save
+   button had no guard, so a second tap while the first insert was still in
+   flight created a second row. */
+var _savingEvent=false;
+
 async function saveEvent(){
+  if(_savingEvent)return;
   var title=document.getElementById('emName').value.trim();
   var dt=document.getElementById('emDate').value;
   if(!title||!dt){showToast('Title and date required');return;}
@@ -1842,6 +1848,16 @@ async function saveEvent(){
   var data={event_name:title,event_date:dt,event_time:document.getElementById('emTime').value||null,event_type:document.getElementById('emType').value||null,location:document.getElementById('emLocation').value.trim()||null,assigned_to:(maSelected[0]||null),notes:document.getElementById('emNotes').value.trim()||null,flyer_url:currentFlyerUrl||null};
   if(dtEnd&&dtEnd!==dt)data.event_end_date=dtEnd;
   if(tEnd)data.event_end_time=tEnd;
+
+  _savingEvent=true;
+  var _sBtn=document.querySelector('#eventModal .btn-primary');
+  var _sTxt=_sBtn?_sBtn.textContent:'';
+  if(_sBtn){_sBtn.disabled=true;_sBtn.textContent='Saving…';}
+  function _doneSaving(){
+    _savingEvent=false;
+    if(_sBtn){_sBtn.disabled=false;_sBtn.textContent=_sTxt||'Save';}
+  }
+
   try{
     if(editingEventId){
       var repOnNow=document.getElementById('repOn').checked;
@@ -1850,7 +1866,7 @@ async function saveEvent(){
          the first occurrence rather than being duplicated. */
       if(!editingSeriesId&&repOnNow){
         var newRule=repPayload();
-        if(!newRule){showToast('Pick at least one day for the repeat');return;}
+        if(!newRule){showToast('Pick at least one day for the repeat');_doneSaving();return;}
 
         var upd0=await sb.from('events').update(data).eq('event_id',editingEventId);
         if(upd0.error)throw upd0.error;
@@ -1901,7 +1917,7 @@ async function saveEvent(){
       var scope='one';
       if(editingSeriesId){
         scope=await askSeries('edit');
-        if(!scope)return;                       // cancelled
+        if(!scope){_doneSaving();return;}       // cancelled
       }
 
       /* Unticking Repeats on a series occurrence detaches it. */
@@ -1912,7 +1928,7 @@ async function saveEvent(){
         if(scope==='series'){
           var cf=await sb.rpc('cancel_series_future',
             {p_series:editingSeriesId,p_from:dt});
-          if(cf.error){showToast('Could not end the series: '+cf.error.message);return;}
+          if(cf.error){showToast('Could not end the series: '+cf.error.message);_doneSaving();return;}
           await sb.from('events')
             .update({series_id:null,is_deleted:false}).eq('event_id',editingEventId);
           showToast('Series ended — this date kept as a one-off');
@@ -1959,7 +1975,7 @@ async function saveEvent(){
 
       var rule=document.getElementById('repOn').checked?repPayload():null;
       if(document.getElementById('repOn').checked&&!rule){
-        showToast('Pick at least one day for the repeat');return;
+        showToast('Pick at least one day for the repeat');_doneSaving();return;
       }
 
       if(rule){
@@ -2005,6 +2021,8 @@ async function saveEvent(){
   }catch(e){
     showToast('Error: '+(e.message||'Could not save event'));
     console.error('saveEvent error:',e);
+  }finally{
+    _doneSaving();
   }
 }
 
