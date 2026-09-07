@@ -350,6 +350,15 @@ function isAdmin(){return['owner','admin'].includes((currentUserRole||'').toLowe
 function isManager(){return['manager','sr_associate'].includes((currentUserRole||'').toLowerCase());}
 
 function getStageIds(){return Object.keys(funnelStages).map(Number).sort(function(a,b){return a-b;});}
+async function reloadActivity(){
+  var r=await sb.from('funnel_activity')
+    .select('id,action,old_stage,new_stage,created_at')
+    .eq('contact_id',contact.contact_id)
+    .order('created_at',{ascending:false}).limit(10);
+  if(r.error){console.warn('funnel_activity read:',r.error.message);contactActivity=[];return;}
+  contactActivity=r.data||[];
+}
+
 function getStageName(id){return funnelStages[id]?funnelStages[id].name:'Stage '+id;}
 function getStageColor(id){return funnelStages[id]?funnelStages[id].color:'#9fb0c3';}
 function memberName(id){var m=allMembers.find(function(x){return x.member_id===id;});if(!m)return'Unassigned';return(nm(m.first_name)+' '+nm(m.last_name)).trim();}
@@ -408,10 +417,10 @@ function renderProfile(){
   // Activity
   var actHtml=contactActivity.length===0?'<div style="padding:14px 16px;font-size:13px;color:var(--text-secondary);font-style:italic;">No stage activity recorded</div>':
     contactActivity.slice(0,8).map(function(a){
-      var fromName=getStageName(a.from_stage);
-      var toName=getStageName(a.to_stage);
-      var toColor=getStageColor(a.to_stage);
-      return '<div class="activity-row"><div class="activity-dot" style="background:'+toColor+'"></div><div class="activity-text">Moved from <strong>'+esc(fromName)+'</strong> → <strong style="color:'+toColor+'">'+esc(toName)+'</strong></div><div class="activity-date">'+fmtDate(a.changed_at)+'</div></div>';
+      var fromName=getStageName(a.old_stage);
+      var toName=getStageName(a.new_stage);
+      var toColor=getStageColor(a.new_stage);
+      return '<div class="activity-row"><div class="activity-dot" style="background:'+toColor+'"></div><div class="activity-text">Moved from <strong>'+esc(fromName)+'</strong> → <strong style="color:'+toColor+'">'+esc(toName)+'</strong></div><div class="activity-date">'+fmtDate(a.created_at)+'</div></div>';
     }).join('');
 
   var html=
@@ -503,17 +512,24 @@ async function quickStage(stageId){
   contact.funnel_stage=stageId;
   var r=await sb.from('contacts').update({funnel_stage:stageId}).eq('contact_id',contact.contact_id);
   if(r.error){contact.funnel_stage=oldStage;showToast('Error saving stage');return;}
-  await sb.from('funnel_activity').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,from_stage:oldStage,to_stage:stageId,changed_by:currentUserId,changed_at:new Date().toISOString()}).catch(function(){});
-  // Reload activity
-  var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10).catch(function(){return{data:[]};});
-  contactActivity=ar.data||[];
+  /* Column names must match the table: action / old_stage / new_stage /
+     created_at. The old code wrote from_stage/to_stage/changed_by/changed_at,
+     none of which exist, so every insert 400'd silently and stage history
+     was never recorded. Errors are surfaced now instead of swallowed. */
+  var ai=await sb.from('funnel_activity').insert({
+    tenant_id:currentTenantId, contact_id:contact.contact_id,
+    action:'stage_change', old_stage:oldStage, new_stage:stageId
+  });
+  if(ai.error)console.warn('funnel_activity insert:',ai.error.message);
+  await reloadActivity();
   renderProfile();showToast('Stage updated');
 }
 
 /* ===== REMOVE CONTACT ===== */
 async function removeContact(){
   if(!confirm('Remove this contact from your list? It will move to your vault.'))return;
-  var r=await sb.from('contact_removals').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,member_id:currentUserId,removed_at:new Date().toISOString()});
+  /* the column is removed_by; member_id does not exist on this table */
+  var r=await sb.from('contact_removals').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,removed_by:currentUserId,removed_at:new Date().toISOString()});
   if(r.error){alert('Error: '+r.error.message);return;}
   showToast('Contact removed');
   setTimeout(function(){location.replace('v2-sharklaw-contacts.html');},1000);
@@ -668,9 +684,12 @@ async function saveEdit(){
   if(r.error){alert('Error: '+r.error.message);return;}
   Object.assign(contact,u);
   if(oldStage!==newStage){
-    await sb.from('funnel_activity').insert({tenant_id:currentTenantId,contact_id:contact.contact_id,from_stage:oldStage,to_stage:newStage,changed_by:currentUserId,changed_at:new Date().toISOString()}).catch(function(){});
-    var ar=await sb.from('funnel_activity').select('*').eq('contact_id',contact.contact_id).order('changed_at',{ascending:false}).limit(10).catch(function(){return{data:[]};});
-    contactActivity=ar.data||[];
+    var ai2=await sb.from('funnel_activity').insert({
+      tenant_id:currentTenantId, contact_id:contact.contact_id,
+      action:'stage_change', old_stage:oldStage, new_stage:newStage
+    });
+    if(ai2.error)console.warn('funnel_activity insert:',ai2.error.message);
+    await reloadActivity();
   }
   closeEdit();renderProfile();showToast('Saved!');
 }
@@ -722,10 +741,13 @@ async function init(){
     sb.from('sales_appointments').select('appointment_id,appointment_date,appointment_time,notes,assigned_to,customer_name').eq('contact_id',contactId).order('appointment_date',{ascending:false}),
     sb.from('swag_given').select('*').eq('contact_id',contactId).eq('tenant_id',TENANT).order('given_date',{ascending:false}),
     Promise.resolve({data:[]})
-  ]); // funnel_activity disabled - no RLS policy
+  ]); // funnel_activity is read separately below
   contactAppts=apptR.data||[];
   contactSwag=swagR.data||[];
   contactActivity=[];
+  /* Was disabled with a note blaming RLS. The table has two working
+     policies — the real fault was the column names, now fixed. */
+  reloadActivity().then(function(){renderProfile();});
 
   renderProfile();
 }
