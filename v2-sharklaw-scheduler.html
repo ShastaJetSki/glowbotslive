@@ -805,21 +805,35 @@ async function loadContacts(){
   allContacts=r.data||[];
 }
 function _todayISO(){return dateStr(new Date());}
+/* Supabase caps a select at 1000 rows. Page through in sorted order so
+   nothing is silently cut off (new events were dropping past row 1000). */
+async function _fetchAll(makeQuery,orderCol,idCol){
+  var all=[],page=0,size=1000;
+  while(page<200){
+    var r=await makeQuery().order(orderCol,{ascending:true}).order(idCol,{ascending:true}).range(page*size,(page+1)*size-1);
+    if(r.error)return {data:null,error:r.error};
+    var rows=r.data||[];all=all.concat(rows);
+    if(rows.length<size)break;page++;
+  }
+  return {data:all,error:null};
+}
 function _mergeRows(target,rows,idKey){var seen={};target.forEach(function(x){seen[x[idKey]]=true;});rows.forEach(function(r){if(!seen[r[idKey]])target.push(r);});}
 async function loadAppointments(scope){
   function base(){var q=sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
     if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate'){q=q.eq('assigned_to',userId);}return q;}
-  var q=base();
-  if(scope==='current')q=q.gte('appointment_date',_todayISO());
-  else if(scope==='past')q=q.gte('appointment_date',_historyCutoffISO()).lt('appointment_date',_todayISO());
-  var r=await q;
-  if(r.error&&scope){ if(scope==='current'){r=await base();allAppointments=r.data||[];} return; }
+  if(!scope){await loadAppointments('current');await loadAppointments('past');return;}
+  function scoped(){var q=base();
+    if(scope==='current')q=q.gte('appointment_date',_todayISO());
+    else q=q.gte('appointment_date',_historyCutoffISO()).lt('appointment_date',_todayISO());
+    return q;}
+  var r=await _fetchAll(scoped,'appointment_date','appointment_id');
+  if(r.error){ console.warn('appointments load:',r.error.message); if(scope==='current'){r=await _fetchAll(base,'appointment_date','appointment_id');allAppointments=r.data||[];} return; }
   var rows=r.data||[];
   if(scope==='past')_mergeRows(allAppointments,rows,'appointment_id'); else allAppointments=rows;
 }
 /* Anything older than this lives in events_archive and is deliberately not
    loaded — it's what keeps the calendar fast. Use the history search to
-   reach older events. Keep in step with archive_old_events(90). */
+   reach older events. Keep in step with the archive job's window. */
 var HISTORY_DAYS=180;
 function _historyCutoffISO(){
   var d=new Date();d.setDate(d.getDate()-HISTORY_DAYS);
@@ -828,11 +842,14 @@ function _historyCutoffISO(){
 
 async function loadEvents(scope){
   function base(){return sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');}
-  var q=base();
-  if(scope==='current')q=q.gte('event_date',_todayISO());
-  else if(scope==='past')q=q.gte('event_date',_historyCutoffISO()).lt('event_date',_todayISO());
-  var r=await q;
-  if(r.error&&scope){ if(scope==='current'){r=await base();allEvents=r.data||[];} return; }
+  /* a full reload = today-forward + the history window, both paged */
+  if(!scope){await loadEvents('current');await loadEvents('past');return;}
+  function scoped(){var q=base();
+    if(scope==='current')q=q.gte('event_date',_todayISO());
+    else q=q.gte('event_date',_historyCutoffISO()).lt('event_date',_todayISO());
+    return q;}
+  var r=await _fetchAll(scoped,'event_date','event_id');
+  if(r.error){ console.warn('events load:',r.error.message); if(scope==='current'){r=await _fetchAll(base,'event_date','event_id');allEvents=r.data||[];} return; }
   var rows=r.data||[];
   if(scope==='past')_mergeRows(allEvents,rows,'event_id'); else allEvents=rows;
 }
