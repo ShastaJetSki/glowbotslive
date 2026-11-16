@@ -818,40 +818,106 @@ async function _fetchAll(makeQuery,orderCol,idCol){
   return {data:all,error:null};
 }
 function _mergeRows(target,rows,idKey){var seen={};target.forEach(function(x){seen[x[idKey]]=true;});rows.forEach(function(r){if(!seen[r[idKey]])target.push(r);});}
-async function loadAppointments(scope){
-  function base(){var q=sb.from('sales_appointments').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');
-    if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate'){q=q.eq('assigned_to',userId);}return q;}
-  if(!scope){await loadAppointments('current');await loadAppointments('past');return;}
-  function scoped(){var q=base();
-    if(scope==='current')q=q.gte('appointment_date',_todayISO());
-    else q=q.gte('appointment_date',_historyCutoffISO()).lt('appointment_date',_todayISO());
-    return q;}
-  var r=await _fetchAll(scoped,'appointment_date','appointment_id');
-  if(r.error){ console.warn('appointments load:',r.error.message); if(scope==='current'){r=await _fetchAll(base,'appointment_date','appointment_id');allAppointments=r.data||[];} return; }
-  var rows=r.data||[];
-  if(scope==='past')_mergeRows(allAppointments,rows,'appointment_id'); else allAppointments=rows;
-}
-/* Anything older than this lives in events_archive and is deliberately not
-   loaded — it's what keeps the calendar fast. Use the history search to
-   reach older events. Keep in step with the archive job's window. */
-var HISTORY_DAYS=180;
-function _historyCutoffISO(){
-  var d=new Date();d.setDate(d.getDate()-HISTORY_DAYS);
-  return d.toISOString().slice(0,10);
+/* ── Date-window loading ─────────────────────────────────────────────
+   The calendar only holds the dates around what's on screen, so page speed
+   stays the same no matter how many events the tenant builds up.
+     • First paint: 2 weeks back → 2 months ahead (one small request each).
+     • Background:  widens to HISTORY_DAYS back → FUTURE_DAYS ahead.
+     • Navigating outside the window fetches just the missing dates.
+     • A save reloads only the current window.
+   Older events live in events_archive (see the Archive page). */
+var HISTORY_DAYS=180, FUTURE_DAYS=365, FIRST_BACK=14, FIRST_AHEAD=60;
+var _win={from:null,to:null}, _winQueue=Promise.resolve();
+var _noEndCol={};          // tables that turned out to have no end-date column
+var _assigneesEmbedded=false, _ensureBusy=false;
+function _isoShift(iso,n){var d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return dateStr(d);}
+function _historyCutoffISO(){return _isoShift(_todayISO(),-HISTORY_DAYS);}
+function _queue(fn){var p=_winQueue.then(fn,fn);_winQueue=p.catch(function(){});return p;}
+
+var _SRC={
+  events:{table:'events',date:'event_date',end:'event_end_date',id:'event_id',
+    scope:function(q){return q;}},
+  appts:{table:'sales_appointments',date:'appointment_date',end:'appointment_end_date',id:'appointment_id',
+    scope:function(q){if(!isAdminOrOwner()&&userRole!=='manager'&&userRole!=='sr_associate')q=q.eq('assigned_to',userId);return q;}}
+};
+
+/* One date range from one table, paged. Multi-day items that start before
+   the range but run into it are included. */
+async function _fetchRange(key,from,to){
+  var c=_SRC[key];
+  function q(sel,useEnd){
+    var x=sb.from(c.table).select(sel).eq('tenant_id',tenantId).not('is_deleted','is',true).lte(c.date,to);
+    x=useEnd?x.or(c.date+'.gte.'+from+','+c.end+'.gte.'+from):x.gte(c.date,from);
+    return c.scope(x);
+  }
+  var useEnd=!_noEndCol[key];
+  if(key==='events'){
+    // Try to bring assignees back in the same request (needs the FK); fall back if not.
+    var r=await _fetchAll(function(){return q('*,event_assignees(member_id,is_owner)',useEnd);},c.date,c.id);
+    if(!r.error){
+      _assigneesEmbedded=true;
+      r.data.forEach(function(e){
+        var list=[];(e.event_assignees||[]).forEach(function(a){if(a.is_owner)list.unshift(a.member_id);else list.push(a.member_id);});
+        eventAssignees[e.event_id]=list;delete e.event_assignees;
+      });
+      return r.data;
+    }
+    _assigneesEmbedded=false;
+  }
+  var r2=await _fetchAll(function(){return q('*',useEnd);},c.date,c.id);
+  if(r2.error&&useEnd){_noEndCol[key]=true;r2=await _fetchAll(function(){return q('*',false);},c.date,c.id);}
+  if(r2.error){console.warn(c.table+' load:',r2.error.message);return null;}
+  if(key==='events')await _loadAssigneesFor(r2.data.map(function(e){return e.event_id;}));
+  return r2.data;
 }
 
+/* Fetch [from,to] for both tables. replace=true swaps the lists out (after a
+   save); otherwise new rows are merged in. */
+async function _loadWindow(from,to,replace){
+  var res=await Promise.all([_fetchRange('events',from,to),_fetchRange('appts',from,to)]);
+  if(res[0]){if(replace)allEvents=res[0];else _mergeRows(allEvents,res[0],'event_id');}
+  if(res[1]){if(replace)allAppointments=res[1];else _mergeRows(allAppointments,res[1],'appointment_id');}
+  _itemIndex=null;
+  return !!(res[0]&&res[1]);
+}
+
+/* Grow the window to cover [from,to], fetching only the missing ends. */
+function _extendWindow(from,to){
+  return _queue(async function(){
+    if(!_win.from){var ok=await _loadWindow(from,to,true);if(ok)_win={from:from,to:to};return;}
+    var jobs=[];
+    if(from<_win.from)jobs.push(_loadWindow(from,_isoShift(_win.from,-1),false));
+    if(to>_win.to)jobs.push(_loadWindow(_isoShift(_win.to,1),to,false));
+    if(!jobs.length)return;
+    await Promise.all(jobs);
+    if(from<_win.from)_win.from=from;
+    if(to>_win.to)_win.to=to;
+  });
+}
+
+/* Called from render(): if the dates on screen aren't loaded yet, fetch them
+   (with a 2-month cushion) and repaint when they arrive. */
+function _ensureVisibleLoaded(){
+  if(!_win.from||!tenantId)return;
+  var v=dateStr(viewDate),from=_isoShift(v,-45),to=_isoShift(v,45);
+  if(from>=_win.from&&to<=_win.to)return;
+  if(_ensureBusy)return;_ensureBusy=true;   // one fetch at a time; render() re-checks after
+  _extendWindow(from<_win.from?_isoShift(v,-105):_win.from, to>_win.to?_isoShift(v,105):_win.to)
+    .then(function(){_ensureBusy=false;render();renderMiniCal();renderCalLayers();},function(){_ensureBusy=false;});
+}
+
+/* Kept for existing callers:
+     ('current') first paint · ('past') background widen · () reload after a save */
 async function loadEvents(scope){
-  function base(){return sb.from('events').select('*').eq('tenant_id',tenantId).or('is_deleted.is.null,is_deleted.eq.false');}
-  /* a full reload = today-forward + the history window, both paged */
-  if(!scope){await loadEvents('current');await loadEvents('past');return;}
-  function scoped(){var q=base();
-    if(scope==='current')q=q.gte('event_date',_todayISO());
-    else q=q.gte('event_date',_historyCutoffISO()).lt('event_date',_todayISO());
-    return q;}
-  var r=await _fetchAll(scoped,'event_date','event_id');
-  if(r.error){ console.warn('events load:',r.error.message); if(scope==='current'){r=await _fetchAll(base,'event_date','event_id');allEvents=r.data||[];} return; }
-  var rows=r.data||[];
-  if(scope==='past')_mergeRows(allEvents,rows,'event_id'); else allEvents=rows;
+  var t=_todayISO();
+  if(scope==='current')return _extendWindow(_isoShift(t,-FIRST_BACK),_isoShift(t,FIRST_AHEAD));
+  if(scope==='past')return _extendWindow(_isoShift(t,-HISTORY_DAYS),_isoShift(t,FUTURE_DAYS));
+  return _queue(function(){return _win.from?_loadWindow(_win.from,_win.to,true):null;});
+}
+/* Events and appointments now load together, so these just share the work. */
+async function loadAppointments(scope){
+  if(scope==='current'||scope==='past')return;      // loadEvents(scope) covers both
+  return loadEvents();
 }
 async function loadUserThemeBank(){/* themes simplified to light/dark */}
 
@@ -1022,6 +1088,7 @@ function setDefaultView(){
 }
 
 function render(){
+  _ensureVisibleLoaded();
   var title='';
   if(currentView==='month'){title=MONTHS[viewDate.getMonth()]+' '+viewDate.getFullYear();renderMonth();}
   else if(currentView==='week'){var ws=getWeekStart(viewDate),we=new Date(ws);we.setDate(we.getDate()+6);var sm=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];title=sm[ws.getMonth()]+' '+ws.getDate()+' – '+sm[we.getMonth()]+' '+we.getDate()+', '+we.getFullYear();renderWeek();}
@@ -1432,25 +1499,24 @@ var maIdx=-1, maList=[];
    the end of the table looked single-assignee on the calendar while the
    modal (which re-reads one event) showed everyone. Page through instead. */
 async function loadEventAssignees(){
-  var map={},page=0,size=1000;
-  while(page<50){
-    var r=await sb.from('event_assignees')
-      .select('event_id,member_id,is_owner')
-      .eq('tenant_id',tenantId)
-      .order('event_id')
-      .range(page*size,(page+1)*size-1);
-    if(r.error){console.warn('event_assignees:',r.error.message);break;}
-    var rows=r.data||[];
-    rows.forEach(function(row){
-      if(!map[row.event_id])map[row.event_id]=[];
-      if(row.is_owner)map[row.event_id].unshift(row.member_id);
-      else map[row.event_id].push(row.member_id);
-    });
-    if(rows.length<size)break;
-    page++;
-  }
-  eventAssignees=map;
+  // Assignees now load together with the events (see _fetchRange), so the
+  // loadEvents() call before this has already refreshed them.
   _itemIndex=null;   // counts changed, so the render index must be rebuilt
+}
+/* Fallback: assignees for just these events, 100 ids per request, in parallel. */
+async function _loadAssigneesFor(ids){
+  var chunks=[];for(var i=0;i<ids.length;i+=100)chunks.push(ids.slice(i,i+100));
+  var res=await Promise.all(chunks.map(function(ch){
+    return sb.from('event_assignees').select('event_id,member_id,is_owner').eq('tenant_id',tenantId).in('event_id',ch);
+  }));
+  ids.forEach(function(id){eventAssignees[id]=[];});
+  res.forEach(function(r){
+    if(r.error){console.warn('event_assignees:',r.error.message);return;}
+    (r.data||[]).forEach(function(row){
+      var l=eventAssignees[row.event_id]||(eventAssignees[row.event_id]=[]);
+      if(row.is_owner)l.unshift(row.member_id);else l.push(row.member_id);
+    });
+  });
 }
 
 /* Everyone on an event. Falls back to assigned_to for rows that predate
@@ -2361,15 +2427,14 @@ async function init(){
   }
   setView(currentView);renderMiniCal();
   // Instant load: today + future only, so the calendar fills immediately.
-  await Promise.all([loadMembers(),loadAppointments('current'),loadEvents('current')]);
-  await loadEventAssignees();
+  await Promise.all([loadMembers(),loadEvents('current')]);
   _itemIndex=null;
   maybeShowMineAll();
   setView(currentView);renderMiniCal();renderCalLayers();renderMemberFilters();_fadeCal();
   // Contacts are only needed for the appointment contact picker — load in background so they don't gate the calendar paint.
   loadContacts();
   // Lazy-load past items in the background, then merge in and repaint (they render dimmed).
-  Promise.all([loadAppointments('past'),loadEvents('past')]).then(function(){_itemIndex=null;render();renderMiniCal();_fadeCal();}).catch(function(){});
+  loadEvents('past').then(function(){_itemIndex=null;render();renderMiniCal();_fadeCal();}).catch(function(){});
 }
 init();
 </script>
