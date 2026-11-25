@@ -121,6 +121,9 @@
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indpd2Jtdm1ncnV0amZibnFoZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjY4NzQsImV4cCI6MjA5MDI0Mjg3NH0.puEaHAJijQPSi1ziuYsqTRZnSAALK0tpH1myrLz7dYk';
   var TENANT='55555555-5555-5555-5555-555555555555';
   var DASHBOARD='v2-sharklaw-dashboard.html';
+  var OVERVIEW='v4-sharklaw-overview.html';
+  /* owners, admins and managers open on the Overview; everyone else on the Dashboard */
+  function homeFor(role){return ['owner','admin','manager'].indexOf(String(role||'').toLowerCase())>=0?OVERVIEW:DASHBOARD;}
   var sb=window.supabase.createClient(SB_URL,SB_KEY);
 
   var emailEl=document.getElementById('email');
@@ -254,7 +257,7 @@
     }
     try{
       var r=await sb.from('team_members')
-        .select('member_id,is_active,first_name')
+        .select('member_id,is_active,first_name,role')
         .eq('email',email)
         .eq('tenant_id',TENANT)
         .maybeSingle();
@@ -274,8 +277,8 @@
         btn.disabled=false;btn.textContent='Sign In';
         return;
       }
-      // Valid SharkLaw team member — go to dashboard
-      location.replace(DASHBOARD);
+      // Valid SharkLaw team member — go to their home page
+      location.replace(homeFor(r.data.role));
     }catch(e){
       // Network error during team check — do NOT redirect, show error
       await sb.auth.signOut();
@@ -298,12 +301,12 @@
         var email=(r.data.session.user&&r.data.session.user.email||'').toLowerCase().trim();
         if(email){
           var chk=await sb.from('team_members')
-            .select('is_active')
+            .select('is_active,role')
             .eq('email',email)
             .eq('tenant_id',TENANT)
             .maybeSingle();
           if(chk.data&&chk.data.is_active!==false){
-            location.replace(DASHBOARD);
+            location.replace(homeFor(chk.data.role));
             return;
           }
           // Session exists but not a valid SharkLaw member — clear it silently
@@ -320,12 +323,12 @@
           var email2=(sr.data.session.user&&sr.data.session.user.email||'').toLowerCase().trim();
           if(email2){
             var chk2=await sb.from('team_members')
-              .select('is_active')
+              .select('is_active,role')
               .eq('email',email2)
               .eq('tenant_id',TENANT)
               .maybeSingle();
             if(chk2.data&&chk2.data.is_active!==false){
-              location.replace(DASHBOARD);
+              location.replace(homeFor(chk2.data.role));
               return;
             }
           }
