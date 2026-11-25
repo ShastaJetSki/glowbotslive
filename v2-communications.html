@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Shark Law — Communications</title>
-<script>(function(){var t=localStorage.getItem('app-theme')||'dark-blue';document.documentElement.setAttribute('data-theme',t);})();</script>
+<script>(function(){var t=localStorage.getItem('app-theme')==='light'?'blue-light':'dark-blue';document.documentElement.setAttribute('data-theme',t);})();</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--bg-primary:#0b0f14;--bg-secondary:#0f1621;--bg-card:#1a2535;--bg-hover:#223044;--border-default:#223044;--text-primary:#e8eef6;--text-secondary:#9fb0c3;--accent-primary:#3b82f6;--accent-light:#60a5fa;}
@@ -269,6 +269,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans
     <a href="v2-sharklaw-pipeline.html" class="nav-link">Pipeline</a>
     <a href="v2-sharklaw-swag.html" class="nav-link">Swag</a>
     <a href="v2-communications.html" class="nav-link active">Comms</a>
+    <a href="v2-sharklaw-leads.html" class="nav-link">Leads</a>
     <a href="v2-sharklaw-settings.html" class="nav-link">Settings</a>
   </div>
 </div>
@@ -370,9 +371,9 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans
 
 <!-- MOBILE BOTTOM NAV -->
 <div class="mobile-bottom-nav">
-  <div class="mob-row">
+  <div class="mob-row" style="grid-template-columns:1fr 1fr 1fr;">
     <a href="v2-sharklaw-dashboard.html" class="mob-btn">Dashboard</a>
-    <a href="v2-sharklaw-scheduler.html" class="mob-btn">Scheduler</a>
+    <a href="v2-sharklaw-scheduler.html" class="mob-btn">Scheduler</a><a href="v2-sharklaw-leads.html" class="mob-btn">Leads</a>
   </div>
   <div class="mob-row three">
     <a href="v2-sharklaw-contacts.html" class="mob-btn">Contacts</a>
@@ -429,10 +430,9 @@ CREATE INDEX IF NOT EXISTS idx_comm_sent_at  ON communications(sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comm_channel  ON communications(channel);
 CREATE INDEX IF NOT EXISTS idx_comm_read_at  ON communications(read_at);
 
--- Row Level Security
+-- Row Level Security: see sql/01-security-and-history-fixes.sql
+-- (members of the signed-in user's tenant only; never the anon key)
 ALTER TABLE communications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "tenant_isolation" ON communications
-  USING (tenant_id = '55555555-5555-5555-5555-555555555555');
 
 -- ========================================
 -- INTEGRATION SETTINGS TABLE
@@ -447,7 +447,10 @@ CREATE TABLE IF NOT EXISTS integration_settings (
   twilio_from   TEXT,
   created_at    TIMESTAMPTZ DEFAULT now(),
   updated_at    TIMESTAMPTZ DEFAULT now()
-);`;
+);
+-- Holds API secrets: RLS on, no policies, so only server code can read it.
+ALTER TABLE integration_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON integration_settings FROM anon, authenticated;`;
 
 function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function showToast(m,d){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},d||2500);}
@@ -469,12 +472,26 @@ async function checkAuth(){
 async function logout(){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');}
 
 // ── LOAD DATA ──
+/* Supabase returns at most 1,000 rows per request. Page through so
+   lists and counts aren't silently cut off. build() must return a fresh query. */
+async function fetchAll(build){
+  var out=[],size=1000;
+  for(var page=0;page<50;page++){
+    var r=await build().range(page*size,(page+1)*size-1);
+    if(r.error){console.warn('fetchAll:',r.error.message);return{data:out,error:r.error};}
+    var rows=r.data||[];out=out.concat(rows);
+    if(rows.length<size)break;
+  }
+  return{data:out,error:null};
+}
+
+
 async function loadMembers(){
   var r=await sb.from('team_members').select('member_id,first_name,last_name,color,role').eq('tenant_id',TENANT_ID).eq('is_active',true);
   allMembers=r.data||[];
 }
 async function loadContacts(){
-  var r=await sb.from('contacts').select('contact_id,first_name,last_name,organization_name,phone,email,customer_type,assigned_to').eq('tenant_id',TENANT_ID).or('is_deleted.is.null,is_deleted.eq.false').order('first_name');
+  var r=await fetchAll(function(){return sb.from('contacts').select('contact_id,first_name,last_name,organization_name,phone,email,customer_type,assigned_to').eq('tenant_id',TENANT_ID).or('is_deleted.is.null,is_deleted.eq.false').order('first_name').order('contact_id');});
   allContacts=r.data||[];
 }
 async function checkTable(){
@@ -487,7 +504,7 @@ async function checkTable(){
 }
 async function loadComms(){
   if(!tableExists)return;
-  var r=await sb.from('communications').select('*').eq('tenant_id',TENANT_ID).eq('is_deleted',false).order('sent_at',{ascending:false}).limit(2000);
+  var r=await fetchAll(function(){return sb.from('communications').select('*').eq('tenant_id',TENANT_ID).eq('is_deleted',false).order('sent_at',{ascending:false}).order('comm_id');});
   allComms=r.data||[];
 }
 
@@ -580,7 +597,7 @@ function renderThread(c){
   // Header
   h+='<div class="tp-header">';
   h+='<div class="tp-avatar" style="background:'+col+'">'+contactInitials(c)+'</div>';
-  h+='<div class="tp-info"><div class="tp-name">'+esc(name)+'</div><div class="tp-sub">'+(c.phone?formatPhone(c.phone):'')+(c.phone&&c.email?' · ':'')+(c.email?c.email:'')+'</div></div>';
+  h+='<div class="tp-info"><div class="tp-name">'+esc(name)+'</div><div class="tp-sub">'+(c.phone?formatPhone(c.phone):'')+(c.phone&&c.email?' · ':'')+(c.email?esc(c.email):'')+'</div></div>';
   h+='<div class="tp-actions">';
   h+='<button class="tp-action-btn email" onclick="openCompose(\'email\')">✉ Email</button>';
   h+='<button class="tp-action-btn sms" onclick="openCompose(\'sms\')">💬 SMS</button>';
@@ -740,10 +757,12 @@ function copySql(){navigator.clipboard.writeText(SETUP_SQL).then(function(){show
 async function init(){
   var s=await checkAuth();if(!s)return;
   var email=s.user?.email;userEmail=email;
-  if(email){
-    var r=await sb.from('team_members').select('member_id,first_name,last_name,role').eq('email',email).eq('tenant_id',TENANT_ID).maybeSingle();
-    if(r.data){currentUserId=r.data.member_id;currentUserRole=r.data.role;currentUserName=((r.data.first_name||'')+' '+(r.data.last_name||'')).trim();}
-  }
+  var authId=s.user?.id,row=null;
+  if(authId){var r1=await sb.from('team_members').select('member_id,first_name,last_name,role,is_active').eq('auth_user_id',authId).eq('tenant_id',TENANT_ID).maybeSingle();if(r1.data)row=r1.data;}
+  if(!row&&email){var r2=await sb.from('team_members').select('member_id,first_name,last_name,role,is_active').eq('email',email).eq('tenant_id',TENANT_ID).maybeSingle();if(r2.data)row=r2.data;}
+  if(!row){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');return;}
+  if(row.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html?reason=deactivated');return;}
+  currentUserId=row.member_id;currentUserRole=row.role;currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName||email||'';
   await Promise.all([loadMembers(),loadContacts(),checkTable()]);
   await loadComms();
