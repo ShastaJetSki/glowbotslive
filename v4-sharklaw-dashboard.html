@@ -178,6 +178,12 @@
     .lead-row .nm{flex:1;min-width:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .lead-row .st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:4px;flex-shrink:0;}
     .lead-row .dt{font-size:11px;color:var(--text-secondary);flex-shrink:0;}
+    .kpi-group-label{display:none;}
+    .kpi-sub{font-size:11px;color:var(--text-secondary);margin-top:2px;white-space:nowrap;}
+    .kpi-sub .up{color:#16a34a;font-weight:700;} .kpi-sub .down{color:#dc2626;font-weight:700;}
+    html[data-style="v4"] .kpi-group-label{display:block;grid-column:1/-1;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-secondary);margin:6px 2px -2px;}
+    html[data-style="v4"] .kpi-sub{font-size:12px;}
+    html[data-style="v4"] .kpi-sub .up{color:var(--v4-ok);} html[data-style="v4"] .kpi-sub .down{color:var(--v4-danger);}
     .empty-state{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px;background:var(--bg-card);border:1px solid var(--border-default);border-radius:10px;}
     .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:flex-end;justify-content:center;padding:0;}
     .modal-overlay.active{display:flex;}
@@ -566,14 +572,22 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
   </div>
 </div>
 <div class="kpi-bar">
-  <div class="kpi-pill"><div class="kpi-val" id="kTotal">&#8212;</div><div class="kpi-lbl">Total Contacts</div></div>
-  <div class="kpi-pill"><div class="kpi-val" id="kMine">&#8212;</div><div class="kpi-lbl" id="kMineLabel">My Contacts</div></div>
+  <div class="kpi-group-label">Today &amp; to-do</div>
   <div class="kpi-pill"><div class="kpi-val" id="kAppts">&#8212;</div><div class="kpi-lbl">Today's Appts</div></div>
+  <div class="kpi-pill"><div class="kpi-val" id="k7Days">&#8212;</div><div class="kpi-lbl">Appts Next 7 Days</div></div>
   <div class="kpi-pill"><div class="kpi-val" id="kTasks">&#8212;</div><div class="kpi-lbl">Open Tasks</div></div>
-  <div class="kpi-pill"><div class="kpi-val" id="k7Days">&#8212;</div><div class="kpi-lbl">Next 7 Days</div></div>
   <div class="kpi-pill" data-v4-alert="hot"><div class="kpi-val" id="kOverdue">&#8212;</div><div class="kpi-lbl">Overdue Tasks</div></div>
   <div class="kpi-pill" data-v4-alert="warm"><div class="kpi-val" id="kFollow">&#8212;</div><div class="kpi-lbl">Follow-ups Due</div></div>
   <div class="kpi-pill" onclick="location.href='v4-sharklaw-leads.html'" style="cursor:pointer;"><div class="kpi-val" id="kLeadsOpen">&#8212;</div><div class="kpi-lbl" id="kLeadsLbl">My Open Leads</div></div>
+  <div class="kpi-group-label">Your track record</div>
+  <div class="kpi-pill" title="Every event on record, including archived ones"><div class="kpi-val" id="kEvTotal">&#8212;</div><div class="kpi-lbl">Total Events</div><div class="kpi-sub" id="kEvSub"></div></div>
+  <div class="kpi-pill" title="Every appointment on record"><div class="kpi-val" id="kApTotal">&#8212;</div><div class="kpi-lbl">Total Appts</div><div class="kpi-sub" id="kApSub"></div></div>
+  <div class="kpi-pill"><div class="kpi-val" id="kMine">&#8212;</div><div class="kpi-lbl" id="kMineLabel">My Contacts</div></div>
+  <div class="kpi-pill" title="Contacts added this month"><div class="kpi-val" id="kNewC">&#8212;</div><div class="kpi-lbl">New Contacts This Month</div><div class="kpi-sub" id="kNewSub"></div></div>
+  <div class="kpi-pill" title="Contacts moved to a new stage or marked contacted in the last 7 days"><div class="kpi-val" id="kTouched">&#8212;</div><div class="kpi-lbl">Contacted Last 7 Days</div><div class="kpi-sub" id="kTouchSub"></div></div>
+  <div class="kpi-pill" title="Contacts at Confirmed Partnership"><div class="kpi-val" id="kPartners">&#8212;</div><div class="kpi-lbl">Partners</div></div>
+  <div class="kpi-pill" onclick="location.href='v4-sharklaw-leads.html'" style="cursor:pointer;" title="Leads signed this month"><div class="kpi-val" id="kSigned">&#8212;</div><div class="kpi-lbl">Leads Signed This Month</div><div class="kpi-sub" id="kSignedSub"></div></div>
+</div>
 </div>
 <div class="greeting-bar" id="pageWrap" style="display:none;">
   <div class="greeting-time" id="greetTime"></div>
@@ -872,7 +886,44 @@ async function loadTodayCards(){
     +'</div>';
   }).join(''):'<div class="today-card-empty">No events today</div>';
 }
+/* Track-record KPIs: totals plus this-month progress and trends, to show momentum */
+function kSet(id,v){var e=document.getElementById(id);if(e)e.textContent=(v===null||v===undefined)?'—':Number(v).toLocaleString();}
+function kTrend(a,b,txt){if(a==null||b==null)return'';var d=a-b;return(d>0?'<span class="up">▲ '+d+'</span>':d<0?'<span class="down">▼ '+Math.abs(d)+'</span>':'<span>no change</span>')+' '+txt;}
+async function loadMotivation(){
+  var mine=(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''));
+  var now=new Date(),mStart=new Date(now.getFullYear(),now.getMonth(),1),lmStart=new Date(now.getFullYear(),now.getMonth()-1,1);
+  var mStartD=ymd(mStart),mEndD=ymd(new Date(now.getFullYear(),now.getMonth()+1,0));
+  var d7=new Date(Date.now()-7*864e5).toISOString(),d14=new Date(Date.now()-14*864e5).toISOString();
+  function cnt(t){return sb.from(t).select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId);}
+  function own(q,col){return mine?q.eq(col||'assigned_to',currentUserId):q;}
+  function live(q){return q.or('is_deleted.is.null,is_deleted.eq.false');}
+  var R=await Promise.all([
+    mine?cnt('event_assignees').eq('member_id',currentUserId):cnt('events'),
+    mine?cnt('event_assignees_archive').eq('member_id',currentUserId):cnt('events_archive'),
+    mine?cnt('events').eq('assigned_to',currentUserId):Promise.resolve({count:0}),
+    sb.from('events').select('event_id,assigned_to').eq('tenant_id',currentTenantId).gte('event_date',mStartD).lte('event_date',mEndD),
+    own(cnt('sales_appointments')),
+    own(cnt('sales_appointments')).gte('appointment_date',mStartD).lte('appointment_date',mEndD),
+    own(live(cnt('contacts'))).gte('created_at',mStart.toISOString()),
+    own(live(cnt('contacts'))).gte('created_at',lmStart.toISOString()).lt('created_at',mStart.toISOString()),
+    own(live(cnt('contacts'))).gte('last_activity_at',d7),
+    own(live(cnt('contacts'))).gte('last_activity_at',d14).lt('last_activity_at',d7),
+    own(live(cnt('contacts'))).eq('funnel_stage',6),
+    own(cnt('leads').eq('stage','signed').gte('signed_at',mStart.toISOString()),'submitted_by'),
+    own(cnt('leads').eq('stage','signed'),'submitted_by')
+  ].map(function(q){return Promise.resolve(q).catch(function(e){return{error:e,count:null};});}));
+  function c(i){return R[i]&&!R[i].error?(R[i].count||0):null;}
+  var evAll=c(0)==null?null:Math.max(c(0),c(2)||0)+(c(1)||0);
+  var evMonth=R[3]&&!R[3].error?(mine?(await keepMine(R[3].data||[])).length:(R[3].data||[]).length):null;
+  kSet('kEvTotal',evAll);document.getElementById('kEvSub').textContent=evMonth==null?'':evMonth+' this month';
+  kSet('kApTotal',c(4));document.getElementById('kApSub').textContent=c(5)==null?'':c(5)+' this month';
+  kSet('kNewC',c(6));document.getElementById('kNewSub').innerHTML=kTrend(c(6),c(7),'vs last month');
+  kSet('kTouched',c(8));document.getElementById('kTouchSub').innerHTML=kTrend(c(8),c(9),'vs prior week');
+  kSet('kPartners',c(10));
+  kSet('kSigned',c(11));document.getElementById('kSignedSub').textContent=c(12)==null?'':c(12)+' signed all time';
+}
 async function loadKpis(){
+  loadMotivation().catch(function(e){console.warn('kpis:',e);});
   var todayStr=ymd(new Date());
   var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=ymd(next7);
   var [cr,mr,ar,a7r,tr,sr,pipeR,or2]=await Promise.all([
