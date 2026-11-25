@@ -128,9 +128,11 @@ async function init(){
   (m.data||[]).forEach(function(x){members[x.member_id]=x;});
 
   // only owners and admins may pull an event back into the calendar
-  var me=await sb.from('team_members').select('role').eq('auth_user_id',s.user.id).maybeSingle();
-  if(!me.data)me=await sb.from('team_members').select('role').eq('email',s.user.email).maybeSingle();
-  canRestore=me.data&&['owner','admin'].indexOf(me.data.role)>=0;
+  var me=await sb.from('team_members').select('role,is_active').eq('auth_user_id',s.user.id).eq('tenant_id',TENANT).maybeSingle();
+  if(!me.data)me=await sb.from('team_members').select('role,is_active').eq('email',s.user.email).eq('tenant_id',TENANT).maybeSingle();
+  if(!me.data){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html');return;}
+  if(me.data.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v2-login.html?reason=deactivated');return;}
+  canRestore=['owner','admin'].indexOf(me.data.role)>=0;
 
   var y=await sb.from('events_archive').select('event_date')
     .eq('tenant_id',TENANT).order('event_date',{ascending:false}).limit(1000);
