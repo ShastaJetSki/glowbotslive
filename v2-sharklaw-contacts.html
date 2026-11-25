@@ -279,7 +279,7 @@
   </div>
   <div class="mobile-menu-content" id="mobileMenuContent">
     <div class="mobile-header-actions">
-      <button onclick="location.href='sharklaw-settings.html'">Settings</button>
+      <button onclick="location.href='v2-sharklaw-settings.html'">Settings</button>
       <button onclick="location.href='v2-sharklaw-pipeline.html'">Pipeline</button>
       <button onclick="logout()">Logout</button>
     </div>
@@ -304,6 +304,8 @@
       <a href="v2-sharklaw-contacts.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--accent-primary);border-bottom:2px solid var(--accent-primary);">Contacts</a>
       <a href="v2-sharklaw-pipeline.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Pipeline</a>
       <a href="v2-sharklaw-swag.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Swag</a>
+      <a href="v2-communications.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Comms</a>
+      <a href="v2-sharklaw-leads.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Leads</a>
       <a href="v2-sharklaw-settings.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Settings</a>
       <div id="viewToggleWrap" style="margin-left:auto;display:flex;align-items:center;">
         <div class="view-toggle">
@@ -381,9 +383,9 @@
 
 <!-- MOBILE BOTTOM NAV -->
 <div class="mobile-bottom-nav">
-  <div class="mobile-nav-row">
+  <div class="mobile-nav-row" style="grid-template-columns:1fr 1fr 1fr;">
     <a href="v2-sharklaw-dashboard.html" class="mobile-nav-btn">Dashboard</a>
-    <a href="v2-sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a>
+    <a href="v2-sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a><a href="v2-sharklaw-leads.html" class="mobile-nav-btn">Leads</a>
   </div>
   <div class="mobile-nav-row three-col">
     <a href="v2-sharklaw-contacts.html" class="mobile-nav-btn active">Contacts</a>
@@ -723,7 +725,7 @@ function renderContacts(){
 
   if(!filtered.length){grid.innerHTML='<div class="empty-state">No contacts found</div>';renderAlpha([]);return;}
 
-  // Sort by last name
+  // Sort by first name (cards show the first name)
   filtered.sort(function(a,b){return((a.first_name||a.last_name||'')).localeCompare((b.first_name||b.last_name||''));});
   renderAlpha(filtered);
 
@@ -837,9 +839,25 @@ async function deleteContact(){
 }
 
 /* ── LOAD DATA ── */
+/* Supabase returns at most 1,000 rows per request. Page through so
+   lists and counts aren't silently cut off. build() must return a fresh query. */
+async function fetchAll(build){
+  var out=[],size=1000;
+  for(var page=0;page<50;page++){
+    var r=await build().range(page*size,(page+1)*size-1);
+    if(r.error){console.warn('fetchAll:',r.error.message);return{data:out,error:r.error};}
+    var rows=r.data||[];out=out.concat(rows);
+    if(rows.length<size)break;
+  }
+  return{data:out,error:null};
+}
+
 async function loadContacts(){
-  var r=await sb.from('contacts').select('*').eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('last_name').order('first_name');
-  allContacts=r.data||[];
+  var r=await fetchAll(function(){return sb.from('contacts').select('*').eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('last_name').order('first_name').order('contact_id');});
+  /* Contacts removed from a profile go to contact_removals; hide them here. */
+  var rm=await fetchAll(function(){return sb.from('contact_removals').select('contact_id').eq('tenant_id',TENANT).order('contact_id');});
+  var removed={};(rm.data||[]).forEach(function(x){removed[x.contact_id]=1;});
+  allContacts=(r.data||[]).filter(function(c){return !removed[c.contact_id];});
   populateCountyFilter();
   document.getElementById('statTotal').textContent=allContacts.length;
   var mine=allContacts.filter(function(c){return c.assigned_to===currentUserId;}).length;
