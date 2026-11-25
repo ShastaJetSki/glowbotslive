@@ -182,6 +182,8 @@
       <a href="v2-sharklaw-contacts.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Contacts</a>
       <a href="v2-sharklaw-pipeline.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--accent-primary);border-bottom:2px solid var(--accent-primary);">Pipeline</a>
       <a href="v2-sharklaw-swag.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Swag</a>
+      <a href="v2-communications.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Comms</a>
+      <a href="v2-sharklaw-leads.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Leads</a>
       <a href="v2-sharklaw-settings.html" style="padding:12px 0;text-decoration:none;font-size:14px;color:var(--text-secondary);">Settings</a>
     </nav>
   </div>
@@ -205,9 +207,9 @@
 </div>
 
 <div class="mobile-bottom-nav">
-  <div class="mobile-nav-row">
+  <div class="mobile-nav-row" style="grid-template-columns:1fr 1fr 1fr;">
     <a href="v2-sharklaw-dashboard.html" class="mobile-nav-btn">Dashboard</a>
-    <a href="v2-sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a>
+    <a href="v2-sharklaw-scheduler.html" class="mobile-nav-btn">Scheduler</a><a href="v2-sharklaw-leads.html" class="mobile-nav-btn">Leads</a>
   </div>
   <div class="mobile-nav-row three-col">
     <a href="v2-sharklaw-contacts.html" class="mobile-nav-btn">Contacts</a>
@@ -241,6 +243,8 @@ function memberColor(id){var m=allMembers.find(function(x){return x.member_id===
 function memberName(id){var m=allMembers.find(function(x){return x.member_id===id;});if(!m)return'Unassigned';return((m.first_name||'')+' '+(m.last_name||'')).trim();}
 function fmt(v){if(!v)return'';var d=v.replace(/[^0-9]/g,'').slice(0,10);if(d.length<=3)return d;if(d.length<=6)return d.slice(0,3)+'-'+d.slice(3);return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6);}
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
+/* when the contact was last worked; ordinary edits don't count */
+function touched(c){return c.last_activity_at||c.updated_at;}
 function daysSince(dateStr){if(!dateStr)return 0;return Math.floor((Date.now()-new Date(dateStr))/86400000);}
 function loadTheme(){var t=localStorage.getItem('app-theme');if(t!=='light'&&t!=='dark')t='dark';document.documentElement.setAttribute('data-theme',t);try{document.querySelectorAll('.theme-btn,.theme-toggle-btn').forEach(function(b){b.title=t==='light'?'Switch to dark mode':'Switch to light mode';});}catch(e){}}
 function cycleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('app-theme',t);try{document.querySelectorAll('.theme-btn,.theme-toggle-btn').forEach(function(b){b.title=t==='light'?'Switch to dark mode':'Switch to light mode';});}catch(e){}if(typeof showToast==='function')showToast(t==='light'?'Light mode':'Dark mode');}
@@ -259,7 +263,7 @@ async function logout(){await sb.auth.signOut();localStorage.clear();location.re
 async function promoteStage6(){
   var promoteDays=parseInt(stageReminders['6']||30);
   var toPromote=allContacts.filter(function(c){
-    return String(c.funnel_stage)==='6' && daysSince(c.updated_at)>=promoteDays;
+    return String(c.funnel_stage)==='6' && daysSince(touched(c))>=promoteDays;
   });
   if(!toPromote.length)return;
 
@@ -274,7 +278,7 @@ async function promoteStage6(){
     // Update local data so the board reflects immediately without a reload
     toPromote.forEach(function(c){
       c.funnel_stage=7;
-      c.updated_at=new Date().toISOString();
+      c.updated_at=c.last_activity_at=new Date().toISOString();
     });
     showToast(toPromote.length+' contact'+(toPromote.length>1?'s':'')+' moved to Follow Up (Old)');
   }
@@ -287,7 +291,7 @@ async function promoteStage6(){
 function stage7Visibility(c){
   var R=parseInt(stageReminders['7']||90);
   var showAfter=Math.max(0,R-30); // first day they become visible again
-  var ds=daysSince(c.updated_at);
+  var ds=daysSince(touched(c));
   return{
     visible: ds>=showAfter,
     daysSince: ds,
@@ -394,6 +398,19 @@ function renderBoard(){
   document.getElementById('boardWrap').innerHTML=html;
 }
 
+/* Supabase returns at most 1,000 rows per request. Page through so
+   lists and counts aren't silently cut off. build() must return a fresh query. */
+async function fetchAll(build){
+  var out=[],size=1000;
+  for(var page=0;page<50;page++){
+    var r=await build().range(page*size,(page+1)*size-1);
+    if(r.error){console.warn('fetchAll:',r.error.message);return{data:out,error:r.error};}
+    var rows=r.data||[];out=out.concat(rows);
+    if(rows.length<size)break;
+  }
+  return{data:out,error:null};
+}
+
 async function init(){
   var session=await checkAuth();if(!session)return;
   var authId=session.user?.id,email=session.user?.email;
@@ -425,8 +442,10 @@ async function init(){
   }catch(e){}
 
   // Load contacts
-  var cr=await sb.from('contacts').select('*').eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false');
-  allContacts=cr.data||[];
+  var cr=await fetchAll(function(){return sb.from('contacts').select('*').eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('contact_id');});
+  var rm=await fetchAll(function(){return sb.from('contact_removals').select('contact_id').eq('tenant_id',TENANT).order('contact_id');});
+  var removed={};(rm.data||[]).forEach(function(x){removed[x.contact_id]=1;});
+  allContacts=(cr.data||[]).filter(function(c){return !removed[c.contact_id];});
 
   // Auto-promote Stage 6 → 7 after reminder threshold
   await promoteStage6();
