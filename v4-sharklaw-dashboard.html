@@ -33,7 +33,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
   <title>Dashboard – SharkLaw V2</title>
@@ -397,14 +397,14 @@ html[data-style="v4"] .v4-hdr{display:block;font-family:'Outfit',system-ui,-appl
 .v4h-logo{height:42px;width:auto;display:block;}
 .v4h-title{margin-left:auto;font-size:26px;font-weight:700;letter-spacing:-.01em;color:#fff;line-height:1;white-space:nowrap;}
 .v4h-row{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:0 24px;box-sizing:border-box;position:relative;}
-.v4h-tabs{flex:1;min-width:0;display:flex;gap:4px;margin-left:-12px;overflow-x:auto;scrollbar-width:none;}
+.v4h-tabs{flex:0 1 auto;min-width:0;display:flex;gap:4px;margin-left:-12px;overflow-x:auto;scrollbar-width:none;}
 .v4h-tabs::-webkit-scrollbar{display:none;}
 .v4h-tabs a{display:inline-flex;flex-direction:column;align-items:center;color:#c4cbe0;text-decoration:none;font-size:14px;font-weight:500;padding:11px 12px;border-bottom:3px solid transparent;white-space:nowrap;line-height:1.45;}
 .v4h-tabs a::after{content:attr(data-label);font-weight:600;height:0;visibility:hidden;overflow:hidden;}
 .v4h-tabs a:hover{color:#fff;}
 .v4h-tabs a.on{color:#fff;border-bottom-color:#4a55ff;font-weight:600;}
 .v4h-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0;}
-.v4h-extra{display:flex;align-items:center;gap:8px;}
+.v4h-extra{display:flex;align-items:center;gap:8px;margin-left:4px;}
 .v4h-extra:empty{display:none;}
 .v4h-user{font-size:13px;color:#c4cbe0;margin-right:6px;white-space:nowrap;}
 .v4h-btn{width:36px;height:36px;border-radius:10px;border:1px solid #363a58;background:transparent;color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;}
@@ -791,6 +791,18 @@ async function myEventIds(){
   _myEventIds=ids;
   return ids;
 }
+/* keep only events this person owns or is assigned to (checks just the events already loaded) */
+async function keepMine(events){
+  if(!events.length||!currentUserId)return events;
+  var ids=events.map(function(e){return e.event_id;}).filter(Boolean);
+  var mine={};
+  if(ids.length){
+    var r=await sb.from('event_assignees').select('event_id').eq('tenant_id',currentTenantId).eq('member_id',currentUserId).in('event_id',ids);
+    if(r.error)console.warn('event_assignees:',r.error.message);
+    (r.data||[]).forEach(function(x){mine[x.event_id]=1;});
+  }
+  return events.filter(function(e){return e.assigned_to===currentUserId||mine[e.event_id];});
+}
 function orMineEvents(ids){
   var f='assigned_to.eq.'+currentUserId;
   if(ids&&ids.length)f+=',event_id.in.('+ids.join(',')+')';
@@ -804,9 +816,9 @@ async function loadTodayCards(){
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time');
   if(filterMine&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
   var eq2=sb.from('events').select('*').eq('tenant_id',currentTenantId).eq('event_date',todayStr).order('event_time');
-  if(filterMine&&currentUserId)eq2=eq2.or(orMineEvents(await myEventIds()));
   var [ar,er]=await Promise.all([aq,eq2]);
   var appts=ar.data||[],events=er.data||[];
+  if(filterMine&&currentUserId)events=await keepMine(events);
   /* An event can match this query on more than one condition (owner OR
      assignee), so drop repeats of the same event_id before rendering. */
   var _seen={};
@@ -1344,9 +1356,11 @@ async function loadWeek(){
   var isOAw=['owner','admin'].includes(currentUserRole||'');
   var waq=sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time');
   var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to,event_id').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
-  if(!isOAw||(viewMode==='mine')){waq=waq.eq('assigned_to',currentUserId);weq=weq.or(orMineEvents(await myEventIds()));}
+  var mineW=(!isOAw||(viewMode==='mine'));
+  if(mineW)waq=waq.eq('assigned_to',currentUserId);
   var [ar,er]=await Promise.all([waq,weq]);
   var appts=ar.data||[],events=er.data||[];
+  if(mineW)events=await keepMine(events);
   var DAYS2=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var html='';
   days.forEach(function(d){
@@ -1508,8 +1522,14 @@ async function init(){
   var s=await checkAuth();if(!s)return;
   var authId=s.user?.id,email=s.user?.email;userEmail=email;
   var memberRow=null;
-  if(authId){var r1=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('auth_user_id',authId).eq('tenant_id',TENANT_ID).maybeSingle();if(r1.data)memberRow=r1.data;}
-  if(!memberRow&&email){var r2=await sb.from('team_members').select('member_id,tenant_id,role,is_active,first_name,last_name').eq('email',email).eq('tenant_id',TENANT_ID).maybeSingle();if(r2.data)memberRow=r2.data;}
+  var COLS='member_id,tenant_id,role,is_active,first_name,last_name';
+  var _st=await Promise.all([
+    authId?sb.from('team_members').select(COLS).eq('auth_user_id',authId).eq('tenant_id',TENANT_ID).maybeSingle():Promise.resolve({data:null}),
+    email?sb.from('team_members').select(COLS).eq('email',email).eq('tenant_id',TENANT_ID).maybeSingle():Promise.resolve({data:null}),
+    sb.from('team_members').select('member_id,first_name,last_name,email,phone,role,color,department').eq('tenant_id',TENANT_ID).eq('is_active',true).order('last_name')
+  ]);
+  memberRow=(_st[0].data)||(_st[1].data)||null;
+  var _teamR=_st[2];
   if(!memberRow){await sb.auth.signOut();localStorage.clear();location.replace('v4-login.html');return;}
   if(memberRow.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v4-login.html?reason=deactivated');return;}
   currentUserId=memberRow.member_id;currentUserRole=memberRow.role;currentTenantId=memberRow.tenant_id||TENANT_ID;
@@ -1535,7 +1555,7 @@ async function init(){
   await loadThemeBank();
   document.getElementById('dUserName').textContent=currentUserName||userEmail||'';
   document.getElementById('mUserName').textContent=currentUserName||userEmail||'';
-  var mr=await sb.from('team_members').select('member_id,first_name,last_name,email,phone,role,color,department').eq('tenant_id',currentTenantId).eq('is_active',true).order('last_name');
+  var mr=(currentTenantId===TENANT_ID)?_teamR:await sb.from('team_members').select('member_id,first_name,last_name,email,phone,role,color,department').eq('tenant_id',currentTenantId).eq('is_active',true).order('last_name');
   allMembers=mr.data||[];
   initDragSections();restoreCollapsed();
   await Promise.all([loadKpis(),loadTodayCards(),loadContacts(),loadTasks(),loadMessages(),loadFollowups(),loadWeek(),loadLeads()]);
@@ -1634,7 +1654,7 @@ init().catch(console.error);
       return '<a href="'+p.f+'" data-label="'+p.n+'"'+(p.mg?' data-mg="1"':'')+(p.n==='Settings'?' data-adm="1"':'')+(p.f===home?' class="on" aria-current="page"':'')+(hide?' style="display:none"':'')+'>'+p.n+'</a>';
     }).join('');
     hdr.innerHTML='<div class="v4h-top"><a class="v4h-logo-a" href="'+(MGMT.indexOf(role)>=0?'v4-sharklaw-overview.html':'v4-sharklaw-dashboard.html')+'" aria-label="Shark Law home"><img class="v4h-logo" src="'+LOGO+'" alt="Shark Law — Motorcycle Attorneys"></a><div class="v4h-title"></div></div>'
-      +'<div class="v4h-row"><nav class="v4h-tabs" aria-label="Main">'+tabs+'</nav><div class="v4h-right"><span class="v4h-extra"></span><span class="v4h-user"></span>'
+      +'<div class="v4h-row"><nav class="v4h-tabs" aria-label="Main">'+tabs+'</nav><span class="v4h-extra"></span><div class="v4h-right"><span class="v4h-user"></span>'
       +'<button type="button" class="v4h-btn v4h-mode" aria-label="Switch light or dark mode"><svg viewBox="0 0 24 24"></svg></button>'
       +'<button type="button" class="v4h-btn v4h-gear" aria-label="Display settings" title="Display settings">'+GEAR+'</button>'
       +'<button type="button" class="v4h-out">Logout</button></div></div>';
