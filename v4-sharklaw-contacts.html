@@ -718,12 +718,12 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
 
   <!-- STATS BAR -->
   <div class="stats-bar">
-    <div class="stat-chip" onclick="kpiStage('')" title="Every contact in this view (Mine or All). In Pipeline + Partners + No Stage add up to this."><span id="statTotal">0</span> <i id="statTotalLbl" style="font-style:normal">My Contacts</i></div>
+    <div class="stat-chip" onclick="kpiStage('')" title="Every contact in this view (Mine or All). In Pipeline + Partners + Not in Pipeline add up to this."><span id="statTotal">0</span> <i id="statTotalLbl" style="font-style:normal">My Contacts</i></div>
     <div class="stat-chip" id="statFilteredWrap" title="Contacts matching the search and filters above"><span id="statFiltered">0</span> Showing</div>
     <div class="stat-chip" data-k="pipe" onclick="kpiStage('pipe')" title="Stages 1–5: 1st Contact to Deliver Pop Up"><span id="statPipe">0</span> In Pipeline</div>
-    <div class="stat-chip" data-k="partner" onclick="kpiStage('partner')" title="Everyone who became a partner: Confirmed Partnership (stage 6) plus partners due to reconnect (Follow Up (Old), stage 7)"><span id="statPartners">0</span> Partners</div>
+    <div class="stat-chip" data-k="partner" onclick="kpiStage('partner')" title="Everyone who has been a partner (reached Confirmed Partnership or Follow Up (Old)) — they stay counted even after moving on. Click to see the list; fix any mistakes on the contact’s profile."><span id="statPartners">0</span> Partners</div>
     <div class="stat-chip" data-k="7" onclick="kpiStage('7')" title="Partners in Follow Up (Old) to reconnect with — already counted in Partners"><span id="statOld">0</span> Partners to Reconnect</div>
-    <div class="stat-chip" data-k="__none" onclick="kpiStage('__none')" title="Contacts with no pipeline stage set"><span id="statNoStage">0</span> No Stage</div>
+    <div class="stat-chip" data-k="__none" onclick="kpiStage('__none')" title="Not a partner and not in stages 1–5 (no stage set, or a stage-7 contact marked not a partner)"><span id="statNoStage">0</span> Not in Pipeline</div>
     <button class="btn-add mobile-add-btn" onclick="openAddModal()" style="display:none;">+ Add Contact</button>
   </div>
 
@@ -1064,9 +1064,9 @@ function applyFilters(c){
   if(of==='__none'){if(nm(c.organization_name).trim())return false;}
   else if(of&&nm(c.organization_name).trim().toLowerCase()!==of.toLowerCase())return false;
   if(tf&&(c.customer_type||'')!==tf)return false;
-  if(sf==='pipe'){if(stageKey(c)<1||stageKey(c)>5)return false;}
-  else if(sf==='__none'){if(stageKey(c))return false;}
-  else if(sf==='partner'){if(stageKey(c)<6)return false;}
+  if(sf==='pipe'){if(isPartner(c)||stageKey(c)<1||stageKey(c)>5)return false;}
+  else if(sf==='__none'){if(isPartner(c)||(stageKey(c)>=1&&stageKey(c)<=5))return false;}
+  else if(sf==='partner'){if(!isPartner(c))return false;}
   else if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
   if(mf&&(c.assigned_to||'')!==mf)return false;
   if(search){
@@ -1106,7 +1106,7 @@ function buildCard(c,_i,_anim){
   var mn=memberName(c.assigned_to);
   var rgb=hexToRgb(col);
   var type=c.customer_type||'';
-  var stage=stageName(c.funnel_stage);
+  var stage=(isPartner(c)&&stageKey(c)<6?'🤝 Partner · ':'')+stageName(c.funnel_stage);
   var firstName=esc(c.first_name||'Unknown');
   var org=esc(nm(c.organization_name));
   var _a=_anim?'animation:ccIn .34s ease both;animation-delay:'+(Math.min(_i||0,24)*16)+'ms;':'';
@@ -1228,10 +1228,13 @@ var STAGE_ORDER=['1','2','3','4','5','6','7'];
 /* stage as a number 1–7 (0 = no stage); accepts "6", 6 or the stage's name */
 function stageKey(c){var v=c.funnel_stage;if(v==null||v==='')return 0;var n=parseInt(v,10);if(n>=1&&n<=7)return n;
   var t=String(v).trim().toLowerCase();for(var k in STAGE_MAP){if(STAGE_MAP[k].toLowerCase()===t)return +k;}return 0;}
+/* a partner stays a partner: "partner since" is set the first time they reach stage 6 or 7 and never clears on its own
+   (before sql/13 is run, fall back to the stage) */
+function isPartner(c){return c.hasOwnProperty('partner_since')?!!c.partner_since:stageKey(c)>=6;}
 /* KPI row: every number follows the Mine / All switch, so the parts always add up to the total */
 function renderStats(){
   var base=viewMode==='mine'?allContacts.filter(function(c){return c.assigned_to===currentUserId;}):allContacts;
-  var n={pipe:0,p:0,old:0,none:0};base.forEach(function(c){var k=stageKey(c);if(!k)n.none++;else if(k<=5)n.pipe++;else{n.p++;if(k===7)n.old++;}});
+  var n={pipe:0,p:0,old:0,none:0};base.forEach(function(c){var k=stageKey(c);if(isPartner(c)){n.p++;if(k===7)n.old++;}else if(k>=1&&k<=5)n.pipe++;else n.none++;});
   document.getElementById('statTotal').textContent=base.length;
   document.getElementById('statTotalLbl').textContent=viewMode==='mine'?'My Contacts':'All Contacts';
   document.getElementById('statPipe').textContent=n.pipe;document.getElementById('statPartners').textContent=n.p;
@@ -1241,7 +1244,7 @@ function renderStats(){
 }
 /* click a KPI to show just those contacts; click again to show everyone */
 function kpiStage(k){var sf=document.getElementById('stageFilter');
-  if(k&&!sf.querySelector('option[value="'+k+'"]')){var o=document.createElement('option');o.value=k;o.textContent=k==='pipe'?'In Pipeline (1–5)':k==='partner'?'Partners (6 + 7)':'No Stage';sf.appendChild(o);}
+  if(k&&!sf.querySelector('option[value="'+k+'"]')){var o=document.createElement('option');o.value=k;o.textContent=k==='pipe'?'In Pipeline (1–5)':k==='partner'?'Partners':'Not in Pipeline';sf.appendChild(o);}
   sf.value=sf.value===k?'':k;renderContacts();}
 function stageName(val){return STAGE_MAP[String(val)]||val||'';}
 
