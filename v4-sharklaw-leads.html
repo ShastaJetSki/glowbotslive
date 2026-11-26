@@ -3,6 +3,16 @@
 <head>
   <meta charset="utf-8"/>
 <script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{return sessionStorage.getItem('sl-scope')==='all'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* a fresh sign-in starts on Mine */
+if(/login\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');}catch(e){}}
+</script>
+<script>
 /* ── SharkLaw V4 style switch ─────────────────────────────────────────
    sl-style: 'legacy' (default until the project goes live) or 'v4'.
    In the v4 style, light/dark is stored separately in 'v4-mode' (light
@@ -294,6 +304,9 @@ html.bx-dragging,html.bx-dragging *{cursor:grabbing!important;user-select:none!i
   .bx-insights{grid-template-columns:1fr;}
   .bx-bar{grid-template-columns:110px 1fr 64px;}
 }
+/* in the header, Mine/All matches the Dashboard / Scheduler switch exactly */
+.v4h-extra .bx-seg{padding:0;gap:0;border-radius:20px;}
+.v4h-extra .bx-seg button{padding:5px 14px;font-size:12px;border-radius:20px;}
 
 </style>
 <style id="v4-style">
@@ -474,6 +487,18 @@ html[data-v4mode="dark"] .v4h-btn{border-color:#2b2f4a;}
 html[data-style="v4"] .top{background:var(--bg-primary)!important;border-bottom:1px solid var(--border-default)!important;position:static!important;}
 @media(min-width:769px){html[data-style="v4"] .top h1{display:none;}}
 
+/* Mine/All on phones: right under the phone header */
+.v4-mscope{display:none;}
+@media(max-width:768px){
+  html[data-style="v4"] .v4-mscope{display:flex;justify-content:flex-end;padding:10px 12px 0;}
+  html[data-style="v4"] .v4-mscope:empty,html[data-style="v4"] .v4-mscope:has(>#viewToggleWrap[style*="display: none"]){display:none;}
+  html[data-style="v4"] .v4-mscope .view-toggle{display:flex!important;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+  html[data-style="v4"] .v4-mscope .vt-btn{padding:6px 16px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;cursor:pointer;font-family:inherit;}
+  html[data-style="v4"] .v4-mscope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+}
+/* scheduler's phone header bar had its own white background */
+html[data-style="v4"] .mobile-top-header .mobile-header-bar{background:transparent!important;border-color:transparent!important;}
+
 /* ═════ V4 design system: KPI blocks, cards and page layout matched to the Overview ═════ */
 
 /* page width + spacing (Overview: 1280px, 22px 24px) */
@@ -617,7 +642,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
 
 <div class="bx-page" id="pageWrap" style="display:none;">
   <div class="bx-toolbar">
-    <div class="bx-seg" id="scopeToggle" style="display:none;"><button class="vt-btn active" id="vtMine" onclick="setScope('mine')">My Leads</button><button class="vt-btn" id="vtAll" onclick="setScope('all')">All Leads</button></div>
+    <div id="viewToggleWrap" style="display:none;align-items:center;"><div class="view-toggle bx-seg" id="scopeToggle"><button class="vt-btn active" id="vtMine" onclick="setScope('mine')">Mine</button><button class="vt-btn" id="vtAll" onclick="setScope('all')">All</button></div></div>
     <div class="bx-grow"><input type="text" id="q" placeholder="Search client, phone, #, county…" oninput="render()"></div>
     <select id="fRange" onchange="render()">
       <option value="all">All time</option>
@@ -905,8 +930,8 @@ async function init(){
   document.getElementById('mUserName').textContent=me.name;
 
   var params=new URLSearchParams(location.search);
-  scope=isMgmt?(params.get('view')==='mine'?'mine':(localStorage.getItem('leads-scope')||'all')):'mine';
-  if(isMgmt){document.getElementById('scopeToggle').style.display='flex';}
+  scope=isMgmt?(params.get('view')==='all'?'all':params.get('view')==='mine'?'mine':SLScope.get()):'mine';
+  if(isMgmt){document.getElementById('viewToggleWrap').style.display='flex';}
 
   /* members incl. deactivated, so old leads still show who submitted them */
   var mr=await sb.from('team_members').select('member_id,first_name,last_name,email,role,color,is_active').eq('tenant_id',TENANT).order('first_name');
@@ -944,7 +969,7 @@ function fillWho(){
 
 function setScope(s,silent){
   scope=isMgmt?s:'mine';
-  if(isMgmt)localStorage.setItem('leads-scope',scope);
+  if(isMgmt)SLScope.set(scope);
   document.getElementById('vtMine').classList.toggle('active',scope==='mine');
   document.getElementById('vtAll').classList.toggle('active',scope==='all');
   document.getElementById('fWho').style.display=(isMgmt&&scope==='all')?'':'none';
@@ -1381,7 +1406,17 @@ init().catch(function(e){console.error(e);document.getElementById('main').innerH
     dh.appendChild(hdr);
     /* page-specific controls that lived in the old header keep working, now on the tab row */
     var extra=hdr.querySelector('.v4h-extra');
-    var vt=document.getElementById('viewToggleWrap');if(vt){vt.style.marginLeft='0';extra.appendChild(vt);}
+    var vt=document.getElementById('viewToggleWrap');
+    if(vt){
+      vt.style.marginLeft='0';
+      /* on phones the tab row is hidden, so Mine/All sits just under the phone header instead */
+      var mslot=document.createElement('div');mslot.className='v4-mscope';
+      var mt=document.querySelector('.mobile-top-header');if(mt&&mt.parentNode)mt.parentNode.insertBefore(mslot,mt.nextSibling);
+      var mq=window.matchMedia('(max-width:768px)');
+      var place=function(){(mq.matches&&mslot.parentNode?mslot:extra).appendChild(vt);};
+      if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);
+      place();
+    }
     dh.querySelectorAll('.hdr-actions .hdr-btn').forEach(function(b){extra.appendChild(b);});
     /* name of the signed-in person, mirrored from the page */
     var src=document.getElementById('dUserName')||document.getElementById('dBizName')||document.getElementById('legacyUser');
