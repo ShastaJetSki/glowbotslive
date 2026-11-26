@@ -3,6 +3,16 @@
 <head>
   <meta charset="utf-8" />
 <script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{return sessionStorage.getItem('sl-scope')==='all'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* a fresh sign-in starts on Mine */
+if(/login\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');}catch(e){}}
+</script>
+<script>
 /* ── SharkLaw V4 style switch ─────────────────────────────────────────
    sl-style: 'legacy' (default until the project goes live) or 'v4'.
    In the v4 style, light/dark is stored separately in 'v4-mode' (light
@@ -203,7 +213,8 @@ html[data-style="v4"] .col-body::-webkit-scrollbar-thumb{background:var(--border
 
 /* ───── calendar (scheduler) ───── */
 html[data-style="v4"] .sidebar{background:var(--bg-primary)!important;border-color:var(--border-default)!important;}
-html[data-style="v4"] .cal-card,html[data-style="v4"] .sidebar-section{background:var(--bg-card)!important;border-radius:14px!important;box-shadow:var(--v4-shadow);border:1px solid var(--border-default)!important;}
+html[data-style="v4"] .cal-card{border-radius:10px!important;box-shadow:var(--v4-shadow);}
+html[data-style="v4"] .sidebar-section{background:var(--bg-card)!important;border-radius:14px!important;box-shadow:var(--v4-shadow);border:1px solid var(--border-default)!important;}
 html[data-style="v4"] .cal-header-day,html[data-style="v4"] .week-header-day{font-size:11px!important;font-weight:700!important;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary)!important;}
 html[data-style="v4"] .cal-cell{background:var(--bg-card)!important;border-color:var(--border-default)!important;}
 html[data-style="v4"] .cal-cell:hover{background:var(--bg-hover)!important;}
@@ -286,6 +297,18 @@ html[data-v4mode="dark"] .v4h-btn{border-color:#2b2f4a;}
 /* archive: the old navy bar becomes the page heading area under the standard header */
 html[data-style="v4"] .top{background:var(--bg-primary)!important;border-bottom:1px solid var(--border-default)!important;position:static!important;}
 @media(min-width:769px){html[data-style="v4"] .top h1{display:none;}}
+
+/* Mine/All on phones: right under the phone header */
+.v4-mscope{display:none;}
+@media(max-width:768px){
+  html[data-style="v4"] .v4-mscope{display:flex;justify-content:flex-end;padding:10px 12px 0;}
+  html[data-style="v4"] .v4-mscope:empty,html[data-style="v4"] .v4-mscope:has(>#viewToggleWrap[style*="display: none"]){display:none;}
+  html[data-style="v4"] .v4-mscope .view-toggle{display:flex!important;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+  html[data-style="v4"] .v4-mscope .vt-btn{padding:6px 16px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;cursor:pointer;font-family:inherit;}
+  html[data-style="v4"] .v4-mscope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+}
+/* scheduler's phone header bar had its own white background */
+html[data-style="v4"] .mobile-top-header .mobile-header-bar{background:transparent!important;border-color:transparent!important;}
 
 /* ═════ V4 design system: KPI blocks, cards and page layout matched to the Overview ═════ */
 
@@ -585,6 +608,14 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
 
   // ── Verify the authenticated user belongs to SharkLaw team ──────────────
   // Returns true and redirects if valid. Returns false and shows error if not.
+  var SUPER_EMAIL='glowbotsapp@gmail.com';
+  async function superRedirect(email){
+    if(String(email||'').toLowerCase().trim()!==SUPER_EMAIL)return false;
+    var r=await sb.rpc('sl_is_superadmin');
+    if(r.data===true){location.replace('v4-superadmin.html');return true;}
+    if(r.error)showErr('Superadmin access needs sql/06-comms-and-superadmin.sql to be run first.');
+    return false;
+  }
   async function verifyAndRedirect(session){
     var email=(session.user&&session.user.email||'').toLowerCase().trim();
     if(!email){
@@ -593,6 +624,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
       return;
     }
     try{
+      if(await superRedirect(email))return;
       var r=await sb.from('team_members')
         .select('member_id,is_active,first_name,role')
         .eq('email',email)
@@ -637,6 +669,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
       if(r.data&&r.data.session){
         var email=(r.data.session.user&&r.data.session.user.email||'').toLowerCase().trim();
         if(email){
+          if(await superRedirect(email))return;
           var chk=await sb.from('team_members')
             .select('is_active,role')
             .eq('email',email)
@@ -659,6 +692,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
         if(sr.data&&sr.data.session){
           var email2=(sr.data.session.user&&sr.data.session.user.email||'').toLowerCase().trim();
           if(email2){
+            if(await superRedirect(email2))return;
             var chk2=await sb.from('team_members')
               .select('is_active,role')
               .eq('email',email2)
@@ -837,7 +871,17 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
     dh.appendChild(hdr);
     /* page-specific controls that lived in the old header keep working, now on the tab row */
     var extra=hdr.querySelector('.v4h-extra');
-    var vt=document.getElementById('viewToggleWrap');if(vt){vt.style.marginLeft='0';extra.appendChild(vt);}
+    var vt=document.getElementById('viewToggleWrap');
+    if(vt){
+      vt.style.marginLeft='0';
+      /* on phones the tab row is hidden, so Mine/All sits just under the phone header instead */
+      var mslot=document.createElement('div');mslot.className='v4-mscope';
+      var mt=document.querySelector('.mobile-top-header');if(mt&&mt.parentNode)mt.parentNode.insertBefore(mslot,mt.nextSibling);
+      var mq=window.matchMedia('(max-width:768px)');
+      var place=function(){(mq.matches&&mslot.parentNode?mslot:extra).appendChild(vt);};
+      if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);
+      place();
+    }
     dh.querySelectorAll('.hdr-actions .hdr-btn').forEach(function(b){extra.appendChild(b);});
     /* name of the signed-in person, mirrored from the page */
     var src=document.getElementById('dUserName')||document.getElementById('dBizName')||document.getElementById('legacyUser');
