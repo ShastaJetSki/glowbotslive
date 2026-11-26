@@ -319,7 +319,11 @@ if(/login(-sharklaw)?\.html$/i.test(location.pathname)){try{sessionStorage.remov
     /* TOAST */
     .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--accent-primary);color:var(--text-primary);padding:10px 20px;border-radius:20px;font-size:13px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .3s;}
     .toast.show{opacity:1;}
-  </style>
+  html[data-style="v4"] .stats-bar{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+html[data-style="v4"] .stats-bar .stat-chip.active{border-color:var(--accent-primary)!important;box-shadow:0 0 0 1px var(--accent-primary) inset;}
+@media(max-width:900px){html[data-style="v4"] .stats-bar{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+@media(max-width:768px){html[data-style="v4"] .stats-bar{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}
+</style>
 <style id="v4-style">
 /* ═════════ SharkLaw V4 style layer ═════════
    Only rules under html[data-style="v4"] change the look. With the
@@ -714,11 +718,12 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
 
   <!-- STATS BAR -->
   <div class="stats-bar">
-    <div class="stat-chip" id="chipAll" onclick="setViewMode('all')"><span id="statTotal">0</span> Total</div>
-    <div class="stat-chip" id="statFilteredWrap"><span id="statFiltered">0</span> Showing</div>
-    <div class="stat-chip" id="chipMine" onclick="setViewMode('mine')"><span id="statMine">0</span> Mine</div>
-    <div class="stat-chip" title="Contacts in stages 1–5" style="cursor:pointer;" onclick="document.getElementById('stageFilter').value='';renderContacts();"><span id="statPipe">0</span> In pipeline</div>
-    <div class="stat-chip" title="Confirmed Partnership (stage 6)" style="cursor:pointer;" onclick="document.getElementById('stageFilter').value='6';renderContacts();"><span id="statPartners">0</span> Partners</div>
+    <div class="stat-chip" onclick="kpiStage('')" title="Every contact in this view (Mine or All). In Pipeline + Partners + Follow Up (Old) + No Stage add up to this."><span id="statTotal">0</span> <i id="statTotalLbl" style="font-style:normal">My Contacts</i></div>
+    <div class="stat-chip" id="statFilteredWrap" title="Contacts matching the search and filters above"><span id="statFiltered">0</span> Showing</div>
+    <div class="stat-chip" data-k="pipe" onclick="kpiStage('pipe')" title="Stages 1–5: 1st Contact to Deliver Pop Up"><span id="statPipe">0</span> In Pipeline</div>
+    <div class="stat-chip" data-k="6" onclick="kpiStage('6')" title="Stage 6: Confirmed Partnership"><span id="statPartners">0</span> Partners</div>
+    <div class="stat-chip" data-k="7" onclick="kpiStage('7')" title="Stage 7: Follow Up (Old)"><span id="statOld">0</span> Follow Up (Old)</div>
+    <div class="stat-chip" data-k="__none" onclick="kpiStage('__none')" title="Contacts with no pipeline stage set"><span id="statNoStage">0</span> No Stage</div>
     <button class="btn-add mobile-add-btn" onclick="openAddModal()" style="display:none;">+ Add Contact</button>
   </div>
 
@@ -1059,7 +1064,9 @@ function applyFilters(c){
   if(of==='__none'){if(nm(c.organization_name).trim())return false;}
   else if(of&&nm(c.organization_name).trim().toLowerCase()!==of.toLowerCase())return false;
   if(tf&&(c.customer_type||'')!==tf)return false;
-  if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
+  if(sf==='pipe'){if(stageKey(c)<1||stageKey(c)>5)return false;}
+  else if(sf==='__none'){if(stageKey(c))return false;}
+  else if(sf&&String(c.funnel_stage||'')!==String(sf))return false;
   if(mf&&(c.assigned_to||'')!==mf)return false;
   if(search){
     var n=(nm(c.first_name)+' '+nm(c.last_name)).toLowerCase();
@@ -1073,6 +1080,7 @@ function renderContacts(){
   var grid=document.getElementById('contactGrid');
   var filtered=getFiltered();
   document.getElementById('statFiltered').textContent=filtered.length;
+  renderStats();
 
   if(!filtered.length){grid.innerHTML='<div class="empty-state">No contacts found</div>';renderAlpha([]);return;}
 
@@ -1210,17 +1218,30 @@ async function loadContacts(){
   var removed={};(rm.data||[]).forEach(function(x){removed[x.contact_id]=1;});
   allContacts=(r.data||[]).filter(function(c){return !removed[c.contact_id];});
   populateCountyFilter();
-  document.getElementById('statTotal').textContent=allContacts.length;
-  var mine=allContacts.filter(function(c){return c.assigned_to===currentUserId;}).length;
-  document.getElementById('statMine').textContent=mine;
-  var sp=document.getElementById('statPipe');if(sp)sp.textContent=allContacts.filter(function(c){var k=String(c.funnel_stage||'');return k>='1'&&k<='5'&&k.length===1;}).length;
-  var spa=document.getElementById('statPartners');if(spa)spa.textContent=allContacts.filter(function(c){return String(c.funnel_stage)==='6';}).length;
   renderContacts();
 }
 
 // Stage number -> name mapping
 var STAGE_MAP={'1':'1st Contact','2':'Follow Up','3':'Swag Approved','4':'Receive Artwork','5':'Deliver Pop Up','6':'Confirmed Partnership','7':'Follow Up (Old)'};
 var STAGE_ORDER=['1','2','3','4','5','6','7'];
+/* stage as a number 1–7 (0 = no stage); accepts "6", 6 or the stage's name */
+function stageKey(c){var v=c.funnel_stage;if(v==null||v==='')return 0;var n=parseInt(v,10);if(n>=1&&n<=7)return n;
+  var t=String(v).trim().toLowerCase();for(var k in STAGE_MAP){if(STAGE_MAP[k].toLowerCase()===t)return +k;}return 0;}
+/* KPI row: every number follows the Mine / All switch, so the parts always add up to the total */
+function renderStats(){
+  var base=viewMode==='mine'?allContacts.filter(function(c){return c.assigned_to===currentUserId;}):allContacts;
+  var n={pipe:0,p:0,old:0,none:0};base.forEach(function(c){var k=stageKey(c);if(!k)n.none++;else if(k<=5)n.pipe++;else if(k===6)n.p++;else n.old++;});
+  document.getElementById('statTotal').textContent=base.length;
+  document.getElementById('statTotalLbl').textContent=viewMode==='mine'?'My Contacts':'All Contacts';
+  document.getElementById('statPipe').textContent=n.pipe;document.getElementById('statPartners').textContent=n.p;
+  document.getElementById('statOld').textContent=n.old;document.getElementById('statNoStage').textContent=n.none;
+  var sf=document.getElementById('stageFilter').value;
+  document.querySelectorAll('.stats-bar .stat-chip[data-k]').forEach(function(el){el.classList.toggle('active',el.dataset.k===sf);});
+}
+/* click a KPI to show just those contacts; click again to show everyone */
+function kpiStage(k){var sf=document.getElementById('stageFilter');
+  if(k&&!sf.querySelector('option[value="'+k+'"]')){var o=document.createElement('option');o.value=k;o.textContent=k==='pipe'?'In Pipeline (1–5)':'No Stage';sf.appendChild(o);}
+  sf.value=sf.value===k?'':k;renderContacts();}
 function stageName(val){return STAGE_MAP[String(val)]||val||'';}
 
 function loadStages(){
