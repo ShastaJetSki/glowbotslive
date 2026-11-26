@@ -262,6 +262,8 @@ html.bx-dragging,html.bx-dragging *{cursor:grabbing!important;user-select:none!i
 .sw-detail .bx-tbl td,.sw-detail .bx-tbl th{font-size:12px;padding:6px;}
 .sw-arr{display:inline-block;font-size:9px;margin-right:8px;color:var(--text-secondary);transition:transform .15s;}
 .sw-arr.on{transform:rotate(90deg);}
+.sw-kind button{font-size:12px;padding:5px 11px;}
+.sw-kind button b{font-weight:700;opacity:.75;margin-left:2px;}
 @media(max-width:768px){.sw-grid{grid-template-columns:1fr 1fr;gap:8px;}.sw-n{font-size:22px;}html .bx-kpis{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:420px){.sw-grid{grid-template-columns:1fr;}}
 
@@ -614,7 +616,6 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
     </select>
     <select id="givenItemFilter" onchange="renderAll()"><option value="">All items</option></select>
     <select id="givenMemberFilter" onchange="renderAll()"><option value="">All team</option></select>
-    <select id="swKind" onchange="renderAll()" title="Where the swag went"><option value="">All records</option><option value="client">Given to contacts</option><option value="team">Handed to team</option><option value="none">Needs review</option></select>
     <span class="bx-count" id="swCount"></span>
     <div class="bx-seg"><button id="sv-inventory" class="on" onclick="setTab('inventory')">Inventory</button><button id="sv-given" onclick="setTab('given')">Given Log</button><button id="sv-team" onclick="setTab('team')">By Member</button></div>
     <button class="bx-primary" onclick="openItemModal(null)">+ Add Item</button>
@@ -850,7 +851,7 @@ async function logout(){await sb.auth.signOut();localStorage.clear();location.re
    Every number on the page comes from the same helpers below, so the KPI row,
    the inventory cards, the Given Log totals and the By Member totals all agree. */
 var swagView=['inventory','given','team'].indexOf(BX.pref('swag-view'))>=0?BX.pref('swag-view'):'inventory';
-var swagScope='mine',memberById={},contactById={};
+var swKind='',swagScope='mine',memberById={},contactById={};
 
 function canScope(){return SLScope.can(currentUserRole);}
 /* where a record went: picked contact = given out; team member only = handed to staff (internal); neither = needs review */
@@ -896,7 +897,7 @@ function scopedGiven(){return allGiven.filter(function(g){return inScope(g)&&inR
 /* records for the Given Log: everything above + the toolbar filters */
 function filteredGiven(ignoreKind){
   var it=document.getElementById('givenItemFilter').value,rep=document.getElementById('givenMemberFilter').value;
-  var q=keyName(document.getElementById('searchBox').value),kind=document.getElementById('swKind').value;
+  var q=keyName(document.getElementById('searchBox').value),kind=swKind;
   return scopedGiven().filter(function(g){
     if(kind&&!ignoreKind&&recType(g)!==kind)return false;
     if(it&&keyName(g.item_name)!==keyName(it))return false;
@@ -971,14 +972,19 @@ function renderGiven(){
       +'<td class="sw-notes">'+esc(g.notes||'')+'</td></tr>';
   }).join('');
   var out=list.filter(isOut);
-  document.getElementById('swMain').innerHTML='<div class="bx-panel"><div class="bx-panel-h"><div class="bx-panel-t">Given Log</div><div class="bx-panel-s">'+esc(rangeLabel())+(ed?' · click a row to correct it':'')+'</div></div><div style="overflow-x:auto;">'
+  /* where-it-went chips: counts ignore this choice so you can always switch back */
+  var base=filteredGiven(true),cnt={'':base.length,client:0,team:0,none:0};base.forEach(function(x){cnt[recType(x)]++;});
+  var chips=[['','All'],['client','Given to contacts'],['team','Handed to team'],['none','Needs review']].map(function(k){
+    return '<button class="'+(swKind===k[0]?'on':'')+'" onclick="setKind(\''+k[0]+'\')">'+k[1]+' <b>'+cnt[k[0]]+'</b></button>';}).join('');
+  document.getElementById('swMain').innerHTML='<div class="bx-panel"><div class="bx-panel-h" style="flex-wrap:wrap;"><div class="bx-panel-t">Given Log</div><div class="bx-seg sw-kind">'+chips+'</div><div class="bx-panel-s">'+esc(rangeLabel())+(ed?' · click a row to correct it':'')+'</div></div><div style="overflow-x:auto;">'
     +'<table class="bx-tbl sw-tbl"><thead><tr><th>Date</th><th>Item</th><th class="n">Qty</th><th class="n">Value</th><th>Given To</th><th>Given By</th><th>Assigned To</th><th>Notes</th></tr></thead><tbody>'
-    +(rows||'<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text-secondary);">No records for these filters</td></tr>')+'</tbody>'
+    +(rows||'<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text-secondary);">'+(swKind==='none'?'Nothing needs review 🎉':'No records for these filters')+(swKind?' · <a href="#" onclick="setKind(\'\');return false;">Show all records</a>':'')+'</td></tr>')+'</tbody>'
     +(list.length?'<tfoot><tr><td colspan="2"><b>Given to contacts</b> · '+out.length+' record'+(out.length!==1?'s':'')+'</td><td class="n"><b>'+sumQ(out)+'</b></td><td class="n"><b>'+money(sumV(out))+'</b></td><td colspan="4"></td></tr>'
       +(out.length!==list.length?'<tr><td colspan="2">All records shown · '+list.length+'</td><td class="n">'+sumQ(list)+'</td><td class="n">'+money(sumV(list))+'</td><td colspan="4" style="color:var(--text-secondary)">includes team handoffs and records that need review</td></tr>':'')+'</tfoot>':'')
     +'</table></div></div>';
 }
-function showReview(){document.getElementById('swKind').value='none';setTab('given');}
+function showReview(){swKind='none';setTab('given',true);}
+function setKind(k){swKind=k;renderAll();}
 
 var openMember={};
 function renderTeam(){
@@ -1031,10 +1037,9 @@ function renderAll(){
   renderKpis();
   document.getElementById('givenItemFilter').style.display=swagView==='inventory'?'none':'';
   document.getElementById('givenMemberFilter').style.display=swagView==='inventory'||swagScope==='mine'?'none':'';
-  document.getElementById('swKind').style.display=swagView==='given'?'':'none';
   if(swagView==='inventory')renderInventory();else if(swagView==='given')renderGiven();else renderTeam();
 }
-function setTab(t){swagView=t;BX.pref('swag-view',t);
+function setTab(t,keepKind){swagView=t;BX.pref('swag-view',t);if(!keepKind)swKind='';
   ['inventory','given','team'].forEach(function(k){document.getElementById('sv-'+k).classList.toggle('on',k===t);});
   renderAll();}
 function setSwagScope(s){
