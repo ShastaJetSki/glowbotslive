@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8">
 <script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{return sessionStorage.getItem('sl-scope')==='all'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* a fresh sign-in starts on Mine */
+if(/login\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');}catch(e){}}
+</script>
+<script>
 /* ── SharkLaw V4 style switch ─────────────────────────────────────────
    sl-style: 'legacy' (default until the project goes live) or 'v4'.
    In the v4 style, light/dark is stored separately in 'v4-mode' (light
@@ -391,6 +401,10 @@
     .mw-event.is-past:hover,
     .day-ev.is-past:hover,
     .cal-card.is-past:hover{opacity:.75;filter:none;}
+.sched-scope{display:flex;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+.sched-scope .vt-btn{padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;font-family:inherit;}
+.sched-scope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+@media(max-width:768px){.sched-controls .view-toggle.sched-scope{display:flex!important;}}
 </style>
 <style id="v4-style">
 /* ═════════ SharkLaw V4 style layer ═════════
@@ -570,6 +584,18 @@ html[data-v4mode="dark"] .v4h-btn{border-color:#2b2f4a;}
 html[data-style="v4"] .top{background:var(--bg-primary)!important;border-bottom:1px solid var(--border-default)!important;position:static!important;}
 @media(min-width:769px){html[data-style="v4"] .top h1{display:none;}}
 
+/* Mine/All on phones: right under the phone header */
+.v4-mscope{display:none;}
+@media(max-width:768px){
+  html[data-style="v4"] .v4-mscope{display:flex;justify-content:flex-end;padding:10px 12px 0;}
+  html[data-style="v4"] .v4-mscope:empty,html[data-style="v4"] .v4-mscope:has(>#viewToggleWrap[style*="display: none"]){display:none;}
+  html[data-style="v4"] .v4-mscope .view-toggle{display:flex!important;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+  html[data-style="v4"] .v4-mscope .vt-btn{padding:6px 16px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;cursor:pointer;font-family:inherit;}
+  html[data-style="v4"] .v4-mscope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+}
+/* scheduler's phone header bar had its own white background */
+html[data-style="v4"] .mobile-top-header .mobile-header-bar{background:transparent!important;border-color:transparent!important;}
+
 /* ═════ V4 design system: KPI blocks, cards and page layout matched to the Overview ═════ */
 
 /* page width + spacing (Overview: 1280px, 22px 24px) */
@@ -742,8 +768,8 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
       <a href="v4-sharklaw-archive.html" class="sched-add-btn" style="background:transparent;border:1px solid var(--border-default);color:var(--text-secondary);margin-left:6px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;" title="Events older than 180 days">
         <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M1 3.2A1.2 1.2 0 0 1 2.2 2h11.6A1.2 1.2 0 0 1 15 3.2v1.6A1.2 1.2 0 0 1 13.8 6H2.2A1.2 1.2 0 0 1 1 4.8zM2.4 7.4h11.2v5.4a1.2 1.2 0 0 1-1.2 1.2H3.6a1.2 1.2 0 0 1-1.2-1.2zm3.4 2a.7.7 0 0 0 0 1.4h4.4a.7.7 0 0 0 0-1.4z"/></svg>
         Archive</a>
-      <div id="mineAllToggle" style="display:none!important;margin-left:8px;">
-        <div class="view-toggle">
+      <div id="viewToggleWrap" style="display:none!important;margin-left:8px;">
+        <div class="view-toggle sched-scope">
           <button class="vt-btn active" id="vtMine" onclick="setMineAll('mine')">Mine</button>
           <button class="vt-btn" id="vtAll" onclick="setMineAll('all')">All</button>
         </div>
@@ -1235,10 +1261,19 @@ async function loadAppointments(scope){
 }
 async function loadUserThemeBank(){/* themes simplified to light/dark */}
 
-var mineAllMode='all';
-
-function setMineAll(mode){mineAllMode=mode;}
-function maybeShowMineAll(){}
+var mineAllMode='mine';
+function _scopeMark(){var m=document.getElementById('vtMine'),a=document.getElementById('vtAll');if(m)m.classList.toggle('active',mineAllMode==='mine');if(a)a.classList.toggle('active',mineAllMode==='all');}
+function setMineAll(mode){
+  var can=SLScope.can(userRole);
+  mineAllMode=can&&mode==='all'?'all':'mine';if(can)SLScope.set(mineAllMode);
+  _scopeMark();_itemIndex=null;render();renderMiniCal();
+}
+function maybeShowMineAll(){
+  var w=document.getElementById('viewToggleWrap'),can=SLScope.can(userRole);
+  mineAllMode=can?SLScope.get():'mine';
+  if(w)w.style.setProperty('display',can?'flex':'none','important');
+  _scopeMark();_itemIndex=null;
+}
 
 var _itemIndex=null;
 function _idxAdd(idx,item,start,end){
@@ -1251,6 +1286,7 @@ function buildItemIndex(){
   var idx={};
   if(visibleLayers.appointments){
     allAppointments.forEach(function(a){
+      if(mineAllMode==='mine'&&a.assigned_to!==userId)return;
       if(!allMembersVisible&&a.assigned_to&&!visibleMemberIds.has(a.assigned_to))return;
       var start=a.appointment_date,end=a.appointment_end_date||start;
       _idxAdd(idx,{_id:a.appointment_id,_isEvent:false,_title:a.customer_name||'Unknown',_date:start,_endDate:end,_time:a.appointment_time||'09:00',_empId:a.assigned_to||null,_notes:a.notes||'',_service:a.service_type||'',_data:a},start,end);
@@ -1258,6 +1294,7 @@ function buildItemIndex(){
   }
   if(visibleLayers.events){
     allEvents.forEach(function(e){
+      if(mineAllMode==='mine'&&assigneesOf(e).indexOf(userId)<0)return;
       if(!allMembersVisible){
         var _as=assigneesOf(e);
         if(_as.length&&!_as.some(function(id){return visibleMemberIds.has(id);}))return;
@@ -2742,6 +2779,7 @@ async function init(){
   if(!tenantId){var r2=await sb.from('business_settings').select('tenant_id').limit(1).single();if(r2.data)tenantId=r2.data.tenant_id;}
   // Decide view + layers, then paint the calendar shell immediately so the page appears instantly.
   visibleLayers={appointments:true,events:true};
+  maybeShowMineAll();
   if(!localStorage.getItem('sched-default-view')&&window.innerWidth<=768){
     currentView='week';
   }
@@ -2855,7 +2893,17 @@ init();
     dh.appendChild(hdr);
     /* page-specific controls that lived in the old header keep working, now on the tab row */
     var extra=hdr.querySelector('.v4h-extra');
-    var vt=document.getElementById('viewToggleWrap');if(vt){vt.style.marginLeft='0';extra.appendChild(vt);}
+    var vt=document.getElementById('viewToggleWrap');
+    if(vt){
+      vt.style.marginLeft='0';
+      /* on phones the tab row is hidden, so Mine/All sits just under the phone header instead */
+      var mslot=document.createElement('div');mslot.className='v4-mscope';
+      var mt=document.querySelector('.mobile-top-header');if(mt&&mt.parentNode)mt.parentNode.insertBefore(mslot,mt.nextSibling);
+      var mq=window.matchMedia('(max-width:768px)');
+      var place=function(){(mq.matches&&mslot.parentNode?mslot:extra).appendChild(vt);};
+      if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);
+      place();
+    }
     dh.querySelectorAll('.hdr-actions .hdr-btn').forEach(function(b){extra.appendChild(b);});
     /* name of the signed-in person, mirrored from the page */
     var src=document.getElementById('dUserName')||document.getElementById('dBizName')||document.getElementById('legacyUser');
