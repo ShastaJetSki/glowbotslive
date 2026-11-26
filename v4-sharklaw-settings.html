@@ -542,6 +542,14 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
 </div>
 <div class="content" id="pageWrap" style="display:none;">
 
+  <!-- 0. BILLING & PAYMENT (owners / admins) -->
+  <div class="card" id="billingCard" style="display:none;">
+    <div class="card-header active" onclick="toggleCard(this)">
+      <h2>Billing &amp; Payment</h2><span class="card-icon">&#9660;</span>
+    </div>
+    <div class="card-content active"><div class="card-inner" id="billingInner"><div style="color:var(--text-secondary);font-size:13px;">Loading…</div></div></div>
+  </div>
+
   <!-- 1. BUSINESS INFORMATION -->
   <div class="card">
     <div class="card-header" onclick="toggleCard(this)">
@@ -1254,6 +1262,55 @@ async function init(){
   await loadUserData();
 }
 init();
+/* ── Billing & Payment (owners / admins): card on file = automatic monthly payment ── */
+(function(){
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function money(n){return '$'+(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function day(s){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s||'');return m?new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';}
+  function nextFirst(){var n=new Date();return new Date(n.getFullYear(),n.getMonth()+1,1).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+  var tries=0;
+  async function load(){
+    var card=document.getElementById('billingCard'),el=document.getElementById('billingInner');if(!card||!el)return;
+    var r=await sb.rpc('sl_billing_card');
+    if(r.error||!r.data){card.style.display='none';return;}
+    var b=r.data;card.style.display='';
+    var inv=await sb.from('platform_invoices').select('invoice_no,issued_at,due_at,total,status,pay_url,paid_at').order('due_at',{ascending:false}).limit(12);
+    var rows=(inv.data||[]).filter(function(i){return i.status!=='void';});
+    var cardLine=b.has_card
+      ?'<b>'+esc(String(b.card_brand||'Card').toUpperCase())+' •••• '+esc(b.card_last4||'')+'</b> <span class="bill-pill ok">Auto-pay on</span>'
+      :'<span style="color:var(--text-secondary)">No card on file</span>';
+    var next=b.next_due?(esc(b.next_invoice_no)+' · '+money(b.next_total)+' · due '+day(b.next_due)):(money(b.monthly_price)+' on '+nextFirst());
+    el.innerHTML=
+      '<div class="setting-row"><div><div class="setting-label">Monthly plan</div><div class="setting-desc">GlowBots CRM support</div></div><div style="font-weight:700;font-size:16px;">'+money(b.monthly_price)+' / month</div></div>'
+     +'<div class="setting-row"><div><div class="setting-label">Card on file</div><div class="setting-desc">'+(b.has_card?'Charged automatically on the 1st of each month. You only get an invoice if a payment doesn’t go through.':'Add a card to pay automatically on the 1st of each month — no invoices to keep track of.')+'</div></div>'
+       +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">'+cardLine+'<div style="display:flex;gap:6px;"><button class="btn btn-primary" onclick="slAddCard()">'+(b.has_card?'Replace card':'Add card')+'</button>'+(b.has_card?'<button class="btn" onclick="slRemoveCard()">Remove</button>':'')+'</div></div></div>'
+     +'<div class="setting-row"><div><div class="setting-label">Next payment</div></div><div>'+next+'</div></div>'
+     +(rows.length?'<div class="setting-label" style="margin:14px 0 6px;">Invoices</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+        +rows.map(function(i){var open=i.status==='sent'||i.status==='scheduled';
+          return '<tr style="border-bottom:1px solid var(--border-default)"><td style="padding:8px 4px;font-weight:600">'+esc(i.invoice_no)+'</td><td style="padding:8px 4px">due '+day(i.due_at)+'</td><td style="padding:8px 4px;text-align:right">'+money(i.total)+'</td>'
+           +'<td style="padding:8px 4px;text-align:right">'+(i.status==='paid'?'<span class="bill-pill ok">Paid '+day(i.paid_at)+'</span>':open&&i.pay_url?'<a class="btn btn-primary" style="padding:5px 12px;font-size:12px;text-decoration:none" target="_blank" rel="noopener" href="'+esc(i.pay_url)+'">Pay now</a>':'<span class="bill-pill">'+esc(i.status==='scheduled'?(b.has_card?'Auto-pay':'Upcoming'):i.status)+'</span>')+'</td></tr>';}).join('')+'</table></div>':'')
+     +'<div style="font-size:12px;color:var(--text-secondary);margin-top:12px;">Card details are handled securely by Stripe — they are never stored in this app.</div>';
+  }
+  window.slAddCard=async function(){
+    var w=window.open('about:blank','_blank');
+    try{var r=await sb.functions.invoke('send-invoice',{body:{client_setup:true}});
+      var url=r.data&&r.data.url;if(!url)throw new Error((r.error&&r.error.message)||'Card setup is not available yet');
+      if(w)w.location=url;else location.href=url;
+      if(typeof showToast==='function')showToast('Finish in the Stripe tab — this page updates when you come back');
+    }catch(e){if(w)w.close();alert('Could not open card setup: '+e.message);}
+  };
+  window.slRemoveCard=async function(){
+    if(!confirm('Remove the card on file? Automatic monthly payments will stop and invoices will be emailed instead.'))return;
+    var r=await sb.functions.invoke('send-invoice',{body:{client_remove_card:true}});
+    if(r.error)return alert('Could not remove the card: '+r.error.message);
+    load();
+  };
+  var st=document.createElement('style');st.textContent='.bill-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:var(--bg-hover);color:var(--text-secondary)}.bill-pill.ok{background:color-mix(in srgb,#16a34a 16%,transparent);color:#15803d}';
+  document.head.appendChild(st);
+  window.addEventListener('focus',function(){if(document.getElementById('billingCard')&&document.getElementById('billingCard').style.display!=='none')load();});
+  (function wait(){var r=String(window.currentUserRole||'').toLowerCase();if(['owner','admin'].indexOf(r)>=0&&window.sb)return load();if(++tries<40)setTimeout(wait,400);})();
+})();
+
 </script>
 <script>
 /* ── SharkLaw V4 shell: logo, uniform navigation, display gear, mobile nav ── */
@@ -1437,6 +1494,49 @@ init();
       if(el.closest('.v4-hdr'))return;el.style.display=ok?'':'none';});}
   apply();
   (function poll(){apply();if(!role()&&++tries<40)setTimeout(poll,400);})();
+})();
+
+/* ── Billing reminders: owners & admins only (the team never sees these) ──
+   1–10 days late: yellow banner · 11–20: orange · 21–30: red · after that: Pay now screen. */
+(function(){
+  var tries=0;
+  function role(){return String(window.currentUserRole||(window.me&&window.me.role)||'').toLowerCase();}
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function money(n){return '$'+(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function day(s){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s||'');return m?new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';}
+  function show(b){
+    if(!b||!b.level||b.level==='none')return;
+    var pay=b.pay_url?'<a href="'+esc(b.pay_url)+'" target="_blank" rel="noopener" class="slb-pay">Pay now</a>':'<a href="mailto:glowbotsapp@gmail.com?subject='+encodeURIComponent('Invoice '+(b.invoice_no||''))+'" class="slb-pay">Contact billing</a>';
+    if(b.level==='locked'){
+      var o=document.createElement('div');o.className='slb-lock';
+      o.innerHTML='<div class="slb-box"><div class="slb-t">Payment needed</div><p>Invoice <b>'+esc(b.invoice_no)+'</b> was due '+esc(day(b.due_at))+' and is now <b>'+b.days_late+' days</b> past due.</p>'
+        +'<div class="slb-amt">'+money(b.balance)+'<span>balance due</span></div>'+pay.replace('slb-pay','slb-pay big')
+        +'<p class="slb-s">Your team can keep working — this screen is only shown to owners and admins. It clears as soon as the payment comes through.</p>'
+        +'<p class="slb-s">Questions? GlowBots · 530-440-3863 · glowbotsapp@gmail.com</p><button type="button" class="slb-out">Log out</button></div>';
+      document.body.appendChild(o);document.documentElement.style.overflow='hidden';
+      o.querySelector('.slb-out').onclick=function(){if(typeof window.logout==='function')window.logout();else location.href='v4-login.html';};
+      return;
+    }
+    var bar=document.createElement('div');bar.className='slb-bar slb-'+b.level;
+    bar.innerHTML='<span>Invoice <b>'+esc(b.invoice_no)+'</b> ('+money(b.total)+') was due '+esc(day(b.due_at))+' — <b>'+b.days_late+' day'+(b.days_late===1?'':'s')+' past due</b>.'+(b.level==='red'?' Pay within '+Math.max(0,(b.lock_after_days||30)-b.days_late)+' days to avoid interruption.':'')+'</span>'+pay;
+    document.body.insertBefore(bar,document.body.firstChild);
+  }
+  var css=document.createElement('style');
+  css.textContent='.slb-bar{position:relative;z-index:1200;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;padding:9px 16px;font:600 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center}'
+   +'.slb-yellow{background:#fde047;color:#422006}.slb-orange{background:#f97316;color:#fff}.slb-red{background:#dc2626;color:#fff}'
+   +'.slb-pay{display:inline-block;padding:6px 14px;border-radius:8px;background:#111827;color:#fff!important;text-decoration:none;font-weight:700}.slb-pay.big{padding:13px 26px;font-size:17px;background:#ff2e88;margin:6px 0 4px}'
+   +'.slb-lock{position:fixed;inset:0;z-index:100000;background:rgba(5,6,15,.92);display:flex;align-items:center;justify-content:center;padding:18px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}'
+   +'.slb-box{background:#fff;color:#14182b;max-width:440px;width:100%;border-radius:18px;padding:28px 24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}'
+   +'.slb-t{font-size:24px;font-weight:800;color:#dc2626;margin-bottom:6px}.slb-box p{margin:8px 0;line-height:1.5}.slb-s{font-size:13px;color:#4b5563}'
+   +'.slb-amt{font-size:34px;font-weight:800;margin:10px 0 6px}.slb-amt span{display:block;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.06em}'
+   +'.slb-out{margin-top:10px;background:none;border:0;color:#4b5563;text-decoration:underline;cursor:pointer;font:inherit}';
+  document.head.appendChild(css);
+  (function poll(){
+    var r=role();
+    if(!r){if(++tries<40)setTimeout(poll,400);return;}
+    if(['owner','admin'].indexOf(r)<0||!window.sb||!window.sb.rpc)return;
+    window.sb.rpc('sl_billing_status').then(function(res){if(res&&!res.error)show(res.data);}).catch(function(){});
+  })();
 })();
 </script>
 </body>
