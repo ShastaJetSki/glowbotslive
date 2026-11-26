@@ -755,6 +755,61 @@ async function savePartner(on){
   renderProfile();showToast(on?'Marked as a partner':'No longer counted as a partner');
 }
 (function(){var st=document.createElement('style');st.textContent='.pbadge{cursor:pointer;}.pbadge.on{background:color-mix(in srgb,#3b82f6 18%,transparent);border-color:color-mix(in srgb,#3b82f6 45%,transparent);color:#2563eb;}html[data-v4mode="dark"] .pbadge.on,html[data-theme="dark"] .pbadge.on{color:#93c5fd;}';document.head.appendChild(st);})();
+
+/* ── Lead Tracker on the profile: shown only when this contact is linked to a lead ── */
+var contactLeads=null;
+var LT_STAGES=[{k:'submitted',n:'Submitted',c:'#4f46e5'},{k:'under_review',n:'Under Review',c:'#0f766e'},{k:'contacted',n:'Contacted',c:'#b45309'},{k:'consultation',n:'Consultation',c:'#7e22ce'},{k:'signed',n:'Signed',c:'#15803d'}];
+function ltRank(k){for(var i=0;i<LT_STAGES.length;i++)if(LT_STAGES[i].k===k)return i+1;return 0;}
+function ltDate(s){return s?new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';}
+async function loadContactLeads(){
+  if(!contact)return;var id=contact.contact_id;contactLeads=[];
+  var r=await sb.rpc('sl_contact_leads',{p_contact:id});
+  if(!r.error&&Array.isArray(r.data)){contactLeads=r.data;}
+  else{ /* sql/14 not run yet: show the leads this person can already see */
+    var q=await sb.from('leads').select('*').eq('related_contact_id',id).order('created_at',{ascending:false});
+    var mn=function(mid){var m=(allMembers||[]).find(function(x){return x.member_id===mid;});return m?((m.first_name||'')+' '+(m.last_name||'')).trim():'';};
+    contactLeads=(q.data||[]).map(function(l){return{lead_id:l.lead_id,lead_no:l.lead_no,stage:l.stage,furthest_rank:l.furthest_rank,urgency:l.urgency,incident_type:l.incident_type,declined_reason:l.declined_reason,created_at:l.created_at,stage_changed_at:l.stage_changed_at,signed_at:l.signed_at,closed_at:l.closed_at,submitted_by:mn(l.submitted_by),assigned_to:mn(l.assigned_to),can_open:true,history:[]};});
+  }
+  if(!contact||contact.contact_id!==id)return;
+  var w=document.getElementById('leadTrackerWrap');if(w)w.innerHTML=leadTrackerHtml();
+}
+function leadTrackerHtml(){
+  if(contactLeads===null){loadContactLeads();return '';}
+  if(!contactLeads.length)return '';
+  var check='<svg viewBox="0 0 16 16" style="width:13px;height:13px;display:block;"><polyline points="3,9 6.5,13 13,5" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+  return contactLeads.map(function(l){
+    var declined=l.stage==='declined',cur=ltRank(l.stage),far=Math.max(cur,+l.furthest_rank||0);
+    var first={};(l.history||[]).forEach(function(h){if(h.stage&&!first[h.stage])first[h.stage]=h.at;});
+    if(!first.submitted)first.submitted=l.created_at;if(!first.signed&&l.signed_at)first.signed=l.signed_at;
+    var dots=LT_STAGES.map(function(s,i){
+      var r=i+1,isCur=!declined&&r===cur,isDone=declined?r<=far:r<cur;
+      return '<div class="stage-dot-wrap'+(isCur?' scurrent':'')+'" style="color:'+(declined&&r>far?'#9ca3af':s.c)+';cursor:default;">'
+        +'<div class="stage-dot'+(isDone?' completed':isCur?' current':'')+'" style="color:'+(declined&&r>far?'#9ca3af':s.c)+';">'+(isCur?check:'')+'</div>'
+        +'<div class="stage-dot-lbl">'+s.n+(first[s.k]&&(isDone||isCur)?'<div class="lt-when">'+ltDate(first[s.k])+'</div>':'')+'</div></div>';
+    }).join('');
+    var days=l.stage_changed_at?Math.max(0,Math.floor((Date.now()-new Date(l.stage_changed_at))/86400000)):null;
+    var status=declined?'<div class="lt-status no">Declined'+(far?' after '+esc(LT_STAGES[Math.min(far,5)-1].n):'')+(l.closed_at?' · '+ltDate(l.closed_at):'')+(l.declined_reason?'<div class="lt-reason">'+esc(l.declined_reason)+'</div>':'')+'</div>'
+      :l.stage==='signed'?'<div class="lt-status yes">🎉 Signed'+(l.signed_at?' on '+ltDate(l.signed_at):'')+'</div>':'';
+    var urg=l.urgency&&l.urgency!=='normal'?'<span class="badge lt-urg '+esc(l.urgency)+'">'+esc(l.urgency.charAt(0).toUpperCase()+l.urgency.slice(1))+'</span>':'';
+    return '<div class="sec-card lt-card">'
+      +'<div class="sec-head"><div class="sec-title">Lead Tracker <span class="badge">#'+esc(l.lead_no)+'</span> '+urg+'</div>'
+        +(l.can_open?'<a class="sec-edit-btn" style="text-decoration:none;" href="v4-sharklaw-leads.html?id='+encodeURIComponent(l.lead_id)+'">Open lead →</a>':'')+'</div>'
+      +'<div class="stage-dots">'+dots+'</div>'
+      +status
+      +'<div class="lt-meta"><span>Submitted by <b>'+esc(l.submitted_by||'—')+'</b> · '+ltDate(l.created_at)+'</span>'
+        +'<span>Working it: <b>'+esc(l.assigned_to||'Not assigned yet')+'</b></span>'
+        +(l.incident_type?'<span>'+esc(l.incident_type)+'</span>':'')
+        +(!declined&&l.stage!=='signed'&&days!==null?'<span>'+(days===0?'Moved to this stage today':days+' day'+(days!==1?'s':'')+' in this stage')+'</span>':'')+'</div>'
+    +'</div>';
+  }).join('');
+}
+(function(){var st=document.createElement('style');st.textContent=
+  '.lt-when{font-size:10px;font-weight:500;color:var(--text-secondary);margin-top:2px;}'
+ +'.lt-meta{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 16px 14px;font-size:12.5px;color:var(--text-secondary);border-top:1px solid var(--border-default);}.lt-meta b{color:var(--text-primary);font-weight:600;}'
+ +'.lt-status{margin:0 16px 12px;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:600;}.lt-status.yes{background:color-mix(in srgb,#16a34a 14%,transparent);color:#15803d;}.lt-status.no{background:var(--bg-hover);color:var(--text-secondary);}'
+ +'.lt-reason{font-weight:400;margin-top:3px;}.lt-urg.high{background:color-mix(in srgb,#f59e0b 18%,transparent);color:#b45309;border-color:transparent;}.lt-urg.urgent{background:color-mix(in srgb,#dc2626 15%,transparent);color:#b91c1c;border-color:transparent;}';
+  document.head.appendChild(st);})();
+
 function renderProfile(){
   if(!contact){document.getElementById('profileWrap').innerHTML='<div style="text-align:center;padding:60px;color:var(--text-secondary);">Contact not found.</div>';return;}
   var c=contact;
@@ -856,6 +911,9 @@ function renderProfile(){
       '<div class="sec-head"><div class="sec-title">Funnel Stage</div><div style="font-size:12px;color:var(--text-secondary);">Tap a stage to move</div></div>'+
       '<div class="stage-dots">'+dotsHtml+'</div>'+
     '</div>'+
+
+    // LEAD TRACKER (only when this contact is linked to a lead)
+    '<div id="leadTrackerWrap">'+leadTrackerHtml()+'</div>'+
 
     // NOTES
     '<div class="sec-card">'+
