@@ -649,6 +649,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
       <div class="today-card-body" id="todayEventsBody"><div class="today-card-list" id="todayEventsList"><div class="today-card-empty">Loading&#8230;</div></div></div>
     </div>
   </div>
+  <div class="today-card celeb-card" id="celebCard" style="display:none;"><div class="today-card-header" style="cursor:default;"><div class="today-card-title">🎉 Birthdays &amp; Anniversaries</div><span class="today-card-count" id="celebCount">0</span></div><div class="today-card-body"><div class="celeb-row" id="celebList"></div></div></div>
 
   <!-- SECTIONS -->
   <div id="dashSections">
@@ -1679,6 +1680,44 @@ init().catch(console.error);
 </script>
 <script>if(window.SL_STYLE==='v4'){(function(){/* greeting first, then the KPI blocks, like the Overview */
  var g=document.getElementById('pageWrap'),k=document.querySelector('.kpi-bar');if(g&&k)k.parentNode.insertBefore(g,k);})();}</script>
+<script>
+/* ── Dashboard: team birthdays and work anniversaries (next 14 days) — everyone sees this ── */
+(function(){
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function parts(s){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s||'');return m?{y:+m[1],m:+m[2]-1,d:+m[3]}:null;}
+  function nextOn(s,t){var p=parts(s);if(!p)return null;var n=new Date(t.getFullYear(),p.m,p.d);if(n<t)n=new Date(t.getFullYear()+1,p.m,p.d);return n;}
+  async function load(){
+    var card=document.getElementById('celebCard');if(!card)return;
+    var tid=window.currentTenantId||window.TENANT_ID;
+    var r=await sb.from('team_members').select('*').eq('tenant_id',tid).or('is_active.is.null,is_active.eq.true');
+    if(r.error||!r.data)return;
+    var t=new Date();t.setHours(0,0,0,0);var lim=new Date(t.getTime()+14*86400000),list=[];
+    r.data.forEach(function(m){
+      var nm=((m.first_name||'')+' '+(m.last_name||'')).trim();if(!nm)return;
+      var b=nextOn(m.birth_date,t);if(b&&b<=lim)list.push({on:b,m:m,nm:nm,what:'Birthday',icon:'🎂'});
+      var a=nextOn(m.start_date,t),p=parts(m.start_date),yrs=a&&p?a.getFullYear()-p.y:0;
+      if(a&&a<=lim&&yrs>0)list.push({on:a,m:m,nm:nm,what:yrs+' year'+(yrs!==1?'s':'')+' on the team',icon:'🎉'});
+    });
+    if(!list.length){card.style.display='none';return;}
+    list.sort(function(x,y){return x.on-y.on||x.nm.localeCompare(y.nm);});
+    document.getElementById('celebCount').textContent=list.length;
+    document.getElementById('celebList').innerHTML=list.map(function(c){
+      var days=Math.round((c.on-t)/86400000),when=days===0?'Today!':days===1?'Tomorrow':c.on.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+      var col=c.m.color&&c.m.color.charAt(0)==='#'?c.m.color:'var(--accent-primary)';
+      return '<div class="celeb-chip'+(days===0?' today':'')+'"><span class="celeb-ic">'+c.icon+'</span><span class="celeb-av" style="background:'+col+'">'+esc(((c.m.first_name||'?')[0]+((c.m.last_name||'')[0]||'')).toUpperCase())+'</span><span><b>'+esc(c.nm)+'</b><br><small>'+esc(c.what)+' · '+when+'</small></span></div>';
+    }).join('');
+    card.style.display='';
+  }
+  var st=document.createElement('style');st.textContent=
+    '.celeb-card{margin:14px 0;}.celeb-row{display:flex;gap:10px;overflow-x:auto;padding:12px 14px;}'
+   +'.celeb-chip{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding:8px 14px 8px 10px;border-radius:12px;background:var(--bg-hover);font-size:13px;line-height:1.25;}'
+   +'.celeb-chip small{color:var(--text-secondary);font-size:11.5px;}.celeb-chip.today{background:color-mix(in srgb,#f59e0b 18%,var(--bg-hover));box-shadow:inset 0 0 0 1px #f59e0b;}'
+   +'.celeb-ic{font-size:20px;}.celeb-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;}';
+  document.head.appendChild(st);
+  var tries=0;(function wait(){var w=document.getElementById('pageWrap');if(window.sb&&w&&w.style.display!=='none'){load();return;}if(++tries<50)setTimeout(wait,300);})();
+})();
+
+</script>
 <script>
 /* ── SharkLaw V4 shell: logo, uniform navigation, display gear, mobile nav ── */
 (function(){
