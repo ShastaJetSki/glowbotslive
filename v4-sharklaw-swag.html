@@ -614,6 +614,7 @@ html[data-style="v4"] .desktop-header .theme-btn svg,html[data-style="v4"] .mobi
     </select>
     <select id="givenItemFilter" onchange="renderAll()"><option value="">All items</option></select>
     <select id="givenMemberFilter" onchange="renderAll()"><option value="">All team</option></select>
+    <select id="swKind" onchange="renderAll()" title="Where the swag went"><option value="">All records</option><option value="client">Given to contacts</option><option value="team">Handed to team</option><option value="none">Needs review</option></select>
     <span class="bx-count" id="swCount"></span>
     <div class="bx-seg"><button id="sv-inventory" class="on" onclick="setTab('inventory')">Inventory</button><button id="sv-given" onclick="setTab('given')">Given Log</button><button id="sv-team" onclick="setTab('team')">By Member</button></div>
     <button class="bx-primary" onclick="openItemModal(null)">+ Add Item</button>
@@ -852,6 +853,9 @@ var swagView=['inventory','given','team'].indexOf(BX.pref('swag-view'))>=0?BX.pr
 var swagScope='mine',memberById={},contactById={};
 
 function canScope(){return SLScope.can(currentUserRole);}
+/* where a record went: picked contact = given out; team member only = handed to staff (internal); neither = needs review */
+function recType(g){return g.contact_id?'client':g.assigned_to?'team':'none';}
+function isOut(g){return recType(g)==='client';}
 function isPopup(g){return /pop[\s\-_]*ups?\b|canopy/i.test(g.item_name||'');}
 /* a record with no quantity counts as 1 unit everywhere */
 function qtyOf(g){var n=parseInt(g.quantity,10);return isNaN(n)?1:n;}
@@ -892,8 +896,9 @@ function scopedGiven(){return allGiven.filter(function(g){return inScope(g)&&inR
 /* records for the Given Log: everything above + the toolbar filters */
 function filteredGiven(){
   var it=document.getElementById('givenItemFilter').value,rep=document.getElementById('givenMemberFilter').value;
-  var q=keyName(document.getElementById('searchBox').value);
+  var q=keyName(document.getElementById('searchBox').value),kind=document.getElementById('swKind').value;
   return scopedGiven().filter(function(g){
+    if(kind&&recType(g)!==kind)return false;
     if(it&&keyName(g.item_name)!==keyName(it))return false;
     if(rep&&g.given_by!==rep&&g.assigned_to!==rep)return false;
     if(q){var hay=[g.item_name,cName(g.contact_id),mName(g.given_by),mName(g.assigned_to),g.notes].join(' ').toLowerCase();if(hay.indexOf(q)<0)return false;}
@@ -908,19 +913,20 @@ function pill(v,l,title,alert){
   return'<div class="'+cls+'"'+(alert?' data-v4-alert="'+alert+'"':'')+(title?' title="'+esc(title)+'"':'')+'><div class="kpi-val">'+v+'</div><div class="kpi-lbl">'+l+'</div></div>';
 }
 function renderKpis(){
-  var g=scopedGiven(),pop=g.filter(isPopup),per=rangeLabel();
-  var everPop={};allGiven.forEach(function(x){if(inScope(x)&&isPopup(x)&&x.contact_id)everPop[x.contact_id]=1;});
+  var all=scopedGiven(),g=all.filter(isOut),pop=g.filter(isPopup),per=rangeLabel(),rev=all.filter(function(x){return recType(x)==='none';});
+  var everPop={};allGiven.forEach(function(x){if(inScope(x)&&isPopup(x)&&isOut(x))everPop[x.contact_id]=1;});
   var low=allItems.filter(function(i){return stockState(i)==='low';}).length,out=allItems.filter(function(i){return stockState(i)==='out';}).length;
   var stockVal=allItems.reduce(function(s,i){return s+Math.max(0,stock(i))*(parseFloat(i.unit_cost)||0);},0);
   document.getElementById('swKpis').innerHTML=
-     pill(sumQ(pop),'Pop-Ups Given','Pop-up units given · '+per)
+     pill(sumQ(pop),'Pop-Ups Given','Pop-up units given to contacts · '+per)
     +pill(moneyShort(sumV(pop)),'Pop-Up Value','Exact: '+money(sumV(pop))+' · '+per)
     +pill(Object.keys(everPop).length,'Contacts with a Pop-Up','Different contacts who have received a pop-up (all time)')
-    +pill(sumQ(g),'Swag Given','All items, units · '+per)
+    +pill(sumQ(g),'Swag Given','All items given to contacts, units · '+per)
     +pill(moneyShort(sumV(g)),'Value Given','Exact: '+money(sumV(g))+' · '+per)
     +pill(low,'Low Stock','Items at or below their low-stock alert','warm')
     +pill(out,'Out of Stock','Items with none left','hot')
-    +pill(moneyShort(stockVal),'Stock Value','In stock × unit cost · exact '+money(stockVal));
+    +pill(moneyShort(stockVal),'Stock Value','In stock × unit cost · exact '+money(stockVal))
+    +'<div class="kpi-pill'+(rev.length?' v4-warm':'')+'" data-v4-alert="warm" style="cursor:pointer;" onclick="showReview()" title="Records with no contact and no team member — not counted above until fixed · '+esc(per)+'"><div class="kpi-val">'+rev.length+'</div><div class="kpi-lbl">Needs Review</div></div>';
 }
 
 function renderInventory(){
@@ -934,7 +940,7 @@ function renderInventory(){
   document.getElementById('swMain').innerHTML='<div class="sw-grid">'+list.map(function(i){
     var st=stockState(i),qn=stock(i),low=reorderAt(i);
     var col=st==='out'?'#dc2626':st==='low'?'#f59e0b':'#16a34a';
-    var mine=g.filter(function(x){return keyName(x.item_name)===keyName(i.part_name);});
+    var mine=g.filter(function(x){return isOut(x)&&keyName(x.item_name)===keyName(i.part_name);});
     var cost=parseFloat(i.unit_cost)||0;
     return '<div class="bx-card sw-card" style="--bx-m:'+col+';" data-iid="'+esc(i.item_id)+'" onclick="openItemModal(this.dataset.iid)" title="Click to edit">'
       +'<div class="bx-top"><span class="bx-name">'+esc(i.part_name||'Unnamed')+'</span>'+(i.part_number?'<span class="bx-ref">'+esc(i.part_number)+'</span>':'')+'</div>'
@@ -949,20 +955,30 @@ function renderInventory(){
 }
 
 function fmtDay(g){var d=gDate(g);return d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';}
+function canEdit(){return ['owner','admin'].indexOf(String(currentUserRole||'').toLowerCase())>=0;}
+function wentTo(g){var t=recType(g);
+  if(t==='client')return esc(cName(g.contact_id));
+  if(t==='team')return '<span class="bx-badge" title="Handed to a team member — not counted as given out">To team</span>';
+  return '<span class="bx-badge due" title="No contact or team member recorded — not counted until fixed">Needs review</span>';}
 function renderGiven(){
   var list=filteredGiven().slice().sort(function(a,b){return(gDate(b)||0)-(gDate(a)||0);});
   document.getElementById('swCount').textContent=list.length+' record'+(list.length!==1?'s':'');
+  var ed=canEdit();
   var rows=list.map(function(g){
-    return '<tr><td>'+fmtDay(g)+'</td><td><b>'+esc(g.item_name||'—')+'</b>'+(isPopup(g)?' <span class="bx-badge">pop-up</span>':'')+'</td><td class="n">'+qtyOf(g)+'</td><td class="n">'+money(valOf(g))+'</td>'
-      +'<td>'+esc(cName(g.contact_id))+'</td><td><span class="bx-dot" style="background:'+mColor(g.given_by)+';margin-right:6px;"></span>'+esc(mName(g.given_by))+'</td><td>'+(g.assigned_to?esc(mName(g.assigned_to)):'—')+'</td>'
+    var idx=allGiven.indexOf(g);
+    return '<tr'+(ed?' class="click" onclick="openGivenEdit('+idx+')" title="Click to correct this record"':'')+'><td>'+fmtDay(g)+'</td><td><b>'+esc(g.item_name||'—')+'</b>'+(isPopup(g)?' <span class="bx-badge">pop-up</span>':'')+'</td><td class="n">'+qtyOf(g)+'</td><td class="n">'+money(valOf(g))+'</td>'
+      +'<td>'+wentTo(g)+'</td><td><span class="bx-dot" style="background:'+mColor(g.given_by)+';margin-right:6px;"></span>'+esc(mName(g.given_by))+'</td><td>'+(g.assigned_to?esc(mName(g.assigned_to)):'—')+'</td>'
       +'<td class="sw-notes">'+esc(g.notes||'')+'</td></tr>';
   }).join('');
-  document.getElementById('swMain').innerHTML='<div class="bx-panel"><div class="bx-panel-h"><div class="bx-panel-t">Given Log</div><div class="bx-panel-s">'+esc(rangeLabel())+'</div></div><div style="overflow-x:auto;">'
-    +'<table class="bx-tbl sw-tbl"><thead><tr><th>Date</th><th>Item</th><th class="n">Qty</th><th class="n">Value</th><th>Contact</th><th>Given By</th><th>Assigned To</th><th>Notes</th></tr></thead><tbody>'
+  var out=list.filter(isOut);
+  document.getElementById('swMain').innerHTML='<div class="bx-panel"><div class="bx-panel-h"><div class="bx-panel-t">Given Log</div><div class="bx-panel-s">'+esc(rangeLabel())+(ed?' · click a row to correct it':'')+'</div></div><div style="overflow-x:auto;">'
+    +'<table class="bx-tbl sw-tbl"><thead><tr><th>Date</th><th>Item</th><th class="n">Qty</th><th class="n">Value</th><th>Given To</th><th>Given By</th><th>Assigned To</th><th>Notes</th></tr></thead><tbody>'
     +(rows||'<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text-secondary);">No records for these filters</td></tr>')+'</tbody>'
-    +(list.length?'<tfoot><tr><td colspan="2"><b>Total</b> · '+list.length+' record'+(list.length!==1?'s':'')+'</td><td class="n"><b>'+sumQ(list)+'</b></td><td class="n"><b>'+money(sumV(list))+'</b></td><td colspan="4"></td></tr></tfoot>':'')
+    +(list.length?'<tfoot><tr><td colspan="2"><b>Given to contacts</b> · '+out.length+' record'+(out.length!==1?'s':'')+'</td><td class="n"><b>'+sumQ(out)+'</b></td><td class="n"><b>'+money(sumV(out))+'</b></td><td colspan="4"></td></tr>'
+      +(out.length!==list.length?'<tr><td colspan="2">All records shown · '+list.length+'</td><td class="n">'+sumQ(list)+'</td><td class="n">'+money(sumV(list))+'</td><td colspan="4" style="color:var(--text-secondary)">includes team handoffs and records that need review</td></tr>':'')+'</tfoot>':'')
     +'</table></div></div>';
 }
+function showReview(){document.getElementById('swKind').value='none';setTab('given');}
 
 var openMember={};
 function renderTeam(){
@@ -970,26 +986,33 @@ function renderTeam(){
   g.forEach(function(x){ids[x.given_by||'']=1;if(x.assigned_to)ids[x.assigned_to]=1;});
   if(swagScope!=='mine')allMembers.forEach(function(m){ids[m.member_id]=1;});else ids[currentUserId]=1;
   var rows=Object.keys(ids).map(function(id){
-    var giv=g.filter(function(x){return(x.given_by||'')===id;}),asg=g.filter(function(x){return id&&x.assigned_to===id;});
-    var reached={};giv.forEach(function(x){if(x.contact_id)reached[x.contact_id]=1;});
-    return{id:id,giv:giv,asg:asg,pop:sumQ(giv.filter(isPopup)),reach:Object.keys(reached).length};
-  }).sort(function(a,b){return sumV(b.giv)-sumV(a.giv)||mName(a.id).localeCompare(mName(b.id));});
+    var giv=g.filter(function(x){return(x.given_by||'')===id;});
+    var out=giv.filter(isOut),team=giv.filter(function(x){return recType(x)==='team';}),none=giv.filter(function(x){return recType(x)==='none';});
+    var rec=g.filter(function(x){return id&&x.assigned_to===id;});
+    var reached={};out.forEach(function(x){reached[x.contact_id]=1;});
+    return{id:id,giv:giv,out:out,team:team,none:none,rec:rec,pop:sumQ(out.filter(isPopup)),reach:Object.keys(reached).length};
+  }).sort(function(a,b){return sumV(b.out)-sumV(a.out)||sumQ(b.giv)-sumQ(a.giv)||mName(a.id).localeCompare(mName(b.id));});
   document.getElementById('swCount').textContent=rows.length+' member'+(rows.length!==1?'s':'');
+  var ed=canEdit();
   var body=rows.map(function(r){
     var open=!!openMember[r.id],detail='';
     if(open){
-      var all=r.giv.map(function(x){return{g:x,k:'Given'};}).concat(r.asg.filter(function(x){return(x.given_by||'')!==r.id;}).map(function(x){return{g:x,k:'Assigned to them'};}))
+      var all=r.giv.map(function(x){return{g:x,k:recType(x)==='client'?'Given to contact':recType(x)==='team'?'Handed to team':'Needs review'};})
+        .concat(r.rec.filter(function(x){return(x.given_by||'')!==r.id;}).map(function(x){return{g:x,k:'Received from '+mName(x.given_by)};}))
         .sort(function(a,b){return(gDate(b.g)||0)-(gDate(a.g)||0);});
-      detail='<tr class="sw-detail"><td colspan="8">'+(all.length?'<table class="bx-tbl"><thead><tr><th>Date</th><th>Type</th><th>Item</th><th class="n">Qty</th><th class="n">Value</th><th>Contact</th><th>Other person</th></tr></thead><tbody>'
-        +all.map(function(o){var x=o.g;return'<tr><td>'+fmtDay(x)+'</td><td>'+o.k+'</td><td>'+esc(x.item_name||'—')+'</td><td class="n">'+qtyOf(x)+'</td><td class="n">'+money(valOf(x))+'</td><td>'+esc(cName(x.contact_id))+'</td><td>'+esc(o.k==='Given'?(x.assigned_to&&x.assigned_to!==r.id?'Assigned to '+mName(x.assigned_to):'—'):'Given by '+mName(x.given_by))+'</td></tr>';}).join('')
+      detail='<tr class="sw-detail"><td colspan="8">'+(all.length?'<table class="bx-tbl"><thead><tr><th>Date</th><th>Type</th><th>Item</th><th class="n">Qty</th><th class="n">Value</th><th>Contact</th><th>Assigned To</th></tr></thead><tbody>'
+        +all.map(function(o){var x=o.g;return'<tr'+(ed?' class="click" onclick="event.stopPropagation();openGivenEdit('+allGiven.indexOf(x)+')"':'')+'><td>'+fmtDay(x)+'</td><td>'+esc(o.k)+'</td><td>'+esc(x.item_name||'—')+'</td><td class="n">'+qtyOf(x)+'</td><td class="n">'+money(valOf(x))+'</td><td>'+esc(x.contact_id?cName(x.contact_id):'—')+'</td><td>'+esc(x.assigned_to?mName(x.assigned_to):'—')+'</td></tr>';}).join('')
         +'</tbody></table>':'<div class="bx-empty">No swag records in this period</div>')+'</td></tr>';
     }
     return '<tr class="click" data-mid="'+esc(r.id)+'" onclick="toggleMember(this.dataset.mid)"><td><span class="sw-arr'+(open?' on':'')+'">▶</span><span class="bx-dot" style="background:'+mColor(r.id)+';margin-right:7px;"></span>'+esc(r.id?mName(r.id):'No “given by” recorded')+'</td>'
-      +'<td class="n">'+sumQ(r.giv)+'</td><td class="n">'+money(sumV(r.giv))+'</td><td class="n">'+r.pop+'</td><td class="n">'+r.reach+'</td><td class="n">'+sumQ(r.asg)+'</td><td class="n">'+money(sumV(r.asg))+'</td></tr>'+detail;
+      +'<td class="n">'+sumQ(r.out)+'</td><td class="n">'+money(sumV(r.out))+'</td><td class="n">'+r.pop+'</td><td class="n">'+r.reach+'</td>'
+      +'<td class="n">'+sumQ(r.team)+'</td><td class="n">'+sumQ(r.rec)+'</td><td class="n">'+(r.none.length?'<span class="bx-badge due">'+sumQ(r.none)+'</span>':'0')+'</td></tr>'+detail;
   }).join('');
+  var out=g.filter(isOut),reach={};out.forEach(function(x){reach[x.contact_id]=1;});
   document.getElementById('swMain').innerHTML='<div class="bx-panel"><div class="bx-panel-h"><div class="bx-panel-t">By Member</div><div class="bx-panel-s">'+esc(rangeLabel())+' · click a row for details</div></div><div style="overflow-x:auto;">'
-    +'<table class="bx-tbl sw-tbl"><thead><tr><th>Team Member</th><th class="n">Units Given</th><th class="n">Value Given</th><th class="n">Pop-Ups</th><th class="n">Contacts Reached</th><th class="n">Assigned to Them</th><th class="n">Value Assigned</th></tr></thead><tbody>'+body+'</tbody>'
-    +'<tfoot><tr><td><b>Total</b></td><td class="n"><b>'+sumQ(g)+'</b></td><td class="n"><b>'+money(sumV(g))+'</b></td><td class="n"><b>'+sumQ(g.filter(isPopup))+'</b></td><td class="n" title="Different contacts (someone reached by two people counts once)"><b>'+Object.keys(g.reduce(function(o,x){if(x.contact_id)o[x.contact_id]=1;return o;},{})).length+'</b></td><td class="n"><b>'+sumQ(g.filter(function(x){return x.assigned_to;}))+'</b></td><td class="n"><b>'+money(sumV(g.filter(function(x){return x.assigned_to;})))+'</b></td></tr></tfoot>'
+    +'<table class="bx-tbl sw-tbl"><thead><tr><th>Team Member</th><th class="n" title="Units given to contacts">Given to Contacts</th><th class="n">Value</th><th class="n">Pop-Ups</th><th class="n">Contacts Reached</th><th class="n" title="Units this person handed to other team members">Handed to Team</th><th class="n" title="Units handed to this person">Received</th><th class="n" title="Units with no contact or team member recorded">Needs Review</th></tr></thead><tbody>'+body+'</tbody>'
+    +'<tfoot><tr><td><b>Total</b></td><td class="n"><b>'+sumQ(out)+'</b></td><td class="n"><b>'+money(sumV(out))+'</b></td><td class="n"><b>'+sumQ(out.filter(isPopup))+'</b></td><td class="n"><b>'+Object.keys(reach).length+'</b></td>'
+    +'<td class="n"><b>'+sumQ(g.filter(function(x){return recType(x)==='team';}))+'</b></td><td class="n"><b>'+sumQ(g.filter(function(x){return x.assigned_to;}))+'</b></td><td class="n"><b>'+sumQ(g.filter(function(x){return recType(x)==='none';}))+'</b></td></tr></tfoot>'
     +'</table></div></div>';
 }
 function toggleMember(id){openMember[id]=!openMember[id];renderTeam();}
@@ -1007,6 +1030,7 @@ function renderAll(){
   renderKpis();
   document.getElementById('givenItemFilter').style.display=swagView==='inventory'?'none':'';
   document.getElementById('givenMemberFilter').style.display=swagView==='inventory'||swagScope==='mine'?'none':'';
+  document.getElementById('swKind').style.display=swagView==='inventory'?'none':'';
   if(swagView==='inventory')renderInventory();else if(swagView==='given')renderGiven();else renderTeam();
 }
 function setTab(t){swagView=t;BX.pref('swag-view',t);
@@ -1050,6 +1074,76 @@ async function loadAll(){
   updateFilters();renderAll();
 }
 
+/* ── Correct a Given Log record (owners and admins) ──
+   Changing a record here does not change stock on hand. */
+var editGivenIdx=-1;
+function givenPk(g){return ['id','given_id','swag_given_id','record_id','uuid'].find(function(k){return g&&g[k]!==undefined&&g[k]!==null;});}
+function ensureGivenModal(){
+  if(document.getElementById('givenEdit'))return;
+  var d=document.createElement('div');d.className='modal-overlay';d.id='givenEdit';
+  d.innerHTML='<div class="modal-box"><div class="modal-head"><div class="modal-title">Correct Swag Record</div><button class="modal-x" onclick="closeGivenEdit()">&times;</button></div>'
+   +'<div class="modal-body">'
+   +'<div class="fr2"><div class="fg"><label class="fl">Date</label><input type="date" class="fi" id="geDate"></div><div class="fg"><label class="fl">Item</label><input type="text" class="fi" id="geItem" list="geItems"><datalist id="geItems"></datalist></div></div>'
+   +'<div class="fr2"><div class="fg"><label class="fl">Quantity</label><input type="number" class="fi" id="geQty" min="0" step="1"></div><div class="fg"><label class="fl">Total value ($)</label><input type="number" class="fi" id="geVal" min="0" step="0.01"><div style="font-size:11px;color:var(--text-secondary);margin-top:4px;" id="geValHint"></div></div></div>'
+   +'<div class="fg"><label class="fl">Given to (contact)</label><input type="text" class="fi" id="geContact" list="geContacts" placeholder="Leave empty if it went to a team member"><datalist id="geContacts"></datalist></div>'
+   +'<div class="fr2"><div class="fg"><label class="fl">Given by</label><select class="fsel" id="geBy"></select></div><div class="fg"><label class="fl">Assigned to (team member)</label><select class="fsel" id="geTo"></select></div></div>'
+   +'<div class="fg" id="geNotesWrap"><label class="fl">Notes</label><textarea class="fta" id="geNotes"></textarea></div>'
+   +'<div style="font-size:12px;color:var(--text-secondary);">Fixing a record here doesn’t change stock on hand.</div>'
+   +'<div id="geMsg" style="font-size:13px;color:#ef4444;margin-top:6px;"></div></div>'
+   +'<div class="modal-foot"><button class="btn-primary" onclick="saveGivenEdit()">Save</button><button class="btn-danger" onclick="deleteGiven()">Delete record</button><button class="btn-secondary" onclick="closeGivenEdit()">Cancel</button></div></div>';
+  document.body.appendChild(d);
+  document.getElementById('geQty').addEventListener('input',geHint);document.getElementById('geItem').addEventListener('input',geHint);
+}
+function contactLabel(c){var n=((c.first_name||'')+' '+(c.last_name||'')).trim()||c.organization_name||'Unnamed';return n+(c.organization_name&&n!==c.organization_name?' — '+c.organization_name:'');}
+function geHint(){var it=allItems.find(function(i){return keyName(i.part_name)===keyName(document.getElementById('geItem').value);});var q=parseInt(document.getElementById('geQty').value,10);
+  document.getElementById('geValHint').textContent=it&&it.unit_cost&&!isNaN(q)?'At today’s cost: '+money(q*parseFloat(it.unit_cost))+' ('+money(parseFloat(it.unit_cost))+' each)':'';}
+function openGivenEdit(idx){
+  if(!canEdit())return;
+  var g=allGiven[idx];if(!g)return;
+  if(!givenPk(g)){showToast('This record has no id column, so it can’t be edited here.');return;}
+  ensureGivenModal();editGivenIdx=idx;
+  var d=gDate(g);document.getElementById('geDate').value=d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):'';
+  document.getElementById('geItems').innerHTML=allItems.map(function(i){return'<option value="'+esc(i.part_name||'')+'">';}).join('');
+  document.getElementById('geItem').value=g.item_name||'';
+  document.getElementById('geQty').value=g.quantity==null?'':g.quantity;
+  document.getElementById('geVal').value=g.value==null?'':g.value;
+  var opts=allContacts.slice().sort(function(a,b){return contactLabel(a).localeCompare(contactLabel(b));});
+  window._geMap={};document.getElementById('geContacts').innerHTML=opts.map(function(c){var l=contactLabel(c);window._geMap[l]=c.contact_id;return'<option value="'+esc(l)+'">';}).join('');
+  var cur=g.contact_id&&contactById[g.contact_id]?contactLabel(contactById[g.contact_id]):'';if(cur)window._geMap[cur]=g.contact_id;
+  document.getElementById('geContact').value=cur;
+  var mem=Object.keys(memberById).map(function(id){return memberById[id];}).sort(function(a,b){return mName(a.member_id).localeCompare(mName(b.member_id));});
+  document.getElementById('geBy').innerHTML='<option value="">— Not recorded —</option>'+mem.map(function(m){return'<option value="'+esc(m.member_id)+'"'+(m.member_id===g.given_by?' selected':'')+'>'+esc(mName(m.member_id))+'</option>';}).join('');
+  document.getElementById('geTo').innerHTML='<option value="">— None —</option>'+mem.map(function(m){return'<option value="'+esc(m.member_id)+'"'+(m.member_id===g.assigned_to?' selected':'')+'>'+esc(mName(m.member_id))+'</option>';}).join('');
+  document.getElementById('geNotesWrap').style.display=('notes' in g)?'':'none';document.getElementById('geNotes').value=g.notes||'';
+  document.getElementById('geMsg').textContent='';geHint();
+  document.getElementById('givenEdit').classList.add('active');
+}
+function closeGivenEdit(){var m=document.getElementById('givenEdit');if(m)m.classList.remove('active');editGivenIdx=-1;}
+async function saveGivenEdit(){
+  var g=allGiven[editGivenIdx];if(!g)return;var pk=givenPk(g),msg=document.getElementById('geMsg');
+  var item=document.getElementById('geItem').value.trim();if(!item){msg.textContent='Item is required.';return;}
+  var q=parseInt(document.getElementById('geQty').value,10);if(isNaN(q)||q<0){msg.textContent='Quantity must be 0 or more.';return;}
+  var vRaw=document.getElementById('geVal').value,v=vRaw===''?null:parseFloat(vRaw);if(v!==null&&(isNaN(v)||v<0)){msg.textContent='Value must be 0 or more.';return;}
+  var cTxt=document.getElementById('geContact').value.trim(),cid=null;
+  if(cTxt){cid=(window._geMap||{})[cTxt];if(!cid){msg.textContent='Pick the contact from the list (or clear the box).';return;}}
+  var day=document.getElementById('geDate').value;
+  var up={item_name:item,quantity:q,value:v,contact_id:cid,given_by:document.getElementById('geBy').value||null,assigned_to:document.getElementById('geTo').value||null};
+  if(day)up.given_date=new Date(day+'T12:00:00').toISOString();
+  if('notes' in g)up.notes=document.getElementById('geNotes').value.trim()||null;
+  var r=await sb.from('swag_given').update(up).eq(pk,g[pk]).select();
+  if(r.error){msg.textContent=r.error.message;return;}
+  if(!r.data||!r.data.length){msg.textContent='Not saved — your account isn’t allowed to change this record.';return;}
+  closeGivenEdit();await loadAll();showToast('Record corrected');
+}
+async function deleteGiven(){
+  var g=allGiven[editGivenIdx];if(!g)return;var pk=givenPk(g);
+  if(!confirm('Delete this swag record ('+qtyOf(g)+' × '+(g.item_name||'item')+')? Stock on hand will not change.'))return;
+  var r=await sb.from('swag_given').delete().eq(pk,g[pk]).select();
+  if(r.error){document.getElementById('geMsg').textContent=r.error.message;return;}
+  if(!r.data||!r.data.length){document.getElementById('geMsg').textContent='Not deleted — your account isn’t allowed to remove this record.';return;}
+  closeGivenEdit();await loadAll();showToast('Record deleted');
+}
+
 function openItemModal(id){
   if(id&&id.dataset)id=id.dataset.iid;
   editItemId=id||null;
@@ -1083,7 +1177,7 @@ async function saveItem(){
   if(editItemId){r=await sb.from('swag_inventory').update(payload).eq('item_id',editItemId);}
   else{payload.tenant_id=TENANT;payload.created_at=new Date().toISOString();r=await sb.from('swag_inventory').insert(payload);}
   if(r.error){document.getElementById('itemModalMsg').textContent=r.error.message;return;}
-  closeItemModal();await loadAll();showToast(editItemId?'Item updated!':'Item added!');
+  var _was=!!editItemId;closeItemModal();await loadAll();showToast(_was?'Item updated!':'Item added!');
 }
 
 async function deleteItem(){
@@ -1150,6 +1244,7 @@ async function saveGive(){
   var item=allItems.find(function(i){return i.item_id===giveItemId;});
   if(!item)return;
   if(!document.getElementById('gMember').value){document.getElementById('giveModalMsg').textContent='Choose who gave it.';return;}
+  if(!document.getElementById('gContact').value&&!document.getElementById('gAssignedTo').value){document.getElementById('giveModalMsg').textContent='Pick the contact it went to, or the team member it was handed to.';return;}
   if(qty<1){document.getElementById('giveModalMsg').textContent='Quantity must be at least 1.';return;}
   if(qty>(item.quantity_on_hand||0)&&(item.quantity_on_hand||0)>0){
     document.getElementById('giveModalMsg').textContent='Not enough in stock ('+( item.quantity_on_hand||0)+' available).';return;
