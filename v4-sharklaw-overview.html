@@ -326,6 +326,30 @@ table.team{width:100%;border-collapse:collapse;font-size:14px;}
 }
 @media(min-width:769px){.mnav,.sheet,.scrim{display:none!important;}}
 </style>
+<script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{var v=sessionStorage.getItem('sl-scope');if(v)return v==='all'?'all':'mine';return localStorage.getItem('sl-super')==='1'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* the platform superadmin (glowbotsapp) isn't a team member: let it see every page as an owner, on All */
+window.SLSuper=async function(tenant){
+  try{var r=await sb.rpc('sl_is_superadmin');if(r.data!==true)return null;}catch(e){return null;}
+  window.SL_SUPER=true;
+  var first=false;
+  try{first=localStorage.getItem('sl-super')!=='1';localStorage.setItem('sl-super','1');}catch(e){}
+  try{if(!sessionStorage.getItem('sl-super')){sessionStorage.setItem('sl-super','1');sessionStorage.setItem('sl-scope','all');}}catch(e){}
+  /* first page opened this session was set up for Mine: reload once so it opens on All */
+  if(first&&SLScope.get()==='all'&&!window._slSuperReloaded){window._slSuperReloaded=1;location.reload();return new Promise(function(){});}
+  var add=function(){if(document.getElementById('slSuperBack'))return;var a=document.createElement('a');a.id='slSuperBack';a.href='v4-superadmin.html';a.textContent='← Superadmin';
+    a.style.cssText='position:fixed;left:14px;bottom:14px;z-index:9999;background:#111827;color:#fff;font:600 12px/1 system-ui,sans-serif;padding:9px 14px;border-radius:999px;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.25);';document.body.appendChild(a);};
+  if(document.body)add();else document.addEventListener('DOMContentLoaded',add);
+  return {member_id:null,tenant_id:tenant||'55555555-5555-5555-5555-555555555555',role:'owner',is_active:true,first_name:'Superadmin',last_name:'',email:''};
+};
+/* a fresh sign-in starts on Mine */
+if(/login(-sharklaw)?\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');sessionStorage.removeItem('sl-super');localStorage.removeItem('sl-super');}catch(e){}}
+</script>
 </head>
 <body>
 
@@ -567,6 +591,7 @@ async function init(){
   var authId=s.user&&s.user.id,email=s.user&&s.user.email,row=null;
   if(authId){var r1=await sb.from('team_members').select('member_id,role,is_active,first_name,last_name').eq('auth_user_id',authId).eq('tenant_id',TENANT).maybeSingle();if(r1.data)row=r1.data;}
   if(!row&&email){var r2=await sb.from('team_members').select('member_id,role,is_active,first_name,last_name').eq('email',email).eq('tenant_id',TENANT).maybeSingle();if(r2.data)row=r2.data;}
+  if(!row)row=await SLSuper(TENANT);
   if(!row){await sb.auth.signOut();localStorage.clear();location.replace('v4-login.html');return;}
   if(row.is_active===false){await sb.auth.signOut();localStorage.clear();location.replace('v4-login.html?reason=deactivated');return;}
   me.id=row.member_id;me.role=(row.role||'').toLowerCase();try{localStorage.setItem('sl-role',me.role);}catch(e){}me.name=(nm(row.first_name)+' '+nm(row.last_name)).trim()||email;
