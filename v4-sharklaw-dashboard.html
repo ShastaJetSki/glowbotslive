@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8">
 <script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{return sessionStorage.getItem('sl-scope')==='all'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* a fresh sign-in starts on Mine */
+if(/login\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');}catch(e){}}
+</script>
+<script>
 /* ── SharkLaw V4 style switch ─────────────────────────────────────────
    sl-style: 'legacy' (default until the project goes live) or 'v4'.
    In the v4 style, light/dark is stored separately in 'v4-mode' (light
@@ -431,6 +441,18 @@ html[data-v4mode="dark"] .v4h-btn{border-color:#2b2f4a;}
 html[data-style="v4"] .top{background:var(--bg-primary)!important;border-bottom:1px solid var(--border-default)!important;position:static!important;}
 @media(min-width:769px){html[data-style="v4"] .top h1{display:none;}}
 
+/* Mine/All on phones: right under the phone header */
+.v4-mscope{display:none;}
+@media(max-width:768px){
+  html[data-style="v4"] .v4-mscope{display:flex;justify-content:flex-end;padding:10px 12px 0;}
+  html[data-style="v4"] .v4-mscope:empty,html[data-style="v4"] .v4-mscope:has(>#viewToggleWrap[style*="display: none"]){display:none;}
+  html[data-style="v4"] .v4-mscope .view-toggle{display:flex!important;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+  html[data-style="v4"] .v4-mscope .vt-btn{padding:6px 16px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;cursor:pointer;font-family:inherit;}
+  html[data-style="v4"] .v4-mscope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+}
+/* scheduler's phone header bar had its own white background */
+html[data-style="v4"] .mobile-top-header .mobile-header-bar{background:transparent!important;border-color:transparent!important;}
+
 /* ═════ V4 design system: KPI blocks, cards and page layout matched to the Overview ═════ */
 
 /* page width + spacing (Overview: 1280px, 22px 24px) */
@@ -828,7 +850,7 @@ function orMineEvents(ids){
 
 async function loadTodayCards(){
   var todayStr=ymd(new Date());
-  var isOA=['owner','admin'].includes(currentUserRole||'');
+  var isOA=SLScope.can(currentUserRole);
   var filterMine=!isOA||(viewMode==='mine');
   var aq=sb.from('sales_appointments').select('*').eq('tenant_id',currentTenantId).eq('appointment_date',todayStr).order('appointment_time');
   if(filterMine&&currentUserId)aq=aq.eq('assigned_to',currentUserId);
@@ -893,7 +915,7 @@ async function loadTodayCards(){
 function kSet(id,v){var e=document.getElementById(id);if(e)e.textContent=(v===null||v===undefined)?'—':Number(v).toLocaleString();}
 function kTrend(a,b,txt){if(a==null||b==null)return'';var d=a-b;return(d>0?'<span class="up">▲ '+d+'</span>':d<0?'<span class="down">▼ '+Math.abs(d)+'</span>':'<span>no change</span>')+' '+txt;}
 async function loadMotivation(){
-  var mine=(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''));
+  var mine=(viewMode==='mine'||!SLScope.can(currentUserRole));
   var now=new Date(),mStart=new Date(now.getFullYear(),now.getMonth(),1),lmStart=new Date(now.getFullYear(),now.getMonth()-1,1);
   var mStartD=ymd(mStart),mEndD=ymd(new Date(now.getFullYear(),now.getMonth()+1,0));
   var d7=new Date(Date.now()-7*864e5).toISOString(),d14=new Date(Date.now()-14*864e5).toISOString();
@@ -930,13 +952,13 @@ async function loadKpis(){
   var next7=new Date();next7.setDate(next7.getDate()+7);var next7Str=ymd(next7);
   var [cr,mr,ar,a7r,tr,sr,pipeR,or2]=await Promise.all([
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false'),
-    (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
-    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
-    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
-    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")');if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false');if(viewMode==='mine'||!SLScope.can(currentUserRole))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).eq('appointment_date',todayStr);if(viewMode==='mine'||!SLScope.can(currentUserRole))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('sales_appointments').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).gte('appointment_date',todayStr).lte('appointment_date',next7Str);if(viewMode==='mine'||!SLScope.can(currentUserRole))q=q.eq('assigned_to',currentUserId);return q;})(),
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")');if(viewMode==='mine'||!SLScope.can(currentUserRole))q=q.eq('assigned_to',currentUserId);return q;})(),
     sb.from('swag_inventory').select('item_id,quantity_on_hand,reorder_point').eq('tenant_id',currentTenantId),
     sb.from('contacts').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('funnel_stage','is',null).or('is_deleted.is.null,is_deleted.eq.false'),
-    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!['owner','admin'].includes(currentUserRole||''))q=q.eq('assigned_to',currentUserId);return q;})()
+    (function(){var q=sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',currentTenantId).not('status','in','("done","completed")').lt('due_at',new Date().toISOString());if(viewMode==='mine'||!SLScope.can(currentUserRole))q=q.eq('assigned_to',currentUserId);return q;})()
   ]);
   if(document.getElementById('kTotal'))document.getElementById('kTotal').textContent=cr.count??0;
   if(document.getElementById('kMine'))document.getElementById('kMine').textContent=mr.count??0;if(document.getElementById('kMineLabel'))document.getElementById('kMineLabel').textContent=viewMode==='mine'?'My Contacts':'Team Contacts';
@@ -956,7 +978,7 @@ async function loadKpis(){
 }
 async function loadContacts(){
   var el=document.getElementById('contactsContainer');
-  var isOAc=['owner','admin'].includes(currentUserRole||'');
+  var isOAc=SLScope.can(currentUserRole);
   var cQ=sb.from('contacts').select('contact_id,first_name,last_name,phone,organization_name,customer_type,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('created_at',{ascending:false}).limit(6);
   if(!isOAc||(viewMode==='mine'))cQ=cQ.eq('assigned_to',currentUserId);
   var r=await cQ;
@@ -965,7 +987,7 @@ async function loadContacts(){
 }
 async function loadTasks(){
   var el=document.getElementById('tasksContainer');
-  var isOAt=['owner','admin'].includes(currentUserRole||'');
+  var isOAt=SLScope.can(currentUserRole);
   var tQ=sb.from('tasks').select('task_id,title,description,due_at,status,priority,assigned_to').eq('tenant_id',currentTenantId).not('status','in','("done","completed")').order('due_at',{ascending:true,nullsFirst:false}).limit(10);
   if(!isOAt||(viewMode==='mine'))tQ=tQ.eq('assigned_to',currentUserId);
   var r=await tQ;
@@ -1301,7 +1323,7 @@ async function deleteTask(){
 async function loadMessages(){
   var el=document.getElementById('messagesContainer');
   if(!el)return;
-  var team=['owner','admin'].includes(currentUserRole||'')&&viewMode==='all';
+  var team=SLScope.can(currentUserRole)&&viewMode==='all';
   var tt=document.getElementById('msgTitle');if(tt)tt.textContent=team?'Team Messages':'My Messages';
   var ub=document.getElementById('unreadBadge');
   try{
@@ -1381,7 +1403,7 @@ async function loadFollowups(){
     var br=await sb.from('business_settings').select('stage_reminders').eq('tenant_id',currentTenantId).single();
     if(br.data&&br.data.stage_reminders&&Object.keys(br.data.stage_reminders).length)reminders=br.data.stage_reminders;
   }catch(e){}
-  var isOAf=['owner','admin'].includes(currentUserRole||'');
+  var isOAf=SLScope.can(currentUserRole);
   var fQ=sb.from('contacts').select('contact_id,first_name,last_name,phone,email,funnel_stage,updated_at,last_activity_at,assigned_to').eq('tenant_id',currentTenantId).or('is_deleted.is.null,is_deleted.eq.false').order('last_activity_at',{ascending:true,nullsFirst:true}).limit(50);
   if(!isOAf||(viewMode==='mine'))fQ=fQ.eq('assigned_to',currentUserId);
   var r=await fQ;
@@ -1429,7 +1451,7 @@ async function loadWeek(){
   for(var i=0;i<7;i++){var d=new Date(today);d.setDate(today.getDate()+i);days.push(d);}
   var startStr=ymd(days[0]);
   var endStr=ymd(days[6]);
-  var isOAw=['owner','admin'].includes(currentUserRole||'');
+  var isOAw=SLScope.can(currentUserRole);
   var waq=sb.from('sales_appointments').select('appointment_date,appointment_time,customer_name,assigned_to').eq('tenant_id',currentTenantId).gte('appointment_date',startStr).lte('appointment_date',endStr).order('appointment_time');
   var weq=sb.from('events').select('event_date,event_time,event_name,assigned_to,event_id').eq('tenant_id',currentTenantId).gte('event_date',startStr).lte('event_date',endStr).order('event_time');
   var mineW=(!isOAw||(viewMode==='mine'));
@@ -1582,12 +1604,12 @@ function initDragSections(){
   sections.forEach(addListeners);
 }
 
-var viewMode=localStorage.getItem('dash-view-mode')||'mine';
+var viewMode=SLScope.get();
 localStorage.removeItem('dash-section-order');
 
 function setViewMode(mode){
   viewMode=mode;
-  localStorage.setItem('dash-view-mode',mode);
+  SLScope.set(mode);
   document.getElementById('vtMine').classList.toggle('active',mode==='mine');
   document.getElementById('vtAll').classList.toggle('active',mode==='all');
   Promise.all([loadKpis(),loadTodayCards(),loadContacts(),loadTasks(),loadMessages(),loadFollowups(),loadWeek(),loadLeads()]).then(function(){return loadMotivation();}).catch(function(e){console.warn('kpis:',e);});
@@ -1618,7 +1640,7 @@ async function init(){
   document.getElementById('pageWrap').style.display='';
   /* management also gets the Overview page */
   if(['owner','admin','manager'].includes(currentUserRole)){var no=document.getElementById('navOverview');if(no)no.style.display='';var mo=document.getElementById('mobOverview');if(mo)mo.style.display='';}
-  if(['owner','admin'].includes(currentUserRole)){
+  if(SLScope.can(currentUserRole)){
     var toggleWrap=document.getElementById('viewToggleWrap');
     if(toggleWrap){
       toggleWrap.style.display='flex';
@@ -1739,7 +1761,17 @@ init().catch(console.error);
     dh.appendChild(hdr);
     /* page-specific controls that lived in the old header keep working, now on the tab row */
     var extra=hdr.querySelector('.v4h-extra');
-    var vt=document.getElementById('viewToggleWrap');if(vt){vt.style.marginLeft='0';extra.appendChild(vt);}
+    var vt=document.getElementById('viewToggleWrap');
+    if(vt){
+      vt.style.marginLeft='0';
+      /* on phones the tab row is hidden, so Mine/All sits just under the phone header instead */
+      var mslot=document.createElement('div');mslot.className='v4-mscope';
+      var mt=document.querySelector('.mobile-top-header');if(mt&&mt.parentNode)mt.parentNode.insertBefore(mslot,mt.nextSibling);
+      var mq=window.matchMedia('(max-width:768px)');
+      var place=function(){(mq.matches&&mslot.parentNode?mslot:extra).appendChild(vt);};
+      if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);
+      place();
+    }
     dh.querySelectorAll('.hdr-actions .hdr-btn').forEach(function(b){extra.appendChild(b);});
     /* name of the signed-in person, mirrored from the page */
     var src=document.getElementById('dUserName')||document.getElementById('dBizName')||document.getElementById('legacyUser');
