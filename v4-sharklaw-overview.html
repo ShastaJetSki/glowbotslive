@@ -612,8 +612,9 @@ async function loadAll(manual){
   var res=await Promise.all([
     safe(function(){return sb.from('team_members').select('member_id,first_name,last_name,email,role,color,is_active').eq('tenant_id',TENANT).eq('is_active',true).order('first_name');}),
     safe(async function(){
-      var cols='contact_id,first_name,last_name,organization_name,phone,funnel_stage,assigned_to,updated_at,created_at,last_activity_at';
+      var cols='contact_id,first_name,last_name,organization_name,phone,funnel_stage,assigned_to,updated_at,created_at,last_activity_at,partner_since';
       var r=await fetchAll(function(){return sb.from('contacts').select(cols).eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('contact_id');});
+      if(r.error&&/partner_since/.test(r.error.message||'')){cols=cols.replace(',partner_since','');r=await fetchAll(function(){return sb.from('contacts').select(cols).eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('contact_id');});}
       if(r.error&&/last_activity_at/.test(r.error.message||'')){ /* SQL 01 not run yet */
         cols=cols.replace(',last_activity_at','');
         r=await fetchAll(function(){return sb.from('contacts').select(cols).eq('tenant_id',TENANT).or('is_deleted.is.null,is_deleted.eq.false').order('contact_id');});
@@ -719,7 +720,7 @@ function kv(v,k){return'<div class="kv"><div class="v">'+v+'</div><div class="k"
 function renderKpis(f){
   var now=new Date(),today=ymd();
   var newMonth=f.contacts.filter(function(c){var d=new Date(c.created_at);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
-  var partners=f.contacts.filter(function(c){var k=String(c.funnel_stage);return k==='6'||k==='7';}).length;
+  var partners=f.contacts.filter(function(c){var k=String(c.funnel_stage);return c.hasOwnProperty('partner_since')?!!c.partner_since:(k==='6'||k==='7');}).length;
   var active=f.contacts.filter(function(c){var s=String(c.funnel_stage||'');return s>='1'&&s<='5';}).length;
   var apptToday=f.appts.filter(function(a){return a.appointment_date===today;}).length;
   var evToday=f.events.filter(function(e){return e.event_date===today;}).length;
@@ -807,7 +808,7 @@ function renderTeam(){
     var cs=D.contacts.filter(function(c){return c.assigned_to===id;});
     var tk=D.tasks.filter(function(t){return t.assigned_to===id;});
     var ld=D.leads.filter(function(l){return l.submitted_by===id;});
-    return{m:m,contacts:cs.length,partners:cs.filter(function(c){var k=String(c.funnel_stage);return k==='6'||k==='7';}).length,
+    return{m:m,contacts:cs.length,partners:cs.filter(function(c){var k=String(c.funnel_stage);return c.hasOwnProperty('partner_since')?!!c.partner_since:(k==='6'||k==='7');}).length,
       fu:fuAll.filter(function(c){return c.assigned_to===id;}).length,
       tasks:tk.length,overdue:tk.filter(isOverdue).length,
       sched:D.appts.filter(function(a){return a.assigned_to===id;}).length+D.events.filter(function(e){return e.assigned_to===id;}).length,
