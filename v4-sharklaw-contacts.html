@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8">
 <script>
+/* Mine/All: one choice shared by every page in this browser tab, Mine by default.
+   Only owners, admins and managers see the switch; everyone else is always Mine. */
+window.SLScope={ROLES:['owner','admin','manager'],
+  can:function(r){return this.ROLES.indexOf(String(r||'').toLowerCase())>=0;},
+  get:function(){try{return sessionStorage.getItem('sl-scope')==='all'?'all':'mine';}catch(e){return 'mine';}},
+  set:function(m){try{sessionStorage.setItem('sl-scope',m==='all'?'all':'mine');}catch(e){}}};
+/* a fresh sign-in starts on Mine */
+if(/login\.html$/i.test(location.pathname)){try{sessionStorage.removeItem('sl-scope');}catch(e){}}
+</script>
+<script>
 /* ── SharkLaw V4 style switch ─────────────────────────────────────────
    sl-style: 'legacy' (default until the project goes live) or 'v4'.
    In the v4 style, light/dark is stored separately in 'v4-mode' (light
@@ -474,6 +484,18 @@ html[data-v4mode="dark"] .v4h-btn{border-color:#2b2f4a;}
 html[data-style="v4"] .top{background:var(--bg-primary)!important;border-bottom:1px solid var(--border-default)!important;position:static!important;}
 @media(min-width:769px){html[data-style="v4"] .top h1{display:none;}}
 
+/* Mine/All on phones: right under the phone header */
+.v4-mscope{display:none;}
+@media(max-width:768px){
+  html[data-style="v4"] .v4-mscope{display:flex;justify-content:flex-end;padding:10px 12px 0;}
+  html[data-style="v4"] .v4-mscope:empty,html[data-style="v4"] .v4-mscope:has(>#viewToggleWrap[style*="display: none"]){display:none;}
+  html[data-style="v4"] .v4-mscope .view-toggle{display:flex!important;border:1px solid var(--border-default);border-radius:20px;overflow:hidden;background:var(--bg-card);}
+  html[data-style="v4"] .v4-mscope .vt-btn{padding:6px 16px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--text-secondary);border-radius:20px;cursor:pointer;font-family:inherit;}
+  html[data-style="v4"] .v4-mscope .vt-btn.active{background:var(--accent-primary);color:#fff;}
+}
+/* scheduler's phone header bar had its own white background */
+html[data-style="v4"] .mobile-top-header .mobile-header-bar{background:transparent!important;border-color:transparent!important;}
+
 /* ═════ V4 design system: KPI blocks, cards and page layout matched to the Overview ═════ */
 
 /* page width + spacing (Overview: 1280px, 22px 24px) */
@@ -772,7 +794,7 @@ var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI
 var TENANT='55555555-5555-5555-5555-555555555555';
 var sb=window.supabase.createClient(SB_URL,SB_KEY);
 var currentUserId=null,currentUserRole=null,currentUserName='',userEmail=null;
-var viewMode=localStorage.getItem('contacts-view-mode')||'all';
+var viewMode=SLScope.get();
 var activeLetter='';
 var allContacts=[],allMembers=[],_ccFirst=true;
 var editingId=null;
@@ -994,8 +1016,9 @@ function setLetter(l){
   renderContacts();
 }
 function setViewMode(mode){
+  if(!SLScope.can(currentUserRole))mode='mine';
   viewMode=mode;
-  localStorage.setItem('contacts-view-mode',mode);
+  SLScope.set(mode);
   document.getElementById('vtAll').classList.toggle('active',mode==='all');
   document.getElementById('vtMine').classList.toggle('active',mode==='mine');
   var ca=document.getElementById('chipAll'),cm=document.getElementById('chipMine');
@@ -1268,7 +1291,8 @@ async function init(){
   if(!row){await sb.auth.signOut();location.replace('v4-login.html');return;}
   currentUserId=row.member_id;currentUserRole=row.role;
   /* the Mine/All switch is for owners and admins only */
-  var _vt=document.getElementById('viewToggleWrap');if(_vt&&['owner','admin'].indexOf(String(row.role||'').toLowerCase())<0)_vt.style.display='none';
+  var _vt=document.getElementById('viewToggleWrap');if(!SLScope.can(row.role)){if(_vt)_vt.style.display='none';viewMode='mine';}
+  ['vtAll','chipAll'].forEach(function(i){var e=document.getElementById(i);if(e)e.classList.toggle('active',viewMode==='all');});['vtMine','chipMine'].forEach(function(i){var e=document.getElementById(i);if(e)e.classList.toggle('active',viewMode==='mine');});
   currentUserName=((row.first_name||'')+' '+(row.last_name||'')).trim();
   document.getElementById('dUserName').textContent=currentUserName;
   setViewMode(viewMode);
@@ -1378,7 +1402,17 @@ init();
     dh.appendChild(hdr);
     /* page-specific controls that lived in the old header keep working, now on the tab row */
     var extra=hdr.querySelector('.v4h-extra');
-    var vt=document.getElementById('viewToggleWrap');if(vt){vt.style.marginLeft='0';extra.appendChild(vt);}
+    var vt=document.getElementById('viewToggleWrap');
+    if(vt){
+      vt.style.marginLeft='0';
+      /* on phones the tab row is hidden, so Mine/All sits just under the phone header instead */
+      var mslot=document.createElement('div');mslot.className='v4-mscope';
+      var mt=document.querySelector('.mobile-top-header');if(mt&&mt.parentNode)mt.parentNode.insertBefore(mslot,mt.nextSibling);
+      var mq=window.matchMedia('(max-width:768px)');
+      var place=function(){(mq.matches&&mslot.parentNode?mslot:extra).appendChild(vt);};
+      if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);
+      place();
+    }
     dh.querySelectorAll('.hdr-actions .hdr-btn').forEach(function(b){extra.appendChild(b);});
     /* name of the signed-in person, mirrored from the page */
     var src=document.getElementById('dUserName')||document.getElementById('dBizName')||document.getElementById('legacyUser');
