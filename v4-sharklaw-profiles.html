@@ -721,6 +721,40 @@ function fmtTime(d){if(!d)return'';return new Date(d).toLocaleTimeString('en-US'
 function daysAgo(d){if(!d)return null;var diff=Math.floor((Date.now()-new Date(d).getTime())/(1000*60*60*24));return diff===0?'Today':diff===1?'Yesterday':diff+'d ago';}
 
 /* ===== RENDER PROFILE ===== */
+/* ── Partner since: badge on the profile + correct it (set a date, or "not a partner") ── */
+function partnerBadge(c){
+  if(!c||!c.hasOwnProperty('partner_since'))return '';
+  if(c.partner_since){
+    var d=new Date(c.partner_since).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    return '<span class="badge pbadge on" onclick="editPartner(event)" title="Counted as a partner. Click to correct.">🤝 Partner since '+d+' ✎</span>';
+  }
+  return '<span class="badge pbadge" onclick="editPartner(event)" title="Not counted as a partner. Click to mark them as one.">+ Mark as partner</span>';
+}
+function editPartner(e){
+  e.stopPropagation();
+  var old=document.getElementById('pEdit');if(old){old.remove();return;}
+  var c=contact,cur=c.partner_since?String(c.partner_since).slice(0,10):new Date().toISOString().slice(0,10);
+  var box=document.createElement('div');box.id='pEdit';
+  box.innerHTML='<div style="font-weight:700;margin-bottom:6px;">Partner since</div>'
+    +'<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Partners stay counted even after they move on to reconnect. Fix it here if this is wrong.</div>'
+    +'<input type="date" id="pDate" value="'+cur+'" style="width:100%;margin-bottom:10px;">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="action-btn primary" onclick="savePartner(true)">Save</button>'
+    +(c.partner_since?'<button class="action-btn" onclick="savePartner(false)">Not a partner</button>':'')
+    +'<button class="action-btn" onclick="document.getElementById(\'pEdit\').remove()">Cancel</button></div>';
+  var r=e.currentTarget.getBoundingClientRect();
+  box.style.cssText='position:fixed;z-index:9999;top:'+Math.min(window.innerHeight-210,r.bottom+8)+'px;left:'+Math.max(8,Math.min(window.innerWidth-308,r.left))+'px;width:300px;padding:14px;border-radius:12px;background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border-default);box-shadow:0 12px 32px rgba(0,0,0,.25);font-size:13px;';
+  document.body.appendChild(box);
+  setTimeout(function(){document.addEventListener('click',function close(ev){if(!box.contains(ev.target)){box.remove();document.removeEventListener('click',close);}});},0);
+}
+async function savePartner(on){
+  var v=null;
+  if(on){var d=document.getElementById('pDate').value;if(!d){showToast('Pick a date');return;}v=new Date(d+'T12:00:00').toISOString();}
+  var r=await sb.from('contacts').update({partner_since:v}).eq('contact_id',contact.contact_id);
+  if(r.error){showToast('Could not save: '+r.error.message);return;}
+  contact.partner_since=v;var b=document.getElementById('pEdit');if(b)b.remove();
+  renderProfile();showToast(on?'Marked as a partner':'No longer counted as a partner');
+}
+(function(){var st=document.createElement('style');st.textContent='.pbadge{cursor:pointer;}.pbadge.on{background:color-mix(in srgb,#3b82f6 18%,transparent);border-color:color-mix(in srgb,#3b82f6 45%,transparent);color:#2563eb;}html[data-v4mode="dark"] .pbadge.on,html[data-theme="dark"] .pbadge.on{color:#93c5fd;}';document.head.appendChild(st);})();
 function renderProfile(){
   if(!contact){document.getElementById('profileWrap').innerHTML='<div style="text-align:center;padding:60px;color:var(--text-secondary);">Contact not found.</div>';return;}
   var c=contact;
@@ -784,7 +818,7 @@ function renderProfile(){
         (c.organization_name?'<div class="hero-org">'+esc(nm(c.organization_name))+'</div>':'')+
         '<div class="hero-badges">'+
           (c.customer_type?'<span class="badge type">'+esc(c.customer_type)+'</span>':'')+
-          '<span class="badge">'+esc(getStageName(stage))+'</span>'+
+          '<span class="badge">'+esc(getStageName(stage))+'</span>'+partnerBadge(c)+
           '<span class="badge">'+esc(memberName(c.assigned_to))+'</span>'+
         '</div>'+
       '</div>'+
@@ -862,8 +896,9 @@ async function quickStage(stageId){
   if(!contact||contact.funnel_stage===stageId)return;
   var oldStage=contact.funnel_stage;
   contact.funnel_stage=stageId;
-  var r=await sb.from('contacts').update({funnel_stage:stageId}).eq('contact_id',contact.contact_id);
+  var r=await sb.from('contacts').update({funnel_stage:stageId}).eq('contact_id',contact.contact_id).select();
   if(r.error){contact.funnel_stage=oldStage;showToast('Error saving stage');return;}
+  if(r.data&&r.data[0])Object.assign(contact,r.data[0]);
   /* history row is written by the database trigger (sql/01) */
   await reloadActivity();
   renderProfile();showToast('Stage updated');
