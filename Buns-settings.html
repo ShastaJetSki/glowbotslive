@@ -713,8 +713,13 @@ body.adm{background:color-mix(in srgb,var(--brand) 4%,var(--bg));padding-bottom:
 .listed button{border:0;background:none;cursor:pointer;font-size:14px;color:var(--muted);}
 .addrow{display:flex;gap:8px;margin-top:8px;}
 .addrow .input{padding:9px 12px;}
+.hero-ph{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}
+.hero-ph .photo{width:110px;height:138px;}
+.hero-ph .addphoto{width:110px;height:138px;}
+.hl-card{display:grid;grid-template-columns:30px 1fr 34px;gap:10px;align-items:start;margin-bottom:14px;}
+.hl-n{width:28px;height:28px;border-radius:50%;background:var(--brand-mist);color:var(--brand-deep);display:flex;align-items:center;justify-content:center;font:500 13px/1 var(--sans);margin-top:10px;}
 .photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 26px;}
-.photo-grid label small{display:block;text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);font-weight:400;margin-top:3px;}
+.photo-grid label small,.field label small{display:block;text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);font-weight:400;margin-top:3px;}
 @media(max-width:700px){.photo-grid{grid-template-columns:1fr;}}
 .imgpick{display:flex;gap:14px;align-items:center;}
 .imgpick .photo{width:120px;height:90px;}
@@ -832,12 +837,25 @@ function img(path,label){var v=val(path);return '<div class="field"><label>'+lab
 
 
 var CATS=[],PRODS=[];
+function heroPhotos(){var L=X.home.hero_images||[];
+  return '<div class="field"><label>Welcome photos <small>Add several and each visit shows the next one. Tall photos look best. None = your newest product photo.</small></label>'
+    +'<div class="hero-ph">'+L.map(function(u,i){return '<div class="photo" style="background-image:url(\''+B.esc(u)+'\')">'+(i===0?'<span class="main">First</span>':'')+'<div class="pbar"><button onclick="heroImgMove('+i+',-1)" aria-label="Move left">‹</button><button onclick="heroImgDel('+i+')" aria-label="Remove">×</button><button onclick="heroImgMove('+i+',1)" aria-label="Move right">›</button></div></div>';}).join('')
+    +'<button class="addphoto" onclick="this.nextElementSibling.click()">＋<br>Add photos</button><input type="file" accept="image/*" multiple class="hide" onchange="heroImgAdd(this.files)"></div>'
+    +(L.length>1?'<p class="muted" style="font-size:12.5px;margin:8px 0 0">'+L.length+' photos rotate — a different one for each visit.</p>':'')+'</div>';}
+async function heroImgAdd(files){var fs=[].slice.call(files);if(!fs.length)return;B.toast('Uploading '+fs.length+' photo'+(fs.length!==1?'s':'')+'…');var L=(X.home.hero_images||[]).slice();
+  for(var i=0;i<fs.length;i++){try{L.push(await A.upload(fs[i],'site'));}catch(e){B.toast('Upload failed: '+e.message);}}set('home.hero_images',L);draw();B.toast('Added — remember to save');}
+function heroImgDel(i){var L=(X.home.hero_images||[]).slice();L.splice(i,1);set('home.hero_images',L);draw();}
+function heroImgMove(i,d){var L=(X.home.hero_images||[]).slice(),j=i+d;if(j<0||j>=L.length)return;var t=L[i];L[i]=L[j];L[j]=t;set('home.hero_images',L);draw();}
+function heroLines(){var L=X.home.hero_lines||[];
+  return '<p class="muted" style="font-size:13px;margin:0 0 14px">Add several headlines and each visit shows the next one. Tip: two short sentences — the second shows in italic, e.g. “Baked by hand. Plated with soul.”</p>'
+    +L.map(function(l,i){return '<div class="hl-card"><div class="hl-n">'+(i+1)+'</div><div><input class="input" placeholder="Headline" value="'+B.esc(l.title||'')+'" oninput="X.home.hero_lines['+i+'].title=this.value;dirty()"><textarea class="input" style="margin-top:8px;min-height:70px" placeholder="Intro (optional)" oninput="X.home.hero_lines['+i+'].text=this.value;dirty()">'+B.esc(l.text||'')+'</textarea></div><button class="xbtn" onclick="X.home.hero_lines.splice('+i+',1);dirty();draw()" aria-label="Remove">×</button></div>';}).join('')
+    +'<button class="btn btn-ghost btn-sm" onclick="var a=(X.home.hero_lines||[]).slice();a.push({title:\'\',text:\'\'});set(\'home.hero_lines\',a);draw()">+ Add a headline</button>';}
 function photosPanel(){
   var h=X.home,ci=h.cat_images||{};
   var fp=h.float_product||'';
   return '<div class="panel"><div class="panel-h"><h2>Home page photos</h2><span class="muted" style="font-size:13px">Upload, replace or remove any photo, then press Save changes</span></div><div class="panel-b">'
+    +heroPhotos()
     +'<div class="photo-grid">'
-    +img('home.hero_image','Welcome photo <small>Tall photos look best. Empty = your newest product photo.</small>')
     +img('home.about_image','Our story photo <small>Home page story section.</small>')
     +img('home.custom_image','Custom cakes photo <small>Shown beside the custom cakes invitation. Empty = no photo.</small>')
     +img('home.story_page_image','Our Story page photo <small>Top of the Our Story page. Empty = uses the Our story photo.</small>')
@@ -905,7 +923,7 @@ R.home=function(){
   return '<div class="panel"><div class="panel-h"><h2>Announcement bar</h2></div><div class="panel-b">'+inp('home.announcement','Message across the top of every page',{ph:'e.g. Holiday pre-orders are open — order by Dec 20',hint:'Leave empty to hide it.'})+'</div></div>'
     +'<div class="panel"><div class="panel-h"><h2>Scrolling ticker</h2>'+sw('home.ticker_on','Show the ticker')+'</div>'+(X.home.ticker_on!==false?'<div class="panel-b">'+inp('home.ticker_text','Phrases (one per line)',{area:true,h:150,hint:'The phrases slide slowly across the home page under the welcome section, with a ✦ between each. Leave empty to use: '+B.TICKER_DEFAULT.join(' · ')+'.'})+'</div>':'')+'</div>'
     +photosPanel()
-    +'<div class="panel"><div class="panel-h"><h2>Welcome section</h2></div><div class="panel-b">'+inp('home.hero_title','Headline',{hint:'Tip: two short sentences — the second shows in italic, e.g. “Baked slowly. Shared gladly.”'})+inp('home.hero_text','Intro',{area:true})+'</div></div>'
+    +'<div class="panel"><div class="panel-h"><h2>Welcome section</h2></div><div class="panel-b">'+heroLines()+'</div></div>'
     +'<div class="panel"><div class="panel-h"><h2>Our story</h2></div><div class="panel-b">'+inp('home.about_title','Heading')+inp('home.about_text','Your story',{area:true,h:150})+'</div></div>'
     +'<div class="panel"><div class="panel-h"><h2>Kind words</h2><button class="btn btn-ghost btn-sm" onclick="var a=(X.home.testimonials||[]).slice();a.push({name:\'\',text:\'\'});set(\'home.testimonials\',a);draw()">+ Add</button></div><div class="panel-b">'
     +(ts.length?ts.map(function(t,i){return '<div style="display:grid;grid-template-columns:1fr 34px;gap:10px;margin-bottom:12px"><div><textarea class="input" style="min-height:70px" placeholder="What they said" oninput="X.home.testimonials['+i+'].text=this.value;dirty()">'+B.esc(t.text||'')+'</textarea><input class="input" style="margin-top:6px" placeholder="Name, e.g. Maya R." value="'+B.esc(t.name||'')+'" oninput="X.home.testimonials['+i+'].name=this.value;dirty()"></div><button class="xbtn" onclick="X.home.testimonials.splice('+i+',1);dirty();draw()">×</button></div>';}).join(''):'<p class="muted" style="margin:0">Add a few lovely reviews — up to three show on the home page.</p>')+'</div></div>'
@@ -960,6 +978,7 @@ async function loadTeam(){var a=await sb.from('buns_staff').select('*').order('c
 function reset(){X=JSON.parse(JSON.stringify(S0));B.applyTheme(X.theme);draw();}
 async function save(){
   var b=document.getElementById('saveBtn');b.disabled=true;b.textContent='Saving…';
+  var hm=X.home,hl=(hm.hero_lines||[]).filter(function(l){return (l.title||'').trim()||(l.text||'').trim();});hm.hero_lines=hl;hm.hero_image=(hm.hero_images||[])[0]||'';hm.hero_title=hl[0]?hl[0].title:'';hm.hero_text=hl[0]?hl[0].text:'';
   var row={};['store_name','tagline','logo_url','phone','email','address','city_line','instagram','facebook','theme','hours','home','fulfillment','tax_rate','notify_email'].forEach(function(k){row[k]=X[k];});
   row.tax_rate=+row.tax_rate||0;
   var r=await sb.from('buns_settings').update(row).eq('id',1);b.textContent='Save changes';
@@ -971,7 +990,7 @@ A.boot(async function(){
   if(A.role!=='owner'){A.shell('',true);document.getElementById('view').innerHTML='<div class="panel"><div class="empty-s"><div class="serif">Owners only</div>Ask the owner to change settings.</div></div>';return;}
   A.shell('',true);
   var r=await sb.from('buns_settings').select('*').eq('id',1).maybeSingle();S0=r.data||{};
-  S0.home=S0.home||{};if(!Array.isArray(S0.home.faq))S0.home.faq=JSON.parse(JSON.stringify(B.FAQ_DEFAULT));S0.fulfillment=S0.fulfillment||{};['pickup','delivery','shipping'].forEach(function(k){S0.fulfillment[k]=S0.fulfillment[k]||{};});S0.fulfillment.closed_dates=S0.fulfillment.closed_dates||[];S0.theme=S0.theme||{};S0.hours=S0.hours||{};S0.stripe=S0.stripe||{};
+  S0.home=S0.home||{};if(!Array.isArray(S0.home.hero_images))S0.home.hero_images=S0.home.hero_image?[S0.home.hero_image]:[];if(!Array.isArray(S0.home.hero_lines))S0.home.hero_lines=(S0.home.hero_title||S0.home.hero_text)?[{title:S0.home.hero_title||'',text:S0.home.hero_text||''}]:[];if(!Array.isArray(S0.home.faq))S0.home.faq=JSON.parse(JSON.stringify(B.FAQ_DEFAULT));S0.fulfillment=S0.fulfillment||{};['pickup','delivery','shipping'].forEach(function(k){S0.fulfillment[k]=S0.fulfillment[k]||{};});S0.fulfillment.closed_dates=S0.fulfillment.closed_dates||[];S0.theme=S0.theme||{};S0.hours=S0.hours||{};S0.stripe=S0.stripe||{};
   X=JSON.parse(JSON.stringify(S0));await loadTeam();
   var rc=await sb.from('buns_categories').select('id,name,slug,active,sort').order('sort');CATS=(rc.data||[]).filter(function(c){return c.slug&&c.active!==false;});
   var rp=await sb.from('buns_products').select('id,name,active').eq('active',true).order('name');PRODS=rp.data||[];
