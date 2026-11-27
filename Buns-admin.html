@@ -678,6 +678,35 @@ body.adm{background:color-mix(in srgb,var(--brand) 4%,var(--bg));padding-bottom:
 .pa .flags{flex-wrap:wrap;right:10px;}
 .pa .flags .tag.ship{background:var(--brand);color:var(--brand-ink);}
 .pa .flags .tag.loc{background:#fff;color:var(--muted);}
+/* bake mode */
+.bk-top{display:flex;flex-direction:column;gap:14px;position:sticky;top:-22px;z-index:3;background:var(--card,#fff);padding:6px 0 14px;margin-top:-6px;border-bottom:1px solid var(--line);}
+.bk-prog{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--muted);white-space:nowrap;}
+.bk-prog div{flex:1;height:6px;border-radius:99px;background:color-mix(in srgb,var(--ink) 8%,transparent);overflow:hidden;}
+.bk-prog i{display:block;height:100%;background:var(--brand);border-radius:99px;transition:width .35s var(--ease,ease);}
+.bk-meta{margin:16px 0 4px;font-size:14px;color:var(--muted);}
+.bk-meta b{color:var(--ink);font-weight:500;}
+.bk-timer{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 0;padding:12px 14px;border:1px dashed var(--line);border-radius:14px;}
+.bk-timer.run{border-style:solid;background:var(--brand-mist);}
+.bk-timer b{font:400 30px/1 var(--serif);min-width:92px;font-variant-numeric:tabular-nums;}
+.bk-row{display:grid;grid-template-columns:26px 96px 1fr;gap:12px;align-items:start;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:14px 4px;cursor:pointer;font:inherit;color:inherit;transition:background .15s;}
+.bk-row:hover{background:color-mix(in srgb,var(--brand) 5%,transparent);}
+.bk-row i{width:22px;height:22px;border-radius:7px;border:1.5px solid color-mix(in srgb,var(--ink) 30%,transparent);position:relative;margin-top:1px;transition:.15s;}
+.bk-row.on i{background:var(--brand);border-color:var(--brand);}
+.bk-row.on i::after{content:'';position:absolute;left:7px;top:3px;width:5px;height:10px;border:solid var(--brand-ink,#fff);border-width:0 2px 2px 0;transform:rotate(45deg);}
+.bk-row b{font-weight:600;font-size:15px;}
+.bk-row span{font-size:15px;line-height:1.5;}
+.bk-row.on b,.bk-row.on span{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);}
+.bk-row.step{grid-template-columns:26px 26px 1fr;}
+.bk-row.step b{font:italic 500 20px/1 var(--serif);color:var(--accent);text-decoration:none!important;}
+.bk-row.step.cur{background:var(--brand-mist);border-radius:12px;}
+.bk-short{font-style:normal;font-size:12px;color:#b4235a;margin-left:6px;white-space:nowrap;}
+.bk-done{margin-top:22px;padding:20px;border-radius:16px;background:var(--brand-mist);text-align:center;}
+.bk-log{display:grid;grid-template-columns:1fr auto 50px;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;align-items:center;}
+.bk-log.undone{opacity:.5;text-decoration:line-through;}
+.inv-banner{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:22px 24px;border-radius:var(--r);background:var(--brand-mist);border:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap;}
+.inv-bar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 16px;border-radius:14px;border:1px solid var(--line);margin-bottom:18px;font-size:13.5px;color:var(--muted);flex-wrap:wrap;}
+.inv-bar b{color:var(--ink);font-weight:500;}
+@media(max-width:700px){.bk-row{grid-template-columns:26px 78px 1fr;}.bk-row.step{grid-template-columns:26px 22px 1fr;}}
 </style>
 
 </head>
@@ -765,7 +794,9 @@ function plus(n){var d=new Date();d.setDate(d.getDate()+n);return B.ymd(d);}
 function itemsOf(o){return D.items.filter(function(i){return i.order_id===o.id;});}
 function itemsText(o){return itemsOf(o).map(function(i){return i.qty+'× '+i.name+(B.optText(i.options)?' ('+B.optText(i.options)+')':'');}).join(', ');}
 function when(o){return o.fulfillment==='shipping'?'Ship':(o.fulfill_date?B.niceDate(o.fulfill_date,{weekday:'short',month:'short',day:'numeric'}):'')+(o.fulfill_window?' · '+o.fulfill_window:'');}
-function lowSupplies(){return D.supplies.filter(function(s){return +s.par_level>0&&+s.on_hand<+s.par_level;});}
+function KIT(){return (S&&S.kitchen)||{};}
+function INV(){return KIT().inventory===true;}
+function lowSupplies(){if(!INV())return [];return D.supplies.filter(function(s){return +s.par_level>0&&+s.on_hand<+s.par_level;});}
 function stPill(s){return '<span class="st '+s+'">'+(B.STATUS[s]||s)+'</span>';}
 
 /* ═══════ data ═══════ */
@@ -783,9 +814,10 @@ async function loadAll(){
     sb.from('buns_lists').select('*').order('created_at',{ascending:false}),
     sb.from('buns_list_items').select('*').order('sort'),
     sb.from('buns_customers').select('*'),
-    sb.from('buns_subscribers').select('*').order('created_at',{ascending:false})
+    sb.from('buns_subscribers').select('*').order('created_at',{ascending:false}),
+    sb.from('buns_bakes').select('*').order('created_at',{ascending:false}).limit(300)
   ]);
-  ['orders','items','products','cats','reqs','supplies','recipes','ritems','lists','litems','customers','subs'].forEach(function(k,i){D[k]=q[i].data||[];});
+  ['orders','items','products','cats','reqs','supplies','recipes','ritems','lists','litems','customers','subs','bakes'].forEach(function(k,i){D[k]=q[i].data||[];});
   D.orders=D.orders.filter(function(o){return o.status!=='pending_payment'||Date.now()-new Date(o.created_at)<3600000;});
   counts();
 }
@@ -874,7 +906,7 @@ R.today=function(){
     +'<div class="kpi" onclick="OF.ful=\'shipping\';OF.when=\'\';location.hash=\'orders\'"><b>'+toShip.length+'</b><span>To ship</span></div>'
     +'<div class="kpi"><b>'+B.moneyShort(Math.round(sales/100)*100)+'</b><span>Sales · last 7 days</span></div>'
     +'<div class="kpi'+(newReq.length?' hot':'')+'" onclick="location.hash=\'custom\'"><b>'+newReq.length+'</b><span>New custom requests</span></div>'
-    +'<div class="kpi" onclick="SF.low=true;location.hash=\'supplies\'"><b>'+low.length+'</b><span>Supplies running low</span></div></div>'
+    +(INV()?'<div class="kpi" onclick="SF.low=true;location.hash=\'supplies\'"><b>'+low.length+'</b><span>Supplies running low</span></div>':'<div class="kpi" onclick="location.hash=\'recipes\'"><b>'+bakesSince(7).length+'</b><span>Bakes · last 7 days</span></div>')+'</div>'
     +'<div class="panel"><div class="panel-h"><h2>Due today</h2><span class="muted" style="font-size:13px">'+B.niceDate(t)+'</span></div>'+(due.length?due.sort(function(a,b){return (a.fulfill_window||'').localeCompare(b.fulfill_window||'');}).map(orow).join(''):'<div class="empty-s"><div class="serif">A quiet day</div>Nothing is due today.</div>')+'</div>'
     +(tomorrow.length?'<div class="panel"><div class="panel-h"><h2>Tomorrow</h2><a class="link" href="#bake" onclick="BP.date=\''+tm+'\'">See what to bake →</a></div>'+tomorrow.map(orow).join('')+'</div>':'')
     +(toShip.length?'<div class="panel"><div class="panel-h"><h2>Ready to ship</h2></div>'+toShip.map(orow).join('')+'</div>':'')
@@ -927,8 +959,8 @@ R.bake=function(){
     +'<label class="sw no-print" style="margin-bottom:18px"><input type="checkbox"'+(BP.ship?' checked':'')+' onchange="BP.ship=this.checked;R.bake()"><i></i>Include shipping orders waiting to go out</label>'
     +'<div class="panel"><div class="panel-h"><h2>To bake · '+B.niceDate(BP.date)+'</h2><span class="muted" style="font-size:13px">'+os.length+' order'+(os.length!==1?'s':'')+'</span></div>'
     +(rows.length?'<div class="scroll-x"><table class="tbl"><thead><tr><th>Product</th><th class="n">Quantity</th><th>Recipe</th><th class="n">Batches</th></tr></thead><tbody>'+rows.map(function(n){return '<tr><td><b style="font-weight:500">'+B.esc(n.name)+'</b>'+(Object.keys(n.opts).length?'<br><small class="muted">'+Object.keys(n.opts).map(function(k){return n.opts[k]+'× '+B.esc(k);}).join(' · ')+'</small>':'')+'</td><td class="n" style="font:500 22px var(--serif)">'+n.qty+'</td><td>'+(n.recipe?'<a class="link" href="#recipes" onclick="setTimeout(function(){viewRecipe(\''+n.recipe.id+'\','+n.batches+')},60)">'+B.esc(n.recipe.name)+'</a>':'<span class="muted">No recipe linked</span>')+'</td><td class="n">'+(n.recipe?A.num(n.batches)+(n.batchesUp!==n.batches?' <small class="muted">(make '+n.batchesUp+')</small>':''):'—')+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty-s"><div class="serif">Nothing to bake</div>No paid orders for this day yet.</div>')+'</div>'
-    +(ings.length?'<div class="panel"><div class="panel-h"><h2>Ingredients needed</h2>'+(window._bakeShort.length?'<button class="btn btn-primary btn-sm no-print" onclick="listFromBake()">Add '+window._bakeShort.length+' shortfall'+(window._bakeShort.length!==1?'s':'')+' to an order list</button>':'<span class="st completed">You have everything</span>')+'</div>'
-      +'<div class="scroll-x"><table class="tbl"><thead><tr><th>Ingredient</th><th class="n">Needed</th><th class="n">On hand</th><th class="n">Short</th></tr></thead><tbody>'+ings.map(function(x){return '<tr class="'+(x.short>0?'low':'')+'"><td>'+B.esc(x.name)+'</td><td class="n">'+A.num(x.qty,1)+' '+B.esc(x.unit)+'</td><td class="n">'+(x.s?A.num(x.s.on_hand,1)+' '+B.esc(x.unit):'—')+'</td><td class="n">'+(x.short>0?'<b>'+A.num(x.short,1)+' '+B.esc(x.unit)+'</b>':'—')+'</td></tr>';}).join('')+'</tbody></table></div></div>':'')
+    +(ings.length?'<div class="panel"><div class="panel-h"><h2>Ingredients needed</h2>'+(!INV()?'':window._bakeShort.length?'<button class="btn btn-primary btn-sm no-print" onclick="listFromBake()">Add '+window._bakeShort.length+' shortfall'+(window._bakeShort.length!==1?'s':'')+' to an order list</button>':'<span class="st completed">You have everything</span>')+'</div>'
+      +'<div class="scroll-x"><table class="tbl"><thead><tr><th>Ingredient</th><th class="n">Needed</th>'+(INV()?'<th class="n">On hand</th><th class="n">Short</th>':'')+'</tr></thead><tbody>'+ings.map(function(x){return '<tr class="'+(INV()&&x.short>0?'low':'')+'"><td>'+B.esc(x.name)+'</td><td class="n">'+A.num(x.qty,1)+' '+B.esc(x.unit)+'</td>'+(INV()?'<td class="n">'+(x.s?A.num(x.s.on_hand,1)+' '+B.esc(x.unit):'—')+'</td><td class="n">'+(x.short>0?'<b>'+A.num(x.short,1)+' '+B.esc(x.unit)+'</b>':'—')+'</td>':'')+'</tr>';}).join('')+'</tbody></table></div></div>':'')
     +(noRecipe.length&&rows.length?'<p class="muted no-print" style="font-size:13.5px">Tip: link a recipe to '+noRecipe.map(function(n){return B.esc(n.name);}).join(', ')+' (Products → edit → Recipe) to see batches and ingredients here.</p>':''));
 };
 
@@ -1057,8 +1089,8 @@ async function sendQuote(id){
 function recipeCost(r){return D.ritems.filter(function(i){return i.recipe_id===r.id;}).reduce(function(a,i){var s=D.supplies.find(function(x){return x.id===i.supply_id;});return a+(s?(+i.qty||0)*(+s.cost_per_unit||0):0);},0);}
 R.recipes=function(){
   view(head('Recipes',D.recipes.length+' recipe'+(D.recipes.length!==1?'s':''),'<button class="btn btn-primary btn-sm" onclick="editRecipe()">+ Add recipe</button>')
-    +(D.recipes.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Recipe</th><th>Makes</th><th class="hide-m">Bake</th><th class="n">Cost / batch</th><th class="n">Cost each</th></tr></thead><tbody>'+D.recipes.map(function(r){var c=recipeCost(r);
-      return '<tr class="click" onclick="viewRecipe(\''+r.id+'\',1)"><td><b style="font-weight:500">'+B.esc(r.name)+'</b><br><small class="muted">'+B.esc(r.category||'')+'</small></td><td>'+A.num(r.yield_qty)+' '+B.esc(r.yield_unit||'')+'</td><td class="hide-m">'+[r.bake_temp,r.bake_minutes?r.bake_minutes+' min':''].filter(Boolean).map(B.esc).join(' · ')+'</td><td class="n">$'+c.toFixed(2)+'</td><td class="n">$'+(r.yield_qty?(c/r.yield_qty).toFixed(2):'—')+'</td></tr>';}).join('')+'</tbody></table></div></div>'
+    +(D.recipes.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Recipe</th><th>Makes</th><th class="hide-m">Bake</th><th class="n">Cost / batch</th><th class="n hide-m">Cost each</th><th class="hide-m">Last baked</th><th></th></tr></thead><tbody>'+D.recipes.map(function(r){var c=recipeCost(r);
+      return '<tr class="click" onclick="viewRecipe(\''+r.id+'\',1)"><td><b style="font-weight:500">'+B.esc(r.name)+'</b><br><small class="muted">'+B.esc(r.category||'')+'</small></td><td>'+A.num(r.yield_qty)+' '+B.esc(r.yield_unit||'')+'</td><td class="hide-m">'+[r.bake_temp,r.bake_minutes?r.bake_minutes+' min':''].filter(Boolean).map(B.esc).join(' · ')+'</td><td class="n">$'+c.toFixed(2)+'</td><td class="n hide-m">$'+(r.yield_qty?(c/r.yield_qty).toFixed(2):'—')+'</td><td class="hide-m muted" style="font-size:13px">'+lastBaked(r.id)+'</td><td class="n"><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();bakeMode(\''+r.id+'\',1)">Bake</button></td></tr>';}).join('')+'</tbody></table></div></div>'
       :'<div class="panel"><div class="empty-s"><div class="serif">Your recipe book</div>Keep every recipe here with its ingredients — the bake plan uses them to tell you how many batches to make and what to buy.<br><br><button class="btn btn-primary" onclick="editRecipe()">+ Add your first recipe</button></div></div>'));
 };
 function viewRecipe(id,mult){
@@ -1068,8 +1100,9 @@ function viewRecipe(id,mult){
     +'<div class="kv"><span>Makes</span><span>'+A.num(r.yield_qty*mult)+' '+B.esc(r.yield_unit||'')+'</span>'+(r.prep_minutes?'<span>Prep</span><span>'+r.prep_minutes+' min</span>':'')+(r.bake_minutes||r.bake_temp?'<span>Bake</span><span>'+[r.bake_temp,r.bake_minutes?r.bake_minutes+' min':''].filter(Boolean).map(B.esc).join(' · ')+'</span>':'')+'<span>Cost</span><span>$'+(cost*mult).toFixed(2)+' · $'+(r.yield_qty?(cost/r.yield_qty).toFixed(2):'—')+' each</span></div>'
     +'<div class="sec-t">Ingredients</div><table class="tbl"><tbody>'+its.map(function(i){var s=D.supplies.find(function(x){return x.id===i.supply_id;});return '<tr><td class="n" style="width:120px;text-align:left"><b>'+A.num((+i.qty||0)*mult,1)+' '+B.esc(s?s.unit:(i.unit||''))+'</b></td><td>'+B.esc(s?s.name:i.name)+'</td></tr>';}).join('')+'</tbody></table>'
     +(r.instructions?'<div class="sec-t">Method</div><ol style="padding-left:20px;margin:0;line-height:1.8">'+r.instructions.split(/\n+/).filter(Boolean).map(function(l){return '<li>'+B.esc(l.replace(/^\d+[.)]\s*/,''))+'</li>';}).join('')+'</ol>':'')
-    +(r.notes?'<div class="sec-t">Notes</div><p style="white-space:pre-line;margin:0">'+B.esc(r.notes)+'</p>':'');
-  A.sheet(B.esc(r.name),body,'<button class="btn btn-ghost btn-sm" onclick="printRecipe()">Print</button><button class="btn btn-primary btn-sm" onclick="editRecipe(\''+id+'\')">Edit</button>');
+    +(r.notes?'<div class="sec-t">Notes</div><p style="white-space:pre-line;margin:0">'+B.esc(r.notes)+'</p>':'')
+    +recentBakes(id);
+  A.sheet(B.esc(r.name),body,'<button class="btn btn-ghost btn-sm" onclick="printRecipe()">Print</button><button class="btn btn-ghost btn-sm" onclick="editRecipe(\''+id+'\')">Edit</button><button class="btn btn-primary btn-sm" onclick="bakeMode(\''+id+'\','+mult+')">Start baking</button>');
 }
 function printRecipe(){var w=window.open('','_blank');if(!w)return;w.document.write('<html><head><title>Recipe</title><style>body{font:15px/1.6 Georgia,serif;padding:40px;max-width:640px;margin:auto}td{padding:5px 8px;border-bottom:1px solid #eee}table{border-collapse:collapse;width:100%}.chip,.filters{display:none}.kv{display:grid;grid-template-columns:120px 1fr}.sec-t{font:11px Arial;letter-spacing:.15em;text-transform:uppercase;color:#777;margin:22px 0 8px}</style></head><body><h1>'+document.querySelector('.sheet-h h2').innerHTML+'</h1>'+document.getElementById('sheetB').innerHTML+'<script>print()<\/script></body></html>');w.document.close();}
 var ER=null;
@@ -1109,22 +1142,115 @@ async function saveRecipe(){
 }
 async function delRecipe(){if(!(await A.ask('Delete this recipe?','Products linked to it will no longer show batches in the bake plan.','Delete',{danger:true})))return;var r=await sb.from('buns_recipes').delete().eq('id',ER.r.id);if(r.error)return B.toast(r.error.message);D.recipes=D.recipes.filter(function(x){return x.id!==ER.r.id;});A.closeSheet();R.recipes();}
 
+/* ═══════ BAKE MODE: check off ingredients + steps, timer, finish → takes from stock ═══════ */
+var BK=null,BKT=null,WL=null;
+function bakesSince(days){var t=Date.now()-days*864e5;return (D.bakes||[]).filter(function(b){return !b.undone&&new Date(b.created_at)>=t;});}
+function lastBaked(rid){var b=(D.bakes||[]).find(function(x){return x.recipe_id===rid&&!x.undone;});return b?B.niceDate(b.created_at.slice(0,10),{month:'short',day:'numeric'}):'—';}
+function recentBakes(rid){var L=(D.bakes||[]).filter(function(b){return b.recipe_id===rid;}).slice(0,5);if(!L.length)return '';
+  return '<div class="sec-t">Recent bakes</div>'+L.map(function(b,i){return '<div class="bk-log'+(b.undone?' undone':'')+'"><span>'+new Date(b.created_at).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</span><span>×'+A.num(b.multiplier)+(b.made_qty?' · '+A.num(b.made_qty)+' '+B.esc(b.made_unit||''):'')+(b.deducted&&b.deducted.length?' · stock updated':'')+(b.undone?' · undone':'')+'</span>'+(i===0&&!b.undone?'<button class="link" style="font-size:12.5px" onclick="undoBake(\''+b.id+'\')">Undo</button>':'<span></span>')+'</div>';}).join('');}
+function bkKey(id){return 'buns-bake-'+id;}
+function bkLoad(id,mult){var st=null;try{st=JSON.parse(localStorage.getItem(bkKey(id))||'null');}catch(e){}if(!st||Date.now()-(st.t||0)>2*864e5)st={mult:mult||1,ing:[],steps:[],t:Date.now()};if(mult&&mult!==st.mult&&!st.ing.length&&!st.steps.length)st.mult=mult;return st;}
+function bkSave(){BK.st.t=Date.now();try{localStorage.setItem(bkKey(BK.id),JSON.stringify(BK.st));}catch(e){}}
+function bkSteps(r){return (r.instructions||'').split(/\n+/).map(function(l){return l.replace(/^\s*\d+[.)]\s*/,'').trim();}).filter(Boolean);}
+function bakeMode(id,mult){
+  var r=D.recipes.find(function(x){return x.id===id;});if(!r)return;
+  BK={id:id,r:r,st:bkLoad(id,+mult||1)};
+  if(KIT().keep_awake!==false&&navigator.wakeLock&&!WL)navigator.wakeLock.request('screen').then(function(l){WL=l;l.addEventListener('release',function(){WL=null;});}).catch(function(){});
+  drawBake(true);
+}
+function drawBake(open){
+  var r=BK.r,st=BK.st,m=st.mult,its=D.ritems.filter(function(i){return i.recipe_id===r.id;}),steps=bkSteps(r),inv=INV();
+  var total=its.length+steps.length,done=st.ing.length+st.steps.length,pct=total?Math.round(done/total*100):0;
+  var curStep=steps.findIndex(function(x,i){return st.steps.indexOf(i)<0;});
+  var body='<div class="bk-top"><div class="filters" style="margin:0">'+[0.5,1,1.5,2,3,4].map(function(x){return '<button class="chip'+(Math.abs(x-m)<.001?' on':'')+'" onclick="bkMult('+x+')">×'+x+'</button>';}).join('')+'</div>'
+    +'<div class="bk-prog"><div><i style="width:'+pct+'%"></i></div><span>'+done+' of '+total+' done</span></div></div>'
+    +'<div class="bk-meta">Makes <b>'+A.num(r.yield_qty*m)+' '+B.esc(r.yield_unit||'')+'</b>'+(r.bake_temp?' · Oven <b>'+B.esc(r.bake_temp)+'</b>':'')+(r.prep_minutes?' · Prep '+r.prep_minutes+' min':'')+'</div>'
+    +timerHtml(r)
+    +'<div class="sec-t">Gather &amp; measure <span style="text-transform:none;letter-spacing:0">— tap each one as it goes in</span></div>'
+    +(its.length?its.map(function(i,k){var s=D.supplies.find(function(x){return x.id===i.supply_id;}),q=(+i.qty||0)*m,on=st.ing.indexOf(k)>=0,short=inv&&s&&+s.on_hand<q;
+      return '<button class="bk-row'+(on?' on':'')+'" onclick="bkTick(\'ing\','+k+')"><i></i><b>'+A.num(q,1)+' '+B.esc(s?s.unit:(i.unit||''))+'</b><span>'+B.esc(s?s.name:(i.name||''))+(short?' <em class="bk-short">only '+A.num(s.on_hand,1)+' '+B.esc(s.unit)+' on hand</em>':'')+'</span></button>';}).join('')
+      :'<p class="muted" style="font-size:14px">No ingredients yet — add them with Edit.</p>')
+    +'<div class="sec-t">Method</div>'
+    +(steps.length?steps.map(function(t,k){var on=st.steps.indexOf(k)>=0;return '<button class="bk-row step'+(on?' on':'')+(k===curStep?' cur':'')+'" onclick="bkTick(\'steps\','+k+')"><i></i><b>'+(k+1)+'</b><span>'+B.esc(t)+'</span></button>';}).join('')
+      :'<p class="muted" style="font-size:14px">No method yet — add steps (one per line) with Edit.</p>')
+    +(r.notes?'<div class="sec-t">Notes</div><p style="white-space:pre-line;margin:0;color:var(--muted)">'+B.esc(r.notes)+'</p>':'')
+    +(done===total&&total?'<div class="bk-done"><div class="serif" style="font-size:24px">All done ✦</div><p class="muted" style="margin:4px 0 0">Press <b>Finish bake</b> to log it'+(inv?' and take the ingredients out of stock':'')+'.</p></div>':'');
+  var foot='<button class="btn btn-ghost btn-sm" style="margin-right:auto" onclick="bkReset()">Start over</button><button class="btn btn-ghost btn-sm" onclick="bkClose()">Close</button><button class="btn btn-primary btn-sm" onclick="finishBake()">Finish bake</button>';
+  var sbd=document.getElementById('sheetB');
+  if(!open&&document.getElementById('aSheet').classList.contains('on')&&document.querySelector('.bk-top')){var y=sbd.scrollTop;sbd.innerHTML=body;sbd.scrollTop=y;}
+  else A.sheet('Baking · '+B.esc(r.name),body,foot,true);
+  tickTimer();
+}
+function bkMult(x){BK.st.mult=x;bkSave();drawBake();}
+function bkTick(k,i){var L=BK.st[k],j=L.indexOf(i);if(j>=0)L.splice(j,1);else L.push(i);bkSave();drawBake();if(navigator.vibrate)try{navigator.vibrate(8);}catch(e){}}
+async function bkReset(){if(!(await A.ask('Start over?','Clears the ticks for this recipe.','Start over')))return;BK.st={mult:BK.st.mult,ing:[],steps:[],t:Date.now()};bkSave();drawBake();}
+function bkClose(){A.closeSheet();if(WL){WL.release().catch(function(){});WL=null;}}
+/* timer */
+function timerHtml(r){var T=BKT&&BKT.id===r.id?BKT:null,mins=+r.bake_minutes||0;
+  if(!T&&!mins)return '<div class="bk-timer"><span class="muted" style="font-size:13.5px">Timer</span>'+[5,10,15,20].map(function(x){return '<button class="chip" onclick="startTimer('+x+')">'+x+' min</button>';}).join('')+'</div>';
+  if(!T)return '<div class="bk-timer"><span class="muted" style="font-size:13.5px">Bake timer</span><button class="btn btn-ghost btn-sm" onclick="startTimer('+mins+')">Start '+mins+' min</button>'+[5,10].map(function(x){return '<button class="chip" onclick="startTimer('+x+')">'+x+' min</button>';}).join('')+'</div>';
+  return '<div class="bk-timer run"><b id="bkClock">--:--</b><button class="btn btn-ghost btn-sm" onclick="pauseTimer()">'+(T.paused?'Resume':'Pause')+'</button><button class="btn btn-ghost btn-sm" onclick="addTimer(1)">+1 min</button><button class="link" style="font-size:13px" onclick="stopTimer()">Stop</button></div>';}
+function startTimer(min){BKT={id:BK.id,end:Date.now()+min*6e4,paused:false,left:0,name:BK.r.name};drawBake();}
+function pauseTimer(){if(!BKT)return;if(BKT.paused){BKT.end=Date.now()+BKT.left;BKT.paused=false;}else{BKT.left=BKT.end-Date.now();BKT.paused=true;}drawBake();}
+function addTimer(m){if(!BKT)return;if(BKT.paused)BKT.left+=m*6e4;else BKT.end+=m*6e4;tickTimer();}
+function stopTimer(){BKT=null;drawBake();}
+function tickTimer(){var el=document.getElementById('bkClock');if(!BKT)return;var ms=BKT.paused?BKT.left:BKT.end-Date.now();
+  if(ms<=0){var n=BKT.name;BKT=null;timerDone(n);if(document.querySelector('.bk-top'))drawBake();return;}
+  if(el){var t=Math.ceil(ms/1000);el.textContent=Math.floor(t/60)+':'+String(t%60).padStart(2,'0');}}
+setInterval(tickTimer,500);
+function timerDone(n){B.toast('⏰ Timer done — '+n);try{var c=new (window.AudioContext||window.webkitAudioContext)();[0,.35,.7].forEach(function(d){var o=c.createOscillator(),g=c.createGain();o.frequency.value=880;o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.2,c.currentTime+d);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+d+.3);o.start(c.currentTime+d);o.stop(c.currentTime+d+.3);});}catch(e){}if(navigator.vibrate)try{navigator.vibrate([300,150,300]);}catch(e){}}
+/* finish: log it, and with inventory on take ingredients out of stock */
+async function finishBake(){
+  var r=BK.r,m=BK.st.mult,inv=INV(),its=D.ritems.filter(function(i){return i.recipe_id===r.id&&i.supply_id;});
+  var use=its.map(function(i){var s=D.supplies.find(function(x){return x.id===i.supply_id;});return s?{supply_id:s.id,name:s.name,qty:Math.round((+i.qty||0)*m*1000)/1000,unit:s.unit}:null;}).filter(function(x){return x&&x.qty>0;});
+  if(inv&&KIT().confirm_deduct!==false){
+    var txt='This logs the bake'+(use.length?' and takes these out of stock:<br><br>'+use.map(function(u){return '· '+A.num(u.qty,1)+' '+B.esc(u.unit)+' '+B.esc(u.name);}).join('<br>'):'.');
+    if(!(await A.ask('Finish '+B.esc(r.name)+' ×'+A.num(m)+'?',txt,'Finish bake')))return;
+  }
+  var ded=inv?use:[];
+  for(var k=0;k<ded.length;k++){var s=D.supplies.find(function(x){return x.id===ded[k].supply_id;});var n=Math.max(0,Math.round(((+s.on_hand||0)-ded[k].qty)*1000)/1000);var u=await sb.from('buns_supplies').update({on_hand:n}).eq('id',s.id);if(u.error)return B.toast(u.error.message);s.on_hand=n;}
+  var row={recipe_id:r.id,recipe_name:r.name,multiplier:m,made_qty:(+r.yield_qty||0)*m,made_unit:r.yield_unit||null,deducted:ded};
+  var res=await sb.from('buns_bakes').insert(row).select().maybeSingle();if(res.error)return B.toast(res.error.message);
+  D.bakes=[res.data||Object.assign({id:'tmp'+Date.now(),created_at:new Date().toISOString(),undone:false},row)].concat(D.bakes||[]);
+  try{localStorage.removeItem(bkKey(r.id));}catch(e){}
+  bkClose();counts();if(CUR==='recipes'||CUR==='supplies'||CUR==='today')R[CUR]();
+  var nowLow=inv?lowSupplies().filter(function(s){return ded.some(function(d){return d.supply_id===s.id;});}):[];
+  if(nowLow.length){if(await A.ask('Time to reorder',nowLow.map(function(s){return B.esc(s.name);}).join(', ')+(nowLow.length>1?' are':' is')+' now below your reorder level.','Make an order list'))listFromLow();}
+  else B.toast('Bake logged ✦'+(ded.length?' — stock updated':''));
+}
+async function undoBake(id){var b=D.bakes.find(function(x){return x.id===id;});if(!b)return;
+  if(!(await A.ask('Undo this bake?',(b.deducted&&b.deducted.length?'The ingredients go back into stock.':'It will be marked as undone.'),'Undo')))return;
+  for(var k=0;k<(b.deducted||[]).length;k++){var d=b.deducted[k],s=D.supplies.find(function(x){return x.id===d.supply_id;});if(!s)continue;var n=Math.round(((+s.on_hand||0)+(+d.qty||0))*1000)/1000;await sb.from('buns_supplies').update({on_hand:n}).eq('id',s.id);s.on_hand=n;}
+  var r=await sb.from('buns_bakes').update({undone:true}).eq('id',id);if(r.error)return B.toast(r.error.message);b.undone=true;counts();B.toast('Bake undone');viewRecipe(b.recipe_id,1);R[CUR]();}
+
 /* ═══════ SUPPLIES ═══════ */
 var SF={low:false,cat:'',q:''};
 R.supplies=function(){
   var cats=[];D.supplies.forEach(function(s){if(s.category&&cats.indexOf(s.category)<0)cats.push(s.category);});cats.sort();
   var list=D.supplies.filter(function(s){if(SF.low&&!(+s.par_level>0&&+s.on_hand<+s.par_level))return false;if(SF.cat&&s.category!==SF.cat)return false;if(SF.q&&s.name.toLowerCase().indexOf(SF.q.toLowerCase())<0)return false;return true;});
   var low=lowSupplies().length;
-  view(head('Supplies','Ingredients, packaging &amp; everything you keep on the shelf','<button class="btn btn-ghost btn-sm" onclick="listFromLow()"'+(low?'':' disabled')+'>Order list from low stock</button><button class="btn btn-primary btn-sm" onclick="editSupply()">+ Add supply</button>')
-    +'<div class="filters"><button class="chip'+(!SF.low&&!SF.cat?' on':'')+'" onclick="SF.low=false;SF.cat=\'\';R.supplies()">All</button><button class="chip'+(SF.low?' on':'')+'" onclick="SF.low=!SF.low;R.supplies()">Running low'+(low?' · '+low:'')+'</button>'+cats.map(function(c){return '<button class="chip'+(SF.cat===c?' on':'')+'" onclick="SF.cat=\''+B.esc(c)+'\';R.supplies()">'+B.esc(c)+'</button>';}).join('')
+  var inv=INV();
+  view(head('Supplies','Ingredients, packaging &amp; everything you keep on the shelf',(inv?'<button class="btn btn-ghost btn-sm" onclick="listFromLow()"'+(low?'':' disabled')+'>Order list from low stock</button>':'')+'<button class="btn btn-primary btn-sm" onclick="editSupply()">+ Add supply</button>')
+    +invBanner()
+    +'<div class="filters"><button class="chip'+(!SF.low&&!SF.cat?' on':'')+'" onclick="SF.low=false;SF.cat=\'\';R.supplies()">All</button>'+(inv?'<button class="chip'+(SF.low?' on':'')+'" onclick="SF.low=!SF.low;R.supplies()">Running low'+(low?' · '+low:'')+'</button>':'')+cats.map(function(c){return '<button class="chip'+(SF.cat===c?' on':'')+'" onclick="SF.cat=\''+B.esc(c)+'\';R.supplies()">'+B.esc(c)+'</button>';}).join('')
     +'<input class="input grow" type="search" placeholder="Search supplies" value="'+B.esc(SF.q)+'" oninput="SF.q=this.value;clearTimeout(window._sq);window._sq=setTimeout(R.supplies,250)"></div>'
-    +(list.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Supply</th><th>On hand</th><th class="hide-m">Level</th><th class="n hide-m">Reorder at</th><th class="n hide-m">Cost</th><th class="hide-m">Vendor</th></tr></thead><tbody>'+list.map(function(s){var isLow=+s.par_level>0&&+s.on_hand<+s.par_level,pct=s.par_level?Math.min(100,s.on_hand/(s.par_level*2)*100):100;
+    +(list.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Supply</th>'+(inv?'<th>On hand</th><th class="hide-m">Level</th><th class="n hide-m">Reorder at</th>':'')+'<th class="n'+(inv?' hide-m':'')+'">Cost</th><th class="hide-m">Vendor</th></tr></thead><tbody>'+list.map(function(s){var isLow=inv&&+s.par_level>0&&+s.on_hand<+s.par_level,pct=s.par_level?Math.min(100,s.on_hand/(s.par_level*2)*100):100;
       return '<tr class="'+(isLow?'low':'')+'"><td class="click" onclick="editSupply(\''+s.id+'\')" style="cursor:pointer"><b style="font-weight:500">'+B.esc(s.name)+'</b><br><small class="muted">'+B.esc(s.category||'')+'</small></td>'
-        +'<td><div class="stepper"><button onclick="adjSupply(\''+s.id+'\',-1)" aria-label="Less">−</button><input value="'+A.num(s.on_hand)+'" onchange="setSupply(\''+s.id+'\',this.value)" inputmode="decimal"><button onclick="adjSupply(\''+s.id+'\',1)" aria-label="More">+</button></div> <small class="muted">'+B.esc(s.unit)+'</small></td>'
-        +'<td class="hide-m"><div class="bar-s'+(isLow?' low':'')+'"><i style="width:'+pct+'%"></i></div></td><td class="n hide-m">'+A.num(s.par_level)+' '+B.esc(s.unit)+'</td><td class="n hide-m">$'+(+s.cost_per_unit||0).toFixed(s.cost_per_unit<0.1?4:2)+'/'+B.esc(s.unit)+'</td><td class="hide-m">'+(s.vendor_url?'<a class="link" target="_blank" rel="noopener" href="'+B.esc(s.vendor_url)+'">'+B.esc(s.vendor||'Link')+'</a>':B.esc(s.vendor||''))+'</td></tr>';}).join('')+'</tbody></table></div></div>'
-      :'<div class="panel"><div class="empty-s"><div class="serif">'+(D.supplies.length?'Nothing matches':'Your pantry')+'</div>'+(D.supplies.length?'Try another filter.':'Add flour, butter, boxes and anything else you buy. Set a reorder level and you’ll see what’s running low.')+'</div></div>'));
+        +(!inv?'':'<td><div class="stepper"><button onclick="adjSupply(\''+s.id+'\',-1)" aria-label="Less">−</button><input value="'+A.num(s.on_hand)+'" onchange="setSupply(\''+s.id+'\',this.value)" inputmode="decimal"><button onclick="adjSupply(\''+s.id+'\',1)" aria-label="More">+</button></div> <small class="muted">'+B.esc(s.unit)+'</small></td>'
+        +'<td class="hide-m"><div class="bar-s'+(isLow?' low':'')+'"><i style="width:'+pct+'%"></i></div></td><td class="n hide-m">'+A.num(s.par_level)+' '+B.esc(s.unit)+'</td>')+'<td class="n'+(inv?' hide-m':'')+'">$'+(+s.cost_per_unit||0).toFixed(s.cost_per_unit<0.1?4:2)+'/'+B.esc(s.unit)+'</td><td class="hide-m">'+(s.vendor_url?'<a class="link" target="_blank" rel="noopener" href="'+B.esc(s.vendor_url)+'">'+B.esc(s.vendor||'Link')+'</a>':B.esc(s.vendor||''))+'</td></tr>';}).join('')+'</tbody></table></div></div>'
+      :'<div class="panel"><div class="empty-s"><div class="serif">'+(D.supplies.length?'Nothing matches':'Your pantry')+'</div>'+(D.supplies.length?'Try another filter.':'Add flour, butter, boxes and anything else you buy.'+(inv?' Set a reorder level and you’ll see what’s running low.':' Recipes use this list to work out costs.'))+'</div></div>'));
   var s=document.querySelector('.filters input');if(s&&SF.q){s.focus();s.setSelectionRange(s.value.length,s.value.length);}
 };
+function invBanner(){
+  if(INV())return '<div class="inv-bar"><span><b>Inventory tracking is on.</b> Finishing a bake takes its ingredients out of stock.</span><label class="sw"><input type="checkbox" checked onchange="setInv(this.checked)"><i></i>On</label></div>';
+  return '<div class="inv-banner"><div><div class="serif" style="font-size:22px;margin-bottom:6px">Inventory tracking is off</div><p class="muted" style="margin:0;font-size:14px;max-width:620px">Keeping it simple: this is your ingredient list for recipes and costs. When you’re ready, turn on tracking — finishing a bake will take its ingredients out of stock, and you’ll see what’s running low and when to reorder.</p></div><label class="sw"><input type="checkbox" onchange="setInv(this.checked)"><i></i>Track inventory</label></div>';
+}
+async function setInv(on){
+  if(on&&D.supplies.length&&!D.supplies.some(function(x){return +x.on_hand>0;})&&!(await A.ask('Turn on inventory?','Next, count what you have: set “On hand” for each supply (and a “Reorder below” level) so the numbers start out right.','Turn on')))return R[CUR]();
+  var k=Object.assign({},KIT(),{inventory:!!on});
+  var r=await sb.from('buns_settings').update({kitchen:k}).eq('id',1);if(r.error){B.toast(r.error.message);return R[CUR]();}
+  S.kitchen=k;B.clearSettingsCache&&B.clearSettingsCache();counts();B.toast(on?'Inventory tracking is on':'Inventory tracking is off');R[CUR]();
+}
 function stepFor(s){return s.unit==='g'||s.unit==='ml'?100:1;}
 async function adjSupply(id,d){var s=D.supplies.find(function(x){return x.id===id;});setSupply(id,Math.max(0,(+s.on_hand||0)+d*stepFor(s)));}
 async function setSupply(id,v){var s=D.supplies.find(function(x){return x.id===id;}),n=Math.max(0,parseFloat(String(v).replace(/,/g,''))||0);s.on_hand=n;counts();R.supplies();var r=await sb.from('buns_supplies').update({on_hand:n}).eq('id',id);if(r.error)B.toast(r.error.message);}
