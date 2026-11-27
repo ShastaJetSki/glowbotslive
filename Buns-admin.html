@@ -724,6 +724,11 @@ body.adm{background:color-mix(in srgb,var(--brand) 4%,var(--bg));padding-bottom:
 .w-tips{margin:0;padding-left:18px;line-height:1.8;font-size:14.5px;color:var(--muted);}
 .w-tips b{color:var(--ink);font-weight:500;}
 @media(max-width:700px){.irow.irow4{grid-template-columns:1fr 70px 80px 30px;}.rcv-h{display:none;}.rcv{grid-template-columns:1fr 1fr;}.w-form{grid-template-columns:1fr auto;}.w-form .btn{grid-column:1/-1;}.w-row{grid-template-columns:1fr auto 30px;padding:11px 16px;}.w-row span:first-child,.w-row span:nth-child(4){display:none;}}
+.useg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card);gap:2px;white-space:nowrap;}
+.useg button{border:0;background:none;border-radius:999px;padding:6px 12px;font:500 11.5px/1 var(--sans);letter-spacing:.04em;color:var(--muted);cursor:pointer;transition:.15s;}
+.useg button.on{background:var(--ink);color:var(--bg);}
+.useg button:not(.on):hover{color:var(--ink);}
+@media print{.useg{display:none!important;}}
 </style>
 
 </head>
@@ -817,6 +822,7 @@ function INV(){return KIT().inventory===true;}
 function lowSupplies(){if(!INV())return [];return D.supplies.filter(function(s){return +s.par_level>0&&+s.on_hand<+s.par_level;});}
 function stPill(s){return '<span class="st '+s+'">'+(B.STATUS[s]||s)+'</span>';}
 
+(function(){var c=A.closeSheet;A.closeSheet=function(){window._reSheet=null;c.apply(this,arguments);};})();
 /* ═══════ data ═══════ */
 async function loadAll(){
   var since=new Date();since.setDate(since.getDate()-180);
@@ -930,7 +936,7 @@ R.today=function(){
     +(tomorrow.length?'<div class="panel"><div class="panel-h"><h2>Tomorrow</h2><a class="link" href="#bake" onclick="BP.date=\''+tm+'\'">See what to bake →</a></div>'+tomorrow.map(orow).join('')+'</div>':'')
     +(toShip.length?'<div class="panel"><div class="panel-h"><h2>Ready to ship</h2></div>'+toShip.map(orow).join('')+'</div>':'')
     +(newReq.length?'<div class="panel"><div class="panel-h"><h2>New custom requests</h2><a class="link" href="#custom">All requests →</a></div><div class="panel-b">'+newReq.slice(0,5).map(function(r){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick="location.hash=\'custom\';setTimeout(function(){openReq(\''+r.id+'\')},50)"><span><b style="font-weight:500">'+B.esc(r.name)+'</b> · '+B.esc(r.occasion||'')+' · '+B.esc(r.servings||'')+'</span><span class="muted">'+B.niceDate(r.event_date,{month:'short',day:'numeric'})+'</span></div>';}).join('')+'</div></div>':'')
-    +(low.length?'<div class="panel"><div class="panel-h"><h2>Running low</h2><button class="btn btn-ghost btn-sm" onclick="listFromLow()">Make an order list</button></div><div class="panel-b">'+low.slice(0,8).map(function(s){return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+B.esc(s.name)+'</span><span class="muted">'+A.num(s.on_hand)+' / '+A.num(s.par_level)+' '+B.esc(s.unit)+'</span></div>';}).join('')+'</div></div>':''));
+    +(low.length?'<div class="panel"><div class="panel-h"><h2>Running low</h2><button class="btn btn-ghost btn-sm" onclick="listFromLow()">Make an order list</button></div><div class="panel-b">'+low.slice(0,8).map(function(s){return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+B.esc(s.name)+'</span><span class="muted">'+fq(s.on_hand,s.unit)+' / '+fq(s.par_level,s.unit)+'</span></div>';}).join('')+'</div></div>':''));
 };
 
 /* ═══════ ORDERS ═══════ */
@@ -978,8 +984,8 @@ R.bake=function(){
     +'<label class="sw no-print" style="margin-bottom:18px"><input type="checkbox"'+(BP.ship?' checked':'')+' onchange="BP.ship=this.checked;R.bake()"><i></i>Include shipping orders waiting to go out</label>'
     +'<div class="panel"><div class="panel-h"><h2>To bake · '+B.niceDate(BP.date)+'</h2><span class="muted" style="font-size:13px">'+os.length+' order'+(os.length!==1?'s':'')+'</span></div>'
     +(rows.length?'<div class="scroll-x"><table class="tbl"><thead><tr><th>Product</th><th class="n">Quantity</th><th>Recipe</th><th class="n">Batches</th><th class="no-print"></th></tr></thead><tbody>'+rows.map(function(n){return '<tr><td><b style="font-weight:500">'+B.esc(n.name)+'</b>'+(Object.keys(n.opts).length?'<br><small class="muted">'+Object.keys(n.opts).map(function(k){return n.opts[k]+'× '+B.esc(k);}).join(' · ')+'</small>':'')+'</td><td class="n" style="font:500 22px var(--serif)">'+n.qty+'</td><td>'+(n.recipe?'<a class="link" href="#recipes" onclick="setTimeout(function(){viewRecipe(\''+n.recipe.id+'\','+n.batches+')},60)">'+B.esc(n.recipe.name)+'</a>':'<span class="muted">No recipe linked</span>')+'</td><td class="n">'+(n.recipe?A.num(n.batches)+(n.batchesUp!==n.batches?' <small class="muted">(make '+n.batchesUp+')</small>':''):'—')+'</td><td class="n no-print">'+(n.recipe?'<button class="btn btn-primary btn-sm" onclick="bakeMode(\''+n.recipe.id+'\','+(n.batchesUp||1)+',true)">Bake ×'+(n.batchesUp||1)+'</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty-s"><div class="serif">Nothing to bake</div>No paid orders for this day yet.</div>')+'</div>'
-    +(ings.length?'<div class="panel"><div class="panel-h"><h2>Ingredients needed</h2>'+(!INV()?'':window._bakeShort.length?'<button class="btn btn-primary btn-sm no-print" onclick="listFromBake()">Add '+window._bakeShort.length+' shortfall'+(window._bakeShort.length!==1?'s':'')+' to an order list</button>':'<span class="st completed">You have everything</span>')+'</div>'
-      +'<div class="scroll-x"><table class="tbl"><thead><tr><th>Ingredient</th><th class="n">Needed</th>'+(INV()?'<th class="n">On hand</th><th class="n">Short</th>':'')+'</tr></thead><tbody>'+ings.map(function(x){return '<tr class="'+(INV()&&x.short>0?'low':'')+'"><td>'+B.esc(x.name)+'</td><td class="n">'+A.num(x.qty,1)+' '+B.esc(x.unit)+'</td>'+(INV()?'<td class="n">'+(x.s?A.num(x.s.on_hand,1)+' '+B.esc(x.unit):'—')+'</td><td class="n">'+(x.short>0?'<b>'+A.num(x.short,1)+' '+B.esc(x.unit)+'</b>':'—')+'</td>':'')+'</tr>';}).join('')+'</tbody></table></div></div>':'')
+    +(ings.length?'<div class="panel"><div class="panel-h"><h2>Ingredients needed</h2><span class="no-print" style="margin-left:auto;margin-right:10px">'+unitSeg()+'</span>'+(!INV()?'':window._bakeShort.length?'<button class="btn btn-primary btn-sm no-print" onclick="listFromBake()">Add '+window._bakeShort.length+' shortfall'+(window._bakeShort.length!==1?'s':'')+' to an order list</button>':'<span class="st completed">You have everything</span>')+'</div>'
+      +'<div class="scroll-x"><table class="tbl"><thead><tr><th>Ingredient</th><th class="n">Needed</th>'+(INV()?'<th class="n">On hand</th><th class="n">Short</th>':'')+'</tr></thead><tbody>'+ings.map(function(x){return '<tr class="'+(INV()&&x.short>0?'low':'')+'"><td>'+B.esc(x.name)+'</td><td class="n">'+fq(x.qty,x.unit)+'</td>'+(INV()?'<td class="n">'+(x.s?fq(x.s.on_hand,x.unit):'—')+'</td><td class="n">'+(x.short>0?'<b>'+fq(x.short,x.unit)+'</b>':'—')+'</td>':'')+'</tr>';}).join('')+'</tbody></table></div></div>':'')
     +(noRecipe.length&&rows.length?'<p class="muted no-print" style="font-size:13.5px">Tip: link a recipe to '+noRecipe.map(function(n){return B.esc(n.name);}).join(', ')+' (Products → edit → Recipe) to see batches and ingredients here.</p>':''));
 };
 
@@ -1116,6 +1122,21 @@ function conv(q,from,to,g){if(!from||!to||from===to)return q;var a=UNITS[from],b
   if(!g||a[0]==='c'||b[0]==='c')return null;var gpm=g/236.588;
   return a[0]==='m'?q*a[1]/gpm/b[1]:q*a[1]*gpm/b[1];}
 function supQty(i,s){return conv(+i.qty||0,i.unit||s.unit,s.unit,gpc(s));}
+/* ── measurement display: Metric (g, kg, ml) ⇄ US (oz, lb, cups) — a toggle anywhere amounts show ── */
+function UM(){var v=null;try{v=localStorage.getItem('buns-units');}catch(e){}return v||KIT().units||'metric';}
+function setUM(m){try{localStorage.setItem('buns-units',m);}catch(e){}if(R[CUR])R[CUR]();var sh=document.getElementById('aSheet');if(sh&&sh.classList.contains('on')&&window._reSheet)window._reSheet();}
+function unitSeg(){var m=UM();return '<div class="useg" role="group" aria-label="Measurements"><button class="'+(m==='metric'?'on':'')+'" onclick="setUM(\'metric\')">g · kg · ml</button><button class="'+(m==='us'?'on':'')+'" onclick="setUM(\'us\')">oz · lb · cups</button></div>';}
+function dUnit(u,q){var a=UNITS[u],m=UM();if(!a||a[0]==='c')return u;q=Math.abs(+q||0);
+  if(m==='us'){if(a[0]==='m')return u==='oz'||u==='lb'?(q*a[1]>=453.592?'lb':'oz'):(q*a[1]>=453.592?'lb':'oz');
+    if(['tsp','tbsp','cup'].indexOf(u)>=0)return u;return q*a[1]>=236.588?'cup':'fl oz';}
+  if(a[0]==='m')return q*a[1]>=1000?(u==='g'?'g':'kg'):'g';
+  if(['tsp','tbsp','cup'].indexOf(u)>=0)return u;return q*a[1]>=1000&&u!=='ml'?'l':'ml';}
+function dq(q,u){var du=dUnit(u,q),v=conv(+q||0,u,du);return v==null?[+q||0,u]:[v,du];}
+function fq(q,u,dec){var x=dq(q,u),d=dec!=null?dec:(Math.abs(x[0])<10?2:Math.abs(x[0])<100?1:0);return A.num(x[0],d)+' '+B.esc(x[1]);}
+function pUnit(u){var a=UNITS[u],m=UM();if(!a||a[0]==='c')return u;if(m==='us')return a[0]==='m'?'lb':'fl oz';return a[0]==='m'?(u==='kg'?'kg':'g'):(u==='l'?'l':'ml');}
+function fprice(c,u){var pu=pUnit(u),f=conv(1,pu,u);var v=(+c||0)*(f==null?1:f);if(f==null)pu=u;return '$'+v.toFixed(v<0.1?4:2)+'/'+B.esc(pu);}
+function backQ(v,du,u){var n=parseFloat(String(v).replace(/,/g,''))||0;if(!du||du===u)return n;var c=conv(n,du,u);return c==null?n:Math.round(c*1000)/1000;}
+function qIn(q,u,cls,attrs){var x=dq(q,u);return '<input class="input'+(cls?' '+cls:'')+'" value="'+A.num(x[0],x[0]<10?2:x[0]<100?1:0).replace(/,/g,'')+'" data-du="'+B.esc(x[1])+'" '+(attrs||'')+' inputmode="decimal"><small class="muted">'+B.esc(x[1])+'</small>';}
 function usesRecipe(rid,target,depth){depth=depth||0;if(rid===target)return true;if(depth>6)return false;return D.ritems.some(function(i){return i.recipe_id===rid&&i.sub_recipe_id&&usesRecipe(i.sub_recipe_id,target,depth+1);});}
 /* every raw supply a recipe needs (sub-recipes expanded), in each supply's own unit */
 function flatIng(rid,mult,seen){seen=seen||[];if(seen.indexOf(rid)>=0||seen.length>6)return [];var out=[];
@@ -1130,10 +1151,10 @@ function recipeCost(r){return flatIng(r.id,1).reduce(function(a,x){return a+(x.q
 function ingLine(i,mult){
   if(i.sub_recipe_id){var sr=D.recipes.find(function(x){return x.id===i.sub_recipe_id;});return {q:(+i.qty||0)*mult,unit:sr?(sr.yield_unit||''):(i.unit||''),name:sr?sr.name:'(missing recipe)',sub:sr,factor:sr?(+i.qty||0)*mult/(+sr.yield_qty||1):0};}
   var su=D.supplies.find(function(x){return x.id===i.supply_id;}),u=i.unit||(su&&su.unit)||'',q=(+i.qty||0)*mult,c=su&&u!==su.unit?conv(q,u,su.unit,gpc(su)):null;
-  return {q:q,unit:u,name:su?su.name:(i.name||''),s:su,conv:su&&u!==su.unit?(c==null?'can’t convert':'≈ '+A.num(c,c<10?1:0)+' '+su.unit):'',supQ:su?(u===su.unit?q:c):null};}
+  return {q:q,unit:u,name:su?su.name:(i.name||''),s:su,conv:su&&u!==su.unit?(c==null?'can’t convert':'≈ '+fq(c,su.unit)):'',supQ:su?(u===su.unit?q:c):null};}
 
 R.recipes=function(){
-  view(head('Recipes',D.recipes.length+' recipe'+(D.recipes.length!==1?'s':''),'<button class="btn btn-primary btn-sm" onclick="editRecipe()">+ Add recipe</button>')
+  view(head('Recipes',D.recipes.length+' recipe'+(D.recipes.length!==1?'s':''),unitSeg()+'<button class="btn btn-primary btn-sm" onclick="editRecipe()">+ Add recipe</button>')
     +(D.recipes.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Recipe</th><th>Makes</th><th class="hide-m">Bake</th><th class="n">Cost / batch</th><th class="n hide-m">Cost each</th><th class="hide-m">Last baked</th><th></th></tr></thead><tbody>'+D.recipes.map(function(r){var c=recipeCost(r);
       return '<tr class="click" onclick="viewRecipe(\''+r.id+'\',1)"><td><b style="font-weight:500">'+B.esc(r.name)+'</b><br><small class="muted">'+B.esc(r.category||'')+'</small></td><td>'+A.num(r.yield_qty)+' '+B.esc(r.yield_unit||'')+'</td><td class="hide-m">'+[r.bake_temp,r.bake_minutes?r.bake_minutes+' min':''].filter(Boolean).map(B.esc).join(' · ')+'</td><td class="n">$'+c.toFixed(2)+'</td><td class="n hide-m">$'+(r.yield_qty?(c/r.yield_qty).toFixed(2):'—')+'</td><td class="hide-m muted" style="font-size:13px">'+lastBaked(r.id)+'</td><td class="n"><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();bakeMode(\''+r.id+'\',1)">Bake</button></td></tr>';}).join('')+'</tbody></table></div></div>'
       :'<div class="panel"><div class="empty-s"><div class="serif">Your recipe book</div>Keep every recipe here with its ingredients — the bake plan uses them to tell you how many batches to make and what to buy.<br><br><button class="btn btn-primary" onclick="editRecipe()">+ Add your first recipe</button></div></div>'));
@@ -1141,9 +1162,10 @@ R.recipes=function(){
 function viewRecipe(id,mult){
   var r=D.recipes.find(function(x){return x.id===id;});if(!r)return;mult=+mult||1;
   var its=D.ritems.filter(function(i){return i.recipe_id===id;}),cost=recipeCost(r);
-  var body='<div class="filters no-print">'+[0.5,1,1.5,2,3,4].map(function(m){return '<button class="chip'+(Math.abs(m-mult)<.001?' on':'')+'" onclick="viewRecipe(\''+id+'\','+m+')">×'+m+'</button>';}).join('')+(([0.5,1,1.5,2,3,4].indexOf(mult)<0)?'<button class="chip on">×'+A.num(mult)+'</button>':'')+'</div>'
+  window._reSheet=function(){viewRecipe(id,mult);};
+  var body='<div class="filters no-print" style="align-items:center">'+[0.5,1,1.5,2,3,4].map(function(m){return '<button class="chip'+(Math.abs(m-mult)<.001?' on':'')+'" onclick="viewRecipe(\''+id+'\','+m+')">×'+m+'</button>';}).join('')+'<span style="margin-left:auto">'+unitSeg()+'</span>'+(([0.5,1,1.5,2,3,4].indexOf(mult)<0)?'<button class="chip on">×'+A.num(mult)+'</button>':'')+'</div>'
     +'<div class="kv"><span>Makes</span><span>'+A.num(r.yield_qty*mult)+' '+B.esc(r.yield_unit||'')+'</span>'+(r.prep_minutes?'<span>Prep</span><span>'+r.prep_minutes+' min</span>':'')+(r.bake_minutes||r.bake_temp?'<span>Bake</span><span>'+[r.bake_temp,r.bake_minutes?r.bake_minutes+' min':''].filter(Boolean).map(B.esc).join(' · ')+'</span>':'')+'<span>Cost</span><span>$'+(cost*mult).toFixed(2)+' · $'+(r.yield_qty?(cost/r.yield_qty).toFixed(2):'—')+' each</span></div>'
-    +'<div class="sec-t">Ingredients</div><table class="tbl"><tbody>'+its.map(function(i){var L=ingLine(i,mult);return '<tr><td class="n" style="width:120px;text-align:left"><b>'+A.num(L.q,L.q<10?2:1)+' '+B.esc(L.unit)+'</b></td><td>'+B.esc(L.name)+(L.sub?' <button class="link" style="font-size:12.5px;margin-left:6px" onclick="viewRecipe(\''+L.sub.id+'\','+L.factor+')">sub-recipe · open</button>':'')+(L.conv?' <small class="muted">('+L.conv+')</small>':'')+'</td></tr>';}).join('')+'</tbody></table>'
+    +'<div class="sec-t">Ingredients</div><table class="tbl"><tbody>'+its.map(function(i){var L=ingLine(i,mult);return '<tr><td class="n" style="width:130px;text-align:left"><b>'+fq(L.q,L.unit)+'</b></td><td>'+B.esc(L.name)+(L.sub?' <button class="link" style="font-size:12.5px;margin-left:6px" onclick="viewRecipe(\''+L.sub.id+'\','+L.factor+')">sub-recipe · open</button>':'')+(L.conv?' <small class="muted">('+L.conv+')</small>':'')+'</td></tr>';}).join('')+'</tbody></table>'
     +(r.instructions?'<div class="sec-t">Method</div><ol style="padding-left:20px;margin:0;line-height:1.8">'+r.instructions.split(/\n+/).filter(Boolean).map(function(l){return '<li>'+B.esc(l.replace(/^\d+[.)]\s*/,''))+'</li>';}).join('')+'</ol>':'')
     +(r.notes?'<div class="sec-t">Notes</div><p style="white-space:pre-line;margin:0">'+B.esc(r.notes)+'</p>':'')
     +recentBakes(id);
@@ -1158,12 +1180,12 @@ function editRecipe(id){
 }
 function supOpts(sel){return '<option value="">Choose ingredient…</option>'+D.supplies.map(function(s){return '<option value="'+s.id+'"'+(s.id===sel?' selected':'')+'>'+B.esc(s.name)+' ('+B.esc(s.unit)+')</option>';}).join('')+'<option value="__new">+ New ingredient…</option>';}
 function drawRecipe(){
-  var r=ER.r,editing=!!r.id;
+  var r=ER.r,editing=!!r.id;window._reSheet=function(){capR();drawRecipe();};
   var body='<div class="field"><label>Recipe name</label><input id="rN" value="'+B.esc(r.name)+'"></div>'
     +'<div class="row3"><div class="field"><label>Makes</label><input id="rY" type="number" min="0" step="0.5" value="'+(r.yield_qty||'')+'"></div><div class="field"><label>of</label><input id="rU" value="'+B.esc(r.yield_unit||'')+'" placeholder="pieces"></div><div class="field"><label>Category</label><input id="rC" value="'+B.esc(r.category||'')+'"></div></div>'
     +'<div class="row3"><div class="field"><label>Prep (min)</label><input id="rP" type="number" min="0" value="'+(r.prep_minutes||'')+'"></div><div class="field"><label>Bake (min)</label><input id="rB" type="number" min="0" value="'+(r.bake_minutes||'')+'"></div><div class="field"><label>Oven</label><input id="rT" value="'+B.esc(r.bake_temp||'')+'" placeholder="375°F"></div></div>'
     +'<div class="row3"><div class="field"><label>Keeps for (days)</label><input id="rK" type="number" min="0" value="'+(r.shelf_days||'')+'" placeholder="for use-by labels"></div></div>'
-    +'<div class="sec-t">Ingredients <span style="text-transform:none;letter-spacing:0">— write amounts any way you like (cups, grams, tbsp…). Pick a recipe to use it inside this one.</span></div><div id="rItems">'+ER.items.map(function(i,k){return irowHtml(i,k);}).join('')+'</div>'
+    +'<div class="sec-t" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span>Ingredients <span style="text-transform:none;letter-spacing:0">— write amounts any way you like (cups, grams, tbsp…). Pick a recipe to use it inside this one.</span></span><span style="margin-left:auto;text-transform:none;letter-spacing:0">'+unitSeg()+'</span></div><div id="rItems">'+ER.items.map(function(i,k){return irowHtml(i,k);}).join('')+'</div>'
     +'<button class="btn btn-ghost btn-sm" onclick="capR();ER.items.push({supply_id:\'\',sub_recipe_id:null,qty:0,unit:\'\'});drawRecipe()">+ Add ingredient</button>'
     +'<div class="field" style="margin-top:20px"><label>Method (one step per line)</label><textarea id="rI" style="min-height:160px">'+B.esc(r.instructions||'')+'</textarea></div>'
     +'<div class="field"><label>Notes</label><textarea id="rO" style="min-height:70px">'+B.esc(r.notes||'')+'</textarea></div>';
@@ -1180,9 +1202,10 @@ function irowHtml(i,k){var su=D.supplies.find(function(x){return x.id===i.supply
   var unitSel=sr?'<select disabled><option>'+B.esc(sr.yield_unit||'')+'</option></select>':'<select onchange="ER.items['+k+'].unit=this.value;capR();drawRecipe()"'+(su?'':' disabled')+'>'+UNIT_LIST.concat(su&&UNIT_LIST.indexOf(su.unit)<0?[su.unit]:[]).map(function(x){return '<option'+(x===u?' selected':'')+'>'+B.esc(x)+'</option>';}).join('')+'</select>';
   var hint='';
   if(su&&u&&u!==su.unit){var c=conv(+i.qty||1,u,su.unit,gpc(su));hint=c==null?'<span style="color:#b4235a">Can’t turn '+B.esc(u)+' into '+B.esc(su.unit)+' — '+(UNITS[u]&&UNITS[su.unit]&&UNITS[u][0]!=='c'&&UNITS[su.unit][0]!=='c'?'<button class="link" onclick="capR();editSupply(\''+su.id+'\',function(){drawRecipe();})">set grams per cup on '+B.esc(su.name)+'</button>':'use a matching unit')+'</span>'
-    :(i.qty?'= '+A.num(c,c<10?2:0)+' '+B.esc(su.unit):'')+(UNITS[u][0]!==UNITS[su.unit][0]?' · using '+gpc(su)+' g per cup'+(+su.g_per_cup?'':' (typical for '+B.esc(su.name.toLowerCase())+')'):'');}
+    :(i.qty?'= '+fq(c,su.unit):'')+(UNITS[u][0]!==UNITS[su.unit][0]?' · using '+gpc(su)+' g per cup'+(+su.g_per_cup?'':' (typical for '+B.esc(su.name.toLowerCase())+')'):'');}
   if(sr)hint='Recipe makes '+A.num(sr.yield_qty)+' '+B.esc(sr.yield_unit||'')+(i.qty?' — this uses '+A.num((+i.qty||0)/(+sr.yield_qty||1)*100,0)+'% of a batch':'');
   return '<div class="irow irow4"><select onchange="rItem('+k+',this.value)">'+ingOpts(i)+'</select><input type="number" step="any" min="0" value="'+(i.qty||'')+'" placeholder="Amount" onchange="ER.items['+k+'].qty=parseFloat(this.value||0);capR();drawRecipe()">'+unitSel+'<button class="xbtn" onclick="ER.items.splice('+k+',1);capR();drawRecipe()">×</button></div>'+(hint?'<div class="ihint">'+hint+'</div>':'');}
+window._noop=0;
 function capR(){var g=function(id){return document.getElementById(id).value;};if(!document.getElementById('rN'))return;var r=ER.r;r.name=g('rN').trim();r.yield_qty=parseFloat(g('rY')||0);r.yield_unit=g('rU').trim();r.category=g('rC').trim();r.prep_minutes=g('rP')?parseInt(g('rP'),10):null;r.bake_minutes=g('rB')?parseInt(g('rB'),10):null;r.bake_temp=g('rT').trim();r.shelf_days=g('rK')?parseInt(g('rK'),10):null;r.instructions=g('rI');r.notes=g('rO');}
 async function rItem(k,v){capR();if(v==='__new'){var s=await newSupply();if(!s){drawRecipe();return;}v=s.id;}
   var it=ER.items[k];if(v.indexOf('r:')===0){var sr=D.recipes.find(function(x){return x.id===v.slice(2);});it.sub_recipe_id=sr.id;it.supply_id=null;it.unit=sr.yield_unit||'';}
@@ -1223,13 +1246,14 @@ function drawBake(open){
   var r=BK.r,st=BK.st,m=st.mult,its=D.ritems.filter(function(i){return i.recipe_id===r.id;}),steps=bkSteps(r),inv=INV();
   var total=its.length+steps.length,done=st.ing.length+st.steps.length,pct=total?Math.round(done/total*100):0;
   var curStep=steps.findIndex(function(x,i){return st.steps.indexOf(i)<0;});
-  var body='<div class="bk-top"><div class="filters" style="margin:0">'+[0.5,1,1.5,2,3,4].concat([0.5,1,1.5,2,3,4].some(function(x){return Math.abs(x-m)<.001;})?[]:[m]).sort(function(a,b){return a-b;}).map(function(x){return '<button class="chip'+(Math.abs(x-m)<.001?' on':'')+'" onclick="bkMult('+x+')">×'+A.num(x,2)+'</button>';}).join('')+'</div>'
+  window._reSheet=function(){drawBake();};
+  var body='<div class="bk-top"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div class="filters" style="margin:0">'+[0.5,1,1.5,2,3,4].concat([0.5,1,1.5,2,3,4].some(function(x){return Math.abs(x-m)<.001;})?[]:[m]).sort(function(a,b){return a-b;}).map(function(x){return '<button class="chip'+(Math.abs(x-m)<.001?' on':'')+'" onclick="bkMult('+x+')">×'+A.num(x,2)+'</button>';}).join('')+'</div><span style="margin-left:auto">'+unitSeg()+'</span></div>'
     +'<div class="bk-prog"><div><i style="width:'+pct+'%"></i></div><span>'+done+' of '+total+' done</span></div></div>'
     +'<div class="bk-meta">Makes <b>'+A.num(r.yield_qty*m)+' '+B.esc(r.yield_unit||'')+'</b>'+(r.bake_temp?' · Oven <b>'+B.esc(r.bake_temp)+'</b>':'')+(r.prep_minutes?' · Prep '+r.prep_minutes+' min':'')+'</div>'
     +timerHtml(r)
     +'<div class="sec-t">Gather &amp; measure <span style="text-transform:none;letter-spacing:0">— tap each one as it goes in</span></div>'
     +(its.length?its.map(function(i,k){var L=ingLine(i,m),on=st.ing.indexOf(k)>=0,s=L.s,short=inv&&s&&L.supQ!=null&&+s.on_hand<L.supQ;
-      return '<div class="bk-wrap"><button class="bk-row'+(on?' on':'')+'" onclick="bkTick(\'ing\','+k+')"><i></i><b>'+A.num(L.q,L.q<10?2:1)+' '+B.esc(L.unit)+'</b><span>'+B.esc(L.name)+(L.conv&&L.conv!=='can’t convert'?' <small class="muted">('+L.conv+')</small>':'')+(short?' <em class="bk-short">only '+A.num(s.on_hand,1)+' '+B.esc(s.unit)+' on hand</em>':'')+'</span></button>'
+      return '<div class="bk-wrap"><button class="bk-row'+(on?' on':'')+'" onclick="bkTick(\'ing\','+k+')"><i></i><b>'+fq(L.q,L.unit)+'</b><span>'+B.esc(L.name)+(L.conv&&L.conv!=='can’t convert'?' <small class="muted">('+L.conv+')</small>':'')+(short?' <em class="bk-short">only '+fq(s.on_hand,s.unit)+' on hand</em>':'')+'</span></button>'
         +(L.sub?'<button class="bk-sub" onclick="bakeMode(\''+L.sub.id+'\','+L.factor+',true,\''+r.id+'\')">Make it ›</button>':'')+'</div>';}).join('')
       :'<p class="muted" style="font-size:14px">No ingredients yet — add them with Edit.</p>')
     +'<div class="sec-t">Method</div>'
@@ -1266,7 +1290,7 @@ async function finishBake(){
   var r=BK.r,m=BK.st.mult,inv=INV(),parent=BK.parent;
   var flat=aggIng(flatIng(r.id,m)),use=flat.map(function(x){return {supply_id:x.s.id,name:x.name,qty:Math.round(x.qty*1000)/1000,unit:x.unit};}).filter(function(x){return x.qty>0;});
   if(inv&&KIT().confirm_deduct!==false){
-    var txt='This logs the bake'+(use.length?' and takes these out of stock:<br><br>'+use.map(function(u){return '· '+A.num(u.qty,1)+' '+B.esc(u.unit)+' '+B.esc(u.name);}).join('<br>'):'.')+(flat.bad.length?'<br><br><span style="color:#b4235a">Not taken (unit can’t be converted): '+flat.bad.map(B.esc).join(', ')+'</span>':'');
+    var txt='This logs the bake'+(use.length?' and takes these out of stock:<br><br>'+use.map(function(u){return '· '+fq(u.qty,u.unit)+' '+B.esc(u.name);}).join('<br>'):'.')+(flat.bad.length?'<br><br><span style="color:#b4235a">Not taken (unit can’t be converted): '+flat.bad.map(B.esc).join(', ')+'</span>':'');
     if(!(await A.ask('Finish '+B.esc(r.name)+' ×'+A.num(m,2)+'?',txt,'Finish bake')))return;
   }
   var ded=inv?use:[];
@@ -1325,14 +1349,14 @@ R.supplies=function(){
   var list=D.supplies.filter(function(s){if(SF.low&&!(+s.par_level>0&&+s.on_hand<+s.par_level))return false;if(SF.cat&&s.category!==SF.cat)return false;if(SF.q&&s.name.toLowerCase().indexOf(SF.q.toLowerCase())<0)return false;return true;});
   var low=lowSupplies().length;
   var inv=INV();
-  view(head('Supplies','Ingredients, packaging &amp; everything you keep on the shelf',(inv?'<button class="btn btn-ghost btn-sm" onclick="listFromLow()"'+(low?'':' disabled')+'>Order list from low stock</button>':'')+'<button class="btn btn-primary btn-sm" onclick="editSupply()">+ Add supply</button>')
+  view(head('Supplies','Ingredients, packaging &amp; everything you keep on the shelf',(inv?'<button class="btn btn-ghost btn-sm" onclick="listFromLow()"'+(low?'':' disabled')+'>Order list from low stock</button>':'')+unitSeg()+'<button class="btn btn-primary btn-sm" onclick="editSupply()">+ Add supply</button>')
     +invBanner()
     +'<div class="filters"><button class="chip'+(!SF.low&&!SF.cat?' on':'')+'" onclick="SF.low=false;SF.cat=\'\';R.supplies()">All</button>'+(inv?'<button class="chip'+(SF.low?' on':'')+'" onclick="SF.low=!SF.low;R.supplies()">Running low'+(low?' · '+low:'')+'</button>':'')+cats.map(function(c){return '<button class="chip'+(SF.cat===c?' on':'')+'" onclick="SF.cat=\''+B.esc(c)+'\';R.supplies()">'+B.esc(c)+'</button>';}).join('')
     +'<input class="input grow" type="search" placeholder="Search supplies" value="'+B.esc(SF.q)+'" oninput="SF.q=this.value;clearTimeout(window._sq);window._sq=setTimeout(R.supplies,250)"></div>'
     +(list.length?'<div class="panel"><div class="scroll-x"><table class="tbl"><thead><tr><th>Supply</th>'+(inv?'<th>On hand</th><th class="hide-m">Level</th><th class="n hide-m">Reorder at</th>':'')+'<th class="n'+(inv?' hide-m':'')+'">Cost</th><th class="hide-m">Vendor</th></tr></thead><tbody>'+list.map(function(s){var isLow=inv&&+s.par_level>0&&+s.on_hand<+s.par_level,pct=s.par_level?Math.min(100,s.on_hand/(s.par_level*2)*100):100;
       return '<tr class="'+(isLow?'low':'')+'"><td class="click" onclick="editSupply(\''+s.id+'\')" style="cursor:pointer"><b style="font-weight:500">'+B.esc(s.name)+'</b><br><small class="muted">'+B.esc(s.category||'')+'</small></td>'
-        +(!inv?'':'<td><div class="stepper"><button onclick="adjSupply(\''+s.id+'\',-1)" aria-label="Less">−</button><input value="'+A.num(s.on_hand)+'" onchange="setSupply(\''+s.id+'\',this.value)" inputmode="decimal"><button onclick="adjSupply(\''+s.id+'\',1)" aria-label="More">+</button></div> <small class="muted">'+B.esc(s.unit)+'</small></td>'
-        +'<td class="hide-m"><div class="bar-s'+(isLow?' low':'')+'"><i style="width:'+pct+'%"></i></div></td><td class="n hide-m">'+A.num(s.par_level)+' '+B.esc(s.unit)+'</td>')+'<td class="n'+(inv?' hide-m':'')+'">$'+(+s.cost_per_unit||0).toFixed(s.cost_per_unit<0.1?4:2)+'/'+B.esc(s.unit)+'</td><td class="hide-m">'+(s.vendor_url?'<a class="link" target="_blank" rel="noopener" href="'+B.esc(s.vendor_url)+'">'+B.esc(s.vendor||'Link')+'</a>':B.esc(s.vendor||''))+'</td></tr>';}).join('')+'</tbody></table></div></div>'
+        +(!inv?'':'<td><div class="stepper"><button onclick="adjSupply(\''+s.id+'\',-1)" aria-label="Less">−</button><input value="'+A.num(dq(s.on_hand,s.unit)[0],2).replace(/,/g,'')+'" onchange="setSupply(\''+s.id+'\',this.value,\''+dq(s.on_hand,s.unit)[1]+'\')" inputmode="decimal"><button onclick="adjSupply(\''+s.id+'\',1)" aria-label="More">+</button></div> <small class="muted">'+B.esc(dq(s.on_hand,s.unit)[1])+'</small></td>'
+        +'<td class="hide-m"><div class="bar-s'+(isLow?' low':'')+'"><i style="width:'+pct+'%"></i></div></td><td class="n hide-m">'+fq(s.par_level,s.unit)+'</td>')+'<td class="n'+(inv?' hide-m':'')+'">'+fprice(s.cost_per_unit,s.unit)+'</td><td class="hide-m">'+(s.vendor_url?'<a class="link" target="_blank" rel="noopener" href="'+B.esc(s.vendor_url)+'">'+B.esc(s.vendor||'Link')+'</a>':B.esc(s.vendor||''))+'</td></tr>';}).join('')+'</tbody></table></div></div>'
       :'<div class="panel"><div class="empty-s"><div class="serif">'+(D.supplies.length?'Nothing matches':'Your pantry')+'</div>'+(D.supplies.length?'Try another filter.':'Add flour, butter, boxes and anything else you buy.'+(inv?' Set a reorder level and you’ll see what’s running low.':' Recipes use this list to work out costs.'))+'</div></div>'));
   var s=document.querySelector('.filters input');if(s&&SF.q){s.focus();s.setSelectionRange(s.value.length,s.value.length);}
 };
@@ -1347,8 +1371,8 @@ async function setInv(on){
   S.kitchen=k;B.clearSettingsCache&&B.clearSettingsCache();counts();B.toast(on?'Inventory tracking is on':'Inventory tracking is off');R[CUR]();
 }
 function stepFor(s){return s.unit==='g'||s.unit==='ml'?100:1;}
-async function adjSupply(id,d){var s=D.supplies.find(function(x){return x.id===id;});setSupply(id,Math.max(0,(+s.on_hand||0)+d*stepFor(s)));}
-async function setSupply(id,v){var s=D.supplies.find(function(x){return x.id===id;}),n=Math.max(0,parseFloat(String(v).replace(/,/g,''))||0);s.on_hand=n;counts();R.supplies();var r=await sb.from('buns_supplies').update({on_hand:n}).eq('id',id);if(r.error)B.toast(r.error.message);}
+async function adjSupply(id,d){var s=D.supplies.find(function(x){return x.id===id;}),du=dq(s.on_hand,s.unit)[1],st=UM()==='us'&&du!==s.unit?conv(1,du,s.unit):null;setSupply(id,Math.max(0,Math.round(((+s.on_hand||0)+d*(st||stepFor(s)))*1000)/1000));}
+async function setSupply(id,v,du){var s=D.supplies.find(function(x){return x.id===id;}),n=Math.max(0,typeof v==='number'?v:backQ(v,du,s.unit));s.on_hand=n;counts();R.supplies();var r=await sb.from('buns_supplies').update({on_hand:n}).eq('id',id);if(r.error)B.toast(r.error.message);}
 function editSupply(id,cb){
   var s=id?D.supplies.find(function(x){return x.id===id;}):{name:'',category:'',unit:'g',on_hand:0,par_level:0,cost_per_unit:0,vendor:'',vendor_url:'',notes:''};
   var units=['g','kg','oz','lb','ml','l','each','dozen','case','bag'];
@@ -1374,7 +1398,7 @@ function newSupply(){return new Promise(function(res){var keep=ER;editSupply(nul
 /* ═══════ ORDER LISTS ═══════ */
 R.lists=function(){
   var tot=function(l){return D.litems.filter(function(i){return i.list_id===l.id;}).reduce(function(a,i){return a+(+i.est_cost||0);},0);};
-  view(head('Order lists','Shopping lists for your suppliers','<button class="btn btn-ghost btn-sm" onclick="listFromLow()">From low stock</button><button class="btn btn-primary btn-sm" onclick="newList()">+ New list</button>')
+  view(head('Order lists','Shopping lists for your suppliers',unitSeg()+'<button class="btn btn-ghost btn-sm" onclick="listFromLow()">From low stock</button><button class="btn btn-primary btn-sm" onclick="newList()">+ New list</button>')
     +(D.lists.length?'<div class="panel">'+D.lists.map(function(l){var its=D.litems.filter(function(i){return i.list_id===l.id;}),done=its.filter(function(i){return i.checked;}).length;
       return '<div class="orow" style="grid-template-columns:1.5fr 1fr 1fr auto" onclick="openList(\''+l.id+'\')"><div class="who"><b>'+B.esc(l.name)+'</b><small>'+B.esc(l.vendor||'')+' · '+B.shortDate(l.created_at)+'</small></div><div><small>'+its.length+' item'+(its.length!==1?'s':'')+' · '+done+' ticked</small></div><div><small>'+(tot(l)?'≈ $'+tot(l).toFixed(2):'')+'</small></div><div><span class="st '+(l.status==='received'?'completed':l.status==='ordered'?'baking':'paid')+'">'+{open:'Open',ordered:'Ordered',received:'Received'}[l.status]+'</span></div></div>';}).join('')+'</div>'
       :'<div class="panel"><div class="empty-s"><div class="serif">No order lists yet</div>Make a list by hand, or let the bakery build one from what’s running low.</div></div>'));
@@ -1391,10 +1415,11 @@ function listFromBake(){var sh=window._bakeShort||[];if(!sh.length)return;newLis
 function openList(id){
   var l=D.lists.find(function(x){return x.id===id;});if(!l)return;var its=D.litems.filter(function(i){return i.list_id===id;});
   var est=its.reduce(function(a,i){return a+(+i.est_cost||0);},0);
-  var body='<div class="flow" style="margin-bottom:18px">'+['open','ordered','received'].map(function(s){return '<button class="'+(l.status===s?'on':'')+'" onclick="setListStatus(\''+id+'\',\''+s+'\')">'+{open:'Open',ordered:'Ordered',received:'Received'}[s]+'</button>';}).join('')+'</div>'
+  window._reSheet=function(){openList(id);};
+  var body='<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+unitSeg()+'</div><div class="flow" style="margin-bottom:18px">'+['open','ordered','received'].map(function(s){return '<button class="'+(l.status===s?'on':'')+'" onclick="setListStatus(\''+id+'\',\''+s+'\')">'+{open:'Open',ordered:'Ordered',received:'Received'}[s]+'</button>';}).join('')+'</div>'
     +(its.length?its.map(function(i){return '<div style="display:grid;grid-template-columns:auto 1fr 90px 34px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)"><input type="checkbox" style="width:20px;height:20px;accent-color:var(--brand)"'+(i.checked?' checked':'')+' onchange="tickItem(\''+i.id+'\',this.checked)">'
       +'<div style="'+(i.checked?'text-decoration:line-through;color:var(--muted)':'')+'"><b style="font-weight:500">'+B.esc(i.name)+'</b>'+(i.est_cost?'<br><small class="muted">≈ $'+(+i.est_cost).toFixed(2)+'</small>':'')+'</div>'
-      +'<div style="display:flex;gap:4px;align-items:center"><input class="input" style="padding:6px 8px;width:64px" value="'+A.num(i.qty)+'" onchange="setItemQty(\''+i.id+'\',this.value)"><small class="muted">'+B.esc(i.unit||'')+'</small></div><button class="xbtn" onclick="delItem(\''+i.id+'\')">×</button></div>';}).join('')
+      +'<div style="display:flex;gap:4px;align-items:center">'+qIn(i.qty,i.unit||'','','style="padding:6px 8px;width:72px" onchange="setItemQty(\''+i.id+'\',this.value,this.dataset.du)"')+'</div><button class="xbtn" onclick="delItem(\''+i.id+'\')">×</button></div>';}).join('')
       :'<p class="muted">Nothing on this list yet.</p>')
     +'<div class="irow" style="margin-top:16px;grid-template-columns:1fr 80px auto"><select id="liS">'+supOpts('').replace('<option value="__new">+ New ingredient…</option>','<option value="__free">Something else (type it)</option>')+'</select><input id="liQ" type="number" step="any" min="0" placeholder="Qty"><button class="btn btn-ghost btn-sm" onclick="addItem(\''+id+'\')">Add</button></div>'
     +'<p class="muted" style="font-size:13px;margin-top:20px">'+(est?'Estimated total ≈ $'+est.toFixed(2)+'. ':'')+'Marking it <b>Received</b> lets you enter what you paid — supply prices update'+(INV()?' and the amounts are added to your supplies on hand':'')+'.</p>';
@@ -1406,7 +1431,7 @@ async function addItem(lid){var s=document.getElementById('liS').value,q=parseFl
 async function addLowTo(lid){var have=D.litems.filter(function(i){return i.list_id===lid;}).map(function(i){return i.supply_id;});var add=lowSupplies().filter(function(s){return have.indexOf(s.id)<0;});if(!add.length)return B.toast('Everything low is already on this list');
   var r=await sb.from('buns_list_items').insert(add.map(function(s,k){var q=suggestQty(s);return {list_id:lid,supply_id:s.id,name:s.name,qty:q,unit:s.unit,est_cost:+(q*(+s.cost_per_unit||0)).toFixed(2),sort:have.length+k};})).select();if(r.error)return B.toast(r.error.message);D.litems=D.litems.concat(r.data||[]);openList(lid);R.lists();}
 async function tickItem(id,on){var i=D.litems.find(function(x){return x.id===id;});i.checked=on;await sb.from('buns_list_items').update({checked:on}).eq('id',id);openList(i.list_id);R.lists();}
-async function setItemQty(id,v){var i=D.litems.find(function(x){return x.id===id;}),q=parseFloat(String(v).replace(/,/g,''))||0,s=D.supplies.find(function(x){return x.id===i.supply_id;});var p={qty:q};if(s)p.est_cost=+(q*(+s.cost_per_unit||0)).toFixed(2);Object.assign(i,p);await sb.from('buns_list_items').update(p).eq('id',id);openList(i.list_id);}
+async function setItemQty(id,v,du){var i=D.litems.find(function(x){return x.id===id;}),q=backQ(v,du,i.unit),s=D.supplies.find(function(x){return x.id===i.supply_id;});var p={qty:q};if(s)p.est_cost=+(q*(+s.cost_per_unit||0)).toFixed(2);Object.assign(i,p);await sb.from('buns_list_items').update(p).eq('id',id);openList(i.list_id);}
 async function delItem(id){var i=D.litems.find(function(x){return x.id===id;});await sb.from('buns_list_items').delete().eq('id',id);D.litems=D.litems.filter(function(x){return x.id!==id;});openList(i.list_id);R.lists();}
 async function delList(id){if(!(await A.ask('Delete this list?','','Delete',{danger:true})))return;await sb.from('buns_lists').delete().eq('id',id);D.lists=D.lists.filter(function(x){return x.id!==id;});D.litems=D.litems.filter(function(x){return x.list_id!==id;});A.closeSheet();R.lists();}
 async function setListStatus(id,st){
@@ -1416,31 +1441,32 @@ async function setListStatus(id,st){
 }
 function receiveList(id){
   var l=D.lists.find(function(x){return x.id===id;}),its=D.litems.filter(function(i){return i.list_id===id&&i.supply_id;});
-  var body='<p class="muted" style="margin:0 0 16px;font-size:14px">Check the amounts and type what you actually paid for each line (from the receipt). '+(INV()?'The amounts are added to your supplies on hand, and ':'')+'each supply’s price is updated so recipe costs stay accurate.</p>'
+  window._reSheet=function(){receiveList(id);};
+  var body='<div style="display:flex;justify-content:flex-end;margin-bottom:10px">'+unitSeg()+'</div><p class="muted" style="margin:0 0 16px;font-size:14px">Check the amounts and type what you actually paid for each line (from the receipt). '+(INV()?'The amounts are added to your supplies on hand, and ':'')+'each supply’s price is updated so recipe costs stay accurate.</p>'
     +(its.length?'<div class="rcv-h"><span>Supply</span><span>Amount</span><span>Paid ($)</span><span>New price</span></div>'+its.map(function(i){var su=D.supplies.find(function(x){return x.id===i.supply_id;})||{};
-      return '<div class="rcv" data-id="'+i.id+'"><div><b style="font-weight:500">'+B.esc(i.name)+'</b><br><small class="muted">now $'+(+su.cost_per_unit||0).toFixed((+su.cost_per_unit||0)<0.1?4:2)+'/'+B.esc(su.unit||'')+'</small></div><div style="display:flex;gap:4px;align-items:center"><input class="input rq" type="number" step="any" min="0" value="'+(+i.qty||0)+'" oninput="rcvCalc()"><small class="muted">'+B.esc(i.unit||su.unit||'')+'</small></div><input class="input rp" type="number" step="0.01" min="0" value="'+(i.paid_cost!=null?i.paid_cost:(i.est_cost!=null?(+i.est_cost).toFixed(2):''))+'" oninput="rcvCalc()" placeholder="0.00"><div class="rn muted" style="font-size:13px"></div></div>';}).join('')
+      return '<div class="rcv" data-id="'+i.id+'"><div><b style="font-weight:500">'+B.esc(i.name)+'</b><br><small class="muted">now '+fprice(su.cost_per_unit,su.unit)+'</small></div><div style="display:flex;gap:4px;align-items:center">'+qIn(+i.qty||0,i.unit||su.unit||'','rq','oninput="rcvCalc()"')+'</div><input class="input rp" type="number" step="0.01" min="0" value="'+(i.paid_cost!=null?i.paid_cost:(i.est_cost!=null?(+i.est_cost).toFixed(2):''))+'" oninput="rcvCalc()" placeholder="0.00"><div class="rn muted" style="font-size:13px"></div></div>';}).join('')
       :'<p class="muted">No supplies on this list — nothing to update.</p>')
     +'<label class="check" style="display:flex;gap:8px;margin-top:16px"><input type="checkbox" id="rcvPrice" checked> Update supply prices from what I paid</label>';
   A.sheet('Received · '+B.esc(l.name),body,'<button class="btn btn-ghost btn-sm" onclick="openList(\''+id+'\')">Back</button><button class="btn btn-primary btn-sm" onclick="confirmReceive(\''+id+'\')">Mark received</button>');rcvCalc();
 }
 function rcvCalc(){document.querySelectorAll('.rcv').forEach(function(row){var i=D.litems.find(function(x){return x.id===row.dataset.id;}),su=D.supplies.find(function(x){return x.id===i.supply_id;})||{};
-  var q=parseFloat(row.querySelector('.rq').value)||0,pd=parseFloat(row.querySelector('.rp').value);var el=row.querySelector('.rn');
+  var rq=row.querySelector('.rq'),q0=backQ(rq.value,rq.dataset.du,i.unit||su.unit),cq=conv(q0,i.unit||su.unit,su.unit,gpc(su)),q=cq==null?q0:cq,pd=parseFloat(row.querySelector('.rp').value);var el=row.querySelector('.rn');
   if(!q||!(pd>0)){el.textContent='—';return;}var np=pd/q,old=+su.cost_per_unit||0,ch=old?Math.round((np-old)/old*100):0,d=np<0.1?4:2;
-  el.innerHTML='$'+np.toFixed(d)+'/'+B.esc(su.unit||'')+(old&&ch?' <span style="color:'+(ch>0?'#b4235a':'#2f7a4f')+'">'+(ch>0?'▲':'▼')+Math.abs(ch)+'%</span>':'');});}
+  el.innerHTML=fprice(np,su.unit)+(old&&ch?' <span style="color:'+(ch>0?'#b4235a':'#2f7a4f')+'">'+(ch>0?'▲':'▼')+Math.abs(ch)+'%</span>':'');});}
 async function confirmReceive(id){
   var l=D.lists.find(function(x){return x.id===id;}),upd=document.getElementById('rcvPrice')&&document.getElementById('rcvPrice').checked,changed=0;
   var rows=[].slice.call(document.querySelectorAll('.rcv'));
   for(var k=0;k<rows.length;k++){var row=rows[k],i=D.litems.find(function(x){return x.id===row.dataset.id;}),su=D.supplies.find(function(x){return x.id===i.supply_id;});
-    var q=parseFloat(row.querySelector('.rq').value)||0,pd=parseFloat(row.querySelector('.rp').value);
+    var rq=row.querySelector('.rq'),q=backQ(rq.value,rq.dataset.du,i.unit||su&&su.unit),pd=parseFloat(row.querySelector('.rp').value);
     var ip={qty:q,paid_cost:pd>0?pd:null};await sb.from('buns_list_items').update(ip).eq('id',i.id);Object.assign(i,ip);
-    if(!su)continue;var sp={on_hand:Math.round(((+su.on_hand||0)+q)*1000)/1000};
-    if(upd&&q>0&&pd>0){var conv_=conv(q,i.unit||su.unit,su.unit,gpc(su));var qq=conv_==null?q:conv_;sp.cost_per_unit=Math.round(pd/qq*1e6)/1e6;sp.cost_updated_at=new Date().toISOString();changed++;}
+    if(!su)continue;var conv_=conv(q,i.unit||su.unit,su.unit,gpc(su)),qq=conv_==null?q:conv_;var sp={on_hand:Math.round(((+su.on_hand||0)+qq)*1000)/1000};
+    if(upd&&q>0&&pd>0){sp.cost_per_unit=Math.round(pd/qq*1e6)/1e6;sp.cost_updated_at=new Date().toISOString();changed++;}
     var r=await sb.from('buns_supplies').update(sp).eq('id',su.id);if(r.error)return B.toast(r.error.message);Object.assign(su,sp);}
   var p={status:'received',received_at:new Date().toISOString()};var r2=await sb.from('buns_lists').update(p).eq('id',id);if(r2.error)return B.toast(r2.error.message);Object.assign(l,p);
   counts();B.toast('Received'+(changed?' — '+changed+' price'+(changed!==1?'s':'')+' updated':''));openList(id);R.lists();
 }
 function printList(id){var l=D.lists.find(function(x){return x.id===id;}),its=D.litems.filter(function(i){return i.list_id===id;}),w=window.open('','_blank');if(!w)return;
-  w.document.write('<html><head><title>'+B.esc(l.name)+'</title><style>body{font:16px/1.6 Georgia,serif;padding:40px;max-width:560px;margin:auto}li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}li::before{content:"☐  "}</style></head><body><h1>'+B.esc(l.name)+'</h1><ul style="padding:0">'+its.map(function(i){return '<li>'+A.num(i.qty)+' '+B.esc(i.unit||'')+' — '+B.esc(i.name)+'</li>';}).join('')+'</ul><script>print()<\/script></body></html>');w.document.close();}
+  w.document.write('<html><head><title>'+B.esc(l.name)+'</title><style>body{font:16px/1.6 Georgia,serif;padding:40px;max-width:560px;margin:auto}li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}li::before{content:"☐  "}</style></head><body><h1>'+B.esc(l.name)+'</h1><ul style="padding:0">'+its.map(function(i){return '<li>'+fq(i.qty,i.unit||'')+' — '+B.esc(i.name)+'</li>';}).join('')+'</ul><script>print()<\/script></body></html>');w.document.close();}
 
 /* ═══════ WASTE LOG ═══════ */
 var WF={pid:'',qty:1,reason:'Unsold',days:30};
